@@ -74,24 +74,60 @@
 
 ## Remaining Work
 
-1. **Testing**
+1. **Testing** (Optional but recommended)
    - [ ] Unit tests for providers
    - [ ] Integration tests for API
    - [ ] CLI command tests
 
-2. **Git Repository**
-   - [ ] Initialize git repo
-   - [ ] Add .gitignore
-   - [ ] Create initial commit
-
-3. **Documentation**
-   - [ ] API documentation
+2. **Documentation** (Optional)
+   - [ ] API documentation (Swagger already available at /docs)
    - [ ] Deployment guide
 
-4. **Docker (Phase 5)**
+3. **Docker (Phase 5)** (Future)
    - [ ] Dockerfile for backend
    - [ ] Docker Compose setup
    - [ ] Production deployment config
+
+---
+
+## Quick Start
+
+```bash
+# 1. Setup environment
+cd /Users/edmund/work/llm-md-cli
+cp .env.example .env
+# Edit .env with your API keys
+
+# 2. Start services
+./start.sh
+
+# 3. In another terminal, install CLI
+cd cli
+pip install -e .
+
+# 4. Upload a file
+mdcli upload ./README.md --namespace=docs
+
+# 5. Query
+mdcli query "What is this project about?" --namespace=docs
+
+# 6. Chat with RAG
+mdcli chat "Explain the architecture" --namespace=docs
+```
+
+---
+
+## Git Status
+
+- ✅ Repository initialized
+- ✅ .gitignore configured
+- ✅ Initial commit: 71 files, 11,316 insertions
+
+---
+
+**Last Updated:** 2026-02-06 06:22 AM
+**Updated By:** GingerCakeDev
+**Status:** ✅ Core Implementation Complete - Ready for Use!
 
 ---
 
