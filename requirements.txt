@@ -1,0 +1,22 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+openai==1.12.0
+pinecone-client==3.0.0
+tiktoken==0.5.2
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+httpx==0.26.0
+
+# LangChain & LangGraph
+langchain==0.1.0
+langchain-core==0.1.0
+langgraph==0.0.40
+
+# Async task processing
+celery==5.3.6
+redis==5.0.1
+
+# Optional LLM providers (install as needed)
+# anthropic==0.18.0
