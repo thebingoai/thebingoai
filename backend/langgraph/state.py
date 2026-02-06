@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Sequence, Optional, List
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -20,7 +20,7 @@ class ConversationState(TypedDict):
     question: str
 
     # Retrieved context chunks
-    context: list[dict]
+    context: List[dict]
 
     # Namespace for vector search
     namespace: str
@@ -29,13 +29,13 @@ class ConversationState(TypedDict):
     provider: str
 
     # Model override (optional)
-    model: str | None
+    model: Optional[str]
 
     # Whether context was found
     has_context: bool
 
     # Final answer (set by generate node)
-    answer: str | None
+    answer: Optional[str]
 
     # Sources used in the answer
-    sources: list[ContextSource]
+    sources: List[ContextSource]

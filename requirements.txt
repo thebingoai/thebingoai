@@ -9,14 +9,15 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 httpx==0.26.0
 
-# LangChain & LangGraph
-langchain==0.1.0
-langchain-core==0.1.0
+# LangChain & LangGraph (compatible versions)
+langchain==0.1.20
+langchain-core==0.1.52
+langchain-openai==0.1.0
 langgraph==0.0.40
 
 # Async task processing
 celery==5.3.6
 redis==5.0.1
 
-# Optional LLM providers (install as needed)
+# Optional LLM providers
 # anthropic==0.18.0

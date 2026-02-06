@@ -1,7 +1,7 @@
 """LangGraph RAG workflow runner."""
 
 import uuid
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Union
 
 from backend.langgraph.nodes import create_rag_graph
 from backend.langgraph.state import ConversationState
@@ -32,7 +32,7 @@ async def run_rag_query(
     model: Optional[str] = None,
     thread_id: Optional[str] = None,
     stream: bool = False
-) -> dict | AsyncGenerator[dict, None]:
+) -> Union[dict, AsyncGenerator[dict, None]]:
     """
     Run a RAG query through the LangGraph workflow.
 
@@ -97,9 +97,9 @@ async def _run_sync(
             "answer": result.get("answer", ""),
             "sources": [
                 {
-                    "source": s.source,
-                    "chunk_index": s.chunk_index,
-                    "score": s.score
+                    "source": s["source"],
+                    "chunk_index": s["chunk_index"],
+                    "score": s["score"]
                 }
                 for s in result.get("sources", [])
             ],

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -31,7 +29,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app/backend  # For development hot-reload
+      - ./backend:/app/backend
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -55,7 +53,7 @@ services:
       - redis
       - backend
     volumes:
-      - ./backend:/app/backend  # For development hot-reload
+      - ./backend:/app/backend
 
 volumes:
   redis_data:
