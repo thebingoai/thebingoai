@@ -24,11 +24,13 @@ wheels/
 venv/
 env/
 ENV/
+.venv/
 
 # Environment Variables
 .env
 .env.local
 .env.*.local
+.envrc
 
 # IDE
 .vscode/
@@ -36,31 +38,68 @@ ENV/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+._*
 
 # Logs
 logs/
 *.log
+nohup.out
 
 # Database
 *.db
 *.sqlite
+*.sqlite3
 
 # Redis
 dump.rdb
+*.rdb
 
 # Celery
 celerybeat-schedule
+celerybeat.pid
 
 # Testing
 .coverage
 htmlcov/
 .pytest_cache/
 .tox/
+.nox/
 
 # Build artifacts
 *.spec
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Project specific
+# Keep test_data samples but ignore large files
+test_data/*.pdf
+test_data/*.docx
+test_data/*.txt
+!test_data/news-*.md
+
+# Local scripts
+start-local.sh
+*.local.sh
+
+# Misc
+.cache/
+*.pid
+*.seed
+*.pid.lock
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
