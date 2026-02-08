@@ -1,37 +1,93 @@
+"""HTTP client for backend API with proper async context management."""
+
 import httpx
 from typing import Optional, AsyncGenerator
 from pathlib import Path
 from cli.config import get_config
 
+
 class APIError(Exception):
-    """API error with status code and message."""
-    def __init__(self, status_code: int, message: str):
+    """
+    API error with status code and message.
+
+    Attributes:
+        status_code: HTTP status code
+        message: Error message from API or derived from status
+    """
+
+    def __init__(self, status_code: int, message: str) -> None:
         self.status_code = status_code
         self.message = message
         super().__init__(f"API Error {status_code}: {message}")
 
-class BackendClient:
-    """HTTP client for backend API."""
 
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 120.0):
+class BackendClient:
+    """
+    Async HTTP client for backend API.
+
+    Usage:
+        async with BackendClient() as client:
+            result = await client.query("search term")
+
+    Or with get_client() helper:
+        async with get_client() as client:
+            result = await client.query("search term")
+    """
+
+    def __init__(self, base_url: Optional[str] = None, timeout: float = 120.0) -> None:
+        """
+        Initialize the client.
+
+        Args:
+            base_url: Backend API URL (defaults to config)
+            timeout: Request timeout in seconds
+        """
         config = get_config()
-        self.base_url = base_url or config.backend_url
-        self.timeout = timeout
+        self.base_url: str = base_url or config.backend_url
+        self.timeout: float = timeout
         self._client: Optional[httpx.AsyncClient] = None
 
-    async def __aenter__(self):
+    def _ensure_client(self) -> httpx.AsyncClient:
+        """
+        Ensure client is initialized.
+
+        Returns:
+            The HTTP client instance
+
+        Raises:
+            RuntimeError: If client not initialized via context manager
+        """
+        if self._client is None:
+            raise RuntimeError(
+                "BackendClient must be used as a context manager. "
+                "Use 'async with BackendClient() as client:' or 'async with get_client() as client:'"
+            )
+        return self._client
+
+    async def __aenter__(self) -> "BackendClient":
+        """Initialize HTTP client when entering context."""
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=self.timeout
         )
         return self
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args) -> None:
+        """Close HTTP client when exiting context."""
         if self._client:
             await self._client.aclose()
+            self._client = None
 
     def _handle_error(self, response: httpx.Response) -> None:
-        """Raise APIError for non-2xx responses."""
+        """
+        Raise APIError for non-2xx responses.
+
+        Args:
+            response: HTTP response to check
+
+        Raises:
+            APIError: If response status code >= 400
+        """
         if response.status_code >= 400:
             try:
                 detail = response.json().get("detail", response.text)
@@ -39,29 +95,58 @@ class BackendClient:
                 detail = response.text
             raise APIError(response.status_code, detail)
 
-    # Health
+    # Health endpoints
+
     async def health(self) -> dict:
-        """Check backend health."""
-        response = await self._client.get("/health")
+        """
+        Check backend health.
+
+        Returns:
+            Health status dict with 'status' key
+        """
+        client = self._ensure_client()
+        response = await client.get("/health")
         self._handle_error(response)
         return response.json()
 
     async def health_detailed(self) -> dict:
-        """Get detailed health status."""
-        response = await self._client.get("/health/detailed")
+        """
+        Get detailed health status.
+
+        Returns:
+            Detailed health dict with 'status' and 'checks' keys
+        """
+        client = self._ensure_client()
+        response = await client.get("/health/detailed")
         self._handle_error(response)
         return response.json()
 
-    # Upload
+    # Upload endpoints
+
     async def upload_file(
         self,
         file_path: Path,
         namespace: str = "default",
-        tags: list[str] = None,
+        tags: list[str] | None = None,
         webhook_url: Optional[str] = None,
         force_async: bool = False
     ) -> dict:
-        """Upload a markdown file."""
+        """
+        Upload a markdown file to the backend.
+
+        Args:
+            file_path: Path to markdown file
+            namespace: Namespace for the file
+            tags: Optional tags for the file
+            webhook_url: Optional webhook for completion notification
+            force_async: Force async processing
+
+        Returns:
+            Upload response dict with status, chunks_created, etc.
+        """
+        client = self._ensure_client()
+
+        # Open file outside the request for proper cleanup
         with open(file_path, "rb") as f:
             files = {"file": (file_path.name, f, "text/markdown")}
             data = {
@@ -72,15 +157,13 @@ class BackendClient:
             if webhook_url:
                 data["webhook_url"] = webhook_url
 
-            response = await self._client.post(
-                "/api/upload",
-                files=files,
-                data=data
-            )
+            response = await client.post("/api/upload", files=files, data=data)
+
         self._handle_error(response)
         return response.json()
 
-    # Query
+    # Query endpoints
+
     async def query(
         self,
         query: str,
@@ -88,7 +171,20 @@ class BackendClient:
         top_k: int = 5,
         filter: Optional[dict] = None
     ) -> dict:
-        """Vector similarity search."""
+        """
+        Perform vector similarity search.
+
+        Args:
+            query: Search query text
+            namespace: Namespace to search
+            top_k: Number of results to return
+            filter: Optional metadata filter
+
+        Returns:
+            Query response with results list
+        """
+        client = self._ensure_client()
+
         payload = {
             "query": query,
             "namespace": namespace,
@@ -97,7 +193,7 @@ class BackendClient:
         if filter:
             payload["filter"] = filter
 
-        response = await self._client.post("/api/query", json=payload)
+        response = await client.post("/api/query", json=payload)
         self._handle_error(response)
         return response.json()
 
@@ -107,15 +203,27 @@ class BackendClient:
         namespace: str = "default",
         limit: int = 5
     ) -> dict:
-        """Simple search via query params."""
-        response = await self._client.get(
+        """
+        Simple search via query parameters.
+
+        Args:
+            q: Search query
+            namespace: Namespace to search
+            limit: Max results
+
+        Returns:
+            Search response dict
+        """
+        client = self._ensure_client()
+        response = await client.get(
             "/api/search",
             params={"q": q, "namespace": namespace, "limit": limit}
         )
         self._handle_error(response)
         return response.json()
 
-    # Ask (RAG)
+    # Chat/RAG endpoints
+
     async def ask(
         self,
         question: str,
@@ -126,7 +234,23 @@ class BackendClient:
         temperature: float = 0.7,
         thread_id: Optional[str] = None
     ) -> dict:
-        """Ask with RAG (non-streaming)."""
+        """
+        Ask a question with RAG (non-streaming).
+
+        Args:
+            question: User's question
+            namespace: Namespace to search
+            top_k: Context chunks to retrieve
+            provider: LLM provider name
+            model: Optional model override
+            temperature: Generation temperature
+            thread_id: Conversation thread ID
+
+        Returns:
+            Answer dict with answer, sources, thread_id
+        """
+        client = self._ensure_client()
+
         payload = {
             "question": question,
             "namespace": namespace,
@@ -140,7 +264,7 @@ class BackendClient:
         if thread_id:
             payload["thread_id"] = thread_id
 
-        response = await self._client.post("/api/ask", json=payload)
+        response = await client.post("/api/ask", json=payload)
         self._handle_error(response)
         return response.json()
 
@@ -154,8 +278,24 @@ class BackendClient:
         temperature: float = 0.7,
         thread_id: Optional[str] = None
     ) -> AsyncGenerator[dict, None]:
-        """Ask with RAG (streaming)."""
+        """
+        Ask a question with RAG (streaming).
+
+        Args:
+            question: User's question
+            namespace: Namespace to search
+            top_k: Context chunks to retrieve
+            provider: LLM provider name
+            model: Optional model override
+            temperature: Generation temperature
+            thread_id: Conversation thread ID
+
+        Yields:
+            Stream event dicts with 'token', 'sources', or 'thread_id' keys
+        """
         import json
+
+        client = self._ensure_client()
 
         payload = {
             "question": question,
@@ -170,7 +310,7 @@ class BackendClient:
         if thread_id:
             payload["thread_id"] = thread_id
 
-        async with self._client.stream("POST", "/api/ask", json=payload) as response:
+        async with client.stream("POST", "/api/ask", json=payload) as response:
             self._handle_error(response)
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
@@ -182,24 +322,48 @@ class BackendClient:
                     except json.JSONDecodeError:
                         continue
 
-    # Providers
+    # Provider endpoints
+
     async def get_providers(self) -> dict:
-        """List available LLM providers."""
-        response = await self._client.get("/api/providers")
+        """
+        List available LLM providers.
+
+        Returns:
+            Providers dict with available providers and models
+        """
+        client = self._ensure_client()
+        response = await client.get("/api/providers")
         self._handle_error(response)
         return response.json()
 
-    # Status
+    # Status endpoints
+
     async def get_status(self) -> dict:
-        """Get index status."""
-        response = await self._client.get("/api/status")
+        """
+        Get index status.
+
+        Returns:
+            Status dict with index statistics
+        """
+        client = self._ensure_client()
+        response = await client.get("/api/status")
         self._handle_error(response)
         return response.json()
 
-    # Jobs
+    # Job endpoints
+
     async def get_job(self, job_id: str) -> dict:
-        """Get job status."""
-        response = await self._client.get(f"/api/jobs/{job_id}")
+        """
+        Get job status.
+
+        Args:
+            job_id: Job identifier
+
+        Returns:
+            Job info dict
+        """
+        client = self._ensure_client()
+        response = await client.get(f"/api/jobs/{job_id}")
         self._handle_error(response)
         return response.json()
 
@@ -208,29 +372,66 @@ class BackendClient:
         namespace: Optional[str] = None,
         limit: int = 50
     ) -> dict:
-        """List recent jobs."""
+        """
+        List recent jobs.
+
+        Args:
+            namespace: Optional namespace filter
+            limit: Max jobs to return
+
+        Returns:
+            Jobs list dict
+        """
+        client = self._ensure_client()
         params = {"limit": limit}
         if namespace:
             params["namespace"] = namespace
-        response = await self._client.get("/api/jobs", params=params)
+        response = await client.get("/api/jobs", params=params)
         self._handle_error(response)
         return response.json()
 
-    # Conversation
+    # Conversation endpoints
+
     async def get_conversation(self, thread_id: str) -> dict:
-        """Get conversation history."""
-        response = await self._client.get(f"/api/conversation/{thread_id}")
+        """
+        Get conversation history.
+
+        Args:
+            thread_id: Conversation thread identifier
+
+        Returns:
+            Conversation history dict
+        """
+        client = self._ensure_client()
+        response = await client.get(f"/api/conversation/{thread_id}")
         self._handle_error(response)
         return response.json()
 
     async def delete_conversation(self, thread_id: str) -> dict:
-        """Clear conversation history."""
-        response = await self._client.delete(f"/api/conversation/{thread_id}")
+        """
+        Clear conversation history.
+
+        Args:
+            thread_id: Conversation thread identifier
+
+        Returns:
+            Deletion confirmation dict
+        """
+        client = self._ensure_client()
+        response = await client.delete(f"/api/conversation/{thread_id}")
         self._handle_error(response)
         return response.json()
 
 
-# Convenience function for sync contexts
 def get_client() -> BackendClient:
-    """Get a new BackendClient instance."""
+    """
+    Get a new BackendClient instance.
+
+    Usage:
+        async with get_client() as client:
+            result = await client.query("search term")
+
+    Returns:
+        New BackendClient instance
+    """
     return BackendClient()
