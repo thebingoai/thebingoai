@@ -4,13 +4,13 @@ from pathlib import Path
 from datetime import datetime
 import hashlib
 import json
-from typing import Optional, TypeAlias
+from typing import Optional, Dict, Any, List
 
 CACHE_FILE = Path.home() / ".mdcli" / "index_cache.json"
 
-# Type aliases for better type safety
-FileHash: TypeAlias = str  # MD5 hash string
-FolderIndex: TypeAlias = dict  # Cache entry structure
+# Type aliases for better type safety (using comments for Python 3.9 compatibility)
+FileHash = str  # MD5 hash string
+FolderIndex = Dict[str, Any]  # Cache entry structure
 
 
 def _ensure_cache_dir() -> None:
@@ -86,7 +86,7 @@ def get_folder_info(folder_name: str) -> Optional[dict]:
     return cache.get("indexes", {}).get(folder_name)
 
 
-def get_changed_files(folder_name: str, folder_path: Path) -> list[Path]:
+def get_changed_files(folder_name: str, folder_path: Path) -> List[Path]:
     """
     Compare current files with cache, return changed/new files.
 
@@ -99,9 +99,9 @@ def get_changed_files(folder_name: str, folder_path: Path) -> list[Path]:
     """
     cache = _load_cache()
     folder_cache = cache.get("indexes", {}).get(folder_name, {})
-    cached_files: dict[str, FileHash] = folder_cache.get("files", {})
+    cached_files: Dict[str, FileHash] = folder_cache.get("files", {})
 
-    changed: list[Path] = []
+    changed: List[Path] = []
     md_files = list(Path(folder_path).glob("**/*.md"))
 
     for file_path in md_files:
@@ -114,7 +114,7 @@ def get_changed_files(folder_name: str, folder_path: Path) -> list[Path]:
     return changed
 
 
-def get_removed_files(folder_name: str, folder_path: Path) -> list[str]:
+def get_removed_files(folder_name: str, folder_path: Path) -> List[str]:
     """
     Get list of files that were removed from the folder.
 
@@ -127,7 +127,7 @@ def get_removed_files(folder_name: str, folder_path: Path) -> list[str]:
     """
     cache = _load_cache()
     folder_cache = cache.get("indexes", {}).get(folder_name, {})
-    cached_files: dict[str, FileHash] = folder_cache.get("files", {})
+    cached_files: Dict[str, FileHash] = folder_cache.get("files", {})
 
     current_files = {str(f.relative_to(folder_path)) for f in Path(folder_path).glob("**/*.md")}
     removed = [f for f in cached_files if f not in current_files]
@@ -141,7 +141,7 @@ def update_cache(
     namespace: str,
     file_count: int,
     chunk_count: int,
-    files: dict[str, FileHash]
+    files: Dict[str, FileHash]
 ) -> None:
     """
     Update cache after successful indexing.
@@ -185,7 +185,7 @@ def clear_cache(folder_name: Optional[str] = None) -> None:
         _save_cache({"indexes": {}})
 
 
-def list_indexed_folders() -> list[dict]:
+def list_indexed_folders() -> List[dict]:
     """
     List all indexed folders with their info.
 
@@ -193,7 +193,7 @@ def list_indexed_folders() -> list[dict]:
         List of dicts containing folder name and metadata
     """
     cache = _load_cache()
-    folders: list[dict] = []
+    folders: List[dict] = []
     for name, info in cache.get("indexes", {}).items():
         folders.append({
             "name": name,
