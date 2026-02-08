@@ -50,12 +50,24 @@ Build a modern web interface for llm-md-cli that provides an intuitive way to:
 | Conversation History | P1 | Planned | GET /api/conversation/{id} |
 | Provider Switching | P1 | Planned | GET /api/providers |
 | Settings Management | P2 | Planned | TBD |
-| User Authentication | P2 | Planned | TBD |
-| Dashboard Analytics | P2 | Planned | TBD |
+| Dashboard Analytics | P3 | Planned | TBD |
 
 ---
 
 ## Page Structure
+
+### Detailed Page Documentation
+
+Each page has detailed documentation with wireframes in the `pages/` directory:
+
+1. **[Dashboard](./pages/01-Dashboard.md)** - Overview and quick actions
+2. **[Documents](./pages/02-Documents.md)** - Document management and upload
+3. **[Search](./pages/03-Search.md)** - Vector similarity search
+4. **[Chat](./pages/04-Chat.md)** - RAG-powered conversational interface
+5. **[Jobs](./pages/05-Jobs.md)** - Background task monitoring
+6. **[Settings](./pages/06-Settings.md)** - Application configuration
+
+---
 
 ### 1. Layout Components
 
@@ -77,7 +89,6 @@ src/
 - Collapsible sidebar (responsive)
 - Breadcrumb navigation
 - Dark/light theme toggle
-- User profile dropdown
 - Global search bar
 - Notification center
 
@@ -430,21 +441,12 @@ export const api = axios.create({
   timeout: 120000,
 });
 
-// Request interceptor - add auth headers
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
 // Response interceptor - handle errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle auth error
+    if (error.response?.status === 500) {
+      // Handle server error
     }
     return Promise.reject(error);
   }
@@ -501,7 +503,6 @@ const router = createBrowserRouter([
       { path: 'settings', element: <SettingsPage /> },
     ],
   },
-  { path: '/login', element: <LoginPage /> },
 ]);
 ```
 
