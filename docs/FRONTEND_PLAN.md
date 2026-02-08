@@ -88,7 +88,7 @@ src/
 **Layout Features:**
 - Collapsible sidebar (responsive)
 - Breadcrumb navigation
-- Dark/light theme toggle (controlled in Settings)
+- Dark/light theme (controlled in Settings)
 - Global search bar
 - Notification center
 
