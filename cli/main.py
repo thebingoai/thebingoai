@@ -8,18 +8,22 @@ from typing import Optional
 
 from cli.config import get_config, save_config, set_config_value, Config
 from cli.api.client import BackendClient, APIError, get_client
-from cli.commands.upload import upload
-from cli.commands.query import query
-from cli.commands.chat import chat
-from cli.commands.status import status
+from cli.commands import upload, query, chat, status, index
+from cli.cache.index_cache import clear_cache
 
-app = typer.Typer(help="LLM Markdown CLI - Search and chat with your markdown files")
+app = typer.Typer(
+    help="LLM Markdown CLI - Search and chat with your markdown files",
+    no_args_is_help=True
+)
 
-# Register sub-commands
-app.command()(upload)
-app.command()(query)
-app.command()(chat)
-app.command()(status)
+# Register sub-commands as groups
+app.add_typer(upload.app, name="upload", help="Upload markdown files")
+app.add_typer(index.app, name="index", help="Manage indexed folders")
+
+# Register individual commands
+app.command()(query.query)
+app.command()(chat.chat)
+app.command()(status.status)
 
 
 @app.command()
@@ -45,6 +49,20 @@ def config_show():
     typer.echo(f"  webhook_url: {config.webhook_url or '(none)'}")
     typer.echo(f"  default_provider: {config.default_provider}")
     typer.echo(f"  default_namespace: {config.default_namespace}")
+
+
+@app.command(hidden=True)
+def ask(
+    question: str = typer.Argument(..., help="Your question with optional @folder reference"),
+    namespace: str = typer.Option("default", "--namespace", "-n", help="Namespace to search"),
+    provider: str = typer.Option("openai", "--provider", "-p", help="LLM provider"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="Model name"),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of context chunks"),
+    stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream response")
+):
+    """Ask a question (use 'chat' command instead)."""
+    typer.echo("Use 'mdcli chat' for asking questions.")
+    raise typer.Exit(1)
 
 
 @app.callback()

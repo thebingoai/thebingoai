@@ -8,6 +8,8 @@ dependencies = [
     "httpx==0.26.0",
     "rich==13.7.0",
     "pyyaml==6.0.1",
+    "textual==0.47.1",
+    "prompt-toolkit==3.0.43",
 ]
 
 [project.scripts]

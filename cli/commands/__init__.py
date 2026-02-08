@@ -1,8 +1,4 @@
-"""CLI commands package."""
+"""CLI commands module."""
+from cli.commands import upload, query, chat, status, index
 
-from cli.commands.upload import upload
-from cli.commands.query import query
-from cli.commands.chat import chat
-from cli.commands.status import status
-
-__all__ = ["upload", "query", "chat", "status"]
+__all__ = ["upload", "query", "chat", "status", "index"]
