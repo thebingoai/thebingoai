@@ -19,10 +19,10 @@ app = typer.Typer(
 # Register sub-commands as groups
 app.add_typer(upload.app, name="upload", help="Upload markdown files")
 app.add_typer(index.app, name="index", help="Manage indexed folders")
+app.add_typer(chat.app, name="chat", help="Chat with your documents")
 
 # Register individual commands
 app.command()(query.query)
-app.command()(chat.chat)
 app.command()(status.status)
 
 
