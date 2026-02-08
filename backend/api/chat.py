@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Union
 from backend.models.requests import AskRequest
 from backend.models.responses import AskResponse, SourceInfo, ProviderInfo, ProvidersResponse
 from backend.langgraph.runner import run_rag_query, get_conversation_history, clear_conversation
@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def ask(request: AskRequest) -> StreamingResponse | AskResponse:
+async def ask(request: AskRequest):
     """
     Ask a question with RAG using LangGraph workflow.
 

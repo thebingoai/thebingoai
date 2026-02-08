@@ -11,7 +11,7 @@ router.post("/query", tags=["query"])(query.query)
 router.get("/search", tags=["query"])(query.search)
 
 # Chat/RAG
-router.post("/ask", tags=["chat"])(chat.ask)
+router.post("/ask", tags=["chat"], response_model=None)(chat.ask)
 router.get("/providers", tags=["chat"])(chat.list_providers)
 
 # Conversation Memory (LangGraph)

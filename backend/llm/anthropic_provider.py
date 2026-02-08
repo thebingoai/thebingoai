@@ -42,7 +42,7 @@ class AnthropicProvider(BaseLLMProvider):
         """Provider name identifier."""
         return "anthropic"
 
-    def _get_client(self) -> AsyncAnthropic:
+    def _get_client(self) -> "AsyncAnthropic":
         """
         Get or create Anthropic client.
 
