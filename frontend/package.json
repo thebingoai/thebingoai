@@ -1,0 +1,41 @@
+{
+  "name": "llm-md-cli-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "type-check": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@headlessui/vue": "^1.7.19",
+    "@nuxtjs/color-mode": "^3.5.2",
+    "@nuxtjs/google-fonts": "^3.2.0",
+    "@nuxtjs/tailwindcss": "^6.12.3",
+    "@pinia/nuxt": "^0.11.0",
+    "@vueuse/nuxt": "^11.2.0",
+    "chart.js": "^4.4.7",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-vue-next": "^0.468.0",
+    "markdown-it": "^14.1.0",
+    "nuxt": "^3.15.1",
+    "pinia": "^3.0.4",
+    "pinia-plugin-persistedstate": "^4.2.0",
+    "shiki": "^1.24.2",
+    "tailwind-merge": "^2.5.5",
+    "vue": "^3.5.13",
+    "vue-chartjs": "^5.3.2",
+    "vue-sonner": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.2.3",
+    "typescript": "^5.7.3",
+    "vue-tsc": "^2.2.0"
+  }
+}
