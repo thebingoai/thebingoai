@@ -52,6 +52,12 @@ logs/
 *.log
 nohup.out
 
+# Frontend
+frontend/node_modules/
+frontend/.nuxt/
+frontend/dist/
+frontend/.output/
+
 # Database
 *.db
 *.sqlite
