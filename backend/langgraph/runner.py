@@ -1,28 +1,103 @@
-"""LangGraph RAG workflow runner."""
+"""LangGraph RAG workflow runner with improved streaming support."""
 
 import uuid
 from typing import Optional, AsyncGenerator, Union
 
 from backend.langgraph.nodes import create_rag_graph
 from backend.langgraph.state import ConversationState
-from backend.services.job_store import redis_client
+from backend.llm.factory import get_provider
+from backend.prompts import SYSTEM_PROMPT, NO_CONTEXT_PROMPT
 import logging
 
 logger = logging.getLogger(__name__)
 
-# In-memory conversation store (use Redis in production)
+# Conversation storage constants
 CONVERSATION_PREFIX = "conv:"
 CONVERSATION_TTL = 86400 * 7  # 7 days
 
 
 def _get_thread_key(thread_id: str) -> str:
-    """Get Redis key for conversation thread."""
+    """
+    Get Redis key for conversation thread.
+
+    Args:
+        thread_id: Thread identifier
+
+    Returns:
+        Redis key string
+    """
     return f"{CONVERSATION_PREFIX}{thread_id}"
 
 
 def _create_thread_id() -> str:
-    """Generate a new thread ID."""
+    """
+    Generate a new unique thread ID.
+
+    Returns:
+        UUID string
+    """
     return str(uuid.uuid4())
+
+
+def _build_initial_state(
+    question: str,
+    namespace: str,
+    provider: str,
+    model: Optional[str],
+    thread_id: str
+) -> ConversationState:
+    """
+    Build the initial state for the RAG graph.
+
+    Args:
+        question: User's question
+        namespace: Vector namespace to search
+        provider: LLM provider name
+        model: Optional model override
+        thread_id: Conversation thread ID
+
+    Returns:
+        Initial ConversationState dict
+    """
+    return {
+        "question": question,
+        "namespace": namespace,
+        "provider": provider,
+        "model": model,
+        "context": [],
+        "sources": [],
+        "answer": "",
+        "messages": [],
+        "has_context": False,
+        "thread_id": thread_id
+    }
+
+
+def _format_sources(sources: list) -> list[dict]:
+    """
+    Format sources for API response.
+
+    Args:
+        sources: List of source objects (dict or ContextSource)
+
+    Returns:
+        List of formatted source dicts
+    """
+    formatted = []
+    for s in sources:
+        if hasattr(s, 'source'):  # ContextSource object
+            formatted.append({
+                "source": s.source,
+                "chunk_index": s.chunk_index,
+                "score": s.score
+            })
+        else:  # dict
+            formatted.append({
+                "source": s.get("source"),
+                "chunk_index": s.get("chunk_index"),
+                "score": s.get("score")
+            })
+    return formatted
 
 
 async def run_rag_query(
@@ -68,41 +143,34 @@ async def _run_sync(
     model: Optional[str],
     thread_id: str
 ) -> dict:
-    """Run RAG query synchronously (non-streaming)."""
-    # Create the graph
+    """
+    Run RAG query synchronously (non-streaming).
+
+    Args:
+        question: User's question
+        namespace: Vector namespace to search
+        provider: LLM provider name
+        model: Optional model override
+        thread_id: Conversation thread ID
+
+    Returns:
+        Dict with answer, sources, thread_id, has_context
+    """
+    logger.debug(f"Running sync RAG query for thread {thread_id}")
     graph = create_rag_graph()
 
-    # Initial state
-    initial_state: ConversationState = {
-        "question": question,
-        "namespace": namespace,
-        "provider": provider,
-        "model": model,
-        "context": [],
-        "sources": [],
-        "answer": "",
-        "messages": [],
-        "has_context": False,
-        "thread_id": thread_id
-    }
+    initial_state = _build_initial_state(
+        question, namespace, provider, model, thread_id
+    )
 
-    # Config for checkpointing
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
-        # Run the graph
         result = await graph.ainvoke(initial_state, config=config)
 
         return {
             "answer": result.get("answer", ""),
-            "sources": [
-                {
-                    "source": s["source"],
-                    "chunk_index": s["chunk_index"],
-                    "score": s["score"]
-                }
-                for s in result.get("sources", [])
-            ],
+            "sources": _format_sources(result.get("sources", [])),
             "thread_id": thread_id,
             "has_context": result.get("has_context", False)
         }
@@ -119,43 +187,38 @@ async def _run_streaming(
     model: Optional[str],
     thread_id: str
 ) -> AsyncGenerator[dict, None]:
-    """Run RAG query with streaming response."""
+    """
+    Run RAG query with streaming response.
+
+    Yields events for sources, tokens, and completion.
+
+    Args:
+        question: User's question
+        namespace: Vector namespace to search
+        provider: LLM provider name
+        model: Optional model override
+        thread_id: Conversation thread ID
+
+    Yields:
+        Dicts with 'type' key ('sources', 'thread_id', 'token', 'done', 'error')
+    """
+    logger.debug(f"Running streaming RAG query for thread {thread_id}")
     graph = create_rag_graph()
 
-    initial_state: ConversationState = {
-        "question": question,
-        "namespace": namespace,
-        "provider": provider,
-        "model": model,
-        "context": [],
-        "sources": [],
-        "answer": "",
-        "messages": [],
-        "has_context": False,
-        "thread_id": thread_id
-    }
+    initial_state = _build_initial_state(
+        question, namespace, provider, model, thread_id
+    )
 
     config = {"configurable": {"thread_id": thread_id}}
 
-    # First yield the sources (context retrieval)
-    # We'll need to handle this differently - LangGraph doesn't natively stream node outputs
-    # So we'll run the retrieve step first, then stream the generation
-
     try:
-        # Run to get context first
+        # Run graph to retrieve context and generate messages
         result = await graph.ainvoke(initial_state, config=config)
 
-        # Yield sources
+        # Yield sources first
         yield {
             "type": "sources",
-            "sources": [
-                {
-                    "source": s.source,
-                    "chunk_index": s.chunk_index,
-                    "score": s.score
-                }
-                for s in result.get("sources", [])
-            ]
+            "sources": _format_sources(result.get("sources", []))
         }
 
         # Yield thread ID
@@ -164,40 +227,18 @@ async def _run_streaming(
             "thread_id": thread_id
         }
 
-        # Now we need to get the LLM and stream from it directly
-        # This is a simplified approach - for production, you'd want proper LangGraph streaming
-        from backend.llm.factory import get_provider
+        # Build messages for streaming
+        messages = _extract_messages(result, question)
 
+        # Stream from LLM
         llm = get_provider(provider, model)
-
-        # Build messages from the graph result
-        # The graph has already processed the context and created messages
-        messages = result.get("messages", [])
-
-        # Convert LangChain messages to dict format
-        message_dicts = []
-        for msg in messages:
-            if hasattr(msg, 'type') and hasattr(msg, 'content'):
-                role = 'assistant' if msg.type == 'ai' else 'user'
-                message_dicts.append({"role": role, "content": msg.content})
-
-        # If no messages were created, we need to construct them
-        if not message_dicts:
-            # This shouldn't happen if the graph ran correctly
-            logger.warning("No messages in graph result, constructing fallback")
-            # We need to reconstruct the conversation - this is a fallback
-            message_dicts = [{"role": "user", "content": question}]
-
-        # Stream the response
-        full_content = ""
-        async for chunk in llm.chat_stream(message_dicts, temperature=0.7):
-            full_content += chunk
+        async for token in llm.chat_stream(messages, temperature=0.7):
             yield {
                 "type": "token",
-                "token": chunk
+                "token": token
             }
 
-        # Yield completion
+        # Signal completion
         yield {
             "type": "done",
             "thread_id": thread_id
@@ -211,6 +252,55 @@ async def _run_streaming(
         }
 
 
+def _extract_messages(result: dict, question: str) -> list[dict]:
+    """
+    Extract and format messages from graph result for LLM.
+
+    Args:
+        result: Graph execution result
+        question: Original user question
+
+    Returns:
+        List of message dicts with 'role' and 'content'
+    """
+    from langchain_core.messages import HumanMessage, AIMessage
+
+    messages = result.get("messages", [])
+
+    # Convert LangChain messages to dict format
+    message_dicts = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            message_dicts.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            message_dicts.append({"role": "assistant", "content": msg.content})
+        elif hasattr(msg, 'type') and hasattr(msg, 'content'):
+            role = 'assistant' if msg.type == 'ai' else 'user'
+            message_dicts.append({"role": role, "content": msg.content})
+
+    # If no messages were created, construct from scratch
+    if not message_dicts:
+        logger.warning("No messages in graph result, constructing fallback")
+
+        # Build context string from result
+        context = result.get("context", [])
+        if context:
+            context_str = "\n\n---\n\n".join([
+                f"[Source: {c['source']}, Section {c['chunk_index']}]\n{c['text']}"
+                for c in context
+            ])
+            system_content = SYSTEM_PROMPT.format(context=context_str)
+        else:
+            system_content = NO_CONTEXT_PROMPT
+
+        message_dicts = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": question}
+        ]
+
+    return message_dicts
+
+
 async def get_conversation_history(thread_id: str) -> list[dict]:
     """
     Get conversation history for a thread.
@@ -220,23 +310,17 @@ async def get_conversation_history(thread_id: str) -> list[dict]:
 
     Returns:
         List of message dicts with role and content
+
+    Note:
+        This is a simplified implementation. Full implementation would
+        query LangGraph's checkpoint for complete history.
     """
-    try:
-        # Try to get from LangGraph's memory saver
-        # This is a simplified implementation
-        # In production, you'd want to properly serialize/deserialize
+    logger.info(f"Getting history for thread {thread_id}")
 
-        # For now, return empty - proper implementation would query the checkpoint
-        logger.info(f"Getting history for thread {thread_id}")
-
-        # The conversation is stored in LangGraph's MemorySaver
-        # We could access it via the graph's checkpointer but that's complex
-        # For now, we'll return an empty list and document this limitation
-        return []
-
-    except Exception as e:
-        logger.error(f"Failed to get conversation history: {e}")
-        return []
+    # The conversation is stored in LangGraph's MemorySaver
+    # Full implementation would access graph state via checkpointer
+    # For now, return empty list as documented limitation
+    return []
 
 
 async def clear_conversation(thread_id: str) -> bool:
@@ -248,9 +332,14 @@ async def clear_conversation(thread_id: str) -> bool:
 
     Returns:
         True if cleared, False if not found
+
+    Note:
+        This is a simplified implementation. Full implementation would
+        clear the checkpoint from the checkpointer.
     """
     try:
-        # Clear from Redis if stored there
+        from backend.services.job_store import redis_client
+
         key = _get_thread_key(thread_id)
         result = redis_client.delete(key)
 

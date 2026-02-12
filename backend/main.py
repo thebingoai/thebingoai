@@ -1,9 +1,10 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from backend.vectordb.pinecone import init_pinecone
 from backend.api import routes
 from backend.logging_config import setup_logging
-from backend.api import health
+from backend.api import health as health_module
 from backend.config import settings
 import logging
 
@@ -29,6 +30,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Configure CORS for frontend communication
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Nuxt dev server
+        "http://localhost:5173",  # Vite dev server (alternative)
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(routes.router, prefix="/api")
 
 @app.get("/health")
@@ -39,4 +52,4 @@ async def health():
 @app.get("/health/detailed")
 async def health_detailed_endpoint():
     """Detailed health check."""
-    return await health.health_detailed()
+    return await health_module.health_detailed()
