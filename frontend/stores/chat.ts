@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import type {
   Conversation,
   ConversationMessage,
-  SourceInfo,
   LLMProvider
 } from '~/types'
 

@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator, Union
 from backend.models.requests import AskRequest
 from backend.models.responses import AskResponse, SourceInfo, ProviderInfo, ProvidersResponse
-from backend.langgraph.runner import run_rag_query, get_conversation_history, clear_conversation
+from backend.langgraph.runner import run_rag_query, clear_conversation
 from backend.config import settings
 import json
 import httpx
@@ -42,7 +42,9 @@ async def ask(request: AskRequest):
         provider=request.provider,
         model=request.model,
         thread_id=request.thread_id,
-        stream=False
+        stream=False,
+        temperature=request.temperature,
+        top_k=request.top_k
     )
 
     return AskResponse(
@@ -72,7 +74,9 @@ async def stream_response(request: AskRequest) -> AsyncGenerator[str, None]:
             provider=request.provider,
             model=request.model,
             thread_id=request.thread_id,
-            stream=True
+            stream=True,
+            temperature=request.temperature,
+            top_k=request.top_k
         )
 
         async for event in stream:
@@ -88,8 +92,8 @@ async def stream_response(request: AskRequest) -> AsyncGenerator[str, None]:
                 yield "data: [DONE]\n\n"
 
     except Exception as e:
-        logger.error(f"Error in stream_response: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        logger.error(f"Error in stream_response: {e}", exc_info=True)
+        yield f"data: {json.dumps({'error': 'An error occurred processing your request'})}\n\n"
         yield "data: [DONE]\n\n"
 
 
@@ -145,20 +149,6 @@ async def list_providers() -> ProvidersResponse:
             "model": settings.default_llm_model or "default"
         }
     )
-
-
-async def get_history(thread_id: str) -> dict:
-    """
-    Get conversation history for a thread.
-
-    Args:
-        thread_id: Conversation thread identifier
-
-    Returns:
-        Dict with thread_id and messages list
-    """
-    history = await get_conversation_history(thread_id)
-    return {"thread_id": thread_id, "messages": history}
 
 
 async def delete_history(thread_id: str) -> dict:

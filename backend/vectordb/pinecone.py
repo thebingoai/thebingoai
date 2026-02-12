@@ -3,6 +3,7 @@
 from pinecone import Pinecone, ServerlessSpec
 from typing import Optional
 from backend.config import settings
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,9 +37,9 @@ def init_pinecone() -> None:
         _pc.create_index(
             name=settings.pinecone_index_name,
             dimension=settings.embedding_dimensions,
-            metric="cosine",
+            metric=settings.pinecone_similarity_metric,
             spec=ServerlessSpec(
-                cloud="aws",
+                cloud=settings.pinecone_cloud_provider,
                 region=settings.pinecone_environment
             )
         )
@@ -66,7 +67,7 @@ def get_index():
 async def upsert_vectors(
     vectors: list[dict],
     namespace: str = "default",
-    batch_size: int = 100
+    batch_size: int = None
 ) -> dict:
     """
     Upsert vectors to Pinecone.
@@ -79,6 +80,7 @@ async def upsert_vectors(
     Returns:
         {"upserted_count": int} - Total vectors upserted
     """
+    batch_size = batch_size or settings.pinecone_upsert_batch_size
     logger.debug(f"Upserting {len(vectors)} vectors to namespace '{namespace}'")
     index = get_index()
     total_upserted = 0
@@ -99,7 +101,8 @@ async def upsert_vectors(
         ]
 
         logger.debug(f"Upserting batch {batch_num}/{total_batches} ({len(batch)} vectors)")
-        response = index.upsert(vectors=upsert_data, namespace=namespace)
+        # Wrap blocking Pinecone call with asyncio.to_thread
+        response = await asyncio.to_thread(index.upsert, vectors=upsert_data, namespace=namespace)
         total_upserted += response.upserted_count
 
     logger.info(f"Upserted {total_upserted} vectors to namespace '{namespace}'")
@@ -129,7 +132,9 @@ async def query_vectors(
     logger.debug(f"Querying namespace '{namespace}' with top_k={top_k}")
     index = get_index()
 
-    response = index.query(
+    # Wrap blocking Pinecone call with asyncio.to_thread
+    response = await asyncio.to_thread(
+        index.query,
         vector=query_embedding,
         namespace=namespace,
         top_k=top_k,
@@ -152,47 +157,6 @@ async def query_vectors(
     return results
 
 
-async def delete_vectors(
-    ids: list[str] = None,
-    namespace: str = "default",
-    delete_all: bool = False,
-    filter: Optional[dict] = None
-) -> dict:
-    """
-    Delete vectors from Pinecone.
-
-    Args:
-        ids: List of vector IDs to delete
-        namespace: Target namespace
-        delete_all: If True, delete all vectors in namespace
-        filter: Metadata filter for deletion
-
-    Returns:
-        {"deleted": True}
-
-    Warning:
-        delete_all is irreversible - use with caution
-    """
-    index = get_index()
-
-    if delete_all:
-        logger.warning(f"Deleting ALL vectors in namespace '{namespace}'")
-        index.delete(delete_all=True, namespace=namespace)
-        logger.info(f"Cleared namespace '{namespace}'")
-    elif ids:
-        logger.debug(f"Deleting {len(ids)} vectors from namespace '{namespace}'")
-        index.delete(ids=ids, namespace=namespace)
-        logger.info(f"Deleted {len(ids)} vectors from namespace '{namespace}'")
-    elif filter:
-        logger.debug(f"Deleting vectors by filter from namespace '{namespace}': {filter}")
-        index.delete(filter=filter, namespace=namespace)
-        logger.info(f"Deleted vectors by filter from namespace '{namespace}'")
-    else:
-        logger.warning("delete_vectors called with no deletion criteria")
-
-    return {"deleted": True}
-
-
 async def get_index_stats() -> dict:
     """
     Get index statistics.
@@ -202,7 +166,9 @@ async def get_index_stats() -> dict:
     """
     logger.debug("Fetching index stats")
     index = get_index()
-    stats = index.describe_index_stats()
+
+    # Wrap blocking Pinecone call with asyncio.to_thread
+    stats = await asyncio.to_thread(index.describe_index_stats)
 
     result = {
         "total_vector_count": stats.total_vector_count,
@@ -219,19 +185,6 @@ async def get_index_stats() -> dict:
     )
 
     return result
-
-
-async def list_namespaces() -> list[str]:
-    """
-    List all namespaces in the index.
-
-    Returns:
-        List of namespace names
-    """
-    stats = await get_index_stats()
-    namespaces = list(stats.get("namespaces", {}).keys())
-    logger.debug(f"Available namespaces: {namespaces}")
-    return namespaces
 
 
 # Sync wrappers for Celery tasks

@@ -142,21 +142,3 @@ def chunk_markdown(
         finalize_chunk()
 
     return chunks
-
-
-def extract_metadata(text: str) -> dict:
-    """Extract YAML frontmatter if present."""
-    metadata = {}
-
-    # Check for YAML frontmatter
-    if text.startswith("---"):
-        end_match = re.search(r'\n---\s*\n', text[3:])
-        if end_match:
-            yaml_content = text[3:end_match.start() + 3]
-            try:
-                import yaml
-                metadata = yaml.safe_load(yaml_content) or {}
-            except Exception:
-                pass
-
-    return metadata

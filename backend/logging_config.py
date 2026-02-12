@@ -59,7 +59,7 @@ class JsonFormatter(logging.Formatter):
         from datetime import datetime
 
         log_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(datetime.UTC).isoformat() + "Z",
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

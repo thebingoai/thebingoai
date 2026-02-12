@@ -1,11 +1,11 @@
 """OpenAI LLM provider implementation."""
 
-import os
 from typing import AsyncGenerator, Optional
 
 from openai import AsyncOpenAI, RateLimitError, APIError
 
 from backend.llm.base import BaseLLMProvider
+from backend.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT provider for chat completions."""
 
-    DEFAULT_MODEL = "gpt-4o"
     AVAILABLE_MODELS = ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
 
     def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None) -> None:
@@ -23,9 +22,9 @@ class OpenAIProvider(BaseLLMProvider):
 
         Args:
             model: Model name to use
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
+            api_key: OpenAI API key (defaults to settings)
         """
-        api_key = api_key or os.getenv("OPENAI_API_KEY")
+        api_key = api_key or settings.openai_api_key
         super().__init__(model, api_key)
         self._client: Optional[AsyncOpenAI] = None
 
@@ -52,7 +51,7 @@ class OpenAIProvider(BaseLLMProvider):
 
     def get_default_model(self) -> str:
         """Get default model name."""
-        return self.DEFAULT_MODEL
+        return settings.openai_default_model
 
     def is_available(self) -> bool:
         """
@@ -87,7 +86,7 @@ class OpenAIProvider(BaseLLMProvider):
             APIError: If API request fails
         """
         client = self._get_client()
-        model = self.model or self.DEFAULT_MODEL
+        model = self.model or settings.openai_default_model
 
         response = await client.chat.completions.create(
             model=model,
@@ -120,7 +119,7 @@ class OpenAIProvider(BaseLLMProvider):
             APIError: If API request fails
         """
         client = self._get_client()
-        model = self.model or self.DEFAULT_MODEL
+        model = self.model or settings.openai_default_model
 
         stream = await client.chat.completions.create(
             model=model,

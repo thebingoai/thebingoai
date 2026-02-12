@@ -8,7 +8,6 @@ from backend.models.job import JobInfo, JobStatus, JobResult
 redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 
 JOB_PREFIX = "job:"
-JOB_TTL = 86400 * 7  # 7 days
 
 def create_job(job_id: str, file_name: str, namespace: str) -> JobInfo:
     """Create a new job record."""
@@ -17,11 +16,11 @@ def create_job(job_id: str, file_name: str, namespace: str) -> JobInfo:
         status=JobStatus.PENDING,
         file_name=file_name,
         namespace=namespace,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(datetime.UTC)
     )
     redis_client.setex(
         f"{JOB_PREFIX}{job_id}",
-        JOB_TTL,
+        settings.job_ttl_seconds,
         job.model_dump_json()
     )
     return job
@@ -50,7 +49,7 @@ def update_job(job_id: str, **updates) -> Optional[JobInfo]:
 
     redis_client.setex(
         f"{JOB_PREFIX}{job_id}",
-        JOB_TTL,
+        settings.job_ttl_seconds,
         updated_job.model_dump_json()
     )
     return updated_job
@@ -59,7 +58,7 @@ def start_job(job_id: str, chunks_total: int = None) -> Optional[JobInfo]:
     """Mark job as processing."""
     updates = {
         "status": JobStatus.PROCESSING,
-        "started_at": datetime.utcnow(),
+        "started_at": datetime.now(datetime.UTC),
         "progress": 0
     }
     if chunks_total:
@@ -85,7 +84,7 @@ def complete_job(
     return update_job(
         job_id,
         status=JobStatus.COMPLETED,
-        completed_at=datetime.utcnow(),
+        completed_at=datetime.now(datetime.UTC),
         progress=100,
         result={
             "file_name": file_name,
@@ -100,7 +99,7 @@ def fail_job(job_id: str, error: str) -> Optional[JobInfo]:
     return update_job(
         job_id,
         status=JobStatus.FAILED,
-        completed_at=datetime.utcnow(),
+        completed_at=datetime.now(datetime.UTC),
         error=error
     )
 
@@ -131,7 +130,3 @@ def list_jobs(namespace: Optional[str] = None, limit: int = 50) -> list[JobInfo]
     # Sort by created_at descending and limit
     jobs.sort(key=lambda j: j.created_at, reverse=True)
     return jobs[:limit]
-
-def delete_job(job_id: str) -> bool:
-    """Delete a job record."""
-    return redis_client.delete(f"{JOB_PREFIX}{job_id}") > 0

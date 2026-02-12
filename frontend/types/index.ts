@@ -221,24 +221,3 @@ export interface UploadProgress {
   error?: string
   job_id?: string
 }
-
-// ============================================================
-// UTILITY TYPES
-// ============================================================
-
-export interface PaginationState {
-  page: number
-  pageSize: number
-  total: number
-}
-
-export interface SortState {
-  field: string
-  direction: 'asc' | 'desc'
-}
-
-export interface FilterState {
-  namespaces: string[]
-  dateRange: 'all' | '24h' | 'week' | 'month'
-  status?: JobStatus[]
-}

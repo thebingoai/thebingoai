@@ -1,6 +1,5 @@
 """Anthropic Claude LLM provider implementation."""
 
-import os
 from typing import AsyncGenerator, Optional
 
 try:
@@ -10,6 +9,7 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 from backend.llm.base import BaseLLMProvider
+from backend.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider for chat completions."""
 
-    DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
     AVAILABLE_MODELS = [
+        "claude-sonnet-4-20250514",
         "claude-3-5-sonnet-20241022",
         "claude-3-5-haiku-20241022",
         "claude-3-opus-20240229"
@@ -31,9 +31,9 @@ class AnthropicProvider(BaseLLMProvider):
 
         Args:
             model: Model name to use
-            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            api_key: Anthropic API key (defaults to settings)
         """
-        api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        api_key = api_key or settings.anthropic_api_key
         super().__init__(model, api_key)
         self._client = None
 
@@ -64,7 +64,7 @@ class AnthropicProvider(BaseLLMProvider):
 
     def get_default_model(self) -> str:
         """Get default model name."""
-        return self.DEFAULT_MODEL
+        return settings.anthropic_default_model
 
     def is_available(self) -> bool:
         """
@@ -123,8 +123,8 @@ class AnthropicProvider(BaseLLMProvider):
             APIError: If API request fails
         """
         client = self._get_client()
-        model = self.model or self.DEFAULT_MODEL
-        max_tokens = max_tokens or 4096
+        model = self.model or settings.anthropic_default_model
+        max_tokens = max_tokens or settings.anthropic_default_max_tokens
 
         system_msg, chat_messages = self._convert_messages(messages)
 
@@ -159,8 +159,8 @@ class AnthropicProvider(BaseLLMProvider):
             APIError: If API request fails
         """
         client = self._get_client()
-        model = self.model or self.DEFAULT_MODEL
-        max_tokens = max_tokens or 4096
+        model = self.model or settings.anthropic_default_model
+        max_tokens = max_tokens or settings.anthropic_default_max_tokens
 
         system_msg, chat_messages = self._convert_messages(messages)
 

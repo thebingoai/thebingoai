@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     # Default LLM settings
     default_llm_provider: str = "openai"
     default_llm_model: Optional[str] = None
+    default_llm_temperature: float = 0.7
+
+    # LLM Provider-specific settings
+    openai_default_model: str = "gpt-4o"
+    anthropic_default_model: str = "claude-sonnet-4-20250514"
+    anthropic_default_max_tokens: int = 4096
+    ollama_default_model: str = "llama3.2"
+    ollama_request_timeout: float = 120.0
 
     # Chunking settings
     chunk_size: int = 512
@@ -26,15 +34,41 @@ class Settings(BaseSettings):
     # Embedding settings
     embedding_model: str = "text-embedding-3-large"
     embedding_dimensions: int = 3072
+    embedding_batch_size: int = 100
+    embedding_max_retries: int = 3
+
+    # Pinecone settings (additional)
+    pinecone_upsert_batch_size: int = 100
+    pinecone_similarity_metric: str = "cosine"
+    pinecone_cloud_provider: str = "aws"
+
+    # RAG settings
+    rag_default_top_k: int = 5
+    rag_context_score_threshold: float = 0.5
+    rag_conversation_history_messages: int = 6
 
     # Redis/Celery settings
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_url: str = "redis://localhost:6379/2"
+    job_ttl_seconds: int = 604800  # 7 days
+    conversation_ttl_seconds: int = 604800  # 7 days
+
+    # Celery task settings
+    celery_task_time_limit: int = 3600
+    celery_max_retries: int = 3
+    celery_retry_base_countdown: int = 60
 
     # Async processing thresholds
     async_file_size_threshold: int = 100_000  # 100KB
     async_chunk_count_threshold: int = 20
+    upload_max_file_size: int = 52428800  # 50MB
+
+    # Server settings
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+    app_version: str = "0.1.0"
+    backend_host: str = "0.0.0.0"
+    backend_port: int = 8000
 
     # Logging
     log_level: str = "INFO"

@@ -9,6 +9,7 @@ from backend.vectordb.pinecone import upsert_vectors
 from backend.services.job_store import create_job
 from backend.tasks.upload_tasks import process_upload_async
 from backend.models.responses import UploadResponse
+from backend.utils.vector_utils import prepare_vectors
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,17 @@ async def upload_file(
         raise HTTPException(400, "Only .md files are supported")
 
     content = await file.read()
+    file_size = len(content)
+
+    # Check file size limit
+    if file_size > settings.upload_max_file_size:
+        max_mb = settings.upload_max_file_size / (1024 * 1024)
+        raise HTTPException(413, f"File too large. Maximum size is {max_mb:.0f}MB")
+
     try:
         content_str = content.decode("utf-8")
     except UnicodeDecodeError:
         raise HTTPException(400, "File must be valid UTF-8 text")
-
-    file_size = len(content)
     tags_list = [t.strip() for t in tags.split(",") if t.strip()]
     should_async = force_async.lower() == "true"
 
@@ -85,19 +91,7 @@ async def upload_file(
     embeddings = await embed_batch(chunk_texts)
 
     # 3. Prepare vectors
-    vectors = []
-    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-        vectors.append({
-            "id": f"{file.filename}#chunk-{i}",
-            "values": embedding,
-            "metadata": {
-                "source": file.filename,
-                "chunk_index": i,
-                "text": chunk["text"],
-                "tags": tags_list,
-                "created_at": datetime.utcnow().isoformat()
-            }
-        })
+    vectors = prepare_vectors(file.filename, chunks, embeddings, tags_list)
 
     # 4. Upsert
     result = await upsert_vectors(vectors, namespace)

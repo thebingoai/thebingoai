@@ -11,6 +11,7 @@ from backend.vectordb.pinecone import upsert_vectors_sync
 from backend.services.job_store import (
     start_job, update_progress, complete_job, fail_job
 )
+from backend.utils.vector_utils import prepare_vectors
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,12 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=3600,  # 1 hour max
+    task_time_limit=settings.celery_task_time_limit,
     worker_prefetch_multiplier=1,  # Process one task at a time per worker
 )
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(bind=True, max_retries=settings.celery_max_retries)
 def process_upload_async(
     self,
     job_id: str,
@@ -88,19 +89,7 @@ def process_upload_async(
         update_progress(job_id, chunks_processed=total_chunks, progress=50)
 
         # 3. Prepare vectors
-        vectors = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            vectors.append({
-                "id": f"{file_name}#chunk-{i}",
-                "values": embedding,
-                "metadata": {
-                    "source": file_name,
-                    "chunk_index": i,
-                    "text": chunk["text"],
-                    "tags": tags,
-                    "created_at": datetime.utcnow().isoformat()
-                }
-            })
+        vectors = prepare_vectors(file_name, chunks, embeddings, tags)
 
         update_progress(job_id, chunks_processed=total_chunks, progress=75)
 
@@ -157,7 +146,7 @@ def process_upload_async(
 
         # Retry with exponential backoff
         try:
-            self.retry(countdown=60 * (2 ** self.request.retries), exc=e)
+            self.retry(countdown=settings.celery_retry_base_countdown * (2 ** self.request.retries), exc=e)
         except self.MaxRetriesExceededError:
             logger.error(f"Max retries exceeded for job {job_id}")
             raise

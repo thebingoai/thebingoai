@@ -31,6 +31,12 @@ class ConversationState(TypedDict):
     # Model override (optional)
     model: Optional[str]
 
+    # LLM temperature
+    temperature: float
+
+    # Number of results to retrieve
+    top_k: int
+
     # Whether context was found
     has_context: bool
 
@@ -39,3 +45,6 @@ class ConversationState(TypedDict):
 
     # Sources used in the answer
     sources: List[ContextSource]
+
+    # Thread ID for conversation
+    thread_id: str

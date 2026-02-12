@@ -57,27 +57,3 @@ Nested document in subdirectory.
 """)
         
         yield folder
-
-
-@pytest.fixture
-def mock_backend_url() -> str:
-    """Return mock backend URL for testing."""
-    return "http://localhost:8000"
-
-
-@pytest.fixture
-def empty_cache_dir(monkeypatch, tmp_path) -> Path:
-    """Create temporary cache directory and patch CACHE_FILE."""
-    cache_dir = tmp_path / ".mdcli"
-    cache_dir.mkdir()
-    cache_file = cache_dir / "index_cache.json"
-    
-    import cli.cache.index_cache as index_cache
-    original_cache_file = index_cache.CACHE_FILE
-    
-    monkeypatch.setattr(index_cache, "CACHE_FILE", cache_file)
-    
-    yield cache_dir
-    
-    # Restore original
-    monkeypatch.setattr(index_cache, "CACHE_FILE", original_cache_file)

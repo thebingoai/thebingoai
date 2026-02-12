@@ -1,13 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 
-class UploadRequest(BaseModel):
-    """Multipart form data - handled separately, this is for reference."""
-    namespace: str = "default"
-    tags: str = ""
-    webhook_url: Optional[str] = None
-    force_async: bool = False
-
 class QueryRequest(BaseModel):
     """POST /api/query request body."""
     query: str = Field(..., min_length=1, max_length=10000)

@@ -15,19 +15,6 @@ export function formatDate(date: string | Date, formatStr: string = 'MMM d, yyyy
 }
 
 /**
- * Formats a file size in bytes to human-readable format
- */
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
-}
-
-/**
  * Truncates a string to a maximum length with ellipsis
  */
 export function truncate(str: string, maxLength: number): string {

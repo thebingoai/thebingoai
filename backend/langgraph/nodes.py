@@ -4,6 +4,7 @@ from backend.vectordb.pinecone import query_vectors
 from backend.langgraph.state import ConversationState, ContextSource
 from backend.llm.factory import get_provider
 from backend.prompts import SYSTEM_PROMPT, NO_CONTEXT_PROMPT
+from backend.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ async def retrieve_context(state: ConversationState) -> ConversationState:
     """
     question = state["question"]
     namespace = state["namespace"]
+    top_k = state.get("top_k", settings.rag_default_top_k)
 
     logger.info(f"Retrieving context for: {question[:50]}...")
 
@@ -27,7 +29,7 @@ async def retrieve_context(state: ConversationState) -> ConversationState:
     results = await query_vectors(
         query_embedding=query_embedding,
         namespace=namespace,
-        top_k=5
+        top_k=top_k
     )
 
     # Extract context and sources
@@ -53,7 +55,7 @@ async def retrieve_context(state: ConversationState) -> ConversationState:
             score=round(score, 4)
         ))
 
-    has_context = len(context) > 0 and context[0]["score"] > 0.5
+    has_context = len(context) > 0 and context[0]["score"] > settings.rag_context_score_threshold
 
     logger.info(f"Retrieved {len(context)} chunks, has_context={has_context}")
 
@@ -75,6 +77,7 @@ async def generate_response(state: ConversationState) -> ConversationState:
     context = state["context"]
     provider = state["provider"]
     model = state.get("model")
+    temperature = state.get("temperature", settings.default_llm_temperature)
     messages = list(state["messages"])
 
     logger.info(f"Generating answer with {provider}")
@@ -99,14 +102,15 @@ async def generate_response(state: ConversationState) -> ConversationState:
     ]
 
     # Include recent conversation history for context
-    for msg in messages[-6:]:  # Last 3 exchanges
+    history_limit = settings.rag_conversation_history_messages
+    for msg in messages[-history_limit:]:
         if isinstance(msg, HumanMessage):
             llm_messages.insert(-1, {"role": "user", "content": msg.content})
         elif isinstance(msg, AIMessage):
             llm_messages.insert(-1, {"role": "assistant", "content": msg.content})
 
     # Generate response
-    answer = await llm.chat(llm_messages, temperature=0.7)
+    answer = await llm.chat(llm_messages, temperature=temperature)
 
     # Add to message history
     new_messages = [

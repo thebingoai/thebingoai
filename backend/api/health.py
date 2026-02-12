@@ -28,7 +28,9 @@ async def health_detailed() -> dict:
         r.ping()
         checks["redis"] = "healthy"
     except Exception as e:
-        checks["redis"] = f"unhealthy: {str(e)}"
+        import logging
+        logging.getLogger(__name__).error(f"Redis check failed: {e}", exc_info=True)
+        checks["redis"] = "unhealthy"
 
     # Check Pinecone
     try:
@@ -36,7 +38,9 @@ async def health_detailed() -> dict:
         checks["pinecone"] = "healthy"
         checks["pinecone_vectors"] = stats.get("total_vector_count", 0)
     except Exception as e:
-        checks["pinecone"] = f"unhealthy: {str(e)}"
+        import logging
+        logging.getLogger(__name__).error(f"Pinecone check failed: {e}", exc_info=True)
+        checks["pinecone"] = "unhealthy"
 
     overall = "healthy" if all(
         v == "healthy" or isinstance(v, int)

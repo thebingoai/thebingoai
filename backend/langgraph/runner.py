@@ -11,9 +11,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Conversation storage constants
-CONVERSATION_PREFIX = "conv:"
-CONVERSATION_TTL = 86400 * 7  # 7 days
+# Module-level graph singleton for persistent conversation memory
+_graph = None
+
+
+def _get_graph():
+    """Get or create the RAG graph singleton."""
+    global _graph
+    if _graph is None:
+        from backend.langgraph.nodes import create_rag_graph
+        _graph = create_rag_graph()
+        logger.info("Initialized RAG graph with persistent memory")
+    return _graph
 
 
 def _get_thread_key(thread_id: str) -> str:
@@ -44,7 +53,9 @@ def _build_initial_state(
     namespace: str,
     provider: str,
     model: Optional[str],
-    thread_id: str
+    thread_id: str,
+    temperature: float = None,
+    top_k: int = None
 ) -> ConversationState:
     """
     Build the initial state for the RAG graph.
@@ -59,11 +70,14 @@ def _build_initial_state(
     Returns:
         Initial ConversationState dict
     """
+    from backend.config import settings
     return {
         "question": question,
         "namespace": namespace,
         "provider": provider,
         "model": model,
+        "temperature": temperature if temperature is not None else settings.default_llm_temperature,
+        "top_k": top_k if top_k is not None else settings.rag_default_top_k,
         "context": [],
         "sources": [],
         "answer": "",
@@ -106,7 +120,9 @@ async def run_rag_query(
     provider: str = "openai",
     model: Optional[str] = None,
     thread_id: Optional[str] = None,
-    stream: bool = False
+    stream: bool = False,
+    temperature: float = None,
+    top_k: int = None
 ) -> Union[dict, AsyncGenerator[dict, None]]:
     """
     Run a RAG query through the LangGraph workflow.
@@ -131,9 +147,9 @@ async def run_rag_query(
         logger.info(f"Using existing thread: {thread_id}")
 
     if stream:
-        return _run_streaming(question, namespace, provider, model, thread_id)
+        return _run_streaming(question, namespace, provider, model, thread_id, temperature, top_k)
     else:
-        return await _run_sync(question, namespace, provider, model, thread_id)
+        return await _run_sync(question, namespace, provider, model, thread_id, temperature, top_k)
 
 
 async def _run_sync(
@@ -141,7 +157,9 @@ async def _run_sync(
     namespace: str,
     provider: str,
     model: Optional[str],
-    thread_id: str
+    thread_id: str,
+    temperature: float = None,
+    top_k: int = None
 ) -> dict:
     """
     Run RAG query synchronously (non-streaming).
@@ -157,10 +175,10 @@ async def _run_sync(
         Dict with answer, sources, thread_id, has_context
     """
     logger.debug(f"Running sync RAG query for thread {thread_id}")
-    graph = create_rag_graph()
+    graph = _get_graph()
 
     initial_state = _build_initial_state(
-        question, namespace, provider, model, thread_id
+        question, namespace, provider, model, thread_id, temperature, top_k
     )
 
     config = {"configurable": {"thread_id": thread_id}}
@@ -185,7 +203,9 @@ async def _run_streaming(
     namespace: str,
     provider: str,
     model: Optional[str],
-    thread_id: str
+    thread_id: str,
+    temperature: float = None,
+    top_k: int = None
 ) -> AsyncGenerator[dict, None]:
     """
     Run RAG query with streaming response.
@@ -203,10 +223,10 @@ async def _run_streaming(
         Dicts with 'type' key ('sources', 'thread_id', 'token', 'done', 'error')
     """
     logger.debug(f"Running streaming RAG query for thread {thread_id}")
-    graph = create_rag_graph()
+    graph = _get_graph()
 
     initial_state = _build_initial_state(
-        question, namespace, provider, model, thread_id
+        question, namespace, provider, model, thread_id, temperature, top_k
     )
 
     config = {"configurable": {"thread_id": thread_id}}
@@ -299,28 +319,6 @@ def _extract_messages(result: dict, question: str) -> list[dict]:
         ]
 
     return message_dicts
-
-
-async def get_conversation_history(thread_id: str) -> list[dict]:
-    """
-    Get conversation history for a thread.
-
-    Args:
-        thread_id: Thread ID
-
-    Returns:
-        List of message dicts with role and content
-
-    Note:
-        This is a simplified implementation. Full implementation would
-        query LangGraph's checkpoint for complete history.
-    """
-    logger.info(f"Getting history for thread {thread_id}")
-
-    # The conversation is stored in LangGraph's MemorySaver
-    # Full implementation would access graph state via checkpointer
-    # For now, return empty list as documented limitation
-    return []
 
 
 async def clear_conversation(thread_id: str) -> bool:

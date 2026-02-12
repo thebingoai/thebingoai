@@ -18,7 +18,7 @@ def get_client() -> AsyncOpenAI:
 async def embed_text(
     text: str,
     model: str = None,
-    max_retries: int = 3,
+    max_retries: int = None,
     base_delay: float = 1.0
 ) -> list[float]:
     """
@@ -33,6 +33,7 @@ async def embed_text(
     Returns:
         List of floats (embedding vector)
     """
+    max_retries = max_retries or settings.embedding_max_retries
     client = get_client()
     model = model or settings.embedding_model
 
@@ -63,8 +64,8 @@ async def embed_text(
 async def embed_batch(
     texts: list[str],
     model: str = None,
-    batch_size: int = 100,
-    max_retries: int = 3
+    batch_size: int = None,
+    max_retries: int = None
 ) -> list[list[float]]:
     """
     Embed multiple texts in batches.
@@ -78,6 +79,8 @@ async def embed_batch(
     Returns:
         List of embedding vectors
     """
+    batch_size = batch_size or settings.embedding_batch_size
+    max_retries = max_retries or settings.embedding_max_retries
     client = get_client()
     model = model or settings.embedding_model
     all_embeddings = []
@@ -117,10 +120,6 @@ async def embed_batch(
 
 
 # Sync wrappers for Celery tasks
-def embed_text_sync(text: str, model: str = None) -> list[float]:
-    """Synchronous wrapper for embed_text."""
-    return asyncio.run(embed_text(text, model))
-
-def embed_batch_sync(texts: list[str], model: str = None, batch_size: int = 100) -> list[list[float]]:
+def embed_batch_sync(texts: list[str], model: str = None, batch_size: int = None) -> list[list[float]]:
     """Synchronous wrapper for embed_batch."""
     return asyncio.run(embed_batch(texts, model, batch_size))

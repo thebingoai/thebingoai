@@ -15,7 +15,6 @@ router.post("/ask", tags=["chat"], response_model=None)(chat.ask)
 router.get("/providers", tags=["chat"])(chat.list_providers)
 
 # Conversation Memory (LangGraph)
-router.get("/conversation/{thread_id}", tags=["chat"])(chat.get_history)
 router.delete("/conversation/{thread_id}", tags=["chat"])(chat.delete_history)
 
 # Status

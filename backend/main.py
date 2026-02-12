@@ -26,17 +26,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM-MD Backend",
     description="Backend for indexing and querying markdown files with LLMs",
-    version="0.1.0",
+    version=settings.app_version,
     lifespan=lifespan
 )
 
 # Configure CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Nuxt dev server
-        "http://localhost:5173",  # Vite dev server (alternative)
-    ],
+    allow_origins=[origin.strip() for origin in settings.cors_allowed_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,7 +42,7 @@ app.add_middleware(
 app.include_router(routes.router, prefix="/api")
 
 @app.get("/health")
-async def health():
+async def health_check():
     """Basic health check."""
     return {"status": "healthy"}
 

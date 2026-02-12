@@ -66,20 +66,6 @@ class OllamaProvider(BaseLLMProvider):
         # Return True and let actual requests fail if Ollama isn't running
         return True
 
-    async def check_available_async(self) -> bool:
-        """
-        Async check if Ollama service is available.
-
-        Returns:
-            True if Ollama is running and responds to /api/tags
-        """
-        try:
-            client = self._get_client()
-            response = await client.get("/api/tags", timeout=5.0)
-            return response.status_code == 200
-        except Exception:
-            return False
-
     async def chat(
         self,
         messages: list[dict],
@@ -103,7 +89,7 @@ class OllamaProvider(BaseLLMProvider):
             httpx.HTTPError: If the HTTP request fails
         """
         client = self._get_client()
-        model = self.model or self.DEFAULT_MODEL
+        model = self.model or settings.ollama_default_model
 
         payload = {
             "model": model,
@@ -144,7 +130,7 @@ class OllamaProvider(BaseLLMProvider):
         import json
 
         client = self._get_client()
-        model = self.model or self.DEFAULT_MODEL
+        model = self.model or settings.ollama_default_model
 
         payload = {
             "model": model,
@@ -169,20 +155,3 @@ class OllamaProvider(BaseLLMProvider):
                             break
                     except json.JSONDecodeError:
                         continue
-
-    async def list_models(self) -> list[str]:
-        """
-        List available Ollama models.
-
-        Returns:
-            List of model names available on the Ollama server
-        """
-        client = self._get_client()
-        try:
-            response = await client.get("/api/tags")
-            response.raise_for_status()
-            data = response.json()
-            return [m["name"] for m in data.get("models", [])]
-        except Exception as e:
-            logger.error(f"Failed to list Ollama models: {e}")
-            return []
