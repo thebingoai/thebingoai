@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     rag_context_score_threshold: float = 0.5
     rag_conversation_history_messages: int = 6
 
+    # Database
+    database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
+
     # Redis/Celery settings
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"
