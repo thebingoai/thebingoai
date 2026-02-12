@@ -23,5 +23,10 @@ sqlalchemy==2.0.25
 alembic==1.13.1
 psycopg2-binary==2.9.9
 
+# Authentication
+passlib[bcrypt]==1.7.4
+bcrypt<4.0.0  # Compatibility with passlib
+python-jose[cryptography]==3.3.0
+
 # Optional LLM providers
 # anthropic==0.18.0

@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
 
+    # JWT Authentication
+    jwt_secret_key: str = "your-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_minutes: int = 1440  # 24 hours
+
     # Redis/Celery settings
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"
