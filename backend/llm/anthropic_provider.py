@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Optional
 
 try:
     from anthropic import AsyncAnthropic, RateLimitError, APIError
+    from langchain_anthropic import ChatAnthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
@@ -173,3 +174,24 @@ class AnthropicProvider(BaseLLMProvider):
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+
+    def get_langchain_llm(self) -> "ChatAnthropic":
+        """
+        Get LangChain-compatible ChatAnthropic instance.
+
+        Returns:
+            ChatAnthropic instance configured for this provider
+
+        Raises:
+            ImportError: If langchain_anthropic package is not installed
+        """
+        if not ANTHROPIC_AVAILABLE:
+            raise ImportError("langchain_anthropic package not installed. Run: pip install langchain-anthropic")
+
+        model = self.model or self.get_default_model()
+        return ChatAnthropic(
+            model=model,
+            api_key=self.api_key,
+            temperature=0,
+            max_tokens=settings.anthropic_default_max_tokens
+        )

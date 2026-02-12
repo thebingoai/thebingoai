@@ -3,6 +3,7 @@
 from typing import AsyncGenerator, Optional
 
 from openai import AsyncOpenAI, RateLimitError, APIError
+from langchain_openai import ChatOpenAI
 
 from backend.llm.base import BaseLLMProvider
 from backend.config import settings
@@ -132,3 +133,17 @@ class OpenAIProvider(BaseLLMProvider):
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+
+    def get_langchain_llm(self) -> ChatOpenAI:
+        """
+        Get LangChain-compatible ChatOpenAI instance.
+
+        Returns:
+            ChatOpenAI instance configured for this provider
+        """
+        model = self.model or self.get_default_model()
+        return ChatOpenAI(
+            model=model,
+            api_key=self.api_key,
+            temperature=0
+        )

@@ -69,3 +69,13 @@ class BaseLLMProvider(ABC):
     def name(self) -> str:
         """Provider name."""
         pass
+
+    @abstractmethod
+    def get_langchain_llm(self):
+        """
+        Get LangChain-compatible LLM instance for use with LangGraph agents.
+
+        Returns:
+            LangChain ChatModel instance (ChatOpenAI, ChatAnthropic, ChatOllama)
+        """
+        pass

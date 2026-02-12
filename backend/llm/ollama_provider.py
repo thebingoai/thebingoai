@@ -3,6 +3,7 @@
 from typing import AsyncGenerator, Optional
 
 import httpx
+from langchain_ollama import ChatOllama
 
 from backend.llm.base import BaseLLMProvider
 from backend.config import settings
@@ -155,3 +156,17 @@ class OllamaProvider(BaseLLMProvider):
                             break
                     except json.JSONDecodeError:
                         continue
+
+    def get_langchain_llm(self) -> ChatOllama:
+        """
+        Get LangChain-compatible ChatOllama instance.
+
+        Returns:
+            ChatOllama instance configured for this provider
+        """
+        model = self.model or self.get_default_model()
+        return ChatOllama(
+            model=model,
+            base_url=self.base_url,
+            temperature=0
+        )

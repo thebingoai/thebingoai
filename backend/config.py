@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     upload_max_file_size: int = 52428800  # 50MB
 
     # Server settings
-    cors_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
     app_version: str = "0.1.0"
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000

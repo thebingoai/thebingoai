@@ -1,6 +1,7 @@
 import type { AskRequest } from '~/types'
 import { toast } from 'vue-sonner'
 import { MESSAGES } from '~/utils/constants'
+import { useChatStore } from '~/stores/chat'
 
 export const useChat = () => {
   const chatStore = useChatStore()
