@@ -1,10 +1,13 @@
 from fastapi import APIRouter
-from backend.api import upload, query, chat, health, jobs, auth
+from backend.api import upload, query, chat, health, jobs, auth, connections
 
 router = APIRouter()
 
 # Authentication
 router.include_router(auth.router)
+
+# Database Connections
+router.include_router(connections.router)
 
 # Upload
 router.post("/upload", tags=["upload"])(upload.upload_file)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, Enum, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, Enum, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from backend.database.base import Base, TimestampMixin
 import enum
@@ -22,6 +22,10 @@ class DatabaseConnection(Base, TimestampMixin):
     username = Column(String, nullable=False)
     password = Column(String, nullable=False)  # TODO: Encrypt in Phase 2
     is_active = Column(Boolean, default=True, nullable=False)
+
+    # Schema caching
+    schema_json_path = Column(String, nullable=True)
+    schema_generated_at = Column(DateTime, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="database_connections")

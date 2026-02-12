@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
 
+    # Schema storage
+    schemas_dir: str = "data/schemas"
+
     # JWT Authentication
     jwt_secret_key: str = "your-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"

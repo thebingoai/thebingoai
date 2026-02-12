@@ -22,6 +22,7 @@ redis==5.0.1
 sqlalchemy==2.0.25
 alembic==1.13.1
 psycopg2-binary==2.9.9
+PyMySQL==1.1.0
 
 # Authentication
 passlib[bcrypt]==1.7.4
