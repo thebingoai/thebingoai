@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     pinecone_similarity_metric: str = "cosine"
     pinecone_cloud_provider: str = "aws"
 
+    # Qdrant settings (for memory system)
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: Optional[str] = None
+    qdrant_documents_collection: str = "documents"
+    qdrant_memories_collection: str = "memories"
+    qdrant_vector_size: int = 3072  # text-embedding-3-large
+
     # RAG settings
     rag_default_top_k: int = 5
     rag_context_score_threshold: float = 0.5
