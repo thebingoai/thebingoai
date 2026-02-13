@@ -145,16 +145,79 @@ async def stream_orchestrator(
     context: AgentContext
 ):
     """
-    Stream orchestrator responses (simplified version).
+    Stream orchestrator responses using SSE event format.
 
     Args:
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
 
     Yields:
-        Chunks of the response
+        SSE events: {"type": "status|token|done|error", "content": ...}
     """
-    # For now, just run non-streaming and yield the result
-    # Full streaming implementation would use astream_events
-    result = await run_orchestrator(user_question, context)
-    yield json.dumps(result)
+    try:
+        # Status update
+        yield {"type": "status", "content": "Starting orchestrator..."}
+
+        # Build tools with captured context
+        tools = build_orchestrator_tools(context)
+
+        # Get LLM provider
+        provider = get_llm_provider(settings.default_llm_provider)
+
+        # Create orchestrator with memory
+        memory = MemorySaver()
+        orchestrator = create_react_agent(
+            model=provider.get_langchain_llm(),
+            tools=tools,
+            checkpointer=memory,
+            state_modifier=ORCHESTRATOR_SYSTEM_PROMPT
+        )
+
+        # Invoke with thread_id for conversation memory
+        config = {"configurable": {"thread_id": context.thread_id or "default"}}
+
+        # Stream events from orchestrator
+        async for event in orchestrator.astream_events(
+            {"messages": [HumanMessage(content=user_question)]},
+            config=config,
+            version="v2"
+        ):
+            kind = event.get("event")
+
+            # Tool invocations
+            if kind == "on_tool_start":
+                tool_name = event.get("name")
+                yield {
+                    "type": "tool_call",
+                    "content": {"tool": tool_name, "status": "started"}
+                }
+
+            # Tool results
+            elif kind == "on_tool_end":
+                tool_name = event.get("name")
+                yield {
+                    "type": "tool_result",
+                    "content": {"tool": tool_name, "status": "completed"}
+                }
+
+            # LLM streaming tokens
+            elif kind == "on_chat_model_stream":
+                chunk = event.get("data", {}).get("chunk")
+                if chunk and hasattr(chunk, "content"):
+                    content = chunk.content
+                    if content:
+                        yield {"type": "token", "content": content}
+
+        # Done event
+        yield {
+            "type": "done",
+            "content": "Orchestrator completed",
+            "thread_id": context.thread_id
+        }
+
+    except Exception as e:
+        logger.error(f"Orchestrator streaming failed: {str(e)}")
+        yield {
+            "type": "error",
+            "content": f"Orchestrator failed: {str(e)}"
+        }
