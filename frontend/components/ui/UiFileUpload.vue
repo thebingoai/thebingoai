@@ -23,7 +23,7 @@
       </div>
 
       <div class="text-center">
-        <p class="text-sm font-medium text-gray-900">
+        <p class="text-sm font-light text-gray-900">
           <span class="text-gray-600">Click to upload</span>
           or drag and drop
         </p>

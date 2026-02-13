@@ -2,7 +2,7 @@
   <div class="min-h-screen flex items-center justify-center bg-gray-50">
     <div class="max-w-md w-full p-8 bg-white rounded-lg shadow-md">
       <div class="mb-8">
-        <h2 class="text-3xl font-bold text-center text-gray-900">Sign In</h2>
+        <h2 class="text-3xl font-medium text-center text-gray-900">Sign In</h2>
       </div>
 
       <div v-if="error" class="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -39,7 +39,7 @@
 
       <p class="mt-6 text-center text-sm text-gray-500">
         Don't have an account?
-        <NuxtLink to="/register" class="text-gray-900 hover:underline font-medium">Sign up</NuxtLink>
+        <NuxtLink to="/register" class="text-gray-900 hover:underline font-light">Sign up</NuxtLink>
       </p>
     </div>
   </div>

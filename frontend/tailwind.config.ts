@@ -12,7 +12,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['DM Sans', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace']
       },
       spacing: {

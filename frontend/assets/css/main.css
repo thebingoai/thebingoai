@@ -40,7 +40,7 @@
   .prose-chat h4,
   .prose-chat h5,
   .prose-chat h6 {
-    @apply font-semibold mt-4 mb-2;
+    @apply font-medium mt-4 mb-2;
   }
 
   .prose-chat h1 {
@@ -106,7 +106,12 @@
   }
 
   .prose-chat th {
-    @apply bg-gray-50 font-semibold;
+    @apply bg-gray-50 font-normal;
+  }
+
+  .prose-chat strong,
+  .prose-chat b {
+    @apply font-semibold;
   }
 }
 

@@ -49,7 +49,7 @@
               :key="idx"
               class="rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900"
             >
-              <span class="font-medium text-neutral-900 dark:text-neutral-100">
+              <span class="font-light text-neutral-900 dark:text-neutral-100">
                 {{ source.source }}
               </span>
               <span class="text-neutral-600 dark:text-neutral-400">

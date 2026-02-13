@@ -1,7 +1,7 @@
 <template>
   <div class="h-full overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
     <div class="mb-4 flex items-center justify-between">
-      <h2 class="font-semibold text-neutral-900 dark:text-neutral-100">
+      <h2 class="font-normal text-neutral-900 dark:text-neutral-100">
         Conversations
       </h2>
       <UiButton size="sm" @click="$emit('new-chat')">
@@ -28,7 +28,7 @@
       >
         <component :is="MessageSquare" class="mt-0.5 h-4 w-4 flex-shrink-0 text-neutral-400" />
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          <p class="truncate text-sm font-light text-neutral-900 dark:text-neutral-100">
             {{ conversation.title }}
           </p>
           <p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">

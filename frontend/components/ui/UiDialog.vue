@@ -26,7 +26,7 @@
           >
             <DialogPanel :class="panelClasses">
               <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                <DialogTitle v-if="title" class="text-lg font-semibold text-gray-900">
+                <DialogTitle v-if="title" class="text-lg font-normal text-gray-900">
                   {{ title }}
                 </DialogTitle>
                 <slot v-else name="header" />

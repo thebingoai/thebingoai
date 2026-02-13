@@ -1,8 +1,8 @@
 <template>
-  <div ref="threadRef" class="flex-1 overflow-y-auto p-6">
+  <div ref="threadRef" class="flex-1 overflow-y-auto px-24 py-6 pt-20">
     <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
       <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 mb-2">Ask me anything about your data</h2>
+        <h2 class="text-2xl font-medium text-gray-900 mb-2">Ask me anything about your data</h2>
         <p class="text-gray-500">I can write SQL queries and analyze your database</p>
       </div>
     </div>

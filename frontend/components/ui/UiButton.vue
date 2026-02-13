@@ -40,7 +40,7 @@ defineEmits<{
   click: [event: MouseEvent]
 }>()
 
-const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed'
+const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-lg font-light disabled:opacity-50 disabled:cursor-not-allowed'
 
 const variantClasses = {
   primary: 'bg-gray-900 text-white hover:bg-gray-800',

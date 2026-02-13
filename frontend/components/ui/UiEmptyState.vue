@@ -5,7 +5,7 @@
       <slot v-else name="icon" />
     </div>
 
-    <h3 class="mb-2 text-lg font-semibold text-gray-900">
+    <h3 class="mb-2 text-lg font-normal text-gray-900">
       {{ title }}
     </h3>
 

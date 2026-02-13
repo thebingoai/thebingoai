@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full">
+  <div class="flex h-full pt-20">
     <!-- Settings Navigation -->
     <div class="w-56 border-r border-gray-200 p-4">
       <nav class="space-y-1">
@@ -7,7 +7,7 @@
           v-for="section in sections"
           :key="section.id"
           @click="currentSection = section.id"
-          class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium"
+          class="w-full rounded-lg px-3 py-2 text-left text-sm font-light"
           :class="currentSection === section.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'"
         >
           {{ section.name }}
@@ -20,7 +20,7 @@
       <SettingsConnections v-if="currentSection === 'connections'" />
       <SettingsProfile v-else-if="currentSection === 'profile'" />
       <div v-else class="p-6">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4">{{ currentSectionName }}</h2>
+        <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
         <p class="text-gray-500">This section is under construction.</p>
       </div>
     </div>

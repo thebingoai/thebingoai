@@ -1,6 +1,6 @@
 <template>
   <div class="w-full">
-    <label v-if="label" :for="id" class="mb-1.5 block text-sm font-medium text-gray-700">
+    <label v-if="label" :for="id" class="mb-1.5 block text-sm font-light text-gray-700">
       {{ label }}
       <span v-if="required" class="text-red-600">*</span>
     </label>
@@ -30,7 +30,7 @@
                   active ? 'bg-gray-100 text-gray-900' : 'text-gray-900'
                 ]"
               >
-                <span :class="['block truncate', selected ? 'font-semibold' : 'font-normal']">
+                <span :class="['block truncate', selected ? 'font-normal' : 'font-extralight']">
                   {{ option.label }}
                 </span>
                 <component

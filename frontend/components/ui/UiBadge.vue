@@ -20,7 +20,7 @@ const props = withDefaults(defineProps<Props>(), {
   dot: false
 })
 
-const baseClasses = 'inline-flex items-center gap-1.5 rounded-full font-medium'
+const baseClasses = 'inline-flex items-center gap-1.5 rounded-full font-light'
 
 const variantClasses = {
   default: 'bg-gray-100 text-gray-700',

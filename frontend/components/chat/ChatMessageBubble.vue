@@ -1,30 +1,23 @@
 <template>
   <div class="mb-6">
-    <div class="mb-2 flex items-center gap-2">
-      <div
-        class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium"
-        :class="message.role === 'user' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-900'"
-      >
-        {{ message.role === 'user' ? 'U' : 'AI' }}
+    <!-- User message: left-aligned chat bubble -->
+    <div v-if="message.role === 'user'">
+      <div class="inline-block bg-gray-900 text-white rounded-2xl px-4 py-2.5 max-w-[80%] whitespace-pre-wrap">
+        {{ message.content }}
       </div>
-      <span class="text-sm font-medium text-gray-900">
-        {{ message.role === 'user' ? 'You' : 'Assistant' }}
-      </span>
     </div>
 
-    <div class="ml-10">
+    <!-- Assistant message: left-aligned plain text -->
+    <div v-else class="pr-32">
       <!-- Typing indicator when assistant message is empty during streaming -->
-      <div v-if="message.role === 'assistant' && !message.content && chatStore.isStreaming" class="typing-indicator">
+      <div v-if="!message.content && chatStore.isStreaming" class="typing-indicator">
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
       </div>
 
       <!-- Assistant message with markdown -->
-      <UiMarkdownRenderer v-else-if="message.role === 'assistant'" :content="message.content" />
-
-      <!-- User message as plain text -->
-      <div v-else class="prose-chat whitespace-pre-wrap">{{ message.content }}</div>
+      <UiMarkdownRenderer v-else :content="message.content" />
 
       <!-- SQL Query -->
       <div v-if="message.sql" class="mt-3">
@@ -41,7 +34,7 @@
               <th
                 v-for="(value, key) in message.results[0]"
                 :key="key"
-                class="px-4 py-2 text-left text-xs font-semibold text-gray-700"
+                class="px-4 py-2 text-left text-xs font-normal text-gray-700"
               >
                 {{ key }}
               </th>
@@ -78,7 +71,7 @@
             :key="idx"
             class="rounded-lg bg-gray-50 p-3"
           >
-            <div class="text-sm font-medium text-gray-900">{{ step.step }}</div>
+            <div class="text-sm font-light text-gray-900">{{ step.step }}</div>
             <div class="text-sm text-gray-600">{{ step.description }}</div>
           </div>
         </div>
