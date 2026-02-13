@@ -77,6 +77,7 @@ class TokenTrackingService:
         usage = TokenUsage(
             user_id=user_id,
             operation=operation,
+            model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,

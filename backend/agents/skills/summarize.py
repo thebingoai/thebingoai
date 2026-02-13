@@ -1,5 +1,5 @@
 from backend.agents.skills.base import BaseSkill
-from backend.llm.factory import get_llm_provider
+from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any
 import logging
@@ -30,7 +30,7 @@ class SummarizeSkill(BaseSkill):
         """
         try:
             # Get LLM provider
-            provider = get_llm_provider(settings.default_llm_provider)
+            provider = get_provider(settings.default_llm_provider)
             llm = provider.get_langchain_llm()
 
             # Create summary prompt

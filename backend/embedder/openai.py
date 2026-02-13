@@ -123,3 +123,46 @@ async def embed_batch(
 def embed_batch_sync(texts: list[str], model: str = None, batch_size: int = None) -> list[list[float]]:
     """Synchronous wrapper for embed_batch."""
     return asyncio.run(embed_batch(texts, model, batch_size))
+
+
+class OpenAIEmbedder:
+    """
+    OpenAI embedder class wrapper for consistent interface.
+
+    Wraps the module-level embedding functions in a class for easier instantiation
+    and dependency injection.
+    """
+
+    def __init__(self, model: str = None):
+        """
+        Initialize embedder.
+
+        Args:
+            model: Embedding model name (defaults to settings)
+        """
+        self.model = model or settings.embedding_model
+
+    async def embed_text(self, text: str) -> list[float]:
+        """
+        Embed a single text string.
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            Embedding vector
+        """
+        return await embed_text(text, model=self.model)
+
+    async def embed_batch(self, texts: list[str], batch_size: int = None) -> list[list[float]]:
+        """
+        Embed multiple texts in batches.
+
+        Args:
+            texts: List of texts to embed
+            batch_size: Texts per API call
+
+        Returns:
+            List of embedding vectors
+        """
+        return await embed_batch(texts, model=self.model, batch_size=batch_size)

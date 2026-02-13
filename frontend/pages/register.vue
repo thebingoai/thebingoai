@@ -1,45 +1,75 @@
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50">
-    <div class="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
-      <div>
-        <h2 class="text-3xl font-bold text-center">Create Account</h2>
+    <div class="max-w-md w-full p-8 bg-white rounded-lg shadow-md">
+      <div class="mb-8">
+        <h2 class="text-3xl font-bold text-center text-gray-900">Sign Up</h2>
       </div>
+
+      <div v-if="error" class="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+        {{ error }}
+      </div>
+
       <form @submit.prevent="handleRegister" class="space-y-6">
-        <div>
-          <label class="block text-sm font-medium mb-2">Email</label>
-          <input v-model="email" type="email" required
-            class="w-full px-3 py-2 border rounded-md" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-2">Password</label>
-          <input v-model="password" type="password" required
-            class="w-full px-3 py-2 border rounded-md" />
-        </div>
-        <button type="submit" :disabled="loading"
-          class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">
-          {{ loading ? 'Creating account...' : 'Sign Up' }}
-        </button>
+        <UiInput
+          v-model="email"
+          type="email"
+          label="Email"
+          placeholder="you@example.com"
+          required
+        />
+
+        <UiInput
+          v-model="password"
+          type="password"
+          label="Password"
+          placeholder="••••••••"
+          required
+        />
+
+        <UiButton
+          type="submit"
+          variant="primary"
+          :loading="loading"
+          :disabled="loading"
+          full-width
+        >
+          Sign Up
+        </UiButton>
       </form>
-      <p class="text-center text-sm">
+
+      <p class="mt-6 text-center text-sm text-gray-500">
         Already have an account?
-        <NuxtLink to="/login" class="text-blue-600 hover:underline">Sign in</NuxtLink>
+        <NuxtLink to="/login" class="text-gray-900 hover:underline font-medium">Sign in</NuxtLink>
       </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-const auth = useAuthNew()
+const authStore = useAuthStore()
+const router = useRouter()
+
 const email = ref('')
 const password = ref('')
-const loading = computed(() => auth.loading.value)
+const loading = ref(false)
+const error = ref('')
 
 async function handleRegister() {
-  try {
-    await auth.register({ email: email.value, password: password.value })
-  } catch (error: any) {
-    alert(error.message || 'Registration failed')
+  loading.value = true
+  error.value = ''
+
+  const result = await authStore.register({
+    email: email.value,
+    password: password.value
+  })
+
+  if (result.success) {
+    router.push('/chat')
+  } else {
+    error.value = result.error || 'Registration failed'
   }
+
+  loading.value = false
 }
 
 definePageMeta({

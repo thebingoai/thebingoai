@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.models.user import User
@@ -7,15 +8,21 @@ from backend.schemas.user import UserResponse
 from backend.auth.password import hash_password, verify_password
 from backend.auth.jwt import create_access_token
 from backend.auth.dependencies import get_current_user
+from backend.auth.rate_limit import auth_rate_limit
 from backend.config import settings
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
+security = HTTPBearer()
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(request: RegisterRequest, db: Session = Depends(get_db)):
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def register(
+    request: RegisterRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(auth_rate_limit)
+):
     """
-    Register a new user.
+    Register a new user and return access token.
 
     - **email**: Valid email address (must be unique)
     - **password**: Minimum 8 characters
@@ -36,11 +43,22 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    return user
+    # Create JWT token
+    access_token = create_access_token(data={"sub": user.id})
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=settings.jwt_expiration_minutes * 60
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(
+    request: LoginRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(auth_rate_limit)
+):
     """
     Login and receive JWT access token.
 
@@ -83,11 +101,21 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-async def logout():
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: User = Depends(get_current_user)
+):
     """
-    Logout endpoint (client should discard token).
+    Logout endpoint - revokes the current token.
 
-    Note: JWT tokens cannot be invalidated server-side in this implementation.
-    Client must discard the token. For production, consider token blacklist.
+    Requires: Bearer token in Authorization header
+
+    The token is added to a Redis blacklist for the remainder of its lifetime.
+    Client should also discard the token.
     """
-    return {"message": "Logged out successfully. Please discard your token."}
+    from backend.auth.token_revocation import revoke_token
+
+    token = credentials.credentials
+    revoke_token(token)
+
+    return {"message": "Logged out successfully. Token has been revoked."}

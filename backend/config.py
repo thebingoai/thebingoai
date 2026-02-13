@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 1440  # 24 hours
 
+    # Database password encryption
+    # Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    db_encryption_key: str = "REPLACE_WITH_FERNET_KEY_44_CHARS"
+
     # Redis/Celery settings
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"
@@ -103,6 +107,25 @@ class Settings(BaseSettings):
     def validate_provider(cls, v):
         if v not in ("openai", "anthropic", "ollama"):
             raise ValueError("provider must be openai, anthropic, or ollama")
+        return v
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def validate_jwt_secret(cls, v):
+        """Prevent use of insecure default JWT secret."""
+        insecure_defaults = [
+            "your-secret-key-change-in-production",
+            "secret",
+            "changeme",
+            "test",
+            "dev",
+            "default"
+        ]
+        if v.lower() in insecure_defaults or len(v) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be at least 32 characters and cannot be a common default. "
+                "Generate a secure secret with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
         return v
 
     class Config:

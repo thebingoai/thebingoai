@@ -1,6 +1,8 @@
 from sqlalchemy import Column, String, Integer, Boolean, Enum, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
 from backend.database.base import Base, TimestampMixin
+from backend.security.encryption import encrypt_password, decrypt_password
 import enum
 
 
@@ -20,7 +22,7 @@ class DatabaseConnection(Base, TimestampMixin):
     port = Column(Integer, nullable=False)
     database = Column(String, nullable=False)
     username = Column(String, nullable=False)
-    password = Column(String, nullable=False)  # TODO: Encrypt in Phase 2
+    _encrypted_password = Column("password", String, nullable=False)  # Encrypted at rest
     is_active = Column(Boolean, default=True, nullable=False)
 
     # Schema caching
@@ -29,3 +31,13 @@ class DatabaseConnection(Base, TimestampMixin):
 
     # Relationships
     user = relationship("User", back_populates="database_connections")
+
+    @hybrid_property
+    def password(self) -> str:
+        """Decrypt password when accessed."""
+        return decrypt_password(self._encrypted_password)
+
+    @password.setter
+    def password(self, plaintext: str):
+        """Encrypt password when set."""
+        self._encrypted_password = encrypt_password(plaintext)

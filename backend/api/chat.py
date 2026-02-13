@@ -9,8 +9,6 @@ from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse
 from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
-from backend.agents import run_orchestrator, stream_orchestrator
-from backend.agents.context import AgentContext
 from backend.config import settings
 import json
 
@@ -31,6 +29,10 @@ async def chat(
     - RAG Agent: For document-based questions
     - Skills: For specialized tasks (summarization, etc.)
     """
+    # Lazy import to avoid loading LangGraph unless needed
+    from backend.agents import run_orchestrator
+    from backend.agents.context import AgentContext
+
     # Get or create conversation
     if request.thread_id:
         conversation = ConversationService.get_conversation_by_thread(
@@ -88,22 +90,12 @@ async def chat(
         db, conversation.id, "assistant", result["message"]
     )
 
-    # Save agent steps
-    steps = result.get("steps", [])
-    if steps:
-        from backend.models.agent_step import AgentStep
-        for i, step in enumerate(steps):
-            agent_step = AgentStep(
-                message_id=assistant_msg.id,
-                step_number=i + 1,
-                agent_type=step.get("agent_type", "unknown"),
-                step_type=step.get("step_type", "unknown"),
-                tool_name=step.get("tool_name"),
-                content=step.get("content", {}),
-                duration_ms=step.get("duration_ms")
-            )
-            db.add(agent_step)
-        db.commit()
+    # TODO: Save agent steps when orchestrator implements step tracking
+    # Current orchestrator implementation doesn't return "steps" key
+    # Future implementation should include:
+    # - agent_type: AgentType enum (ORCHESTRATOR, DATA_AGENT, RAG_AGENT, SKILL)
+    # - step_type: StepType enum (REASONING, TOOL_CALL, TOOL_RESULT, FINAL_ANSWER)
+    # - tool_name, content, duration_ms
 
     # Extract metadata
     metadata = result.get("metadata", {})
@@ -148,6 +140,10 @@ async def chat_stream(
     - data: {"type": "done", "thread_id": "..."}
     - data: {"type": "error", "content": "error message"}
     """
+    # Lazy import to avoid loading LangGraph unless needed
+    from backend.agents import stream_orchestrator
+    from backend.agents.context import AgentContext
+
     async def event_generator():
         try:
             # Get or create conversation

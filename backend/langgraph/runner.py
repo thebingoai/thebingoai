@@ -11,6 +11,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Redis key prefix for conversation threads
+CONVERSATION_PREFIX = "conv:"
+
 # Module-level graph singleton for persistent conversation memory
 _graph = None
 

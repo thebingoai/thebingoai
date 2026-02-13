@@ -437,27 +437,42 @@ class BaseConnector(ABC):
         """
         Validate that query is read-only (SELECT only).
 
+        Defense-in-depth validation layer. Should be combined with database-level
+        read-only enforcement (SET TRANSACTION READ ONLY) for security.
+
         Raises:
             ValueError: If query contains non-SELECT statements
         """
+        import re
         query_upper = query.strip().upper()
 
-        # Remove comments
+        # Remove SQL comments (both -- and /* */ styles)
+        # Strip line comments
         lines = [line.split('--')[0] for line in query_upper.split('\n')]
-        query_clean = ' '.join(lines).strip()
+        query_clean = ' '.join(lines)
 
-        # Check for dangerous keywords
+        # Strip block comments /* ... */
+        query_clean = re.sub(r'/\*.*?\*/', ' ', query_clean, flags=re.DOTALL)
+        query_clean = ' '.join(query_clean.split())  # Normalize whitespace
+
+        # Block semicolons (prevent multi-statement queries)
+        if ';' in query_clean.rstrip(';'):  # Allow trailing semicolon only
+            raise ValueError("Multiple statements not allowed. Only single SELECT queries permitted.")
+
+        # Check for dangerous keywords (word boundaries to prevent false positives)
         dangerous_keywords = [
             'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
-            'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE'
+            'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE',
+            'COPY', 'LOAD', 'SET', 'CALL', 'RENAME', 'REPLACE'
         ]
 
         for keyword in dangerous_keywords:
-            if keyword in query_clean:
+            # Use word boundary regex to match whole words only
+            if re.search(rf'\b{keyword}\b', query_clean):
                 raise ValueError(f"Query contains forbidden keyword: {keyword}. Only SELECT queries are allowed.")
 
-        # Ensure query starts with SELECT
-        if not query_clean.startswith('SELECT') and not query_clean.startswith('WITH'):
+        # Ensure query starts with SELECT or WITH (for CTEs)
+        if not re.match(r'^(SELECT|WITH)\b', query_clean):
             raise ValueError("Query must start with SELECT or WITH (for CTEs)")
 
     def __enter__(self):

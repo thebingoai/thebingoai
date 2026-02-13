@@ -7,7 +7,7 @@ from backend.agents.data_agent import invoke_data_agent
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.skills import get_skill_registry
 from backend.agents.context import AgentContext
-from backend.llm.factory import get_llm_provider
+from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any
 import json
@@ -96,7 +96,7 @@ async def run_orchestrator(
     tools = build_orchestrator_tools(context)
 
     # Get LLM provider
-    provider = get_llm_provider(settings.default_llm_provider)
+    provider = get_provider(settings.default_llm_provider)
 
     # Create orchestrator with memory
     memory = MemorySaver()
@@ -104,7 +104,7 @@ async def run_orchestrator(
         model=provider.get_langchain_llm(),
         tools=tools,
         checkpointer=memory,
-        state_modifier=ORCHESTRATOR_SYSTEM_PROMPT
+        prompt=ORCHESTRATOR_SYSTEM_PROMPT
     )
 
     try:
@@ -121,7 +121,7 @@ async def run_orchestrator(
 
         final_answer = None
         for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "ai" and not hasattr(msg, "tool_calls"):
+            if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
                 final_answer = msg.content
                 break
 
@@ -162,7 +162,7 @@ async def stream_orchestrator(
         tools = build_orchestrator_tools(context)
 
         # Get LLM provider
-        provider = get_llm_provider(settings.default_llm_provider)
+        provider = get_provider(settings.default_llm_provider)
 
         # Create orchestrator with memory
         memory = MemorySaver()
@@ -170,7 +170,7 @@ async def stream_orchestrator(
             model=provider.get_langchain_llm(),
             tools=tools,
             checkpointer=memory,
-            state_modifier=ORCHESTRATOR_SYSTEM_PROMPT
+            prompt=ORCHESTRATOR_SYSTEM_PROMPT
         )
 
         # Invoke with thread_id for conversation memory

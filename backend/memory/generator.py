@@ -4,10 +4,9 @@ from sqlalchemy.orm import Session
 from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
-from backend.llm.factory import get_llm_provider
+from backend.llm.factory import get_provider
 from backend.config import settings
 from backend.memory.storage import MemoryStorage
-from langchain_core.messages import SystemMessage, HumanMessage
 from datetime import datetime, timedelta
 from typing import Dict, Any
 import json
@@ -46,7 +45,7 @@ class MemoryGenerator:
 
     def __init__(self):
         self.storage = MemoryStorage()
-        self.llm = get_llm_provider(settings.default_llm_provider)
+        self.llm = get_provider(settings.default_llm_provider)
 
     async def generate_daily_memory(self, db: Session, user_id: str, date: datetime) -> Dict[str, Any]:
         """
@@ -98,10 +97,10 @@ class MemoryGenerator:
         # Generate summary using LLM
         prompt = MEMORY_GENERATION_PROMPT.format(conversations=all_conversations)
         messages = [
-            HumanMessage(content=prompt)
+            {"role": "user", "content": prompt}
         ]
 
-        response = self.llm.chat(messages)
+        response = await self.llm.chat(messages)
 
         # Track token usage (rough estimation)
         # TODO: Get actual token counts from LLM provider response
@@ -152,3 +151,19 @@ class MemoryGenerator:
 
         logger.info(f"Generated memory {memory_id} for user {user_id}")
         return summary
+
+    def generate_daily_memory_sync(self, db: Session, user_id: str, date: datetime) -> Dict[str, Any]:
+        """
+        Synchronous wrapper for generate_daily_memory.
+
+        For use in Celery tasks which run in synchronous context.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            date: Date to generate memory for
+
+        Returns:
+            Memory summary dictionary
+        """
+        return asyncio.run(self.generate_daily_memory(db, user_id, date))

@@ -1,30 +1,22 @@
 <template>
-  <div class="min-h-screen bg-neutral-50 dark:bg-neutral-950">
-    <!-- Mobile nav -->
-    <MobileNav />
+  <div class="flex h-screen bg-white">
+    <!-- Sidebar -->
+    <AppSidebar />
 
-    <!-- Desktop sidebar -->
-    <AppSidebar class="hidden lg:block" />
-
-    <!-- Main content area -->
-    <div
-      class="flex flex-col"
-      :class="{
-        'lg:pl-sidebar': !settings.sidebarCollapsed,
-        'lg:pl-sidebar-collapsed': settings.sidebarCollapsed
-      }"
-    >
-      <!-- Header -->
-      <AppHeader />
-
-      <!-- Page content -->
-      <main class="flex-1 pt-header">
-        <slot />
-      </main>
-    </div>
+    <!-- Main content -->
+    <main class="flex flex-1 flex-col overflow-hidden">
+      <slot />
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
-const settings = useSettingsStore()
+const authStore = useAuthStore()
+
+// Load user on mount
+onMounted(() => {
+  if (process.client) {
+    authStore.loadUser()
+  }
+})
 </script>

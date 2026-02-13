@@ -1,28 +1,3 @@
-import {
-  Home,
-  FileText,
-  Search,
-  MessageSquare,
-  Briefcase,
-  Settings,
-  type LucideIcon
-} from 'lucide-vue-next'
-
-export interface NavItem {
-  name: string
-  href: string
-  icon: LucideIcon
-}
-
-export const NAV_ITEMS: NavItem[] = [
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'Documents', href: '/documents', icon: FileText },
-  { name: 'Search', href: '/search', icon: Search },
-  { name: 'Chat', href: '/chat', icon: MessageSquare },
-  { name: 'Jobs', href: '/jobs', icon: Briefcase },
-  { name: 'Settings', href: '/settings', icon: Settings }
-]
-
 export const SCORE_THRESHOLDS = {
   EXCELLENT: 0.8,
   GOOD: 0.6,

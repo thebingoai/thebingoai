@@ -23,12 +23,12 @@ const props = withDefaults(defineProps<Props>(), {
 const baseClasses = 'inline-flex items-center gap-1.5 rounded-full font-medium'
 
 const variantClasses = {
-  default: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300',
-  primary: 'bg-brand-100 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400',
-  success: 'bg-success-100 text-success-700 dark:bg-success-900/20 dark:text-success-400',
-  warning: 'bg-warning-100 text-warning-700 dark:bg-warning-900/20 dark:text-warning-400',
-  error: 'bg-error-100 text-error-700 dark:bg-error-900/20 dark:text-error-400',
-  info: 'bg-info-100 text-info-700 dark:bg-info-900/20 dark:text-info-400'
+  default: 'bg-gray-100 text-gray-700',
+  primary: 'bg-gray-900 text-white',
+  success: 'bg-green-100 text-green-700',
+  warning: 'bg-yellow-100 text-yellow-700',
+  error: 'bg-red-100 text-red-700',
+  info: 'bg-blue-100 text-blue-700'
 }
 
 const sizeClasses = {
@@ -39,12 +39,12 @@ const sizeClasses = {
 
 const dotColorClasses = computed(() => {
   const colors = {
-    default: 'bg-neutral-500',
-    primary: 'bg-brand-500',
-    success: 'bg-success-500',
-    warning: 'bg-warning-500',
-    error: 'bg-error-500',
-    info: 'bg-info-500'
+    default: 'bg-gray-500',
+    primary: 'bg-gray-900',
+    success: 'bg-green-500',
+    warning: 'bg-yellow-500',
+    error: 'bg-red-500',
+    info: 'bg-blue-500'
   }
   return colors[props.variant]
 })

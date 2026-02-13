@@ -1,11 +1,11 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
+  ssr: false,
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
 
   modules: [
     '@nuxtjs/tailwindcss',
-    '@nuxtjs/color-mode',
     '@pinia/nuxt',
     '@vueuse/nuxt',
     '@nuxtjs/google-fonts'
@@ -19,13 +19,6 @@ export default defineNuxtConfig({
   ],
 
   css: ['~/assets/css/main.css'],
-
-  colorMode: {
-    preference: 'system',
-    fallback: 'light',
-    classSuffix: '',
-    storageKey: 'nuxt-color-mode'
-  },
 
   googleFonts: {
     families: {
@@ -42,15 +35,13 @@ export default defineNuxtConfig({
     }
   },
 
-  nitro: {
-    devProxy: {
-      '/api': {
-        target: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
-        changeOrigin: true
-      },
-      '/health': {
-        target: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
-        changeOrigin: true
+  routeRules: {
+    '/api/**': {
+      proxy: {
+        to: 'http://localhost:8000/api/**',
+        headers: {
+          'X-Forwarded-Host': 'localhost:3000'
+        }
       }
     }
   },

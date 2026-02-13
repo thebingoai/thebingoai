@@ -3,7 +3,7 @@ from langchain_core.messages import HumanMessage
 from backend.agents.data_agent.tools import build_data_agent_tools
 from backend.agents.data_agent.prompts import DATA_AGENT_SYSTEM_PROMPT
 from backend.agents.context import AgentContext
-from backend.llm.factory import get_llm_provider
+from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any
 import logging
@@ -30,13 +30,13 @@ async def invoke_data_agent(
     tools = build_data_agent_tools(context)
 
     # Get LLM provider
-    provider = get_llm_provider(settings.default_llm_provider)
+    provider = get_provider(settings.default_llm_provider)
 
     # Create stateless ReAct agent (no checkpointer - single turn)
     agent = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        state_modifier=DATA_AGENT_SYSTEM_PROMPT
+        prompt=DATA_AGENT_SYSTEM_PROMPT
     )
 
     try:
@@ -67,7 +67,7 @@ async def invoke_data_agent(
         # Get final answer
         final_answer = None
         for msg in reversed(messages):
-            if hasattr(msg, "type") and msg.type == "ai" and not hasattr(msg, "tool_calls"):
+            if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
                 final_answer = msg.content
                 break
 

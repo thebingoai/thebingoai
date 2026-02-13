@@ -18,6 +18,7 @@ class TokenUsage(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     operation = Column(Enum(OperationType), nullable=False)
+    model = Column(String, nullable=False)  # Model name for cost auditing
     prompt_tokens = Column(Integer, default=0)
     completion_tokens = Column(Integer, default=0)
     total_tokens = Column(Integer, default=0)

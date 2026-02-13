@@ -1,134 +1,222 @@
-import type {
-  UploadResponse,
-  QueryRequest,
-  QueryResponse,
-  AskRequest,
-  AskResponse,
-  ProvidersResponse,
-  ConversationHistoryResponse,
-  DeleteConversationResponse,
-  StatusResponse,
-  DetailedHealthResponse,
-  JobInfo,
-  JobListResponse
-} from '~/types'
+import { useAuthStore } from '~/stores/auth'
 
 export const useApi = () => {
-  const config = useRuntimeConfig()
-  const settings = useSettingsStore()
+  const authStore = useAuthStore()
 
-  const baseURL = computed(() => settings.backendUrl || config.public.apiBaseUrl)
-
-  // Generic fetch wrapper with error handling
-  const apiFetch = async <T>(url: string, options?: any): Promise<T> => {
-    try {
-      return await $fetch<T>(url, {
-        baseURL: baseURL.value,
-        ...options
-      })
-    } catch (error: any) {
-      const message = error.data?.detail || error.message || 'An unexpected error occurred'
-      throw new Error(message)
+  const getHeaders = () => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     }
+
+    if (authStore.token) {
+      headers['Authorization'] = `Bearer ${authStore.token}`
+    }
+
+    return headers
   }
 
   return {
-    // Health
-    getHealth: () => apiFetch<{ status: string }>('/health'),
+    // Auth endpoints
+    auth: {
+      async login(email: string, password: string) {
+        return authStore.login({ email, password })
+      },
+      async register(email: string, password: string) {
+        return authStore.register({ email, password })
+      },
+      async logout() {
+        authStore.logout()
+      },
+      async me() {
+        return $fetch('/api/auth/me', {
+          headers: getHeaders()
+        })
+      }
+    },
 
-    getDetailedHealth: () => apiFetch<DetailedHealthResponse>('/health/detailed'),
+    // Connection endpoints
+    connections: {
+      async list() {
+        return $fetch('/api/connections', {
+          headers: getHeaders()
+        })
+      },
+      async get(id: string) {
+        return $fetch(`/api/connections/${id}`, {
+          headers: getHeaders()
+        })
+      },
+      async create(data: any) {
+        return $fetch('/api/connections', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async update(id: string, data: any) {
+        return $fetch(`/api/connections/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async delete(id: string) {
+        return $fetch(`/api/connections/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async test(id: string) {
+        return $fetch(`/api/connections/${id}/test`, {
+          method: 'POST',
+          headers: getHeaders()
+        })
+      },
+      async refreshSchema(id: string) {
+        return $fetch(`/api/connections/${id}/refresh-schema`, {
+          method: 'POST',
+          headers: getHeaders()
+        })
+      }
+    },
 
-    // Status
-    getStatus: () => apiFetch<StatusResponse>('/api/status'),
-
-    // Upload
-    uploadFile: async (
-      file: File,
-      namespace: string = 'default',
-      tags: string = '',
-      onProgress?: (percent: number) => void
-    ): Promise<UploadResponse> => {
-      // Use XMLHttpRequest for upload progress tracking
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        const formData = new FormData()
-
-        formData.append('file', file)
-        formData.append('namespace', namespace)
-        if (tags) formData.append('tags', tags)
-
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable && onProgress) {
-            onProgress(Math.round((e.loaded / e.total) * 100))
+    // Chat endpoints
+    chat: {
+      async send(message: string, threadId?: string, attachments?: File[]) {
+        return $fetch('/api/chat', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: {
+            message,
+            thread_id: threadId,
+            connection_ids: []
           }
         })
+      },
+      async getConversations() {
+        return $fetch('/api/chat/conversations', {
+          headers: getHeaders()
+        })
+      },
+      async getMessages(threadId: string) {
+        return $fetch(`/api/chat/conversations/${threadId}`, {
+          headers: getHeaders()
+        })
+      },
+      async deleteConversation(threadId: string) {
+        return $fetch(`/api/chat/conversations/${threadId}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      }
+    },
 
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText))
-            } catch (e) {
-              reject(new Error('Failed to parse response'))
-            }
-          } else {
-            try {
-              const error = JSON.parse(xhr.responseText)
-              reject(new Error(error.detail || 'Upload failed'))
-            } catch (e) {
-              reject(new Error(`Upload failed with status ${xhr.status}`))
-            }
+    // Upload endpoints
+    upload: {
+      async uploadFiles(files: File[], namespace?: string, onProgress?: (percent: number) => void) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          const formData = new FormData()
+
+          files.forEach(file => formData.append('files', file))
+          if (namespace) formData.append('namespace', namespace)
+
+          if (onProgress) {
+            xhr.upload.addEventListener('progress', (e) => {
+              if (e.lengthComputable) {
+                onProgress(Math.round((e.loaded / e.total) * 100))
+              }
+            })
           }
+
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText))
+              } catch (e) {
+                reject(new Error('Failed to parse response'))
+              }
+            } else {
+              try {
+                const error = JSON.parse(xhr.responseText)
+                reject(new Error(error.detail || 'Upload failed'))
+              } catch (e) {
+                reject(new Error(`Upload failed with status ${xhr.status}`))
+              }
+            }
+          })
+
+          xhr.addEventListener('error', () => {
+            reject(new Error('Network error during upload'))
+          })
+
+          xhr.open('POST', '/api/upload')
+          if (authStore.token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+          }
+          xhr.send(formData)
         })
+      }
+    },
 
-        xhr.addEventListener('error', () => {
-          reject(new Error('Network error during upload'))
+    // Job endpoints
+    jobs: {
+      async list() {
+        return $fetch('/api/jobs', {
+          headers: getHeaders()
         })
-
-        xhr.open('POST', `${baseURL.value}/api/upload`)
-        xhr.send(formData)
-      })
+      },
+      async get(jobId: string) {
+        return $fetch(`/api/jobs/${jobId}`, {
+          headers: getHeaders()
+        })
+      }
     },
 
-    // Query
-    query: (request: QueryRequest) =>
-      apiFetch<QueryResponse>('/api/query', {
-        method: 'POST',
-        body: request
-      }),
+    // Memory endpoints
+    memory: {
+      async search(query: string, limit?: number) {
+        return $fetch('/api/memory/search', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: { query, limit }
+        })
+      },
+      async list(skip?: number, limit?: number) {
+        const params = new URLSearchParams()
+        if (skip) params.append('skip', skip.toString())
+        if (limit) params.append('limit', limit.toString())
 
-    search: (q: string, namespace?: string, limit?: number) => {
-      const params = new URLSearchParams({ q })
-      if (namespace) params.append('namespace', namespace)
-      if (limit) params.append('limit', limit.toString())
-      return apiFetch<QueryResponse>(`/api/search?${params}`)
+        return $fetch(`/api/memory?${params.toString()}`, {
+          headers: getHeaders()
+        })
+      },
+      async deleteAll() {
+        return $fetch('/api/memory', {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      }
     },
 
-    // Chat (non-streaming)
-    ask: (request: AskRequest) =>
-      apiFetch<AskResponse>('/api/ask', {
-        method: 'POST',
-        body: { ...request, stream: false }
-      }),
+    // Usage endpoints
+    usage: {
+      async getStats(period?: number) {
+        const params = period ? `?period=${period}` : ''
+        return $fetch(`/api/usage/stats${params}`, {
+          headers: getHeaders()
+        })
+      },
+      async getOperations(skip?: number, limit?: number) {
+        const params = new URLSearchParams()
+        if (skip) params.append('skip', skip.toString())
+        if (limit) params.append('limit', limit.toString())
 
-    // Providers
-    getProviders: () => apiFetch<ProvidersResponse>('/api/providers'),
-
-    // Conversations
-    getConversation: (threadId: string) =>
-      apiFetch<ConversationHistoryResponse>(`/api/conversation/${threadId}`),
-
-    deleteConversation: (threadId: string) =>
-      apiFetch<DeleteConversationResponse>(`/api/conversation/${threadId}`, {
-        method: 'DELETE'
-      }),
-
-    // Jobs
-    getJobs: (namespace?: string, limit: number = 50) => {
-      const params = new URLSearchParams({ limit: limit.toString() })
-      if (namespace) params.append('namespace', namespace)
-      return apiFetch<JobListResponse>(`/api/jobs?${params}`)
-    },
-
-    getJob: (jobId: string) => apiFetch<JobInfo>(`/api/jobs/${jobId}`)
+        return $fetch(`/api/usage/operations?${params.toString()}`, {
+          headers: getHeaders()
+        })
+      }
+    }
   }
 }
+

@@ -6,7 +6,6 @@ from backend.memory.generator import MemoryGenerator
 from backend.models.user import User
 from datetime import datetime, timedelta
 import logging
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +28,8 @@ def generate_daily_memories():
         for user in users:
             try:
                 logger.info(f"Generating memory for user {user.id}")
-                # Run async function in sync context
-                summary = asyncio.run(generator.generate_daily_memory(db, user.id, yesterday))
+                # Use sync wrapper for Celery task
+                summary = generator.generate_daily_memory_sync(db, user.id, yesterday)
                 logger.info(f"Memory generated: {summary['memory_id']}")
             except Exception as e:
                 logger.error(f"Failed to generate memory for user {user.id}: {str(e)}")
@@ -56,8 +55,8 @@ def generate_user_memory(user_id: str, date_str: str):
 
     try:
         date = datetime.fromisoformat(date_str)
-        # Run async function in sync context
-        summary = asyncio.run(generator.generate_daily_memory(db, user_id, date))
+        # Use sync wrapper for Celery task
+        summary = generator.generate_daily_memory_sync(db, user_id, date)
         return summary
     finally:
         db.close()

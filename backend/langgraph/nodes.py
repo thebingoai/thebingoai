@@ -59,8 +59,8 @@ async def retrieve_context(state: ConversationState) -> ConversationState:
 
     logger.info(f"Retrieved {len(context)} chunks, has_context={has_context}")
 
+    # Return only modified fields - LangGraph merges automatically
     return {
-        **state,
         "context": context,
         "sources": sources,
         "has_context": has_context
@@ -118,10 +118,11 @@ async def generate_response(state: ConversationState) -> ConversationState:
         AIMessage(content=answer)
     ]
 
+    # Return only modified fields - LangGraph merges automatically
+    # add_messages reducer will append new messages to existing history
     return {
-        **state,
         "answer": answer,
-        "messages": new_messages  # add_messages will append
+        "messages": new_messages
     }
 
 

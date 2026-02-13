@@ -1,8 +1,8 @@
 <template>
-  <div class="w-full overflow-hidden rounded-lg border border-gray-200">
+  <div class="w-full overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
     <div class="overflow-x-auto">
       <table class="w-full">
-        <thead class="border-b border-gray-200 bg-gray-50">
+        <thead class="border-b border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900">
           <tr>
             <th
               v-if="selectable"
@@ -12,14 +12,14 @@
                 type="checkbox"
                 :checked="isAllSelected"
                 @change="toggleSelectAll"
-                class="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                class="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 dark:border-neutral-700"
               />
             </th>
             <th
               v-for="column in columns"
               :key="column.key"
-              class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700"
-              :class="column.sortable && 'cursor-pointer select-none hover:bg-gray-100'"
+              class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300"
+              :class="column.sortable && 'cursor-pointer select-none hover:bg-neutral-100 dark:hover:bg-neutral-800'"
               @click="column.sortable && handleSort(column.key)"
             >
               <div class="flex items-center gap-2">
@@ -33,24 +33,24 @@
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-200">
+        <tbody class="divide-y divide-neutral-200 dark:divide-neutral-800">
           <tr
             v-for="(row, index) in sortedData"
             :key="index"
-            class="transition-colors hover:bg-gray-50"
+            class="transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900"
           >
             <td v-if="selectable" class="px-4 py-3">
               <input
                 type="checkbox"
                 :checked="selectedRows.has(index)"
                 @change="toggleRow(index)"
-                class="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                class="h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500 dark:border-neutral-700"
               />
             </td>
             <td
               v-for="column in columns"
               :key="column.key"
-              class="px-4 py-3 text-sm text-gray-900"
+              class="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-100"
             >
               <slot :name="`cell-${column.key}`" :row="row" :value="row[column.key]">
                 {{ row[column.key] }}
@@ -61,7 +61,7 @@
       </table>
     </div>
 
-    <div v-if="data.length === 0" class="py-12 text-center text-sm text-gray-500">
+    <div v-if="data.length === 0" class="py-12 text-center text-sm text-neutral-500 dark:text-neutral-400">
       No data available
     </div>
   </div>

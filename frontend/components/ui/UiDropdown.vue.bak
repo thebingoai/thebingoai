@@ -23,8 +23,8 @@
             <button
               :class="[
                 'flex w-full items-center gap-3 px-4 py-2 text-sm',
-                active ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                item.danger && 'text-red-600'
+                active ? 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100' : 'text-neutral-700 dark:text-neutral-300',
+                item.danger && 'text-error-600 dark:text-error-400'
               ]"
               @click="item.onClick"
             >
@@ -66,7 +66,7 @@ const alignClasses = {
 
 const menuClasses = computed(() =>
   cn(
-    'absolute z-10 mt-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg focus:outline-none',
+    'absolute z-10 mt-2 w-56 rounded-lg border border-neutral-200 bg-white shadow-lg focus:outline-none dark:border-neutral-700 dark:bg-neutral-900',
     alignClasses[props.align]
   )
 )

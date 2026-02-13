@@ -1,95 +1,95 @@
 <template>
-  <aside
-    class="fixed left-0 top-0 z-40 h-screen border-r border-neutral-200 bg-white transition-all dark:border-neutral-800 dark:bg-neutral-900"
-    :class="{
-      'w-sidebar': !settings.sidebarCollapsed,
-      'w-sidebar-collapsed': settings.sidebarCollapsed
-    }"
-  >
+  <aside class="flex w-sidebar flex-col border-r border-gray-200 bg-white">
     <!-- Logo -->
-    <div class="flex h-header items-center border-b border-neutral-200 px-4 dark:border-neutral-800">
-      <component
-        :is="FileText"
-        class="h-6 w-6 text-brand-600 dark:text-brand-400"
-      />
-      <Transition name="fade">
-        <span
-          v-if="!settings.sidebarCollapsed"
-          class="ml-3 text-lg font-semibold text-neutral-900 dark:text-neutral-100"
-        >
-          LLM-MD-CLI
-        </span>
-      </Transition>
+    <div class="flex h-16 items-center border-b border-gray-200 px-6">
+      <component :is="MessageSquare" class="h-6 w-6 text-gray-900" />
+      <span class="ml-3 text-lg font-semibold text-gray-900">
+        BI Agent
+      </span>
     </div>
 
-    <!-- Navigation -->
-    <nav class="flex-1 overflow-y-auto px-3 py-4">
-      <ul class="space-y-1">
-        <li v-for="item in NAV_ITEMS" :key="item.href">
-          <NuxtLink
-            :to="item.href"
-            class="flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-            :class="{
-              'bg-brand-100 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400': isActive(item.href),
-              'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800': !isActive(item.href),
-              'justify-center': settings.sidebarCollapsed
-            }"
-          >
-            <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <Transition name="fade">
-              <span v-if="!settings.sidebarCollapsed" class="ml-3">
-                {{ item.name }}
-              </span>
-            </Transition>
-          </NuxtLink>
-        </li>
-      </ul>
-    </nav>
+    <!-- New Chat Button -->
+    <div class="border-b border-gray-200 p-4">
+      <UiButton variant="primary" full-width @click="handleNewChat">
+        + New Chat
+      </UiButton>
+    </div>
 
-    <!-- Collapse toggle -->
-    <div class="border-t border-neutral-200 p-3 dark:border-neutral-800">
+    <!-- Conversation List -->
+    <div class="flex-1 overflow-y-auto p-2">
+      <div v-if="chatStore.conversations.length === 0" class="p-4 text-center text-sm text-gray-500">
+        No conversations yet
+      </div>
       <button
-        @click="settings.toggleSidebar()"
-        class="flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-        :class="{ 'justify-center': settings.sidebarCollapsed }"
+        v-for="conv in chatStore.conversations"
+        :key="conv.id"
+        @click="handleSelectConversation(conv.id)"
+        class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-gray-50"
+        :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
       >
-        <component
-          :is="settings.sidebarCollapsed ? ChevronRight : ChevronLeft"
-          class="h-5 w-5 flex-shrink-0"
-        />
-        <Transition name="fade">
-          <span v-if="!settings.sidebarCollapsed" class="ml-3">
-            Collapse
-          </span>
-        </Transition>
+        <div class="font-medium text-gray-900 truncate">{{ conv.title }}</div>
+        <div class="text-xs text-gray-500">{{ formatDate(conv.created_at) }}</div>
       </button>
     </div>
+
+    <!-- User account button -->
+    <button
+      @click="router.push('/settings')"
+      class="border-t border-gray-200 p-4 hover:bg-gray-50 transition-colors w-full text-left"
+    >
+      <div class="flex items-center">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-medium">
+          {{ userInitial }}
+        </div>
+        <div class="ml-3 flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-900 truncate">{{ authStore.user?.email }}</p>
+          <p class="text-xs text-gray-500">View settings</p>
+        </div>
+        <component :is="Settings" class="h-4 w-4 text-gray-400" />
+      </div>
+    </button>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { FileText, ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { NAV_ITEMS } from '~/utils/constants'
+import { MessageSquare, Settings } from 'lucide-vue-next'
 
-const settings = useSettingsStore()
+const authStore = useAuthStore()
+const chatStore = useChatStore()
+const chat = useChat()
+const router = useRouter()
 const route = useRoute()
 
-const isActive = (path: string) => {
-  if (path === '/') {
-    return route.path === '/'
+const userInitial = computed(() => {
+  const email = authStore.user?.email || ''
+  return email.charAt(0).toUpperCase()
+})
+
+// Load conversations on mount
+onMounted(() => {
+  chat.loadConversations()
+})
+
+const handleNewChat = () => {
+  chat.newChat()
+  // Navigate to chat page if not already there
+  if (route.path !== '/chat') {
+    navigateTo('/chat')
   }
-  return route.path.startsWith(path)
+}
+
+const handleSelectConversation = (id: string) => {
+  chat.loadMessages(id)
+}
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`
+  return `${Math.floor(diffMins / 1440)}d ago`
 }
 </script>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style>

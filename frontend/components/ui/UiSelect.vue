@@ -1,22 +1,22 @@
 <template>
   <div class="w-full">
-    <label v-if="label" :for="id" class="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+    <label v-if="label" :for="id" class="mb-1.5 block text-sm font-medium text-gray-700">
       {{ label }}
-      <span v-if="required" class="text-error-500">*</span>
+      <span v-if="required" class="text-red-600">*</span>
     </label>
     <Listbox :modelValue="modelValue" @update:modelValue="$emit('update:modelValue', $event)">
       <div class="relative">
         <ListboxButton :class="buttonClasses">
           <span class="block truncate text-left">{{ displayValue }}</span>
-          <component :is="ChevronDown" class="h-5 w-5 text-neutral-400" />
+          <component :is="ChevronDown" class="h-5 w-5 text-gray-400" />
         </ListboxButton>
 
         <Transition
-          leave-active-class="transition duration-100 ease-in"
+          leave-active-class="opacity-0"
           leave-from-class="opacity-100"
           leave-to-class="opacity-0"
         >
-          <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg focus:outline-none dark:border-neutral-700 dark:bg-neutral-900">
+          <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg focus:outline-none">
             <ListboxOption
               v-for="option in options"
               :key="option.value"
@@ -27,7 +27,7 @@
               <li
                 :class="[
                   'relative cursor-pointer select-none px-3 py-2 text-sm',
-                  active ? 'bg-brand-100 text-brand-900 dark:bg-brand-900/20 dark:text-brand-100' : 'text-neutral-900 dark:text-neutral-100'
+                  active ? 'bg-gray-100 text-gray-900' : 'text-gray-900'
                 ]"
               >
                 <span :class="['block truncate', selected ? 'font-semibold' : 'font-normal']">
@@ -36,7 +36,7 @@
                 <component
                   v-if="selected"
                   :is="Check"
-                  class="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600 dark:text-brand-400"
+                  class="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-900"
                 />
               </li>
             </ListboxOption>
@@ -44,10 +44,10 @@
         </Transition>
       </div>
     </Listbox>
-    <p v-if="error" class="mt-1.5 text-sm text-error-600 dark:text-error-400">
+    <p v-if="error" class="mt-1.5 text-sm text-red-600">
       {{ error }}
     </p>
-    <p v-else-if="hint" class="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
+    <p v-else-if="hint" class="mt-1.5 text-sm text-gray-500">
       {{ hint }}
     </p>
   </div>
@@ -92,10 +92,10 @@ const displayValue = computed(() => {
   return selected?.label || props.placeholder
 })
 
-const baseClasses = 'relative w-full h-10 px-3 pr-10 rounded-lg border transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between'
+const baseClasses = 'relative w-full h-10 px-3 pr-10 rounded-lg border focus-ring disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between'
 const stateClasses = computed(() => {
-  if (props.error) return 'border-error-300 dark:border-error-700 bg-error-50 dark:bg-error-900/10'
-  return 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100'
+  if (props.error) return 'border-red-300 bg-red-50'
+  return 'border-gray-300 bg-white text-gray-900'
 })
 
 const buttonClasses = computed(() => cn(baseClasses, stateClasses.value))

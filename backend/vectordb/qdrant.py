@@ -11,7 +11,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
     Filter, FieldCondition, MatchValue,
-    SearchRequest, ScoredPoint
+    FilterSelector, SearchRequest, ScoredPoint
 )
 from backend.config import settings
 from typing import List, Dict, Any, Optional
@@ -217,7 +217,7 @@ async def delete_by_filter(
 
     client.delete(
         collection_name=collection,
-        points_selector=Filter(must=must_conditions)
+        points_selector=FilterSelector(filter=Filter(must=must_conditions))
     )
 
     logger.info(f"Deleted vectors from {collection} with filter {filter}")

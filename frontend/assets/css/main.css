@@ -5,37 +5,33 @@
 @layer base {
   /* Custom scrollbar */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-neutral-100 dark:bg-neutral-900;
+    @apply bg-gray-100;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-neutral-300 dark:bg-neutral-700 rounded-md;
+    @apply bg-gray-300 rounded;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-neutral-400 dark:bg-neutral-600;
+    @apply bg-gray-400;
   }
 
   /* Firefox scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(212 212 216) rgb(244 244 245);
-  }
-
-  .dark * {
-    scrollbar-color: rgb(63 63 70) rgb(24 24 27);
+    scrollbar-color: rgb(209 213 219) rgb(243 244 246);
   }
 }
 
 @layer components {
   /* Chat message prose styling */
   .prose-chat {
-    @apply text-neutral-900 dark:text-neutral-100;
+    @apply text-gray-900;
   }
 
   .prose-chat h1,
@@ -81,11 +77,11 @@
   }
 
   .prose-chat code {
-    @apply bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-sm font-mono;
+    @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono;
   }
 
   .prose-chat pre {
-    @apply bg-neutral-100 dark:bg-neutral-900 p-4 rounded-lg overflow-x-auto mb-3;
+    @apply bg-gray-50 p-4 rounded-lg overflow-x-auto mb-3;
   }
 
   .prose-chat pre code {
@@ -93,11 +89,11 @@
   }
 
   .prose-chat blockquote {
-    @apply border-l-4 border-neutral-300 dark:border-neutral-700 pl-4 italic my-3;
+    @apply border-l-4 border-gray-300 pl-4 italic my-3;
   }
 
   .prose-chat a {
-    @apply text-brand-600 dark:text-brand-400 hover:underline;
+    @apply text-gray-900 hover:underline;
   }
 
   .prose-chat table {
@@ -106,41 +102,22 @@
 
   .prose-chat th,
   .prose-chat td {
-    @apply border border-neutral-300 dark:border-neutral-700 px-3 py-2;
+    @apply border border-gray-200 px-3 py-2;
   }
 
   .prose-chat th {
-    @apply bg-neutral-100 dark:bg-neutral-800 font-semibold;
-  }
-
-  /* Skeleton shimmer animation */
-  .skeleton {
-    @apply animate-shimmer bg-gradient-to-r from-neutral-200 via-neutral-100 to-neutral-200 dark:from-neutral-800 dark:via-neutral-700 dark:to-neutral-800;
-    background-size: 1000px 100%;
+    @apply bg-gray-50 font-semibold;
   }
 }
 
 @layer utilities {
   /* Focus ring utility */
   .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900;
-  }
-
-  /* Transition utilities */
-  .transition-base {
-    @apply transition-all duration-200 ease-in-out;
-  }
-
-  .transition-slow {
-    @apply transition-all duration-300 ease-in-out;
+    @apply focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2;
   }
 
   /* Text utilities */
   .text-muted {
-    @apply text-neutral-600 dark:text-neutral-400;
-  }
-
-  .text-subtle {
-    @apply text-neutral-500 dark:text-neutral-500;
+    @apply text-gray-500;
   }
 }

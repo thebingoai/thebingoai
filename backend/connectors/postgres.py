@@ -41,7 +41,9 @@ class PostgresConnector(BaseConnector):
 
     def _quote_identifier(self, name: str) -> str:
         """Quote identifier with double quotes for PostgreSQL."""
-        return f'"{name}"'
+        # Escape embedded double quotes by doubling them
+        escaped = name.replace('"', '""')
+        return f'"{escaped}"'
 
     def _db_type_name(self) -> str:
         """Return database type name."""

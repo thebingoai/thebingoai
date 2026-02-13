@@ -1,71 +1,106 @@
-import type { AskRequest } from '~/types'
-import { toast } from 'vue-sonner'
-import { MESSAGES } from '~/utils/constants'
 import { useChatStore } from '~/stores/chat'
+import type { Message } from '~/stores/chat'
 
 export const useChat = () => {
   const chatStore = useChatStore()
   const api = useApi()
 
-  const sendMessage = async (question: string) => {
-    if (!question.trim()) return
+  const sendMessage = async (message: string) => {
+    chatStore.isStreaming = true
 
-    // Create user message
-    const userMessage = {
-      id: `${Date.now()}-user`,
-      role: 'user' as const,
-      content: question,
-      timestamp: new Date().toISOString()
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: message,
+      created_at: new Date().toISOString()
     }
-
     chatStore.addMessage(userMessage)
-    chatStore.clearInput()
-
-    // Create assistant message placeholder
-    const assistantMessage = {
-      id: `${Date.now()}-assistant`,
-      role: 'assistant' as const,
-      content: '',
-      timestamp: new Date().toISOString()
-    }
-
-    chatStore.addMessage(assistantMessage)
-    chatStore.setLoading(true)
-
-    const request: AskRequest = {
-      question,
-      namespace: chatStore.selectedNamespace,
-      provider: chatStore.selectedProvider,
-      model: chatStore.selectedModel || undefined,
-      temperature: chatStore.temperature,
-      thread_id: chatStore.currentConversationId || undefined,
-      stream: false
-    }
 
     try {
-      const response = await api.ask(request)
+      const response = await api.chat.send(message, chatStore.currentThreadId || undefined)
 
-      // Update the assistant message with response
-      chatStore.updateLastMessage({
-        content: response.answer,
-        sources: response.sources
-      })
-
-      // Create new conversation if this is the first message
-      if (!chatStore.currentConversationId && response.thread_id) {
-        const title = question.slice(0, 50) + (question.length > 50 ? '...' : '')
-        chatStore.createConversation(title, response.thread_id)
+      // Add assistant message
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response.message || 'Response received',
+        sql: response.sql_queries?.[0],
+        results: response.results,
+        created_at: new Date().toISOString()
       }
-    } catch (err: any) {
-      toast.error(err.message || MESSAGES.CHAT_ERROR)
-      // Remove the failed assistant message
-      chatStore.messages.pop()
+      chatStore.addMessage(assistantMessage)
+
+      // Update thread ID if new
+      if (response.thread_id && !chatStore.currentThreadId) {
+        chatStore.setCurrentThread(response.thread_id)
+        chatStore.addConversation({
+          id: response.thread_id,
+          title: message.slice(0, 50),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          message_count: 2
+        })
+      }
+    } catch (error: any) {
+      console.error('Chat error:', error)
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+        created_at: new Date().toISOString()
+      }
+      chatStore.addMessage(errorMessage)
     } finally {
-      chatStore.setLoading(false)
+      chatStore.isStreaming = false
+      chatStore.clearInput()
+    }
+  }
+
+  const newChat = () => {
+    chatStore.reset()
+  }
+
+  const loadConversations = async () => {
+    try {
+      const response = await api.chat.getConversations() as any
+      // Backend returns { conversations: ConversationResponse[] }
+      // Map to frontend Conversation type
+      const conversations = (response.conversations || []).map((conv: any) => ({
+        id: conv.thread_id,
+        title: conv.title || 'Untitled',
+        created_at: conv.created_at,
+        updated_at: conv.updated_at,
+        message_count: conv.messages?.length || 0
+      }))
+      chatStore.setConversations(conversations)
+    } catch (error) {
+      console.error('Failed to load conversations:', error)
+    }
+  }
+
+  const loadMessages = async (threadId: string) => {
+    try {
+      // Backend returns ConversationResponse with embedded messages
+      const conversation = await api.chat.getMessages(threadId) as any
+      // Map ChatMessage[] to frontend Message type
+      const messages = (conversation.messages || []).map((msg: any, index: number) => ({
+        id: `${threadId}-${index}`,
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.timestamp
+      }))
+      chatStore.setMessages(messages)
+      chatStore.setCurrentThread(threadId)
+    } catch (error) {
+      console.error('Failed to load messages:', error)
     }
   }
 
   return {
-    sendMessage
+    sendMessage,
+    newChat,
+    loadConversations,
+    loadMessages
   }
 }

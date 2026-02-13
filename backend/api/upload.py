@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
-from fastapi import UploadFile, File, Form, HTTPException
+from fastapi import UploadFile, File, Form, HTTPException, Depends
 from typing import Optional
 from backend.config import settings
+from backend.auth.dependencies import get_current_user
+from backend.models.user import User
 from backend.parser.markdown import chunk_markdown, count_tokens
 from backend.embedder.openai import embed_batch
 from backend.vectordb.pinecone import upsert_vectors
@@ -19,7 +21,8 @@ async def upload_file(
     namespace: str = Form("default"),
     tags: str = Form(""),
     webhook_url: Optional[str] = Form(None),
-    force_async: str = Form("false")
+    force_async: str = Form("false"),
+    current_user: User = Depends(get_current_user)
 ) -> UploadResponse:
     """
     Upload and index a markdown file.

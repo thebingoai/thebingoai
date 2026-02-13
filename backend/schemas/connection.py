@@ -34,7 +34,7 @@ class ConnectionResponse(BaseModel):
     database: str
     username: str
     is_active: bool
-    schema_json_path: Optional[str]
+    # schema_json_path removed to prevent filesystem path leakage
     schema_generated_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

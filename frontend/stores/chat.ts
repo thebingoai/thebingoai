@@ -1,165 +1,108 @@
 import { defineStore } from 'pinia'
-import type {
-  Conversation,
-  ConversationMessage,
-  LLMProvider
-} from '~/types'
 
-export interface ChatState {
-  // Conversations
-  conversations: Conversation[]
-  currentConversationId: string | null
+export interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  sql?: string
+  results?: any[]
+  thinking_steps?: ThinkingStep[]
+  created_at: string
+  attachments?: FileAttachment[]
+}
 
-  // Messages (for current conversation)
-  messages: ConversationMessage[]
+export interface ThinkingStep {
+  step: string
+  description: string
+}
 
-  // Loading state
-  isLoading: boolean
+export interface FileAttachment {
+  name: string
+  size: number
+  type: string
+}
 
-  // Input state
-  inputText: string
-
-  // Chat settings (for new messages)
-  selectedNamespace: string
-  selectedProvider: LLMProvider
-  selectedModel: string
-  temperature: number
+export interface Conversation {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+  message_count: number
 }
 
 export const useChatStore = defineStore('chat', {
-  state: (): ChatState => ({
-    conversations: [],
-    currentConversationId: null,
-    messages: [],
-    isLoading: false,
+  state: () => ({
+    conversations: [] as Conversation[],
+    currentThreadId: null as string | null,
+    messages: [] as Message[],
     inputText: '',
-    selectedNamespace: 'default',
-    selectedProvider: 'openai',
-    selectedModel: '',
-    temperature: 0.7
+    attachedFiles: [] as File[],
+    showUploadPanel: false,
+    isStreaming: false,
+    expandedThinking: new Set<string>()
   }),
 
   getters: {
-    currentConversation: (state): Conversation | null => {
-      if (!state.currentConversationId) return null
-      return state.conversations.find(c => c.id === state.currentConversationId) || null
-    },
-
-    sortedConversations: (state): Conversation[] => {
-      return [...state.conversations].sort((a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      )
+    currentConversation: (state) => {
+      return state.conversations.find(c => c.id === state.currentThreadId)
     }
   },
 
   actions: {
-    // Conversation management
-    createConversation(title: string, threadId: string) {
-      const conversation: Conversation = {
-        id: threadId,
-        title,
-        namespace: this.selectedNamespace,
-        provider: this.selectedProvider,
-        model: this.selectedModel,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        message_count: 0
-      }
-      this.conversations.unshift(conversation)
-      this.currentConversationId = threadId
+    setCurrentThread(threadId: string | null) {
+      this.currentThreadId = threadId
     },
 
-    setCurrentConversation(id: string | null) {
-      this.currentConversationId = id
-      if (!id) {
-        this.messages = []
-      }
-    },
-
-    updateConversation(id: string, updates: Partial<Conversation>) {
-      const index = this.conversations.findIndex(c => c.id === id)
-      if (index !== -1) {
-        this.conversations[index] = {
-          ...this.conversations[index],
-          ...updates,
-          updated_at: new Date().toISOString()
-        }
-      }
-    },
-
-    deleteConversation(id: string) {
-      this.conversations = this.conversations.filter(c => c.id !== id)
-      if (this.currentConversationId === id) {
-        this.currentConversationId = null
-        this.messages = []
-      }
-    },
-
-    // Message management
-    addMessage(message: ConversationMessage) {
-      this.messages.push(message)
-      if (this.currentConversationId) {
-        const conversation = this.conversations.find(c => c.id === this.currentConversationId)
-        if (conversation) {
-          conversation.message_count = this.messages.length
-          conversation.updated_at = new Date().toISOString()
-        }
-      }
-    },
-
-    updateLastMessage(updates: Partial<ConversationMessage>) {
-      if (this.messages.length > 0) {
-        const lastIndex = this.messages.length - 1
-        this.messages[lastIndex] = {
-          ...this.messages[lastIndex],
-          ...updates
-        }
-      }
-    },
-
-    setMessages(messages: ConversationMessage[]) {
+    setMessages(messages: Message[]) {
       this.messages = messages
     },
 
-    // Loading state
-    setLoading(val: boolean) {
-      this.isLoading = val
+    addMessage(message: Message) {
+      this.messages.push(message)
     },
 
-    // Input state
-    setInputText(text: string) {
-      this.inputText = text
+    updateLastMessage(updates: Partial<Message>) {
+      if (this.messages.length > 0) {
+        const lastMessage = this.messages[this.messages.length - 1]
+        Object.assign(lastMessage, updates)
+      }
+    },
+
+    setConversations(conversations: Conversation[]) {
+      this.conversations = conversations
+    },
+
+    addConversation(conversation: Conversation) {
+      this.conversations.unshift(conversation)
+    },
+
+    removeConversation(threadId: string) {
+      this.conversations = this.conversations.filter(c => c.id !== threadId)
+    },
+
+    toggleThinking(messageId: string) {
+      if (this.expandedThinking.has(messageId)) {
+        this.expandedThinking.delete(messageId)
+      } else {
+        this.expandedThinking.add(messageId)
+      }
+    },
+
+    toggleUploadPanel() {
+      this.showUploadPanel = !this.showUploadPanel
     },
 
     clearInput() {
       this.inputText = ''
+      this.attachedFiles = []
     },
 
-    // Settings
-    setSelectedNamespace(namespace: string) {
-      this.selectedNamespace = namespace
-    },
-
-    setSelectedProvider(provider: LLMProvider) {
-      this.selectedProvider = provider
-    },
-
-    setSelectedModel(model: string) {
-      this.selectedModel = model
-    },
-
-    setTemperature(temp: number) {
-      this.temperature = temp
+    reset() {
+      this.currentThreadId = null
+      this.messages = []
+      this.inputText = ''
+      this.attachedFiles = []
+      this.expandedThinking.clear()
     }
-  },
-
-  persist: {
-    paths: [
-      'conversations',
-      'selectedNamespace',
-      'selectedProvider',
-      'selectedModel',
-      'temperature'
-    ]
   }
 })
