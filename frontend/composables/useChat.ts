@@ -17,40 +17,88 @@ export const useChat = () => {
     }
     chatStore.addMessage(userMessage)
 
+    // Add empty assistant message placeholder
+    const assistantMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: '',
+      thinking_steps: [],
+      created_at: new Date().toISOString()
+    }
+    chatStore.addMessage(assistantMessage)
+
+    // Accumulate streaming content
+    let accumulatedContent = ''
+    let wordBuffer = ''
+    const thinkingSteps: Array<{ step: string; description: string }> = []
+
     try {
-      const response = await api.chat.send(message, chatStore.currentThreadId || undefined)
+      await api.chat.streamChat(
+        message,
+        chatStore.currentThreadId || undefined,
+        {
+          onToken: (content: string) => {
+            wordBuffer += content
+            accumulatedContent += content
 
-      // Add assistant message
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response.message || 'Response received',
-        sql: response.sql_queries?.[0],
-        results: response.results,
-        created_at: new Date().toISOString()
-      }
-      chatStore.addMessage(assistantMessage)
+            // Check if we have a complete word (space, punctuation, or newline)
+            const hasCompleteWord = /[\s\n.,!?;:]/.test(content)
 
-      // Update thread ID if new
-      if (response.thread_id && !chatStore.currentThreadId) {
-        chatStore.setCurrentThread(response.thread_id)
-        chatStore.addConversation({
-          id: response.thread_id,
-          title: message.slice(0, 50),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          message_count: 2
-        })
-      }
+            if (hasCompleteWord) {
+              // Update UI with accumulated content
+              chatStore.updateLastMessage({ content: accumulatedContent })
+              wordBuffer = ''
+            }
+          },
+          onToolCall: (data: any) => {
+            const step = {
+              step: data.tool || 'Tool',
+              description: 'Running...'
+            }
+            thinkingSteps.push(step)
+            chatStore.updateLastMessage({ thinking_steps: [...thinkingSteps] })
+          },
+          onToolResult: (data: any) => {
+            // Update the last thinking step to completed
+            if (thinkingSteps.length > 0) {
+              thinkingSteps[thinkingSteps.length - 1].description = 'Completed'
+              chatStore.updateLastMessage({ thinking_steps: [...thinkingSteps] })
+            }
+          },
+          onStatus: (status: string) => {
+            console.log('Status:', status)
+          },
+          onDone: (data: any) => {
+            // Flush any remaining content in the word buffer
+            if (wordBuffer) {
+              chatStore.updateLastMessage({ content: accumulatedContent })
+              wordBuffer = ''
+            }
+
+            // Update thread ID if new
+            if (data.thread_id && !chatStore.currentThreadId) {
+              chatStore.setCurrentThread(data.thread_id)
+              chatStore.addConversation({
+                id: data.thread_id,
+                title: message.slice(0, 50),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                message_count: 2
+              })
+            }
+          },
+          onError: (error: string) => {
+            chatStore.updateLastMessage({
+              content: `Error: ${error}`
+            })
+          }
+        }
+      )
     } catch (error: any) {
       console.error('Chat error:', error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        created_at: new Date().toISOString()
-      }
-      chatStore.addMessage(errorMessage)
+      chatStore.updateLastMessage({
+        content: 'Sorry, I encountered an error. Please try again.'
+      })
     } finally {
       chatStore.isStreaming = false
       chatStore.clearInput()

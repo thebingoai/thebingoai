@@ -13,7 +13,15 @@
     </div>
 
     <div class="ml-10">
-      <div class="prose-chat whitespace-pre-wrap">{{ message.content }}</div>
+      <!-- Typing indicator when assistant message is empty during streaming -->
+      <div v-if="message.role === 'assistant' && !message.content && chatStore.isStreaming" class="typing-indicator">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </div>
+
+      <!-- Message content -->
+      <div v-else class="prose-chat whitespace-pre-wrap">{{ message.content }}</div>
 
       <!-- SQL Query -->
       <div v-if="message.sql" class="mt-3">
@@ -85,3 +93,42 @@ defineProps<{
 
 const chatStore = useChatStore()
 </script>
+
+<style scoped>
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #9ca3af;
+  animation: typing-bounce 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+</style>

@@ -20,12 +20,43 @@
 const chatStore = useChatStore()
 const threadRef = ref<HTMLElement>()
 
-// Auto-scroll to bottom when new message arrives
+// Scroll function
+const scrollToBottom = () => {
+  if (threadRef.value) {
+    threadRef.value.scrollTop = threadRef.value.scrollHeight
+  }
+}
+
+// Throttled scroll for streaming content updates
+let scrollThrottleTimer: NodeJS.Timeout | null = null
+const throttledScroll = () => {
+  if (!scrollThrottleTimer) {
+    scrollThrottleTimer = setTimeout(() => {
+      scrollToBottom()
+      scrollThrottleTimer = null
+    }, 100)
+  }
+}
+
+// Auto-scroll to bottom when new message arrives (immediate)
 watch(() => chatStore.messages.length, () => {
   nextTick(() => {
-    if (threadRef.value) {
-      threadRef.value.scrollTop = threadRef.value.scrollHeight
-    }
+    scrollToBottom()
   })
 })
+
+// Auto-scroll during streaming content updates (throttled)
+watch(
+  () => {
+    const lastMessage = chatStore.messages[chatStore.messages.length - 1]
+    return lastMessage?.content || ''
+  },
+  () => {
+    if (chatStore.isStreaming) {
+      nextTick(() => {
+        throttledScroll()
+      })
+    }
+  }
+)
 </script>
