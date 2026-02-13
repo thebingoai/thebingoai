@@ -17,7 +17,8 @@
 
     <!-- Settings Content -->
     <div class="flex-1 overflow-y-auto">
-      <SettingsProfile v-if="currentSection === 'profile'" />
+      <SettingsConnections v-if="currentSection === 'connections'" />
+      <SettingsProfile v-else-if="currentSection === 'profile'" />
       <div v-else class="p-6">
         <h2 class="text-2xl font-bold text-gray-900 mb-4">{{ currentSectionName }}</h2>
         <p class="text-gray-500">This section is under construction.</p>
@@ -35,7 +36,7 @@ const sections = [
   { id: 'profile', name: 'Profile' }
 ]
 
-const currentSection = ref('profile')
+const currentSection = ref('connections')
 
 const currentSectionName = computed(() => {
   return sections.find(s => s.id === currentSection.value)?.name || ''

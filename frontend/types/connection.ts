@@ -12,7 +12,7 @@ export interface DatabaseConnection {
   database: string
   username: string
   user_id: string
-  schema_json_path: string | null
+  is_active: boolean
   schema_generated_at: string | null
   created_at: string
   updated_at: string
