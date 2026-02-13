@@ -2,6 +2,8 @@
 
 from sqlalchemy.orm import Session
 from backend.services.conversation_service import ConversationService
+from backend.services.token_tracking_service import TokenTrackingService
+from backend.models.token_usage import OperationType
 from backend.llm.factory import get_llm_provider
 from backend.config import settings
 from backend.memory.storage import MemoryStorage
@@ -100,6 +102,20 @@ class MemoryGenerator:
         ]
 
         response = self.llm.chat(messages)
+
+        # Track token usage (rough estimation)
+        # TODO: Get actual token counts from LLM provider response
+        prompt_tokens = int(len(prompt.split()) * 1.3)
+        completion_tokens = int(len(response.split()) * 1.3)
+
+        TokenTrackingService.track_usage(
+            db=db,
+            user_id=user_id,
+            operation=OperationType.MEMORY_GENERATION,
+            model=settings.default_llm_model or "gpt-4o",
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens
+        )
 
         # Parse JSON response
         try:

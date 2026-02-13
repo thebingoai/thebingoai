@@ -7,8 +7,11 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse
 from backend.services.conversation_service import ConversationService
+from backend.services.token_tracking_service import TokenTrackingService
+from backend.models.token_usage import OperationType
 from backend.agents import run_orchestrator, stream_orchestrator
 from backend.agents.context import AgentContext
+from backend.config import settings
 import json
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -104,6 +107,20 @@ async def chat(
 
     # Extract metadata
     metadata = result.get("metadata", {})
+
+    # Track token usage (rough estimation based on message length)
+    # TODO: Get actual token counts from LLM provider response
+    prompt_tokens = int(len(request.message.split()) * 1.3)  # Rough word-to-token ratio
+    completion_tokens = int(len(result["message"].split()) * 1.3)
+
+    TokenTrackingService.track_usage(
+        db=db,
+        user_id=current_user.id,
+        operation=OperationType.CHAT,
+        model=settings.default_llm_model or "gpt-4o",
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens
+    )
 
     return ChatResponse(
         thread_id=conversation.thread_id,

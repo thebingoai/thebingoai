@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.api import upload, query, chat, health, jobs, auth, connections, memory
+from backend.api import upload, query, chat, health, jobs, auth, connections, memory, usage
 
 router = APIRouter()
 
@@ -14,6 +14,9 @@ router.include_router(chat.router)
 
 # Memory System (Phase 06)
 router.include_router(memory.router)
+
+# Usage Tracking (Phase 07)
+router.include_router(usage.router)
 
 # Upload
 router.post("/upload", tags=["upload"])(upload.upload_file)
