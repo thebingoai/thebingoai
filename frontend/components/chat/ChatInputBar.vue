@@ -6,7 +6,7 @@
           v-model="chatStore.inputText"
           placeholder="Ask a question about your data..."
           rows="1"
-          class="w-full resize-none rounded-lg border border-gray-300 px-4 py-2 focus-ring"
+          class="w-full resize-none rounded-lg border border-gray-300 px-4 py-2"
           :disabled="chatStore.isStreaming"
           @keydown.enter.exact.prevent="handleSubmit"
         />

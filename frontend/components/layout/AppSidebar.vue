@@ -4,13 +4,13 @@
     <div class="flex h-16 items-center border-b border-gray-200 px-6">
       <component :is="MessageSquare" class="h-6 w-6 text-gray-900" />
       <span class="ml-3 text-lg font-semibold text-gray-900">
-        BI Agent
+        Bingo AI
       </span>
     </div>
 
     <!-- New Chat Button -->
-    <div class="border-b border-gray-200 p-4">
-      <UiButton variant="primary" full-width @click="handleNewChat">
+    <div class="p-4">
+      <UiButton variant="ghost" full-width @click="handleNewChat">
         + New Chat
       </UiButton>
     </div>
@@ -24,18 +24,17 @@
         v-for="conv in chatStore.conversations"
         :key="conv.id"
         @click="handleSelectConversation(conv.id)"
-        class="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-gray-50"
+        class="mb-1 w-full rounded-lg px-3 py-1 text-left text-sm hover:bg-gray-50"
         :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
       >
         <div class="font-medium text-gray-900 truncate">{{ conv.title }}</div>
-        <div class="text-xs text-gray-500">{{ formatDate(conv.created_at) }}</div>
       </button>
     </div>
 
     <!-- User account button -->
     <button
       @click="router.push('/settings')"
-      class="border-t border-gray-200 p-4 hover:bg-gray-50 transition-colors w-full text-left"
+      class="border-t border-gray-200 px-4 py-5 hover:bg-gray-50 transition-colors w-full text-left"
     >
       <div class="flex items-center">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-medium">

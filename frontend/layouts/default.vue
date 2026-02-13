@@ -4,7 +4,7 @@
     <AppSidebar />
 
     <!-- Main content -->
-    <main class="flex flex-1 flex-col overflow-hidden">
+    <main class="flex flex-1 flex-col overflow-hidden shadow-2xl">
       <slot />
     </main>
   </div>

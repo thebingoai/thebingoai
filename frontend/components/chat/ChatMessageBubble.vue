@@ -20,7 +20,10 @@
         <span class="typing-dot"></span>
       </div>
 
-      <!-- Message content -->
+      <!-- Assistant message with markdown -->
+      <UiMarkdownRenderer v-else-if="message.role === 'assistant'" :content="message.content" />
+
+      <!-- User message as plain text -->
       <div v-else class="prose-chat whitespace-pre-wrap">{{ message.content }}</div>
 
       <!-- SQL Query -->
