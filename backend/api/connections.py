@@ -43,7 +43,9 @@ async def create_connection(
             port=request.port,
             database=request.database,
             username=request.username,
-            password=request.password
+            password=request.password,
+            ssl_enabled=request.ssl_enabled,
+            ssl_ca_cert=request.ssl_ca_cert
         )
         connector.test_connection()
     except Exception as e:
@@ -193,7 +195,9 @@ async def test_connection(
             port=connection.port,
             database=connection.database,
             username=connection.username,
-            password=connection.password
+            password=connection.password,
+            ssl_enabled=connection.ssl_enabled,
+            ssl_ca_cert=connection.ssl_ca_cert
         )
         connector.test_connection()
         connector.close()
@@ -230,7 +234,9 @@ async def refresh_connection_schema(
             port=connection.port,
             database=connection.database,
             username=connection.username,
-            password=connection.password
+            password=connection.password,
+            ssl_enabled=connection.ssl_enabled,
+            ssl_ca_cert=connection.ssl_ca_cert
         ) as connector:
             schema_path = refresh_schema(
                 connection.id,

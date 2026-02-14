@@ -155,7 +155,9 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 port=connection.port,
                 database=connection.database,
                 username=connection.username,
-                password=connection.password
+                password=connection.password,
+                ssl_enabled=connection.ssl_enabled,
+                ssl_ca_cert=connection.ssl_ca_cert
             ) as connector:
                 result = connector.execute_query(sql)
 

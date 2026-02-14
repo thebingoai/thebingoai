@@ -31,13 +31,21 @@ class MySQLConnector(BaseConnector):
 
     def _get_connect_kwargs(self) -> dict:
         """Map properties to PyMySQL kwargs."""
-        return {
+        kwargs = {
             'host': self.host,
             'port': self.port,
             'database': self.database,
             'user': self.username,
             'password': self.password
         }
+        if self.ssl_enabled:
+            ca_path = self._get_ca_cert_path()
+            if ca_path:
+                kwargs['ssl'] = {'ca': ca_path}
+            else:
+                kwargs['ssl'] = {'ssl': True}
+            kwargs['ssl_disabled'] = False
+        return kwargs
 
     def _quote_identifier(self, name: str) -> str:
         """Quote identifier with backticks for MySQL."""

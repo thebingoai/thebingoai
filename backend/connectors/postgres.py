@@ -31,13 +31,21 @@ class PostgresConnector(BaseConnector):
 
     def _get_connect_kwargs(self) -> dict:
         """Map properties to psycopg2 kwargs."""
-        return {
+        kwargs = {
             'host': self.host,
             'port': self.port,
             'database': self.database,
             'user': self.username,
             'password': self.password
         }
+        if self.ssl_enabled:
+            ca_path = self._get_ca_cert_path()
+            if ca_path:
+                kwargs['sslmode'] = 'verify-ca'
+                kwargs['sslrootcert'] = ca_path
+            else:
+                kwargs['sslmode'] = 'require'
+        return kwargs
 
     def _quote_identifier(self, name: str) -> str:
         """Quote identifier with double quotes for PostgreSQL."""

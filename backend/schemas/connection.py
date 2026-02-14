@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from backend.models.database_connection import DatabaseType
 from datetime import datetime
@@ -12,6 +12,17 @@ class ConnectionCreate(BaseModel):
     database: str
     username: str
     password: str
+    ssl_enabled: bool = False
+    ssl_ca_cert: Optional[str] = None
+
+    @field_validator('ssl_ca_cert')
+    @classmethod
+    def validate_ca_cert(cls, v):
+        if v is not None and v.strip():
+            v = v.strip()
+            if not v.startswith('-----BEGIN CERTIFICATE-----'):
+                raise ValueError('CA certificate must be in PEM format')
+        return v
 
 
 class ConnectionUpdate(BaseModel):
@@ -21,7 +32,18 @@ class ConnectionUpdate(BaseModel):
     database: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    ssl_enabled: Optional[bool] = None
+    ssl_ca_cert: Optional[str] = None  # empty string or null = clear cert
     is_active: Optional[bool] = None
+
+    @field_validator('ssl_ca_cert')
+    @classmethod
+    def validate_ca_cert(cls, v):
+        if v is not None and v.strip():
+            v = v.strip()
+            if not v.startswith('-----BEGIN CERTIFICATE-----'):
+                raise ValueError('CA certificate must be in PEM format')
+        return v
 
 
 class ConnectionResponse(BaseModel):
@@ -33,6 +55,8 @@ class ConnectionResponse(BaseModel):
     port: int
     database: str
     username: str
+    ssl_enabled: bool
+    has_ssl_ca_cert: bool
     is_active: bool
     # schema_json_path removed to prevent filesystem path leakage
     schema_generated_at: Optional[datetime]

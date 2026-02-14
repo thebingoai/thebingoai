@@ -16,7 +16,9 @@ def get_connector(
     port: int,
     database: str,
     username: str,
-    password: str
+    password: str,
+    ssl_enabled: bool = False,
+    ssl_ca_cert: str = None
 ) -> BaseConnector:
     """
     Factory function to create database connector.
@@ -28,6 +30,8 @@ def get_connector(
         database: Database name
         username: Database username
         password: Database password
+        ssl_enabled: Enable SSL connection
+        ssl_ca_cert: SSL CA certificate (PEM format)
 
     Returns:
         Instance of appropriate connector class
@@ -45,5 +49,7 @@ def get_connector(
         port=port,
         database=database,
         username=username,
-        password=password
+        password=password,
+        ssl_enabled=ssl_enabled,
+        ssl_ca_cert=ssl_ca_cert
     )

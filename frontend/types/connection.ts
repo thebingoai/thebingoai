@@ -11,6 +11,8 @@ export interface DatabaseConnection {
   port: number
   database: string
   username: string
+  ssl_enabled: boolean
+  has_ssl_ca_cert: boolean
   user_id: string
   is_active: boolean
   schema_generated_at: string | null
@@ -26,6 +28,8 @@ export interface ConnectionFormData {
   database: string
   username: string
   password: string
+  ssl_enabled: boolean
+  ssl_ca_cert: string
 }
 
 export interface ConnectionTestResponse {

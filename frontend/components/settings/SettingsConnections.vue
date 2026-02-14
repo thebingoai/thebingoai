@@ -46,6 +46,13 @@
                 {{ connection.db_type === 'postgres' ? 'PostgreSQL' : 'MySQL' }}
               </UiBadge>
               <UiBadge
+                v-if="connection.ssl_enabled"
+                variant="success"
+                size="sm"
+              >
+                SSL
+              </UiBadge>
+              <UiBadge
                 v-if="!connection.is_active"
                 variant="error"
                 size="lg"
@@ -182,6 +189,44 @@
             :error="formErrors.password"
           />
         </div>
+
+        <!-- SSL Configuration -->
+        <div class="border-t pt-4">
+          <div class="flex items-center justify-between mb-3">
+            <label class="text-sm font-normal text-gray-900">SSL Connection</label>
+            <button
+              type="button"
+              @click="form.ssl_enabled = !form.ssl_enabled"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+              :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                :class="form.ssl_enabled ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+
+          <div v-if="form.ssl_enabled" class="space-y-3">
+            <div>
+              <label class="text-sm text-gray-600 mb-1 block">CA Certificate (PEM)</label>
+              <textarea
+                v-model="form.ssl_ca_cert"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                rows="6"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p class="text-xs text-gray-500 mt-1">
+                <template v-if="editingConnection && editingConnection.has_ssl_ca_cert">
+                  A CA certificate is already stored. Leave blank to keep current, or paste a new one to replace it.
+                </template>
+                <template v-else>
+                  Optional: Paste your CA certificate for server verification. Leave blank for basic SSL encryption.
+                </template>
+              </p>
+            </div>
+          </div>
+        </div>
       </form>
 
       <template #footer>
@@ -251,7 +296,9 @@ const form = ref<ConnectionFormData>({
   port: 5432,
   database: '',
   username: '',
-  password: ''
+  password: '',
+  ssl_enabled: false,
+  ssl_ca_cert: ''
 })
 const formErrors = ref<Partial<Record<keyof ConnectionFormData, string>>>({})
 const saving = ref(false)
@@ -282,6 +329,8 @@ async function fetchConnections() {
 function selectConnectorType(type: DatabaseType) {
   form.value.db_type = type
   form.value.port = type === 'postgres' ? 5432 : 3306
+  form.value.ssl_enabled = false
+  form.value.ssl_ca_cert = ''
   showTypePicker.value = false
   showFormDialog.value = true
 }
@@ -295,7 +344,9 @@ function openCreateDialog() {
     port: 5432,
     database: '',
     username: '',
-    password: ''
+    password: '',
+    ssl_enabled: false,
+    ssl_ca_cert: ''
   }
   formErrors.value = {}
   showTypePicker.value = true
@@ -318,7 +369,9 @@ function openEditDialog(connection: DatabaseConnection) {
     port: connection.port,
     database: connection.database,
     username: connection.username,
-    password: '' // Blank by default
+    password: '', // Blank by default
+    ssl_enabled: connection.ssl_enabled,
+    ssl_ca_cert: '' // Never pre-fill cert content
   }
   formErrors.value = {}
   showFormDialog.value = true
@@ -374,12 +427,20 @@ async function handleFormSubmit() {
       host: form.value.host,
       port: Number(form.value.port),
       database: form.value.database,
-      username: form.value.username
+      username: form.value.username,
+      ssl_enabled: form.value.ssl_enabled
     }
 
     // Only include password if it's provided (for edits, empty password = keep current)
     if (form.value.password) {
       payload.password = form.value.password
+    }
+
+    // Handle SSL cert: include if provided, or send null to clear if SSL is disabled
+    if (form.value.ssl_enabled && form.value.ssl_ca_cert.trim()) {
+      payload.ssl_ca_cert = form.value.ssl_ca_cert.trim()
+    } else if (!form.value.ssl_enabled) {
+      payload.ssl_ca_cert = null
     }
 
     if (editingConnection.value) {

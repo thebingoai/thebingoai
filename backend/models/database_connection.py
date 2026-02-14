@@ -23,6 +23,8 @@ class DatabaseConnection(Base, TimestampMixin):
     database = Column(String, nullable=False)
     username = Column(String, nullable=False)
     _encrypted_password = Column("password", String, nullable=False)  # Encrypted at rest
+    ssl_enabled = Column(Boolean, default=False, nullable=False)
+    _encrypted_ssl_ca_cert = Column("ssl_ca_cert", String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
     # Schema caching
@@ -41,3 +43,23 @@ class DatabaseConnection(Base, TimestampMixin):
     def password(self, plaintext: str):
         """Encrypt password when set."""
         self._encrypted_password = encrypt_password(plaintext)
+
+    @hybrid_property
+    def ssl_ca_cert(self):
+        """Decrypt SSL CA certificate when accessed."""
+        if not self._encrypted_ssl_ca_cert:
+            return None
+        return decrypt_password(self._encrypted_ssl_ca_cert)
+
+    @ssl_ca_cert.setter
+    def ssl_ca_cert(self, pem_content):
+        """Encrypt SSL CA certificate when set."""
+        if pem_content:
+            self._encrypted_ssl_ca_cert = encrypt_password(pem_content)
+        else:
+            self._encrypted_ssl_ca_cert = None
+
+    @hybrid_property
+    def has_ssl_ca_cert(self):
+        """Check if SSL CA certificate exists."""
+        return self._encrypted_ssl_ca_cert is not None

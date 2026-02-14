@@ -39,13 +39,17 @@ class BaseConnector(ABC):
     See PostgresConnector and MySQLConnector for examples.
     """
 
-    def __init__(self, host: str, port: int, database: str, username: str, password: str):
+    def __init__(self, host: str, port: int, database: str, username: str, password: str,
+                 ssl_enabled: bool = False, ssl_ca_cert: Optional[str] = None):
         self.host = host
         self.port = port
         self.database = database
         self.username = username
         self.password = password
+        self.ssl_enabled = ssl_enabled
+        self.ssl_ca_cert = ssl_ca_cert  # decrypted PEM content
         self._connection = None
+        self._temp_ca_file = None
 
     # ============================================================
     # Abstract Primitives (MUST implement in subclasses)
@@ -186,6 +190,32 @@ class BaseConnector(ABC):
     # Concrete Template Methods (shared by all connectors)
     # ============================================================
 
+    def _get_ca_cert_path(self) -> Optional[str]:
+        """
+        Write CA cert to temp file, return path. Both psycopg2 and PyMySQL need file paths.
+
+        Returns:
+            Path to temporary CA cert file or None if no cert
+        """
+        if not self.ssl_ca_cert:
+            return None
+        import tempfile
+        self._temp_ca_file = tempfile.NamedTemporaryFile(mode='w', suffix='.pem', delete=False)
+        self._temp_ca_file.write(self.ssl_ca_cert)
+        self._temp_ca_file.flush()
+        self._temp_ca_file.close()
+        return self._temp_ca_file.name
+
+    def _cleanup_temp_files(self):
+        """Clean up temporary CA certificate file."""
+        if self._temp_ca_file:
+            import os
+            try:
+                os.unlink(self._temp_ca_file.name)
+            except OSError:
+                pass
+            self._temp_ca_file = None
+
     def test_connection(self) -> bool:
         """
         Test if connection is successful.
@@ -208,6 +238,8 @@ class BaseConnector(ABC):
             return True
         except Exception as e:
             raise ConnectionError(f"Failed to connect to {self._db_type_name()}: {str(e)}")
+        finally:
+            self._cleanup_temp_files()
 
     def _get_connection(self):
         """
@@ -432,6 +464,7 @@ class BaseConnector(ABC):
         if self._connection and self._is_connection_alive(self._connection):
             self._connection.close()
             self._connection = None
+        self._cleanup_temp_files()
 
     def _validate_readonly_query(self, query: str) -> None:
         """
