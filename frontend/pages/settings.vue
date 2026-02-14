@@ -1,5 +1,14 @@
 <template>
-  <div class="flex h-full pt-20">
+  <div class="flex h-full pt-20 relative">
+    <!-- Close Button -->
+    <button
+      @click="router.push('/chat')"
+      class="absolute top-6 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+      aria-label="Close settings"
+    >
+      <X class="h-5 w-5" />
+    </button>
+
     <!-- Settings Navigation -->
     <div class="w-56 border-r border-gray-200 p-4">
       <nav class="space-y-1">
@@ -28,6 +37,10 @@
 </template>
 
 <script setup lang="ts">
+import { X } from 'lucide-vue-next'
+
+const router = useRouter()
+
 const sections = [
   { id: 'connections', name: 'Connections' },
   { id: 'jobs', name: 'Jobs' },

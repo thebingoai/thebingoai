@@ -100,6 +100,10 @@ const handleNewChat = () => {
 
 const handleSelectConversation = (id: string) => {
   chat.loadMessages(id)
+  // Navigate to chat page if not already there
+  if (route.path !== '/chat') {
+    navigateTo('/chat')
+  }
 }
 
 const formatDate = (dateString: string) => {
