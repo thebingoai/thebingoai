@@ -67,6 +67,14 @@ class ConnectionResponse(BaseModel):
         from_attributes = True
 
 
+class ConnectorTypeResponse(BaseModel):
+    id: str
+    display_name: str
+    description: str
+    default_port: int
+    badge_variant: str
+
+
 class ConnectionTestResponse(BaseModel):
     success: bool
     message: str

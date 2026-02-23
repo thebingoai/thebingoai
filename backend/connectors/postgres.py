@@ -53,9 +53,22 @@ class PostgresConnector(BaseConnector):
         escaped = name.replace('"', '""')
         return f'"{escaped}"'
 
-    def _db_type_name(self) -> str:
+    @classmethod
+    def _db_type_name(cls) -> str:
         """Return database type name."""
         return "PostgreSQL"
+
+    @classmethod
+    def _default_port(cls) -> int:
+        return 5432
+
+    @classmethod
+    def _description(cls) -> str:
+        return "Open-source relational database"
+
+    @classmethod
+    def _badge_variant(cls) -> str:
+        return "info"
 
     # ============================================================
     # Overridable Hooks (customize for PostgreSQL)

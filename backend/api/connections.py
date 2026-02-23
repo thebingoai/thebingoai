@@ -7,9 +7,9 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.connection import (
     ConnectionCreate, ConnectionUpdate, ConnectionResponse,
-    ConnectionTestResponse, SchemaRefreshResponse
+    ConnectionTestResponse, SchemaRefreshResponse, ConnectorTypeResponse
 )
-from backend.connectors.factory import get_connector
+from backend.connectors.factory import get_connector, get_available_types
 from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
     refresh_schema, delete_schema_file
@@ -104,6 +104,12 @@ async def list_connections(
     ).all()
 
     return connections
+
+
+@router.get("/types", response_model=list[ConnectorTypeResponse])
+async def get_connector_types():
+    """Return metadata for all available database connector types."""
+    return get_available_types()
 
 
 @router.get("/{connection_id}", response_model=ConnectionResponse)

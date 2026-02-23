@@ -80,11 +80,16 @@ export const useChat = () => {
               chatStore.setCurrentThread(data.thread_id)
               chatStore.addConversation({
                 id: data.thread_id,
-                title: message.slice(0, 50),
+                title: 'Untitled',
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 message_count: 2
               })
+            }
+          },
+          onTitle: (title: string) => {
+            if (chatStore.currentThreadId) {
+              chatStore.updateConversationTitle(chatStore.currentThreadId, title)
             }
           },
           onError: (error: string) => {
@@ -145,10 +150,16 @@ export const useChat = () => {
     }
   }
 
+  const renameConversation = async (threadId: string, title: string) => {
+    await api.chat.updateTitle(threadId, title)
+    chatStore.updateConversationTitle(threadId, title)
+  }
+
   return {
     sendMessage,
     newChat,
     loadConversations,
-    loadMessages
+    loadMessages,
+    renameConversation
   }
 }

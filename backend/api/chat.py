@@ -5,14 +5,46 @@ from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse
+from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse, UpdateTitleRequest
 from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
 from backend.config import settings
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+_TITLE_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-haiku-4-5-20251001",
+}
+
+
+async def _generate_title(user_message: str, assistant_response: str) -> str:
+    """Generate a concise title using a lightweight LLM call."""
+    from backend.llm.factory import get_provider
+    provider_name = settings.default_llm_provider or "openai"
+    model = _TITLE_MODELS.get(provider_name)
+    provider = get_provider(provider_name, model=model)
+
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                f"User: {user_message}\n\n"
+                f"Assistant: {assistant_response[:500]}\n\n"
+                "Generate a concise title (3-8 words) for this conversation. "
+                "Return ONLY the title text."
+            )
+        }
+    ]
+    raw = await provider.chat(messages, temperature=0.3, max_tokens=30)
+    title = raw.strip().strip('"\'').rstrip('.,!?;:')[:80]
+    return title or "Untitled"
 
 
 @router.post("", response_model=ChatResponse)
@@ -42,7 +74,7 @@ async def chat(
             raise HTTPException(status_code=404, detail="Conversation not found")
     else:
         conversation = ConversationService.create_conversation(
-            db, current_user.id, title=request.message[:50]
+            db, current_user.id, title="Untitled"
         )
 
     # Save user message
@@ -146,6 +178,9 @@ async def chat_stream(
 
     async def event_generator():
         try:
+            # Track whether this is a brand-new conversation for title generation
+            is_new_conversation = not request.thread_id
+
             # Get or create conversation
             if request.thread_id:
                 conversation = ConversationService.get_conversation_by_thread(
@@ -156,7 +191,7 @@ async def chat_stream(
                     return
             else:
                 conversation = ConversationService.create_conversation(
-                    db, current_user.id, title=request.message[:50]
+                    db, current_user.id, title="Untitled"
                 )
 
             # Save user message
@@ -222,6 +257,15 @@ async def chat_stream(
                         db.add(agent_step)
                     db.commit()
 
+            # Generate LLM title for new conversations after streaming completes
+            if is_new_conversation and final_message:
+                try:
+                    title = await _generate_title(request.message, final_message)
+                    ConversationService.update_title(db, conversation.id, title)
+                    yield f"data: {json.dumps({'type': 'title', 'content': title})}\n\n"
+                except Exception as title_err:
+                    logger.warning(f"Title generation failed: {title_err}")
+
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
@@ -253,6 +297,21 @@ async def get_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return conversation
+
+
+@router.patch("/conversations/{thread_id}/title")
+async def update_conversation_title(
+    thread_id: str,
+    request: UpdateTitleRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update the title of a conversation."""
+    conversation = ConversationService.get_conversation_by_thread(db, thread_id, current_user.id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    ConversationService.update_title(db, conversation.id, request.title)
+    return {"title": request.title}
 
 
 @router.delete("/conversations/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

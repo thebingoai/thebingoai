@@ -1,12 +1,15 @@
-export enum DatabaseType {
-  POSTGRES = 'postgres',
-  MYSQL = 'mysql'
+export interface ConnectorType {
+  id: string
+  display_name: string
+  description: string
+  default_port: number
+  badge_variant: string
 }
 
 export interface DatabaseConnection {
   id: number
   name: string
-  db_type: DatabaseType
+  db_type: string
   host: string
   port: number
   database: string
@@ -22,7 +25,7 @@ export interface DatabaseConnection {
 
 export interface ConnectionFormData {
   name: string
-  db_type: DatabaseType
+  db_type: string
   host: string
   port: number
   database: string

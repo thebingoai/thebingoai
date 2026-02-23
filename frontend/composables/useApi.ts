@@ -77,6 +77,11 @@ export const useApi = () => {
           method: 'POST',
           headers: getHeaders()
         })
+      },
+      async getTypes() {
+        return $fetch('/api/connections/types', {
+          headers: getHeaders()
+        })
       }
     },
 
@@ -102,6 +107,7 @@ export const useApi = () => {
           onToolResult?: (data: any) => void
           onStatus?: (status: string) => void
           onDone?: (data: any) => void
+          onTitle?: (title: string) => void
           onError?: (error: string) => void
         },
         signal?: AbortSignal
@@ -167,6 +173,9 @@ export const useApi = () => {
                       case 'done':
                         callbacks.onDone?.(data)
                         break
+                      case 'title':
+                        callbacks.onTitle?.(data.content)
+                        break
                       case 'error':
                         callbacks.onError?.(data.error)
                         break
@@ -196,6 +205,13 @@ export const useApi = () => {
         return $fetch(`/api/chat/conversations/${threadId}`, {
           method: 'DELETE',
           headers: getHeaders()
+        })
+      },
+      async updateTitle(threadId: string, title: string) {
+        return $fetch(`/api/chat/conversations/${threadId}/title`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { title }
         })
       }
     },

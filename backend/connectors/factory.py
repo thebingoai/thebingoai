@@ -10,6 +10,20 @@ _CONNECTORS: dict[DatabaseType, Type[BaseConnector]] = {
 }
 
 
+def get_available_types() -> list[dict]:
+    """Return metadata for all registered connector types."""
+    return [
+        {
+            "id": db_type.value,
+            "display_name": cls._db_type_name(),
+            "description": cls._description(),
+            "default_port": cls._default_port(),
+            "badge_variant": cls._badge_variant(),
+        }
+        for db_type, cls in _CONNECTORS.items()
+    ]
+
+
 def get_connector(
     db_type: DatabaseType,
     host: str,

@@ -24,7 +24,13 @@
             leave-from="opacity-100 translate-y-0"
             leave-to="opacity-0 translate-y-full"
           >
-            <DialogPanel class="fixed inset-x-0 bottom-0 w-full transform overflow-hidden rounded-t-2xl bg-white text-left align-middle shadow-xl transition-all max-h-[80vh]">
+            <DialogPanel
+              class="fixed inset-x-0 bottom-0 w-full transform overflow-hidden rounded-t-2xl bg-white text-left align-middle shadow-xl transition-all max-h-[80vh] flex flex-col"
+              :class="[
+                fullHeight ? 'h-[80vh]' : '',
+                panelClass
+              ]"
+            >
               <!-- Drag handle -->
               <div class="flex justify-center py-3 border-b border-gray-200">
                 <div class="w-12 h-1 bg-gray-300 rounded-full" />
@@ -44,7 +50,12 @@
                 </button>
               </div>
 
-              <div class="px-6 py-4 overflow-y-auto">
+              <div
+                class="px-6 py-4 overflow-y-auto flex-1"
+                :class="[
+                  ''
+                ]"
+              >
                 <slot />
               </div>
             </DialogPanel>
@@ -63,10 +74,14 @@ interface Props {
   open: boolean
   title?: string
   closable?: boolean
+  fullHeight?: boolean
+  panelClass?: string
 }
 
 withDefaults(defineProps<Props>(), {
-  closable: true
+  closable: true,
+  fullHeight: false,
+  panelClass: ''
 })
 
 defineEmits<{

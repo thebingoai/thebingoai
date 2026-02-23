@@ -61,3 +61,7 @@ class AgentStepResponse(BaseModel):
 class MessageStepsResponse(BaseModel):
     """Response containing all steps for a message."""
     steps: List[AgentStepResponse]
+
+
+class UpdateTitleRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)

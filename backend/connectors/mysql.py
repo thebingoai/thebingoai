@@ -53,9 +53,22 @@ class MySQLConnector(BaseConnector):
         escaped = name.replace('`', '``')
         return f'`{escaped}`'
 
-    def _db_type_name(self) -> str:
+    @classmethod
+    def _db_type_name(cls) -> str:
         """Return database type name."""
         return "MySQL"
+
+    @classmethod
+    def _default_port(cls) -> int:
+        return 3306
+
+    @classmethod
+    def _description(cls) -> str:
+        return "Popular open-source database"
+
+    @classmethod
+    def _badge_variant(cls) -> str:
+        return "warning"
 
     # ============================================================
     # Overridable Hooks (customize for MySQL)

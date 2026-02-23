@@ -121,13 +121,47 @@ class BaseConnector(ABC):
         """
         pass
 
+    @classmethod
     @abstractmethod
-    def _db_type_name(self) -> str:
+    def _db_type_name(cls) -> str:
         """
         Human-readable database type name for error messages.
 
         Returns:
             Database type (e.g., "PostgreSQL", "MySQL")
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def _default_port(cls) -> int:
+        """
+        Default port number for this database type.
+
+        Returns:
+            Default port (e.g., 5432 for PostgreSQL, 3306 for MySQL)
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def _description(cls) -> str:
+        """
+        Short human-readable description for UI display.
+
+        Returns:
+            Description string (e.g., "Open-source relational database")
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def _badge_variant(cls) -> str:
+        """
+        Badge variant for UI display.
+
+        Returns:
+            Variant string (e.g., "info", "warning")
         """
         pass
 

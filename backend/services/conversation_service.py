@@ -79,6 +79,14 @@ class ConversationService:
         ).order_by(Conversation.updated_at.desc()).limit(limit).all()
 
     @staticmethod
+    def update_title(db: Session, conversation_id: int, title: str) -> None:
+        """Update the title of a conversation."""
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        if conversation:
+            conversation.title = title
+            db.commit()
+
+    @staticmethod
     def delete_conversation(db: Session, thread_id: str, user_id: str) -> bool:
         """Delete a conversation."""
         conversation = ConversationService.get_conversation_by_thread(db, thread_id, user_id)

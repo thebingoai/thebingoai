@@ -80,6 +80,13 @@ export const useChatStore = defineStore('chat', {
       this.conversations = this.conversations.filter(c => c.id !== threadId)
     },
 
+    updateConversationTitle(threadId: string, title: string) {
+      const conversation = this.conversations.find(c => c.id === threadId)
+      if (conversation) {
+        conversation.title = title
+      }
+    },
+
     toggleThinking(messageId: string) {
       if (this.expandedThinking.has(messageId)) {
         this.expandedThinking.delete(messageId)
