@@ -5,10 +5,10 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <UiSkeleton class="aspect-square rounded-lg" />
-      <UiSkeleton class="aspect-square rounded-lg" />
-      <UiSkeleton class="aspect-square rounded-lg" />
+    <div v-if="loading" class="flex flex-wrap gap-4">
+      <UiSkeleton class="h-56 w-56 rounded-lg" />
+      <UiSkeleton class="h-56 w-56 rounded-lg" />
+      <UiSkeleton class="h-56 w-56 rounded-lg" />
     </div>
 
     <!-- Empty State -->
@@ -26,11 +26,11 @@
     </UiEmptyState>
 
     <!-- Connections Grid -->
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div v-else class="flex flex-wrap gap-4">
       <UiCard
         v-for="connection in connections"
         :key="connection.id"
-        class="px-5 py-8 aspect-square cursor-pointer hover:shadow-lg transition-shadow"
+        class="px-5 py-8 h-56 w-56 cursor-pointer hover:shadow-lg transition-shadow"
         @click="openEditDialog(connection)"
       >
         <div class="flex flex-col h-full">
@@ -62,7 +62,7 @@
       <!-- Add Connection card -->
       <button
         @click="openCreateDialog"
-        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg aspect-square hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
+        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-56 w-56 hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
       >
         <component :is="Plus" class="h-6 w-6 text-gray-400" />
         <span class="text-sm text-gray-500">Add Connection</span>
