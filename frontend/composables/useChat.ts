@@ -1,5 +1,5 @@
 import { useChatStore } from '~/stores/chat'
-import type { Message } from '~/stores/chat'
+import type { Message, AgentStep } from '~/stores/chat'
 
 export const useChat = () => {
   const chatStore = useChatStore()
@@ -23,6 +23,7 @@ export const useChat = () => {
       role: 'assistant',
       content: '',
       thinking_steps: [],
+      agent_steps: [],
       created_at: new Date().toISOString()
     }
     chatStore.addMessage(assistantMessage)
@@ -31,6 +32,7 @@ export const useChat = () => {
     let accumulatedContent = ''
     let wordBuffer = ''
     const thinkingSteps: Array<{ step: string; description: string }> = []
+    const agentSteps: AgentStep[] = []
 
     try {
       await api.chat.streamChat(
@@ -51,19 +53,52 @@ export const useChat = () => {
             }
           },
           onToolCall: (data: any) => {
-            const step = {
-              step: data.tool || 'Tool',
-              description: 'Running...'
+            const toolName = data.content?.tool || data.tool || 'Tool'
+            const args = data.content?.args || {}
+
+            // Rich agent step
+            const step: AgentStep = {
+              agent_type: 'orchestrator',
+              step_type: 'tool_call',
+              tool_name: toolName,
+              content: { args },
+              status: 'started'
             }
-            thinkingSteps.push(step)
-            chatStore.updateLastMessage({ thinking_steps: [...thinkingSteps] })
+            agentSteps.push(step)
+
+            // Legacy thinking step for backward compat
+            thinkingSteps.push({ step: toolName, description: 'Running...' })
+            chatStore.updateLastMessage({
+              thinking_steps: [...thinkingSteps],
+              agent_steps: [...agentSteps]
+            })
           },
           onToolResult: (data: any) => {
-            // Update the last thinking step to completed
+            const toolName = data.content?.tool || data.tool || 'Tool'
+            const result = data.content?.result || {}
+
+            // Find the most recent started tool_call step for this tool and mark it completed
+            const lastPendingIdx = [...agentSteps].reverse().findIndex(
+              s => s.step_type === 'tool_call' && s.status === 'started' && s.tool_name === toolName
+            )
+            if (lastPendingIdx !== -1) {
+              const realIdx = agentSteps.length - 1 - lastPendingIdx
+              agentSteps[realIdx].status = 'completed'
+              agentSteps[realIdx].content.result = result
+              // Attach data agent sub-steps if present
+              if (result?.steps) {
+                agentSteps[realIdx].content.sub_steps = result.steps
+              }
+            }
+
+            // Legacy thinking step update
             if (thinkingSteps.length > 0) {
               thinkingSteps[thinkingSteps.length - 1].description = 'Completed'
-              chatStore.updateLastMessage({ thinking_steps: [...thinkingSteps] })
             }
+            chatStore.updateLastMessage({
+              thinking_steps: [...thinkingSteps],
+              agent_steps: [...agentSteps]
+            })
           },
           onStatus: (status: string) => {
             console.log('Status:', status)
@@ -137,14 +172,40 @@ export const useChat = () => {
       // Backend returns ConversationResponse with embedded messages
       const conversation = await api.chat.getMessages(threadId) as any
       // Map ChatMessage[] to frontend Message type
-      const messages = (conversation.messages || []).map((msg: any, index: number) => ({
-        id: `${threadId}-${index}`,
+      const messages: Message[] = (conversation.messages || []).map((msg: any, index: number) => ({
+        id: msg.id ? String(msg.id) : `${threadId}-${index}`,
         role: msg.role,
         content: msg.content,
-        created_at: msg.timestamp
+        created_at: msg.timestamp,
+        agent_steps: [],
+        thinking_steps: []
       }))
       chatStore.setMessages(messages)
       chatStore.setCurrentThread(threadId)
+
+      // Load agent steps for assistant messages
+      for (const msg of messages) {
+        if (msg.role === 'assistant' && msg.id && !msg.id.includes('-')) {
+          try {
+            const stepsResponse = await api.chat.getMessageSteps(threadId, msg.id) as any
+            if (stepsResponse?.steps?.length > 0) {
+              const agentSteps: AgentStep[] = stepsResponse.steps.map((s: any) => ({
+                agent_type: s.agent_type,
+                step_type: s.step_type,
+                tool_name: s.tool_name,
+                content: s.content || {},
+                duration_ms: s.duration_ms
+              }))
+              const msgInStore = chatStore.messages.find(m => m.id === msg.id)
+              if (msgInStore) {
+                msgInStore.agent_steps = agentSteps
+              }
+            }
+          } catch {
+            // Steps may not exist for older messages — ignore silently
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to load messages:', error)
     }

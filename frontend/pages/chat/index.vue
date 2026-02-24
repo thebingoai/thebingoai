@@ -1,7 +1,15 @@
 <template>
-  <div class="flex flex-1 flex-col">
-    <ChatThread />
-    <ChatInputBar @send="handleSend" />
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Main chat area -->
+    <div class="flex flex-1 flex-col min-w-0">
+      <ChatThread />
+      <ChatInputBar @send="handleSend" />
+    </div>
+    <!-- Reasoning panel (slides in from the right) -->
+    <ChatReasoningPanel
+      v-if="chatStore.reasoningPanelOpen"
+      class="w-96 shrink-0 border-l border-gray-200"
+    />
   </div>
 </template>
 
