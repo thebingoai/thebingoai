@@ -176,3 +176,32 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
 
     # Return list of tools with captured context
     return [list_tables, get_table_schema, search_tables, execute_query]
+
+
+# ---------------------------------------------------------------------------
+# Individual tool builder functions for use with the tool registry.
+# Each builder returns a list containing the single tool it builds.
+# ---------------------------------------------------------------------------
+
+def build_list_tables_tool(context: AgentContext) -> List:
+    """Return [list_tables] tool bound to *context*."""
+    tools = build_data_agent_tools(context)
+    return [t for t in tools if t.name == "list_tables"]
+
+
+def build_get_table_schema_tool(context: AgentContext) -> List:
+    """Return [get_table_schema] tool bound to *context*."""
+    tools = build_data_agent_tools(context)
+    return [t for t in tools if t.name == "get_table_schema"]
+
+
+def build_search_tables_tool(context: AgentContext) -> List:
+    """Return [search_tables] tool bound to *context*."""
+    tools = build_data_agent_tools(context)
+    return [t for t in tools if t.name == "search_tables"]
+
+
+def build_execute_query_tool(context: AgentContext) -> List:
+    """Return [execute_query] tool bound to *context*."""
+    tools = build_data_agent_tools(context)
+    return [t for t in tools if t.name == "execute_query"]

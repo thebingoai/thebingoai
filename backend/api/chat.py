@@ -104,11 +104,32 @@ async def chat(
         ).all()
         accessible_ids = [conn.id for conn in accessible_connections]
 
+    # Load team policies and custom agents (Phase 4)
+    from backend.services.policy_service import PolicyService
+    from backend.models.custom_agent import CustomAgent as CustomAgentModel
+    team_id = PolicyService.get_user_primary_team(db, current_user.id)
+    allowed_tool_keys: list = []
+    team_connection_ids: list = accessible_ids
+    custom_agents = []
+    if team_id:
+        allowed_tool_keys = PolicyService.get_team_allowed_tools(db, team_id)
+        team_allowed_connections = PolicyService.get_team_allowed_connections(db, team_id)
+        # Intersect user-accessible connections with team policy
+        if team_allowed_connections:
+            team_connection_ids = [c for c in accessible_ids if c in team_allowed_connections]
+        custom_agents = db.query(CustomAgentModel).filter(
+            CustomAgentModel.user_id == current_user.id,
+            CustomAgentModel.team_id == team_id,
+            CustomAgentModel.is_active == True,
+        ).all()
+
     # Build AgentContext
     context = AgentContext(
         user_id=current_user.id,
-        available_connections=accessible_ids,
-        thread_id=conversation.thread_id
+        available_connections=team_connection_ids,
+        thread_id=conversation.thread_id,
+        team_id=team_id,
+        allowed_tool_keys=allowed_tool_keys,
     )
 
     # Fetch conversation history (exclude the just-saved user message)
@@ -119,7 +140,8 @@ async def chat(
     result = await run_orchestrator(
         user_question=request.message,
         context=context,
-        history=history
+        history=history,
+        custom_agents=custom_agents or None,
     )
 
     # Save assistant message
@@ -220,11 +242,31 @@ async def chat_stream(
                 ).all()
                 accessible_ids = [conn.id for conn in accessible_connections]
 
+            # Load team policies and custom agents (Phase 4)
+            from backend.services.policy_service import PolicyService
+            from backend.models.custom_agent import CustomAgent as CustomAgentModel
+            stream_team_id = PolicyService.get_user_primary_team(db, current_user.id)
+            stream_allowed_tools: list = []
+            stream_connection_ids: list = accessible_ids
+            stream_custom_agents = []
+            if stream_team_id:
+                stream_allowed_tools = PolicyService.get_team_allowed_tools(db, stream_team_id)
+                stream_team_connections = PolicyService.get_team_allowed_connections(db, stream_team_id)
+                if stream_team_connections:
+                    stream_connection_ids = [c for c in accessible_ids if c in stream_team_connections]
+                stream_custom_agents = db.query(CustomAgentModel).filter(
+                    CustomAgentModel.user_id == current_user.id,
+                    CustomAgentModel.team_id == stream_team_id,
+                    CustomAgentModel.is_active == True,
+                ).all()
+
             # Build AgentContext
             context = AgentContext(
                 user_id=current_user.id,
-                available_connections=accessible_ids,
-                thread_id=conversation.thread_id
+                available_connections=stream_connection_ids,
+                thread_id=conversation.thread_id,
+                team_id=stream_team_id,
+                allowed_tool_keys=stream_allowed_tools,
             )
 
             # Fetch conversation history (exclude the just-saved user message)
@@ -234,7 +276,7 @@ async def chat_stream(
             # Stream orchestrator execution
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, context, history=history):
+            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

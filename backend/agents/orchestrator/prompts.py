@@ -1,3 +1,9 @@
+from typing import List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.models.custom_agent import CustomAgent
+
+# Kept for backward compatibility (used when no custom agents are configured)
 ORCHESTRATOR_SYSTEM_PROMPT = """You are an intelligent orchestrator agent that routes user requests to specialized sub-agents and skills.
 
 Available sub-agents:
@@ -31,3 +37,29 @@ Example routing decisions:
 - "Summarize the last query results" → summarize_text skill
 
 You have conversation memory via thread_id - reference past context when helpful."""
+
+_ORCHESTRATOR_BASE = """You are an intelligent orchestrator agent that routes user requests to specialized agents.
+
+Available agents:
+{agent_descriptions}
+
+Guidelines:
+1. Understand intent: Determine which agent best handles the request
+2. Route appropriately: Choose the right agent based on its description
+3. Handle errors: If an agent fails, try alternative approaches
+4. Provide context: Explain what you're doing and why
+
+You have conversation memory via thread_id - reference past context when helpful."""
+
+
+def build_orchestrator_prompt(custom_agents: "List[CustomAgent]") -> str:
+    """Build a dynamic orchestrator system prompt from the user's active custom agents."""
+    if not custom_agents:
+        return ORCHESTRATOR_SYSTEM_PROMPT
+
+    descriptions = []
+    for i, agent in enumerate(custom_agents, 1):
+        desc = agent.description or "No description provided."
+        descriptions.append(f"{i}. **{agent.name}**: {desc}")
+
+    return _ORCHESTRATOR_BASE.format(agent_descriptions="\n".join(descriptions))

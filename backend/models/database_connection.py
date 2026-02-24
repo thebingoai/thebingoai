@@ -6,6 +6,7 @@ from backend.security.encryption import encrypt_password, decrypt_password
 import enum
 
 
+
 class DatabaseType(str, enum.Enum):
     POSTGRES = "postgres"
     MYSQL = "mysql"
@@ -16,6 +17,7 @@ class DatabaseConnection(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    org_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     name = Column(String, nullable=False)  # User-friendly name
     db_type = Column(Enum(DatabaseType), nullable=False)
     host = Column(String, nullable=False)

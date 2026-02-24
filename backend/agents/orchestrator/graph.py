@@ -1,28 +1,43 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
-from backend.agents.orchestrator.prompts import ORCHESTRATOR_SYSTEM_PROMPT
+from backend.agents.orchestrator.prompts import ORCHESTRATOR_SYSTEM_PROMPT, build_orchestrator_prompt
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.skills import get_skill_registry
 from backend.agents.context import AgentContext
+from backend.agents.tool_registry import build_tools_for_keys
 from backend.llm.factory import get_provider
 from backend.config import settings
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import json
 import logging
 import time
 
+if TYPE_CHECKING:
+    from backend.models.custom_agent import CustomAgent
+
 logger = logging.getLogger(__name__)
 
 
-def build_orchestrator_tools(context: AgentContext):
+def build_orchestrator_tools(context: AgentContext, custom_agents: Optional[List["CustomAgent"]] = None):
     """
-    Build orchestrator tools with sub-agents as tools.
+    Build orchestrator tools.
 
-    Each sub-agent is wrapped as a tool that the orchestrator can invoke.
-    Context is captured via closure for thread-safety.
+    When custom_agents is provided (Phase 4), each custom agent is wrapped as a
+    single tool for the orchestrator to invoke. Runtime enforcement filters out
+    tools and connections that are no longer in the team's policy.
+
+    When custom_agents is None or empty, falls back to the legacy static tools
+    (data_agent, rag_agent, recall_memory + skills) for backward compatibility.
     """
+    if custom_agents:
+        return _build_dynamic_tools(context, custom_agents)
+    return _build_legacy_tools(context)
+
+
+def _build_legacy_tools(context: AgentContext):
+    """Legacy static tools used when no custom agents are configured."""
 
     @tool
     async def data_agent(question: str) -> str:
@@ -78,10 +93,80 @@ def build_orchestrator_tools(context: AgentContext):
     return [data_agent, rag_agent, recall_memory] + skill_tools
 
 
+def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent"]) -> List:
+    """
+    Build one tool per custom agent definition.
+
+    Each custom agent is wrapped as a single callable tool. At build time the
+    effective tool set is computed by intersecting the agent's stored tool_keys
+    with the team's current allowed_tool_keys (runtime enforcement).
+    """
+    provider = get_provider(settings.default_llm_provider)
+    tools = []
+
+    for agent_def in custom_agents:
+        # Runtime enforcement: intersect stored keys with current team policy
+        effective_tool_keys = [
+            k for k in (agent_def.tool_keys or [])
+            if context.can_use_tool(k)
+        ]
+        effective_connection_ids = [
+            c for c in (agent_def.connection_ids or [])
+            if context.can_access_connection(c)
+        ]
+
+        # Scoped context for this sub-agent
+        agent_context = AgentContext(
+            user_id=context.user_id,
+            available_connections=effective_connection_ids,
+            thread_id=context.thread_id,
+            team_id=context.team_id,
+            allowed_tool_keys=effective_tool_keys,
+        )
+
+        # Build the concrete LangChain tools for this agent
+        agent_tools = build_tools_for_keys(effective_tool_keys, agent_context)
+
+        agent_name = agent_def.name
+        agent_description = agent_def.description or f"Custom agent: {agent_name}"
+        agent_system_prompt = agent_def.system_prompt
+
+        @tool(name=agent_name, description=agent_description)
+        async def invoke_custom_agent(
+            question: str,
+            _system_prompt: str = agent_system_prompt,
+            _tools: list = agent_tools,
+            _ctx: AgentContext = agent_context,
+        ) -> str:
+            """Invoke a custom sub-agent with its configured tools."""
+            sub_agent = create_react_agent(
+                model=provider.get_langchain_llm(),
+                tools=_tools,
+                prompt=_system_prompt,
+            )
+            try:
+                result = await sub_agent.ainvoke({"messages": [HumanMessage(content=question)]})
+                messages = result.get("messages", [])
+                final_answer = None
+                for msg in reversed(messages):
+                    if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
+                        final_answer = msg.content
+                        break
+                return json.dumps({"success": True, "message": final_answer or "Completed"})
+            except Exception as exc:
+                logger.error(f"Custom agent '{agent_name}' failed: {exc}")
+                return json.dumps({"success": False, "message": str(exc)})
+
+        tools.append(invoke_custom_agent)
+
+    return tools
+
+
 async def run_orchestrator(
     user_question: str,
     context: AgentContext,
-    history: list = None
+    history: list = None,
+    custom_agents: Optional[List["CustomAgent"]] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -89,24 +174,23 @@ async def run_orchestrator(
     Args:
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
+        custom_agents: Optional list of active CustomAgent records for this user
 
     Returns:
         Dict with success, message, metadata
     """
-    # Build tools with captured context
-    tools = build_orchestrator_tools(context)
+    tools = build_orchestrator_tools(context, custom_agents)
+    prompt = build_orchestrator_prompt(custom_agents) if custom_agents else ORCHESTRATOR_SYSTEM_PROMPT
 
-    # Get LLM provider
     provider = get_provider(settings.default_llm_provider)
 
     orchestrator = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        prompt=ORCHESTRATOR_SYSTEM_PROMPT
+        prompt=prompt,
     )
 
     try:
-        # Build messages list from history + current message
         messages = []
         if history:
             for msg in history:
@@ -118,7 +202,6 @@ async def run_orchestrator(
 
         result = await orchestrator.ainvoke({"messages": messages})
 
-        # Extract final answer
         messages = result.get("messages", [])
 
         final_answer = None
@@ -145,7 +228,8 @@ async def run_orchestrator(
 async def stream_orchestrator(
     user_question: str,
     context: AgentContext,
-    history: list = None
+    history: list = None,
+    custom_agents: Optional[List["CustomAgent"]] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -153,27 +237,25 @@ async def stream_orchestrator(
     Args:
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
+        custom_agents: Optional list of active CustomAgent records for this user
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
     """
     try:
-        # Status update
         yield {"type": "status", "content": "Starting orchestrator..."}
 
-        # Build tools with captured context
-        tools = build_orchestrator_tools(context)
+        tools = build_orchestrator_tools(context, custom_agents)
+        prompt = build_orchestrator_prompt(custom_agents) if custom_agents else ORCHESTRATOR_SYSTEM_PROMPT
 
-        # Get LLM provider
         provider = get_provider(settings.default_llm_provider)
 
         orchestrator = create_react_agent(
             model=provider.get_langchain_llm(),
             tools=tools,
-            prompt=ORCHESTRATOR_SYSTEM_PROMPT
+            prompt=prompt,
         )
 
-        # Build messages list from history + current message
         messages = []
         if history:
             for msg in history:
@@ -183,35 +265,19 @@ async def stream_orchestrator(
                     messages.append(AIMessage(content=msg.content))
         messages.append(HumanMessage(content=user_question))
 
-        # Collect steps for persistence after streaming
         collected_steps = []
         step_number = 0
-
-        # Track tool start times for duration computation
         step_start_times: Dict[str, float] = {}
-
-        # Buffer tokens to avoid yielding intermediate reasoning text.
-        # The ReAct loop makes multiple LLM calls: first to reason/plan (then calls a tool),
-        # then to synthesize the final answer. By buffering and clearing on tool_start,
-        # only the final answer tokens (after all tools complete) are flushed to the client.
         token_buffer = []
-
-        # Track the run_id of the active LLM stream to prevent duplicate tokens.
-        # LangGraph v2 astream_events propagates events at multiple hierarchy levels,
-        # meaning a single token can produce multiple on_chat_model_stream events with
-        # different run_ids. We lock to the first run_id seen and discard others.
         active_stream_run_id = None
 
-        # Stream events from orchestrator
         async for event in orchestrator.astream_events(
             {"messages": messages},
             version="v2"
         ):
             kind = event.get("event")
 
-            # Tool invocations — include args from event data
             if kind == "on_tool_start":
-                # Discard buffered reasoning tokens from the planning LLM call
                 token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
@@ -231,24 +297,18 @@ async def stream_orchestrator(
                     "content": {"tool": tool_name, "status": "started", "args": tool_input}
                 }
 
-            # Tool results — include parsed result data
             elif kind == "on_tool_end":
-                # Discard any buffered tokens from nested LLM calls (e.g. data agent's
-                # internal synthesis) so only the orchestrator's final answer remains.
                 token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
                 tool_output = event.get("data", {}).get("output", None)
 
-                # Compute duration from tracked start time
                 start_time = step_start_times.pop(tool_name, None)
                 duration_ms = int((time.time() - start_time) * 1000) if start_time is not None else None
 
-                # LangGraph v2 may return a ToolMessage object instead of a raw string
                 if hasattr(tool_output, "content"):
                     tool_output = tool_output.content
 
-                # Parse JSON string output from sub-agents
                 parsed_output = None
                 if isinstance(tool_output, str):
                     try:
@@ -256,14 +316,11 @@ async def stream_orchestrator(
                     except (json.JSONDecodeError, TypeError):
                         parsed_output = tool_output
                 elif tool_output is not None:
-                    # Fallback: convert non-serializable types to string
                     try:
-                        json.dumps(tool_output)  # test serializability
+                        json.dumps(tool_output)
                         parsed_output = tool_output
                     except (TypeError, ValueError):
                         parsed_output = str(tool_output)
-                else:
-                    parsed_output = None
 
                 step_number += 1
                 step = {
@@ -280,11 +337,6 @@ async def stream_orchestrator(
                     "content": {"tool": tool_name, "status": "completed", "result": parsed_output, "duration_ms": duration_ms}
                 }
 
-            # LLM streaming tokens — buffer instead of yielding immediately.
-            # Tokens before a tool_start are intermediate reasoning; token_buffer is
-            # cleared on tool_start so only the final synthesis tokens remain.
-            # run_id deduplication prevents the same token being buffered twice when
-            # LangGraph propagates the event at multiple hierarchy levels.
             elif kind == "on_chat_model_stream":
                 run_id = event.get("run_id")
                 if active_stream_run_id is None:
@@ -297,11 +349,9 @@ async def stream_orchestrator(
                     if content:
                         token_buffer.append(content)
 
-        # Flush the final answer tokens (only the last LLM synthesis call survives)
         for token in token_buffer:
             yield {"type": "token", "content": token}
 
-        # Done event — include collected steps for chat.py to persist
         yield {
             "type": "done",
             "content": "Orchestrator completed",

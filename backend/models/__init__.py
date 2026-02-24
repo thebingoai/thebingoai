@@ -10,3 +10,16 @@ from backend.models.conversation import Conversation
 from backend.models.message import Message
 from backend.models.agent_step import AgentStep, AgentType, StepType
 from backend.models.token_usage import TokenUsage, OperationType
+
+# Phase 1: Org/Team Foundation
+from backend.models.organization import Organization
+from backend.models.team import Team
+from backend.models.team_membership import TeamMembership, MemberRole
+
+# Phase 2: Tool Catalog & Team Policies
+from backend.models.tool_catalog import ToolCatalog, ToolCategory
+from backend.models.team_tool_policy import TeamToolPolicy
+from backend.models.team_connection_policy import TeamConnectionPolicy
+
+# Phase 3: Custom Agent Registry
+from backend.models.custom_agent import CustomAgent
