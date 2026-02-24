@@ -6,9 +6,9 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <UiSkeleton class="h-40 rounded-lg" />
-      <UiSkeleton class="h-40 rounded-lg" />
-      <UiSkeleton class="h-40 rounded-lg" />
+      <UiSkeleton class="aspect-square rounded-lg" />
+      <UiSkeleton class="aspect-square rounded-lg" />
+      <UiSkeleton class="aspect-square rounded-lg" />
     </div>
 
     <!-- Empty State -->
@@ -30,43 +30,39 @@
       <UiCard
         v-for="connection in connections"
         :key="connection.id"
-        class="p-5 cursor-pointer hover:shadow-lg transition-shadow"
+        class="px-5 py-8 aspect-square cursor-pointer hover:shadow-lg transition-shadow"
         @click="openEditDialog(connection)"
       >
-        <div class="flex flex-col h-full gap-3">
-          <div class="flex items-start gap-3">
-            <div
-              class="h-8 w-8 shrink-0"
-              v-if="connectorIcons[connection.db_type]"
-              v-html="connectorIcons[connection.db_type]"
-            />
-            <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
-            <p class="text-sm font-medium text-gray-900 truncate">{{ connection.name }}</p>
+        <div class="flex flex-col h-full">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-3 min-w-0">
+              <div
+                class="h-8 w-8 shrink-0"
+                v-if="connectorIcons[connection.db_type]"
+                v-html="connectorIcons[connection.db_type]"
+              />
+              <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
+              <p class="text-sm font-medium text-gray-900 truncate">{{ connection.name }}</p>
+            </div>
+            <span v-if="connection.is_active" class="flex items-center justify-center h-6 w-6 rounded-full bg-green-500 shrink-0">
+              <Check class="h-3.5 w-3.5 text-white" />
+            </span>
+            <span v-else class="flex items-center justify-center h-6 w-6 rounded-full bg-red-500 shrink-0">
+              <X class="h-3.5 w-3.5 text-white" />
+            </span>
           </div>
-          <div class="flex flex-wrap gap-1.5">
-            <UiBadge
-              :variant="getConnectorType(connection.db_type)?.badge_variant || 'info'"
-              size="sm"
-            >
-              {{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}
-            </UiBadge>
+          <div class="flex flex-wrap gap-1.5 mt-3">
             <UiBadge v-if="connection.ssl_enabled" variant="success" size="sm">
               SSL
             </UiBadge>
-            <UiBadge v-if="!connection.is_active" variant="error" size="sm">
-              Inactive
-            </UiBadge>
           </div>
-          <p class="text-xs text-gray-500 truncate">
-            {{ connection.host }}:{{ connection.port }}/{{ connection.database }}
-          </p>
         </div>
       </UiCard>
 
       <!-- Add Connection card -->
       <button
         @click="openCreateDialog"
-        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-40 hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
+        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg aspect-square hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
       >
         <component :is="Plus" class="h-6 w-6 text-gray-400" />
         <span class="text-sm text-gray-500">Add Connection</span>
