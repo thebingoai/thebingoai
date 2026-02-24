@@ -56,6 +56,10 @@
               SSL
             </UiBadge>
           </div>
+          <div class="mt-auto flex flex-col gap-0.5">
+            <p v-if="connection.table_count != null" class="text-xs text-gray-400">{{ connection.table_count }} tables</p>
+            <p v-if="connection.schema_generated_at" class="text-xs text-gray-400">{{ formatRelativeDate(connection.schema_generated_at) }}</p>
+          </div>
         </div>
       </UiCard>
 
@@ -268,8 +272,118 @@
           </div>
         </div>
 
-        <!-- 60% reserved -->
-        <div class="w-3/5"></div>
+        <!-- 60% schema panel -->
+        <div class="w-3/5 border-l border-gray-200 pl-6 flex flex-col gap-3 overflow-hidden">
+          <div v-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400">
+            <Database class="h-4 w-4" />
+            Save the connection to explore its schema.
+          </div>
+          <template v-else>
+            <!-- Header -->
+            <div class="flex items-center gap-2 shrink-0">
+              <h3 class="text-sm font-medium text-gray-900">Database Schema</h3>
+              <span v-if="schema" class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                {{ schema.table_names.length }} tables
+              </span>
+            </div>
+
+            <!-- Loading state -->
+            <div v-if="schemaLoading" class="space-y-2 shrink-0">
+              <UiSkeleton class="h-5 w-full" />
+              <UiSkeleton class="h-5 w-5/6" />
+              <UiSkeleton class="h-5 w-4/6" />
+            </div>
+
+            <!-- Error state -->
+            <div v-else-if="schemaError" class="text-sm text-red-500 shrink-0">
+              {{ schemaError }}
+            </div>
+
+            <!-- No schema yet -->
+            <div v-else-if="!schema" class="flex items-center gap-2 text-sm text-gray-400 shrink-0">
+              <Database class="h-4 w-4" />
+              Click "Refresh Schema" to discover database structure.
+            </div>
+
+            <!-- Schema tree -->
+            <template v-else>
+              <!-- Search -->
+              <div class="relative shrink-0">
+                <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  v-model="schemaSearch"
+                  type="text"
+                  placeholder="Filter tables..."
+                  class="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <!-- Tree -->
+              <div class="overflow-y-auto flex-1 space-y-1">
+                <div v-for="(schemaData, schemaName) in filteredSchemas" :key="schemaName">
+                  <!-- Schema row -->
+                  <button
+                    @click="toggleSchema(String(schemaName))"
+                    class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
+                  >
+                    <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                    <Database class="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                    <span class="text-xs font-medium text-gray-700 truncate">{{ schemaName }}</span>
+                    <span class="text-xs text-gray-400 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
+                  </button>
+
+                  <!-- Tables -->
+                  <div v-if="expandedSchemas[String(schemaName)]" class="ml-4 space-y-0.5">
+                    <div v-for="(tableData, tableName) in schemaData.tables" :key="tableName">
+                      <!-- Table row -->
+                      <button
+                        @click="toggleTable(`${schemaName}.${tableName}`)"
+                        class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
+                      >
+                        <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <Table2 class="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                        <span class="text-xs text-gray-700 truncate">{{ tableName }}</span>
+                        <span v-if="tableData.row_count != null" class="text-xs text-gray-400 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
+                      </button>
+
+                      <!-- Columns -->
+                      <div v-if="expandedTables[`${schemaName}.${tableName}`]" class="ml-6 space-y-0.5">
+                        <div
+                          v-for="col in tableData.columns"
+                          :key="col.name"
+                          class="flex items-center gap-1.5 py-0.5 px-2 text-xs"
+                        >
+                          <Key v-if="col.primary_key" class="h-3 w-3 text-amber-500 shrink-0" />
+                          <span v-else class="h-3 w-3 shrink-0" />
+                          <span class="text-gray-600 truncate">{{ col.name }}</span>
+                          <span class="text-gray-400 bg-gray-100 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
+                          <span v-if="col.nullable" class="text-gray-400 shrink-0">?</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Relationships -->
+              <div v-if="schema.relationships.length > 0" class="border-t border-gray-100 pt-3 shrink-0">
+                <h4 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Relationships</h4>
+                <div class="space-y-1 overflow-y-auto max-h-32">
+                  <div
+                    v-for="rel in schema.relationships"
+                    :key="`${rel.from}-${rel.to}`"
+                    class="flex items-center gap-1.5 text-xs text-gray-500"
+                  >
+                    <Link2 class="h-3 w-3 shrink-0" />
+                    <span class="font-mono truncate">{{ rel.from }}</span>
+                    <span class="shrink-0">→</span>
+                    <span class="font-mono truncate">{{ rel.to }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </template>
+        </div>
       </div>
     </UiBottomSheet>
 
@@ -304,9 +418,9 @@
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import type { DatabaseConnection, ConnectionFormData, ConnectorType } from '~/types/connection'
+import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema } from '~/types/connection'
 
 const api = useApi()
 
@@ -343,6 +457,14 @@ const refreshingId = ref<number | null>(null)
 const testing = ref(false)
 const testSuccess = ref(false)
 
+// Schema state
+const schema = ref<DatabaseSchema | null>(null)
+const schemaLoading = ref(false)
+const schemaError = ref<string | null>(null)
+const schemaSearch = ref('')
+const expandedSchemas = ref<Record<string, boolean>>({})
+const expandedTables = ref<Record<string, boolean>>({})
+
 // Helpers
 function getConnectorType(id: string): ConnectorType | undefined {
   return connectorTypes.value.find(t => t.id === id)
@@ -355,6 +477,25 @@ const typePickerTitle = computed(() => {
     return `Choose a Database : ${typeName} Connection`
   }
   return 'Choose a Database'
+})
+
+const filteredSchemas = computed(() => {
+  if (!schema.value) return {}
+  const search = schemaSearch.value.toLowerCase()
+  if (!search) return schema.value.schemas
+  const result: Record<string, any> = {}
+  for (const [schemaName, schemaData] of Object.entries(schema.value.schemas)) {
+    const filteredTables: Record<string, any> = {}
+    for (const [tableName, tableData] of Object.entries(schemaData.tables)) {
+      if (tableName.toLowerCase().includes(search)) {
+        filteredTables[tableName] = tableData
+      }
+    }
+    if (Object.keys(filteredTables).length > 0) {
+      result[schemaName] = { ...schemaData, tables: filteredTables }
+    }
+  }
+  return result
 })
 
 // Fetch data on mount
@@ -382,6 +523,37 @@ async function fetchConnectorTypes() {
   } catch (err: any) {
     toast.error(err?.data?.detail || err?.message || 'Failed to fetch connector types')
   }
+}
+
+async function fetchSchema(connectionId: number) {
+  try {
+    schemaLoading.value = true
+    schemaError.value = null
+    schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
+    // Auto-expand the first schema
+    if (schema.value) {
+      const schemaNames = Object.keys(schema.value.schemas)
+      if (schemaNames.length === 1) {
+        expandedSchemas.value[schemaNames[0]] = true
+      }
+    }
+  } catch (err: any) {
+    if (err?.status === 404 || err?.statusCode === 404) {
+      schema.value = null
+    } else {
+      schemaError.value = err?.data?.detail || err?.message || 'Failed to load schema'
+    }
+  } finally {
+    schemaLoading.value = false
+  }
+}
+
+function toggleSchema(name: string) {
+  expandedSchemas.value[name] = !expandedSchemas.value[name]
+}
+
+function toggleTable(key: string) {
+  expandedTables.value[key] = !expandedTables.value[key]
 }
 
 function handleTypePickerClose(value: boolean) {
@@ -458,8 +630,16 @@ function openEditDialog(connection: DatabaseConnection) {
   }
   formErrors.value = {}
   testSuccess.value = false
+  // Reset schema state
+  schema.value = null
+  schemaError.value = null
+  schemaSearch.value = ''
+  expandedSchemas.value = {}
+  expandedTables.value = {}
   // Edit skips type picker, opens form sheet directly
   showFormSheet.value = true
+  // Fetch schema in background
+  fetchSchema(connection.id)
 }
 
 function validateForm(): boolean {
@@ -598,6 +778,12 @@ async function refreshSchema(connection: DatabaseConnection) {
     await api.connections.refreshSchema(String(connection.id))
     toast.success('Schema refreshed successfully')
     await fetchConnections()
+    // Refetch schema to update tree panel
+    if (editingConnection.value?.id === connection.id) {
+      expandedSchemas.value = {}
+      expandedTables.value = {}
+      await fetchSchema(connection.id)
+    }
   } catch (err: any) {
     const errorMessage = err?.data?.detail || err?.message || 'Failed to refresh schema'
     toast.error(errorMessage)

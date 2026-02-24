@@ -7,12 +7,13 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.connection import (
     ConnectionCreate, ConnectionUpdate, ConnectionResponse,
-    ConnectionTestResponse, SchemaRefreshResponse, ConnectorTypeResponse
+    ConnectionTestResponse, SchemaRefreshResponse, ConnectorTypeResponse,
+    SchemaResponse
 )
 from backend.connectors.factory import get_connector, get_available_types
 from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
-    refresh_schema, delete_schema_file
+    refresh_schema, delete_schema_file, load_schema_file
 )
 from datetime import datetime
 import logging
@@ -79,6 +80,7 @@ async def create_connection(
             # Update connection with schema info
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
+            connection.table_count = len(schema_data["table_names"])
             db.commit()
             db.refresh(connection)
 
@@ -273,9 +275,13 @@ async def refresh_connection_schema(
                 connection.db_type.value
             )
 
-            # Update connection timestamp
+            # Load refreshed schema to get table count
+            schema_json = load_schema_file(connection.id)
+
+            # Update connection timestamp and table count
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
+            connection.table_count = len(schema_json["table_names"])
             db.commit()
             db.refresh(connection)
 
@@ -289,4 +295,34 @@ async def refresh_connection_schema(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Schema refresh failed: {str(e)}"
+        )
+
+
+@router.get("/{connection_id}/schema", response_model=SchemaResponse)
+async def get_connection_schema(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get cached schema JSON for a database connection.
+
+    Returns the full schema including schemas, tables, columns, and relationships.
+    Returns 404 if schema has not been generated yet.
+    """
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    try:
+        schema_json = load_schema_file(connection_id)
+        return schema_json
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Schema not yet generated. Create the connection or use the refresh endpoint."
         )

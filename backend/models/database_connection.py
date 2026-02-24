@@ -30,6 +30,7 @@ class DatabaseConnection(Base, TimestampMixin):
     # Schema caching
     schema_json_path = Column(String, nullable=True)
     schema_generated_at = Column(DateTime, nullable=True)
+    table_count = Column(Integer, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="database_connections")

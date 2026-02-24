@@ -89,6 +89,11 @@ export const useApi = () => {
           headers: getHeaders(),
           body: data
         })
+      },
+      async getSchema(id: string) {
+        return $fetch(`/api/connections/${id}/schema`, {
+          headers: getHeaders()
+        })
       }
     },
 

@@ -19,8 +19,37 @@ export interface DatabaseConnection {
   user_id: string
   is_active: boolean
   schema_generated_at: string | null
+  table_count: number | null
   created_at: string
   updated_at: string
+}
+
+export interface SchemaColumn {
+  name: string
+  type: string
+  nullable: boolean
+  default: string | null
+  primary_key: boolean
+}
+
+export interface SchemaTable {
+  row_count: number | null
+  columns: SchemaColumn[]
+}
+
+export interface SchemaRelationship {
+  from: string
+  to: string
+}
+
+export interface DatabaseSchema {
+  connection_id: number
+  connection_name: string
+  db_type: string
+  generated_at: string
+  schemas: Record<string, { tables: Record<string, SchemaTable> }>
+  table_names: string[]
+  relationships: SchemaRelationship[]
 }
 
 export interface ConnectionFormData {

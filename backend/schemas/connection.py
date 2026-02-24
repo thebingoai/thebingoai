@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from backend.models.database_connection import DatabaseType
 from datetime import datetime
 
@@ -60,6 +60,7 @@ class ConnectionResponse(BaseModel):
     is_active: bool
     # schema_json_path removed to prevent filesystem path leakage
     schema_generated_at: Optional[datetime]
+    table_count: Optional[int]
     created_at: datetime
     updated_at: datetime
 
@@ -84,3 +85,13 @@ class SchemaRefreshResponse(BaseModel):
     success: bool
     message: str
     schema_generated_at: datetime
+
+
+class SchemaResponse(BaseModel):
+    connection_id: int
+    connection_name: str
+    db_type: str
+    generated_at: str
+    schemas: Dict[str, Any]
+    table_names: List[str]
+    relationships: List[Dict[str, str]]
