@@ -1,12 +1,22 @@
 import { defineStore } from 'pinia'
 
+export interface AgentStep {
+  agent_type: string         // "orchestrator" | "data_agent" | "rag_agent"
+  step_type: string          // "tool_call" | "tool_result" | "reasoning"
+  tool_name?: string         // "data_agent", "execute_query", "list_tables", etc.
+  content: Record<string, any>  // args, results, SQL, reasoning text
+  duration_ms?: number
+  status?: string            // "started" | "completed"
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   sql?: string
   results?: any[]
-  thinking_steps?: ThinkingStep[]
+  thinking_steps?: ThinkingStep[]  // legacy - kept for backward compat
+  agent_steps?: AgentStep[]
   created_at: string
   attachments?: FileAttachment[]
 }
@@ -39,7 +49,9 @@ export const useChatStore = defineStore('chat', {
     attachedFiles: [] as File[],
     showUploadPanel: false,
     isStreaming: false,
-    expandedThinking: new Set<string>()
+    expandedThinking: new Set<string>(),
+    reasoningPanelOpen: false,
+    selectedMessageId: null as string | null
   }),
 
   getters: {
@@ -99,6 +111,16 @@ export const useChatStore = defineStore('chat', {
       this.showUploadPanel = !this.showUploadPanel
     },
 
+    openReasoningPanel(messageId: string) {
+      this.selectedMessageId = messageId
+      this.reasoningPanelOpen = true
+    },
+
+    closeReasoningPanel() {
+      this.reasoningPanelOpen = false
+      this.selectedMessageId = null
+    },
+
     clearInput() {
       this.inputText = ''
       this.attachedFiles = []
@@ -110,6 +132,8 @@ export const useChatStore = defineStore('chat', {
       this.inputText = ''
       this.attachedFiles = []
       this.expandedThinking.clear()
+      this.reasoningPanelOpen = false
+      this.selectedMessageId = null
     }
   }
 })

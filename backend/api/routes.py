@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory
+from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query
 
 router = APIRouter()
 
@@ -8,6 +8,9 @@ router.include_router(auth.router)
 
 # Database Connections
 router.include_router(connections.router)
+
+# Direct SQL Query Execution
+router.include_router(sql_query.router)
 
 # Chat with Orchestrator (Phase 05)
 router.include_router(chat.router)

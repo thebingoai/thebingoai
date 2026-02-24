@@ -94,6 +94,13 @@ export const useApi = () => {
         return $fetch(`/api/connections/${id}/schema`, {
           headers: getHeaders()
         })
+      },
+      async executeQuery(connectionId: string, sql: string, limit?: number) {
+        return $fetch(`/api/connections/${connectionId}/query`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: { sql, limit: limit ?? 100 }
+        })
       }
     },
 
@@ -224,6 +231,11 @@ export const useApi = () => {
           method: 'PATCH',
           headers: getHeaders(),
           body: { title }
+        })
+      },
+      async getMessageSteps(threadId: string, messageId: string) {
+        return $fetch(`/api/chat/conversations/${threadId}/messages/${messageId}/steps`, {
+          headers: getHeaders()
         })
       }
     },

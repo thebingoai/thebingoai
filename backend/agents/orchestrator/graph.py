@@ -176,6 +176,10 @@ async def stream_orchestrator(
         # Invoke with thread_id for conversation memory
         config = {"configurable": {"thread_id": context.thread_id or "default"}}
 
+        # Collect steps for persistence after streaming
+        collected_steps = []
+        step_number = 0
+
         # Stream events from orchestrator
         async for event in orchestrator.astream_events(
             {"messages": [HumanMessage(content=user_question)]},
@@ -184,20 +188,51 @@ async def stream_orchestrator(
         ):
             kind = event.get("event")
 
-            # Tool invocations
+            # Tool invocations — include args from event data
             if kind == "on_tool_start":
                 tool_name = event.get("name")
+                tool_input = event.get("data", {}).get("input", {})
+                step_number += 1
+                step = {
+                    "agent_type": "orchestrator",
+                    "step_type": "tool_call",
+                    "tool_name": tool_name,
+                    "content": {"tool": tool_name, "args": tool_input},
+                    "step_number": step_number
+                }
+                collected_steps.append(step)
                 yield {
                     "type": "tool_call",
-                    "content": {"tool": tool_name, "status": "started"}
+                    "content": {"tool": tool_name, "status": "started", "args": tool_input}
                 }
 
-            # Tool results
+            # Tool results — include parsed result data
             elif kind == "on_tool_end":
                 tool_name = event.get("name")
+                tool_output = event.get("data", {}).get("output", None)
+
+                # Parse JSON string output from sub-agents
+                parsed_output = None
+                if isinstance(tool_output, str):
+                    try:
+                        parsed_output = json.loads(tool_output)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed_output = tool_output
+                else:
+                    parsed_output = tool_output
+
+                step_number += 1
+                step = {
+                    "agent_type": "orchestrator",
+                    "step_type": "tool_result",
+                    "tool_name": tool_name,
+                    "content": {"tool": tool_name, "result": parsed_output},
+                    "step_number": step_number
+                }
+                collected_steps.append(step)
                 yield {
                     "type": "tool_result",
-                    "content": {"tool": tool_name, "status": "completed"}
+                    "content": {"tool": tool_name, "status": "completed", "result": parsed_output}
                 }
 
             # LLM streaming tokens
@@ -208,11 +243,12 @@ async def stream_orchestrator(
                     if content:
                         yield {"type": "token", "content": content}
 
-        # Done event
+        # Done event — include collected steps for chat.py to persist
         yield {
             "type": "done",
             "content": "Orchestrator completed",
-            "thread_id": context.thread_id
+            "thread_id": context.thread_id,
+            "steps": collected_steps
         }
 
     except Exception as e:

@@ -57,24 +57,17 @@
         </p>
       </div>
 
-      <!-- Thinking Steps -->
-      <div v-if="message.thinking_steps && message.thinking_steps.length > 0" class="mt-3">
+      <!-- Agent steps / reasoning toggle -->
+      <div v-if="hasSteps" class="mt-3">
         <button
-          @click="chatStore.toggleThinking(message.id)"
-          class="text-sm text-gray-500 hover:text-gray-700"
+          @click="openReasoning"
+          class="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
         >
-          {{ chatStore.expandedThinking.has(message.id) ? '▼' : '▸' }} Show thinking ({{ message.thinking_steps.length }} steps)
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.15A4.98 4.98 0 0112 17a4.98 4.98 0 01-2.39-.606l-.347-.15z" />
+          </svg>
+          <span>{{ stepCount }} reasoning step{{ stepCount !== 1 ? 's' : '' }}</span>
         </button>
-        <div v-if="chatStore.expandedThinking.has(message.id)" class="mt-2 space-y-2">
-          <div
-            v-for="(step, idx) in message.thinking_steps"
-            :key="idx"
-            class="rounded-lg bg-gray-50 p-3"
-          >
-            <div class="text-sm font-light text-gray-900">{{ step.step }}</div>
-            <div class="text-sm text-gray-600">{{ step.description }}</div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -83,11 +76,24 @@
 <script setup lang="ts">
 import type { Message } from '~/stores/chat'
 
-defineProps<{
+const props = defineProps<{
   message: Message
 }>()
 
 const chatStore = useChatStore()
+
+const hasSteps = computed(() =>
+  props.message.role === 'assistant' &&
+  (props.message.agent_steps?.length || props.message.thinking_steps?.length)
+)
+
+const stepCount = computed(() =>
+  props.message.agent_steps?.length || props.message.thinking_steps?.length || 0
+)
+
+const openReasoning = () => {
+  chatStore.openReasoningPanel(props.message.id)
+}
 </script>
 
 <style scoped>

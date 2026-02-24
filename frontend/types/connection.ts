@@ -69,3 +69,16 @@ export interface ConnectionTestResponse {
   message: string
   details?: Record<string, any>
 }
+
+export interface SqlQueryRequest {
+  sql: string
+  limit?: number
+}
+
+export interface SqlQueryResponse {
+  columns: string[]
+  rows: any[][]
+  row_count: number
+  execution_time_ms: number
+  truncated: boolean
+}
