@@ -363,21 +363,21 @@
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Relationships -->
-              <div v-if="schema.relationships.length > 0" class="border-t border-gray-100 pt-3 shrink-0">
-                <h4 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Relationships</h4>
-                <div class="space-y-1 overflow-y-auto max-h-32">
-                  <div
-                    v-for="rel in schema.relationships"
-                    :key="`${rel.from}-${rel.to}`"
-                    class="flex items-center gap-1.5 text-xs text-gray-500"
-                  >
-                    <Link2 class="h-3 w-3 shrink-0" />
-                    <span class="font-mono truncate">{{ rel.from }}</span>
-                    <span class="shrink-0">→</span>
-                    <span class="font-mono truncate">{{ rel.to }}</span>
+                <!-- Relationships -->
+                <div v-if="schema.relationships.length > 0" class="border-t border-gray-100 pt-3 mt-2">
+                  <h4 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Relationships</h4>
+                  <div class="space-y-1">
+                    <div
+                      v-for="rel in schema.relationships"
+                      :key="`${rel.from}-${rel.to}`"
+                      class="flex items-center gap-1.5 text-xs text-gray-500"
+                    >
+                      <Link2 class="h-3 w-3 shrink-0" />
+                      <span class="font-mono truncate">{{ rel.from }}</span>
+                      <span class="shrink-0">→</span>
+                      <span class="font-mono truncate">{{ rel.to }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
