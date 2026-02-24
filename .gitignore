@@ -102,6 +102,9 @@ start-local.sh
 *.seed
 *.pid.lock
 
+# Git worktrees
+.worktrees/
+
 # Mypy
 .mypy_cache/
 .dmypy.json
