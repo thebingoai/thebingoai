@@ -211,6 +211,10 @@ async def stream_orchestrator(
                 tool_name = event.get("name")
                 tool_output = event.get("data", {}).get("output", None)
 
+                # LangGraph v2 may return a ToolMessage object instead of a raw string
+                if hasattr(tool_output, "content"):
+                    tool_output = tool_output.content
+
                 # Parse JSON string output from sub-agents
                 parsed_output = None
                 if isinstance(tool_output, str):
@@ -218,8 +222,15 @@ async def stream_orchestrator(
                         parsed_output = json.loads(tool_output)
                     except (json.JSONDecodeError, TypeError):
                         parsed_output = tool_output
+                elif tool_output is not None:
+                    # Fallback: convert non-serializable types to string
+                    try:
+                        json.dumps(tool_output)  # test serializability
+                        parsed_output = tool_output
+                    except (TypeError, ValueError):
+                        parsed_output = str(tool_output)
                 else:
-                    parsed_output = tool_output
+                    parsed_output = None
 
                 step_number += 1
                 step = {
