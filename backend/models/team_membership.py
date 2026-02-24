@@ -17,7 +17,11 @@ class TeamMembership(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     team_id = Column(String, ForeignKey("teams.id"), nullable=False)
-    role = Column(Enum(MemberRole), nullable=False, default=MemberRole.MEMBER)
+    role = Column(
+        Enum(MemberRole, values_callable=lambda objs: [e.value for e in objs], create_type=False),
+        nullable=False,
+        default=MemberRole.MEMBER,
+    )
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships

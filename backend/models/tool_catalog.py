@@ -19,6 +19,10 @@ class ToolCatalog(Base):
     tool_key = Column(String, unique=True, nullable=False)
     display_name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    category = Column(Enum(ToolCategory), nullable=False)
+    # values_callable ensures SQLAlchemy stores/reads enum by value (lowercase) to match migration
+    category = Column(
+        Enum(ToolCategory, values_callable=lambda objs: [e.value for e in objs], create_type=False),
+        nullable=False,
+    )
     is_system = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
