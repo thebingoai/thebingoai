@@ -69,6 +69,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app/backend
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -93,6 +94,7 @@ services:
       - backend
     volumes:
       - ./backend:/app/backend
+      - ./data:/app/data
 
 volumes:
   postgres_data:

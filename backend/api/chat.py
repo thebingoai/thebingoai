@@ -111,10 +111,15 @@ async def chat(
         thread_id=conversation.thread_id
     )
 
+    # Fetch conversation history (exclude the just-saved user message)
+    history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
+    history = history[:-1]
+
     # Run orchestrator
     result = await run_orchestrator(
         user_question=request.message,
-        context=context
+        context=context,
+        history=history
     )
 
     # Save assistant message
@@ -222,10 +227,14 @@ async def chat_stream(
                 thread_id=conversation.thread_id
             )
 
+            # Fetch conversation history (exclude the just-saved user message)
+            history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
+            history = history[:-1]
+
             # Stream orchestrator execution
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, context):
+            async for event in stream_orchestrator(request.message, context, history=history):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

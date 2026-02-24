@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-1 overflow-hidden">
     <!-- Main chat area -->
-    <div class="flex flex-1 flex-col min-w-0">
+    <div class="flex flex-1 flex-col min-w-0 min-h-0">
       <ChatThread />
       <ChatInputBar @send="handleSend" />
     </div>

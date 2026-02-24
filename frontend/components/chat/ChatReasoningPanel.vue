@@ -22,84 +22,99 @@
     </div>
 
     <!-- Steps list -->
-    <div v-else class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-      <div
-        v-for="(step, idx) in steps"
-        :key="idx"
-      >
-        <!-- tool_call step -->
-        <div v-if="step.step_type === 'tool_call'" class="rounded-lg border border-gray-100 bg-gray-50 overflow-hidden">
-          <div class="flex items-center gap-2 px-3 py-2 bg-gray-100">
-            <!-- Status dot -->
-            <span
-              class="w-2 h-2 rounded-full shrink-0"
-              :class="step.status === 'completed' ? 'bg-green-400' : 'bg-amber-400 animate-pulse'"
-            />
-            <span class="text-xs font-medium text-gray-700 truncate">{{ formatToolName(step.tool_name) }}</span>
-            <span class="ml-auto text-xs text-gray-400">{{ agentLabel(step.agent_type) }}</span>
-          </div>
+    <div v-else class="flex-1 overflow-y-auto px-4 py-4">
+      <div class="space-y-3">
+        <div
+          v-for="(step, idx) in steps"
+          :key="idx"
+        >
+          <!-- tool_call step -->
+          <template v-if="step.step_type === 'tool_call'">
+            <!-- Card -->
+            <div class="rounded-lg border border-gray-100 bg-gray-50 overflow-hidden">
+              <div class="flex items-center gap-2 px-3 py-2 bg-gray-100">
+                <span
+                  class="w-2 h-2 rounded-full shrink-0"
+                  :class="step.status === 'completed' ? 'bg-green-400' : 'bg-amber-400'"
+                />
+                <span class="text-xs font-medium text-gray-700 truncate">{{ formatToolName(step.tool_name) }}</span>
+                <span class="ml-auto text-xs text-gray-400">{{ agentLabel(step.agent_type) }}</span>
+                <span v-if="typeof step.duration_ms === 'number'" class="text-[10px] text-gray-400 font-mono">{{ formatDuration(step.duration_ms) }}</span>
+              </div>
 
-          <!-- Args -->
-          <div v-if="hasContent(step.content?.args)" class="px-3 py-2 border-t border-gray-100">
-            <div class="text-xs text-gray-500 mb-1">Input</div>
-            <div v-if="step.content.args?.question" class="text-xs text-gray-700 italic">
-              "{{ step.content.args.question }}"
-            </div>
-            <div v-else-if="step.content.args?.sql" class="rounded bg-white border border-gray-200 p-2 mt-1">
-              <pre class="text-xs text-gray-800 whitespace-pre-wrap break-all">{{ step.content.args.sql }}</pre>
-            </div>
-            <div v-else class="text-xs text-gray-600 font-mono break-all">
-              {{ JSON.stringify(step.content.args, null, 2) }}
-            </div>
-          </div>
-
-          <!-- Result summary (collapsed into tool_call for cleaner UI) -->
-          <div v-if="step.status === 'completed' && hasContent(step.content?.result)" class="px-3 py-2 border-t border-gray-100">
-            <div class="text-xs text-gray-500 mb-1">Result</div>
-            <ChatReasoningResultSummary :result="step.content.result" :tool-name="step.tool_name" />
-          </div>
-
-          <!-- Data agent sub-steps -->
-          <div v-if="step.content?.sub_steps?.length" class="border-t border-gray-100">
-            <div class="px-3 py-1.5 bg-gray-50">
-              <button
-                @click="toggleSubSteps(idx)"
-                class="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-              >
-                <span>{{ expandedSubSteps.has(idx) ? '▼' : '▸' }}</span>
-                <span>{{ step.content.sub_steps.length }} internal steps</span>
-              </button>
-            </div>
-            <div v-if="expandedSubSteps.has(idx)" class="px-3 py-2 space-y-2">
-              <div
-                v-for="(subStep, subIdx) in step.content.sub_steps"
-                :key="subIdx"
-                class="rounded border border-gray-100 bg-white overflow-hidden"
-              >
-                <div class="flex items-center gap-2 px-2 py-1.5 bg-gray-50">
-                  <span class="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
-                  <span class="text-xs font-medium text-gray-600">{{ formatToolName(subStep.tool_name) }}</span>
+              <!-- Args -->
+              <div v-if="hasContent(step.content?.args)" class="px-3 py-2 border-t border-gray-100">
+                <div class="text-xs text-gray-500 mb-1">Input</div>
+                <div v-if="step.content.args?.question" class="text-xs text-gray-700 italic">
+                  "{{ step.content.args.question }}"
                 </div>
-                <div v-if="hasContent(subStep.content?.args)" class="px-2 py-1.5">
-                  <div v-if="subStep.content?.args?.sql" class="rounded bg-gray-50 p-1.5">
-                    <pre class="text-xs text-gray-700 whitespace-pre-wrap break-all">{{ subStep.content.args.sql }}</pre>
-                  </div>
-                  <div v-else class="text-xs text-gray-600 font-mono break-all">
-                    {{ JSON.stringify(subStep.content.args) }}
+                <div v-else-if="step.content.args?.sql" class="rounded bg-white border border-gray-200 p-2 mt-1">
+                  <pre class="text-xs text-gray-800 whitespace-pre-wrap break-all">{{ step.content.args.sql }}</pre>
+                </div>
+                <div v-else-if="connectionLabel(step.content.args)" class="text-xs text-gray-700">
+                  {{ connectionLabel(step.content.args) }}
+                </div>
+                <div v-else class="text-xs text-gray-600 font-mono break-all">
+                  {{ JSON.stringify(step.content.args, null, 2) }}
+                </div>
+              </div>
+
+              <!-- Result summary (collapsed into tool_call for cleaner UI) -->
+              <div v-if="step.status === 'completed' && hasContent(step.content?.result)" class="px-3 py-2 border-t border-gray-100">
+                <div class="text-xs text-gray-500 mb-1">Result</div>
+                <ChatReasoningResultSummary :result="step.content.result" :tool-name="step.tool_name" />
+              </div>
+
+              <!-- Timestamp footer -->
+              <div v-if="stepTimestamp(step)" class="flex justify-end px-3 py-1 border-t border-gray-100">
+                <span class="text-[9px] text-gray-400 font-mono">{{ stepTimestamp(step) }}</span>
+              </div>
+
+              <!-- Data agent sub-steps -->
+              <div v-if="step.content?.sub_steps?.length" class="border-t border-gray-100">
+                <div class="px-3 py-1.5 bg-gray-50">
+                  <button
+                    @click="toggleSubSteps(idx)"
+                    class="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                  >
+                    <span>{{ expandedSubSteps.has(idx) ? '▼' : '▸' }}</span>
+                    <span>{{ step.content.sub_steps.length }} internal steps</span>
+                  </button>
+                </div>
+                <div v-if="expandedSubSteps.has(idx)" class="px-3 py-2 space-y-2">
+                  <div
+                    v-for="(subStep, subIdx) in step.content.sub_steps"
+                    :key="subIdx"
+                    class="rounded border border-gray-100 bg-white overflow-hidden"
+                  >
+                    <div class="flex items-center gap-2 px-2 py-1.5 bg-gray-50">
+                      <span class="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+                      <span class="text-xs font-medium text-gray-600">{{ formatToolName(subStep.tool_name) }}</span>
+                    </div>
+                    <div v-if="hasContent(subStep.content?.args)" class="px-2 py-1.5">
+                      <div v-if="subStep.content?.args?.sql" class="rounded bg-gray-50 p-1.5">
+                        <pre class="text-xs text-gray-700 whitespace-pre-wrap break-all">{{ subStep.content.args.sql }}</pre>
+                      </div>
+                      <div v-else-if="connectionLabel(subStep.content.args)" class="text-xs text-gray-700">
+                        {{ connectionLabel(subStep.content.args) }}
+                      </div>
+                      <div v-else class="text-xs text-gray-600 font-mono break-all">
+                        {{ JSON.stringify(subStep.content.args) }}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </template>
 
-        <!-- tool_result step (standalone — only shown if not merged into tool_call above) -->
-        <div
-          v-else-if="step.step_type === 'tool_result' && !isResultMerged(idx)"
-          class="rounded-lg border border-gray-100 bg-white px-3 py-2"
-        >
-          <div class="text-xs text-gray-500 mb-1">{{ formatToolName(step.tool_name) }} result</div>
-          <ChatReasoningResultSummary :result="step.content?.result" :tool-name="step.tool_name" />
+          <!-- tool_result step (standalone — only shown if not merged into tool_call above) -->
+          <template v-else-if="step.step_type === 'tool_result' && !isResultMerged(idx)">
+            <div class="rounded-lg border border-gray-100 bg-white px-3 py-2">
+              <div class="text-xs text-gray-500 mb-1">{{ formatToolName(step.tool_name) }} result</div>
+              <ChatReasoningResultSummary :result="step.content?.result" :tool-name="step.tool_name" />
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -110,6 +125,15 @@
 import type { AgentStep } from '~/stores/chat'
 
 const chatStore = useChatStore()
+const { ensureLoaded, getConnectionLabel } = useConnections()
+
+// Ensure connections are cached when the panel mounts
+onMounted(ensureLoaded)
+
+const connectionLabel = (args: Record<string, any> | undefined): string | null => {
+  if (!args || !('connection_id' in args)) return null
+  return getConnectionLabel(args.connection_id)
+}
 
 // Determine which message's steps to show
 const selectedMessage = computed(() => {
@@ -170,5 +194,20 @@ const agentLabel = (agentType: string): string => {
     rag_agent: 'RAG Agent'
   }
   return labels[agentType] || agentType
+}
+
+const formatDuration = (ms: number): string => {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+const stepTimestamp = (step: AgentStep): string => {
+  if (step.started_at) {
+    return new Date(step.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+  if (step.created_at) {
+    return new Date(step.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+  return ''
 }
 </script>

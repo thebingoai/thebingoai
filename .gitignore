@@ -112,3 +112,9 @@ dmypy.json
 
 # Pyre
 .pyre/
+
+# CodeMap
+.codemaprc
+.codemap/
+
+plan/

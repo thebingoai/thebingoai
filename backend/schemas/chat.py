@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    id: int
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime

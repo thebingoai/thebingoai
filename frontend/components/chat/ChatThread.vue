@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex-1 flex flex-col">
+  <div class="relative flex-1 flex flex-col min-h-0">
     <!-- Title overlay — aligned with toggle button at top-3 -->
     <div v-if="chatStore.currentThreadId" class="absolute top-3 left-0 right-0 z-10 text-center pointer-events-none">
       <input
@@ -82,12 +82,12 @@ const scrollToBottom = () => {
   }
 }
 
-// Throttled scroll for streaming content updates
+// Throttled scroll for streaming content updates (leading-edge: scrolls immediately on first trigger)
 let scrollThrottleTimer: NodeJS.Timeout | null = null
 const throttledScroll = () => {
   if (!scrollThrottleTimer) {
+    scrollToBottom()
     scrollThrottleTimer = setTimeout(() => {
-      scrollToBottom()
       scrollThrottleTimer = null
     }, 100)
   }
@@ -100,11 +100,11 @@ watch(() => chatStore.messages.length, () => {
   })
 })
 
-// Auto-scroll during streaming content updates (throttled)
+// Auto-scroll during streaming content updates and tool step additions (throttled)
 watch(
   () => {
     const lastMessage = chatStore.messages[chatStore.messages.length - 1]
-    return lastMessage?.content || ''
+    return (lastMessage?.content || '') + (lastMessage?.agent_steps?.length || 0)
   },
   () => {
     if (chatStore.isStreaming) {

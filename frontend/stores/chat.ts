@@ -7,6 +7,8 @@ export interface AgentStep {
   content: Record<string, any>  // args, results, SQL, reasoning text
   duration_ms?: number
   status?: string            // "started" | "completed"
+  started_at?: number        // Date.now() epoch ms captured on frontend during streaming
+  created_at?: string        // ISO datetime from backend DB for historical messages
 }
 
 export interface Message {

@@ -62,7 +62,8 @@ export const useChat = () => {
               step_type: 'tool_call',
               tool_name: toolName,
               content: { args },
-              status: 'started'
+              status: 'started',
+              started_at: Date.now()
             }
             agentSteps.push(step)
 
@@ -76,6 +77,7 @@ export const useChat = () => {
           onToolResult: (data: any) => {
             const toolName = data.content?.tool || data.tool || 'Tool'
             const result = data.content?.result || {}
+            const serverDuration = data.content?.duration_ms
 
             // Find the most recent started tool_call step for this tool and mark it completed
             const lastPendingIdx = [...agentSteps].reverse().findIndex(
@@ -83,11 +85,14 @@ export const useChat = () => {
             )
             if (lastPendingIdx !== -1) {
               const realIdx = agentSteps.length - 1 - lastPendingIdx
-              agentSteps[realIdx].status = 'completed'
-              agentSteps[realIdx].content.result = result
+              const step = agentSteps[realIdx]
+              step.status = 'completed'
+              step.content.result = result
+              // Prefer server-provided duration, fall back to client-side calculation
+              step.duration_ms = serverDuration ?? (step.started_at ? Date.now() - step.started_at : undefined)
               // Attach data agent sub-steps if present
               if (result?.steps) {
-                agentSteps[realIdx].content.sub_steps = result.steps
+                step.content.sub_steps = result.steps
               }
             }
 
@@ -194,7 +199,8 @@ export const useChat = () => {
                 step_type: s.step_type,
                 tool_name: s.tool_name,
                 content: s.content || {},
-                duration_ms: s.duration_ms
+                duration_ms: s.duration_ms,
+                created_at: s.created_at
               }))
               const msgInStore = chatStore.messages.find(m => m.id === msg.id)
               if (msgInStore) {
