@@ -82,6 +82,13 @@ export const useApi = () => {
         return $fetch('/api/connections/types', {
           headers: getHeaders()
         })
+      },
+      async testUnsaved(data: any) {
+        return $fetch('/api/connections/test-connection', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data
+        })
       }
     },
 

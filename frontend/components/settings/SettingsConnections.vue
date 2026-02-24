@@ -1,17 +1,14 @@
 <template>
   <div class="p-6">
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-6">
       <h2 class="text-2xl font-medium text-gray-900">Connections</h2>
-      <UiButton @click="openCreateDialog">
-        Add Connection
-      </UiButton>
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="space-y-4">
-      <UiSkeleton class="h-32" />
-      <UiSkeleton class="h-32" />
-      <UiSkeleton class="h-32" />
+    <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <UiSkeleton class="h-40 rounded-lg" />
+      <UiSkeleton class="h-40 rounded-lg" />
+      <UiSkeleton class="h-40 rounded-lg" />
     </div>
 
     <!-- Empty State -->
@@ -28,68 +25,52 @@
       </template>
     </UiEmptyState>
 
-    <!-- Connections List -->
-    <div v-else class="space-y-4">
+    <!-- Connections Grid -->
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <UiCard
         v-for="connection in connections"
         :key="connection.id"
-        class="p-6"
+        class="p-5 cursor-pointer hover:shadow-lg transition-shadow"
+        @click="openEditDialog(connection)"
       >
-        <div class="flex items-start justify-between">
-          <div class="flex-1">
-            <div class="mb-2 flex items-center gap-3">
-              <h3 class="text-lg font-normal text-gray-900">{{ connection.name }}</h3>
-              <UiBadge
-                :variant="getConnectorType(connection.db_type)?.badge_variant || 'info'"
-                size="sm"
-              >
-                {{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}
-              </UiBadge>
-              <UiBadge
-                v-if="connection.ssl_enabled"
-                variant="success"
-                size="sm"
-              >
-                SSL
-              </UiBadge>
-              <UiBadge
-                v-if="!connection.is_active"
-                variant="error"
-                size="lg"
-              >
-                Inactive
-              </UiBadge>
-            </div>
-            <p class="text-sm text-gray-600">
-              {{ connection.host }}:{{ connection.port }}/{{ connection.database }}
-            </p>
-            <p v-if="connection.schema_generated_at" class="mt-1 text-xs text-gray-500">
-              Schema updated {{ formatRelativeDate(connection.schema_generated_at) }}
-            </p>
+        <div class="flex flex-col h-full gap-3">
+          <div class="flex items-start gap-3">
+            <div
+              class="h-8 w-8 shrink-0"
+              v-if="connectorIcons[connection.db_type]"
+              v-html="connectorIcons[connection.db_type]"
+            />
+            <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
+            <p class="text-sm font-medium text-gray-900 truncate">{{ connection.name }}</p>
           </div>
-
-          <div class="flex items-center gap-2">
-            <UiButton
-              variant="outline"
+          <div class="flex flex-wrap gap-1.5">
+            <UiBadge
+              :variant="getConnectorType(connection.db_type)?.badge_variant || 'info'"
               size="sm"
-              :loading="testingId === connection.id"
-              @click="testConnection(connection.id)"
             >
-              Test
-            </UiButton>
-            <UiDropdown
-              :items="getDropdownItems(connection)"
-              align="right"
-            >
-              <template #trigger>
-                <UiButton variant="ghost" size="sm">
-                  <component :is="MoreVertical" class="h-4 w-4" />
-                </UiButton>
-              </template>
-            </UiDropdown>
+              {{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}
+            </UiBadge>
+            <UiBadge v-if="connection.ssl_enabled" variant="success" size="sm">
+              SSL
+            </UiBadge>
+            <UiBadge v-if="!connection.is_active" variant="error" size="sm">
+              Inactive
+            </UiBadge>
           </div>
+          <p class="text-xs text-gray-500 truncate">
+            {{ connection.host }}:{{ connection.port }}/{{ connection.database }}
+          </p>
         </div>
       </UiCard>
+
+      <!-- Add Connection card -->
+      <button
+        @click="openCreateDialog"
+        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-40 hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
+      >
+        <component :is="Plus" class="h-6 w-6 text-gray-400" />
+        <span class="text-sm text-gray-500">Add Connection</span>
+      </button>
     </div>
 
     <!-- Type Picker Bottom Sheet -->
@@ -133,6 +114,9 @@
               <ArrowLeft class="h-5 w-5" />
             </button>
             <span class="text-lg font-normal text-gray-900">{{ getFormTitle() }}</span>
+            <div v-if="testSuccess" class="flex items-center justify-center w-6 h-6 rounded-full bg-green-500">
+              <Check class="h-3.5 w-3.5 text-white" />
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <UiButton
@@ -141,6 +125,25 @@
               @click="showFormSheet = false"
             >
               Cancel
+            </UiButton>
+            <UiButton
+              v-if="editingConnection"
+              variant="outline"
+              size="sm"
+              :loading="refreshingId === editingConnection.id"
+              @click.stop="refreshSchema(editingConnection)"
+            >
+              <RefreshCw class="h-3.5 w-3.5" />
+              Refresh Schema
+            </UiButton>
+            <UiButton
+              v-if="!testSuccess"
+              variant="outline"
+              size="sm"
+              :loading="testing"
+              @click="handleTestConnection"
+            >
+              Test Connection
             </UiButton>
             <UiButton
               size="sm"
@@ -171,13 +174,21 @@
               :error="formErrors.name"
             />
 
+            <UiInput
+              v-model="form.host"
+              label="Host"
+              placeholder="localhost"
+              required
+              :error="formErrors.host"
+            />
+
             <div class="grid grid-cols-2 gap-4">
               <UiInput
-                v-model="form.host"
-                label="Host"
-                placeholder="localhost"
+                v-model="form.database"
+                label="Database Name"
+                placeholder="mydb"
                 required
-                :error="formErrors.host"
+                :error="formErrors.database"
               />
               <UiInput
                 v-model="form.port"
@@ -188,14 +199,6 @@
                 :error="formErrors.port"
               />
             </div>
-
-            <UiInput
-              v-model="form.database"
-              label="Database Name"
-              placeholder="mydb"
-              required
-              :error="formErrors.database"
-            />
 
             <div class="grid grid-cols-2 gap-4">
               <UiInput
@@ -255,6 +258,18 @@
             </div>
           </form>
 
+          <div v-if="editingConnection" class="border-t border-gray-200 pt-4 mt-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-900">Delete this connection</p>
+                <p class="text-xs text-gray-500">This action cannot be undone.</p>
+              </div>
+              <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
+                <Trash2 class="h-3.5 w-3.5" />
+                Delete
+              </UiButton>
+            </div>
+          </div>
         </div>
 
         <!-- 60% reserved -->
@@ -293,10 +308,9 @@
 </template>
 
 <script setup lang="ts">
-import { Database, MoreVertical, Edit, RefreshCw, Trash2, ArrowLeft, X } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType } from '~/types/connection'
-import type { DropdownItem } from '~/components/ui/UiDropdown.vue'
 
 const api = useApi()
 
@@ -329,8 +343,9 @@ const saving = ref(false)
 const showDeleteDialog = ref(false)
 const deletingConnection = ref<DatabaseConnection | null>(null)
 const deleting = ref(false)
-const testingId = ref<number | null>(null)
 const refreshingId = ref<number | null>(null)
+const testing = ref(false)
+const testSuccess = ref(false)
 
 // Helpers
 function getConnectorType(id: string): ConnectorType | undefined {
@@ -395,6 +410,7 @@ function goBackToTypePicker() {
 
 function handleFormSheetClose(value: boolean) {
   if (value === false) {
+    testSuccess.value = false
     // If creating (type picker is open), go back to type picker
     // If editing (no type picker), close form sheet
     if (showTypePicker.value) {
@@ -419,6 +435,7 @@ function openCreateDialog() {
     ssl_ca_cert: ''
   }
   formErrors.value = {}
+  testSuccess.value = false
   showTypePicker.value = true
 }
 
@@ -444,6 +461,7 @@ function openEditDialog(connection: DatabaseConnection) {
     ssl_ca_cert: '' // Never pre-fill cert content
   }
   formErrors.value = {}
+  testSuccess.value = false
   // Edit skips type picker, opens form sheet directly
   showFormSheet.value = true
 }
@@ -534,12 +552,38 @@ async function handleFormSubmit() {
   }
 }
 
-async function testConnection(id: number) {
+async function handleTestConnection() {
+  if (!validateForm()) return
+
   try {
-    testingId.value = id
-    const response = await api.connections.test(String(id)) as { success: boolean; message: string }
+    testing.value = true
+
+    let response: { success: boolean; message: string }
+
+    if (editingConnection.value) {
+      // Use saved connection's stored credentials
+      response = await api.connections.test(String(editingConnection.value.id)) as { success: boolean; message: string }
+    } else {
+      const payload: any = {
+        name: form.value.name,
+        db_type: form.value.db_type,
+        host: form.value.host,
+        port: Number(form.value.port),
+        database: form.value.database,
+        username: form.value.username,
+        password: form.value.password,
+        ssl_enabled: form.value.ssl_enabled
+      }
+
+      if (form.value.ssl_enabled && form.value.ssl_ca_cert.trim()) {
+        payload.ssl_ca_cert = form.value.ssl_ca_cert.trim()
+      }
+
+      response = await api.connections.testUnsaved(payload) as { success: boolean; message: string }
+    }
 
     if (response.success) {
+      testSuccess.value = true
       toast.success(response.message || 'Connection test successful')
     } else {
       toast.error(response.message || 'Connection test failed')
@@ -548,7 +592,7 @@ async function testConnection(id: number) {
     const errorMessage = err?.data?.detail || err?.message || 'Connection test failed'
     toast.error(errorMessage)
   } finally {
-    testingId.value = null
+    testing.value = false
   }
 }
 
@@ -579,6 +623,7 @@ async function confirmDelete() {
     await api.connections.delete(String(deletingConnection.value.id))
     toast.success('Connection deleted successfully')
     showDeleteDialog.value = false
+    showFormSheet.value = false
     await fetchConnections()
   } catch (err: any) {
     const errorMessage = err?.data?.detail || err?.message || 'Failed to delete connection'
@@ -586,27 +631,6 @@ async function confirmDelete() {
   } finally {
     deleting.value = false
   }
-}
-
-function getDropdownItems(connection: DatabaseConnection): DropdownItem[] {
-  return [
-    {
-      label: 'Edit',
-      icon: Edit,
-      onClick: () => openEditDialog(connection)
-    },
-    {
-      label: 'Refresh Schema',
-      icon: RefreshCw,
-      onClick: () => refreshSchema(connection)
-    },
-    {
-      label: 'Delete',
-      icon: Trash2,
-      onClick: () => openDeleteDialog(connection),
-      danger: true
-    }
-  ]
 }
 
 function formatRelativeDate(dateString: string): string {

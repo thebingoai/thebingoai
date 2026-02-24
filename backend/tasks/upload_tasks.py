@@ -33,6 +33,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=settings.celery_task_time_limit,
     worker_prefetch_multiplier=1,  # Process one task at a time per worker
+    include=["backend.tasks.memory_tasks"],
 )
 
 

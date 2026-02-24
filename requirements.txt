@@ -6,9 +6,9 @@ pinecone-client==3.0.0
 qdrant-client==1.7.1
 tiktoken>=0.7,<1.0
 python-dotenv==1.0.0
-pydantic>=2.7.4,<3.0.0
+pydantic[email]>=2.7.4,<3.0.0
 pydantic-settings>=2.1.0,<3.0.0
-httpx==0.26.0
+httpx>=0.26.0,<1.0
 
 # LangChain & LangGraph (compatible versions)
 langchain-core>=1.2.0,<2.0.0
@@ -32,7 +32,7 @@ PyMySQL==1.1.0
 passlib[bcrypt]==1.7.4
 bcrypt<4.0.0  # Compatibility with passlib
 python-jose[cryptography]==3.3.0
-cryptography>=41.0.0,<42.0.0  # For database password encryption
+cryptography>=41.0.0  # For database password encryption
 
 # Optional LLM providers
 # anthropic==0.18.0

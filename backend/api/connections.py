@@ -15,6 +15,9 @@ from backend.services.schema_discovery import (
     refresh_schema, delete_schema_file
 )
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/connections", tags=["connections"])
 
@@ -29,15 +32,32 @@ async def create_connection(
     Create a new database connection with automatic schema discovery.
 
     Flow:
-    1. Test connection (5s timeout)
-    2. Save connection to database
-    3. Auto-discover full schema
-    4. Save schema as JSON to data/schemas/{id}_schema.json
-    5. Update connection with schema path and timestamp
+    1. Save connection to database
+    2. Auto-discover full schema (non-blocking, can fail silently)
+    3. Save schema as JSON to data/schemas/{id}_schema.json
+    4. Update connection with schema path and timestamp
     """
-    # Test connection before saving
+    logger.info("Creating connection '%s' (type=%s, host=%s, port=%s, db=%s, ssl=%s)",
+        request.name, request.db_type, request.host, request.port, request.database, request.ssl_enabled)
+
+    # Create connection (without schema info yet)
+    # password and ssl_ca_cert use hybrid_property setters and cannot be passed
+    # as constructor kwargs (SQLAlchemy only accepts mapped column attribute names)
+    data = request.model_dump()
+    password = data.pop('password')
+    ssl_ca_cert = data.pop('ssl_ca_cert', None)
+
+    connection = DatabaseConnection(user_id=current_user.id, **data)
+    connection.password = password
+    connection.ssl_ca_cert = ssl_ca_cert
+
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+
+    # Auto-discover schema
     try:
-        connector = get_connector(
+        with get_connector(
             db_type=request.db_type,
             host=request.host,
             port=request.port,
@@ -46,50 +66,28 @@ async def create_connection(
             password=request.password,
             ssl_enabled=request.ssl_enabled,
             ssl_ca_cert=request.ssl_ca_cert
-        )
-        connector.test_connection()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connection test failed: {str(e)}"
-        )
+        ) as connector:
+            schema_data = discover_schema(connector)
+            schema_json = generate_schema_json(
+                connection.id,
+                connection.name,
+                connection.db_type.value,
+                schema_data
+            )
+            schema_path = save_schema_file(connection.id, schema_json)
 
-    # Create connection (without schema info yet)
-    connection = DatabaseConnection(
-        user_id=current_user.id,
-        **request.model_dump()
-    )
-
-    db.add(connection)
-    db.commit()
-    db.refresh(connection)
-
-    # Auto-discover schema
-    try:
-        schema_data = discover_schema(connector)
-        schema_json = generate_schema_json(
-            connection.id,
-            connection.name,
-            connection.db_type.value,
-            schema_data
-        )
-        schema_path = save_schema_file(connection.id, schema_json)
-
-        # Update connection with schema info
-        connection.schema_json_path = schema_path
-        connection.schema_generated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(connection)
+            # Update connection with schema info
+            connection.schema_json_path = schema_path
+            connection.schema_generated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(connection)
 
     except Exception as e:
         # Log error but don't fail connection creation
         # Schema can be generated later via refresh endpoint
-        import logging
-        logging.error(f"Schema discovery failed: {str(e)}")
+        logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
 
-    finally:
-        connector.close()
-
+    logger.info("Connection '%s' (id=%s) created successfully", connection.name, connection.id)
     return connection
 
 
@@ -110,6 +108,30 @@ async def list_connections(
 async def get_connector_types():
     """Return metadata for all available database connector types."""
     return get_available_types()
+
+
+@router.post("/test-connection", response_model=ConnectionTestResponse)
+async def test_unsaved_connection(
+    request: ConnectionCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Test a database connection without saving it."""
+    try:
+        connector = get_connector(
+            db_type=request.db_type,
+            host=request.host,
+            port=request.port,
+            database=request.database,
+            username=request.username,
+            password=request.password,
+            ssl_enabled=request.ssl_enabled,
+            ssl_ca_cert=request.ssl_ca_cert
+        )
+        connector.test_connection()
+        connector.close()
+        return ConnectionTestResponse(success=True, message="Connection successful")
+    except Exception as e:
+        return ConnectionTestResponse(success=False, message=str(e))
 
 
 @router.get("/{connection_id}", response_model=ConnectionResponse)

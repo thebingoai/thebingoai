@@ -1,5 +1,6 @@
 from backend.models.responses import StatusResponse, IndexStats
 from backend.vectordb.pinecone import get_index_stats
+from backend.vectordb.qdrant import health_check as qdrant_health_check
 from backend.config import settings
 import redis
 
@@ -41,6 +42,17 @@ async def health_detailed() -> dict:
         import logging
         logging.getLogger(__name__).error(f"Pinecone check failed: {e}", exc_info=True)
         checks["pinecone"] = "unhealthy"
+
+    # Check Qdrant
+    try:
+        if qdrant_health_check():
+            checks["qdrant"] = "healthy"
+        else:
+            checks["qdrant"] = "unhealthy"
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Qdrant check failed: {e}", exc_info=True)
+        checks["qdrant"] = "unhealthy"
 
     overall = "healthy" if all(
         v == "healthy" or isinstance(v, int)

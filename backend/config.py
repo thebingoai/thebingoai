@@ -128,6 +128,17 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("db_encryption_key")
+    @classmethod
+    def validate_encryption_key(cls, v):
+        """Prevent use of placeholder encryption key."""
+        if v == "REPLACE_WITH_FERNET_KEY_44_CHARS":
+            raise ValueError(
+                "DB_ENCRYPTION_KEY must be set to a valid Fernet key. "
+                "Generate one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+            )
+        return v
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

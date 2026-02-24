@@ -1,6 +1,5 @@
 from fastapi import APIRouter
-from backend.api import upload, query, health, jobs, auth, connections, usage, chat
-# Memory temporarily disabled due to LangChain dependency conflicts
+from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory
 
 router = APIRouter()
 
@@ -13,8 +12,8 @@ router.include_router(connections.router)
 # Chat with Orchestrator (Phase 05)
 router.include_router(chat.router)
 
-# Memory System (Phase 06) - TEMPORARILY DISABLED
-# router.include_router(memory.router)
+# Memory System (Phase 06)
+router.include_router(memory.router)
 
 # Usage Tracking (Phase 07)
 router.include_router(usage.router)
