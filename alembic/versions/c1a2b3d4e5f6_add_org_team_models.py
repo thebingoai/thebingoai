@@ -88,6 +88,12 @@ def upgrade():
         "UPDATE database_connections SET org_id = :org_id WHERE org_id IS NULL"
     ), {"org_id": default_org_id})
 
+    bind.execute(sa.text(
+        "INSERT INTO team_memberships (id, user_id, team_id, role, created_at) "
+        "SELECT gen_random_uuid()::text, id, :team_id, 'member', :now "
+        "FROM users"
+    ), {"team_id": default_team_id, "now": now})
+
 
 def downgrade():
     op.drop_constraint('fk_connections_org_id', 'database_connections', type_='foreignkey')

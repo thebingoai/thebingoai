@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.models.user import User
+from backend.models.team_membership import TeamMembership, MemberRole
 from backend.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
 from backend.schemas.user import UserResponse
 from backend.auth.password import hash_password, verify_password
@@ -10,6 +11,9 @@ from backend.auth.jwt import create_access_token
 from backend.auth.dependencies import get_current_user
 from backend.auth.rate_limit import auth_rate_limit
 from backend.config import settings
+
+DEFAULT_ORG_ID = 'org-default-00000000-0000-0000-0000'
+DEFAULT_TEAM_ID = 'team-default-00000000-0000-0000-0000'
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer()
@@ -42,6 +46,16 @@ async def register(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Assign to default org and team
+    user.org_id = DEFAULT_ORG_ID
+    membership = TeamMembership(
+        user_id=user.id,
+        team_id=DEFAULT_TEAM_ID,
+        role=MemberRole.MEMBER,
+    )
+    db.add(membership)
+    db.commit()
 
     # Create JWT token
     access_token = create_access_token(data={"sub": user.id})

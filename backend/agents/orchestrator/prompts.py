@@ -12,9 +12,20 @@ Use recall_memory first to check if the user has asked similar questions before.
 - **list_my_agents**: See what agents already exist for this user
 - **deactivate_agent**: Remove an agent that is no longer useful
 
+Available tool_keys for create_agent (use ONLY these exact keys):
+- `execute_query` — execute read-only SQL SELECT queries
+- `list_tables` — list all tables in a database connection
+- `get_table_schema` — get column definitions and row count for a table
+- `search_tables` — search tables and columns by keyword
+- `rag_search` — search uploaded documents using semantic search
+- `recall_memory` — recall past conversation context
+- `summarize_text` — summarize long text into key points
+
 Guidelines for agent creation:
 - Only create when you see a clear recurring pattern (NOT for one-off requests)
 - Choose the minimum set of tools needed for the agent's purpose
+- For database/data analysis agents use: `["execute_query", "list_tables", "get_table_schema", "search_tables"]`
+- For document search agents use: `["rag_search"]`
 - Write a focused system prompt that describes the agent's purpose clearly
 - The new agent becomes available in subsequent conversations
 """
