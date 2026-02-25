@@ -428,6 +428,26 @@ export const useApi = () => {
           body: { connection_ids: connectionIds }
         })
       }
+    },
+
+    // Skills endpoints
+    skills: {
+      async list() {
+        return $fetch('/api/skills', { headers: getHeaders() })
+      },
+      async toggle(id: string, isActive: boolean) {
+        return $fetch(`/api/skills/${id}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { is_active: isActive }
+        })
+      },
+      async remove(id: string) {
+        return $fetch(`/api/skills/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      }
     }
   }
 }

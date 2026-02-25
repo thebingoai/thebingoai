@@ -38,3 +38,15 @@ export interface TeamConnectionPolicy {
   team_id: string
   connection_ids: number[]
 }
+
+export interface UserSkill {
+  id: string
+  name: string
+  description: string
+  has_prompt_template: boolean
+  has_code: boolean
+  parameters_schema: Record<string, any> | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
