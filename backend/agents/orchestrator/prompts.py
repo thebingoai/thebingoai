@@ -105,7 +105,7 @@ def build_orchestrator_prompt(
         for i, agent in enumerate(custom_agents, 1):
             desc = agent.description or "No description provided."
             descriptions.append(f"{i}. **{agent.name}**: {desc}")
-        base = _ORCHESTRATOR_BASE.format(agent_descriptions="\n".join(descriptions))
+        base = _ORCHESTRATOR_BASE.replace("{agent_descriptions}", "\n".join(descriptions))
     else:
         base = ORCHESTRATOR_SYSTEM_PROMPT
 
