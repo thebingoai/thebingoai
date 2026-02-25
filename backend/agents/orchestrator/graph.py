@@ -443,6 +443,7 @@ async def run_orchestrator(
     db_session_factory: Optional[Callable] = None,
     memory_context: str = "",
     user_skills: Optional[List["UserSkill"]] = None,
+    user_memories_context: str = "",
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -454,12 +455,13 @@ async def run_orchestrator(
         db_session_factory: Optional callable returning a SQLAlchemy Session (for skill tools)
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
         user_skills: Optional list of active UserSkill records for this user
+        user_memories_context: Optional user-directed memories to inject as instructions
 
     Returns:
         Dict with success, message, metadata
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -512,6 +514,7 @@ async def stream_orchestrator(
     db_session_factory: Optional[Callable] = None,
     memory_context: str = "",
     user_skills: Optional[List["UserSkill"]] = None,
+    user_memories_context: str = "",
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -523,6 +526,7 @@ async def stream_orchestrator(
         db_session_factory: Optional callable returning a SQLAlchemy Session (for skill tools)
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
         user_skills: Optional list of active UserSkill records for this user
+        user_memories_context: Optional user-directed memories to inject as instructions
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -531,7 +535,7 @@ async def stream_orchestrator(
         yield {"type": "status", "content": "Starting orchestrator..."}
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context)
 
         provider = get_provider(settings.default_llm_provider)
 

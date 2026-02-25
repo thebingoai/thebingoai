@@ -325,6 +325,46 @@ export const useApi = () => {
           method: 'DELETE',
           headers: getHeaders()
         })
+      },
+      async listEntries(skip?: number, limit?: number) {
+        const params = new URLSearchParams()
+        if (skip !== undefined) params.append('skip', skip.toString())
+        if (limit !== undefined) params.append('limit', limit.toString())
+        return $fetch(`/api/memory/entries?${params.toString()}`, {
+          headers: getHeaders()
+        })
+      },
+      async createEntry(content: string, category?: string) {
+        return $fetch('/api/memory/entries', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: { content, category }
+        })
+      },
+      async updateEntry(id: string, data: { content?: string; category?: string | null; is_active?: boolean }) {
+        return $fetch(`/api/memory/entries/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async deleteEntry(id: string) {
+        return $fetch(`/api/memory/entries/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async getSettings() {
+        return $fetch('/api/memory/settings', {
+          headers: getHeaders()
+        })
+      },
+      async updateSettings(memory_enabled: boolean) {
+        return $fetch('/api/memory/settings', {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: { memory_enabled }
+        })
       }
     },
 

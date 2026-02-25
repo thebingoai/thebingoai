@@ -143,16 +143,32 @@ async def chat(
     history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
     history = history[:-1]
 
-    # Pre-fetch memory context
+    # Check if auto-memory retrieval is enabled
+    prefs = current_user.preferences or {}
+    memory_enabled = prefs.get("memory_enabled", True)
+
+    # Pre-fetch auto-generated memory context (Qdrant)
     memory_context = ""
-    try:
-        from backend.memory.retriever import MemoryRetriever
-        retriever = MemoryRetriever()
-        memory_context = await retriever.get_relevant_context(
-            user_id=current_user.id, query=request.message, top_k=3
-        )
-    except Exception as mem_err:
-        logger.warning(f"Memory retrieval failed: {mem_err}")
+    if memory_enabled:
+        try:
+            from backend.memory.retriever import MemoryRetriever
+            retriever = MemoryRetriever()
+            memory_context = await retriever.get_relevant_context(
+                user_id=current_user.id, query=request.message, top_k=3
+            )
+        except Exception as mem_err:
+            logger.warning(f"Memory retrieval failed: {mem_err}")
+
+    # Load user-directed memories (PostgreSQL)
+    from backend.models.user_memory import UserMemory as UserMemoryModel
+    user_memory_entries = db.query(UserMemoryModel).filter(
+        UserMemoryModel.user_id == current_user.id,
+        UserMemoryModel.is_active == True,
+    ).all()
+    user_memories_context = ""
+    if user_memory_entries:
+        lines = "\n".join(f"- {m.content}" for m in user_memory_entries)
+        user_memories_context = lines
 
     # Run orchestrator
     from backend.database.session import SessionLocal
@@ -164,6 +180,7 @@ async def chat(
         db_session_factory=SessionLocal,
         memory_context=memory_context,
         user_skills=user_skills or None,
+        user_memories_context=user_memories_context,
     )
 
     # Save assistant message
@@ -302,22 +319,38 @@ async def chat_stream(
             history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
             history = history[:-1]
 
-            # Pre-fetch memory context
+            # Check if auto-memory retrieval is enabled
+            stream_prefs = current_user.preferences or {}
+            stream_memory_enabled = stream_prefs.get("memory_enabled", True)
+
+            # Pre-fetch auto-generated memory context (Qdrant)
             stream_memory_context = ""
-            try:
-                from backend.memory.retriever import MemoryRetriever
-                retriever = MemoryRetriever()
-                stream_memory_context = await retriever.get_relevant_context(
-                    user_id=current_user.id, query=request.message, top_k=3
-                )
-            except Exception as mem_err:
-                logger.warning(f"Memory retrieval failed: {mem_err}")
+            if stream_memory_enabled:
+                try:
+                    from backend.memory.retriever import MemoryRetriever
+                    retriever = MemoryRetriever()
+                    stream_memory_context = await retriever.get_relevant_context(
+                        user_id=current_user.id, query=request.message, top_k=3
+                    )
+                except Exception as mem_err:
+                    logger.warning(f"Memory retrieval failed: {mem_err}")
+
+            # Load user-directed memories (PostgreSQL)
+            from backend.models.user_memory import UserMemory as UserMemoryModel
+            stream_memory_entries = db.query(UserMemoryModel).filter(
+                UserMemoryModel.user_id == current_user.id,
+                UserMemoryModel.is_active == True,
+            ).all()
+            stream_user_memories_context = ""
+            if stream_memory_entries:
+                lines = "\n".join(f"- {m.content}" for m in stream_memory_entries)
+                stream_user_memories_context = lines
 
             # Stream orchestrator execution
             from backend.database.session import SessionLocal
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None, db_session_factory=SessionLocal, memory_context=stream_memory_context, user_skills=stream_user_skills or None):
+            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None, db_session_factory=SessionLocal, memory_context=stream_memory_context, user_skills=stream_user_skills or None, user_memories_context=stream_user_memories_context):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

@@ -98,6 +98,7 @@ def build_orchestrator_prompt(
     custom_agents: "Optional[List[CustomAgent]]",
     memory_context: str = "",
     user_skills: "Optional[List[UserSkill]]" = None,
+    user_memories_context: str = "",
 ) -> str:
     """Build a dynamic orchestrator system prompt from the user's active custom agents and skills."""
     if custom_agents:
@@ -114,6 +115,9 @@ def build_orchestrator_prompt(
             f"- **{s.name}**: {s.description}" for s in user_skills
         )
         base += f"\n\n## Available Custom Skills ({len(user_skills)})\nUse `use_skill` when a request matches one of these:\n{skill_lines}\n"
+
+    if user_memories_context:
+        base += f"\n\n## User Preferences & Instructions\n{user_memories_context}\n"
 
     if memory_context:
         base += f"\n\n## Relevant Past Context\n{memory_context}\n"

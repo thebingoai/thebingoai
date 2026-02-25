@@ -5,15 +5,20 @@ from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
+from backend.models.user_memory import UserMemory
 from backend.schemas.memory import (
     MemoryGenerateRequest, MemorySearchRequest,
-    MemorySearchResponse, MemoryGenerateResponse
+    MemorySearchResponse, MemoryGenerateResponse,
+    UserMemoryCreate, UserMemoryUpdate, UserMemoryResponse, UserMemoryListResponse,
+    MemorySettingsResponse, MemorySettingsUpdate,
 )
 from backend.tasks.memory_tasks import generate_user_memory
 from backend.memory.retriever import MemoryRetriever
 from datetime import datetime
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+
+_MAX_ENTRIES = 50
 
 
 @router.post("/generate", response_model=MemoryGenerateResponse)
@@ -67,6 +72,123 @@ async def search_memories(
 async def delete_all_memories(
     current_user: User = Depends(get_current_user)
 ):
-    """Delete all memories for current user."""
+    """Delete all auto-generated memories for current user."""
     retriever = MemoryRetriever()
     await retriever.storage.delete_user_memories(current_user.id)
+
+
+# ── User-directed memory entries ──────────────────────────────────────────────
+
+@router.get("/entries", response_model=UserMemoryListResponse)
+async def list_memory_entries(
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all user-directed memory entries."""
+    entries = (
+        db.query(UserMemory)
+        .filter(UserMemory.user_id == current_user.id)
+        .order_by(UserMemory.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    total = db.query(UserMemory).filter(UserMemory.user_id == current_user.id).count()
+    return UserMemoryListResponse(entries=entries, total=total)
+
+
+@router.post("/entries", response_model=UserMemoryResponse, status_code=201)
+async def create_memory_entry(
+    payload: UserMemoryCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new user-directed memory entry (max 50 per user)."""
+    count = db.query(UserMemory).filter(UserMemory.user_id == current_user.id).count()
+    if count >= _MAX_ENTRIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Memory limit reached ({_MAX_ENTRIES} entries). Delete some entries first."
+        )
+
+    entry = UserMemory(
+        user_id=current_user.id,
+        content=payload.content,
+        category=payload.category,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.put("/entries/{entry_id}", response_model=UserMemoryResponse)
+async def update_memory_entry(
+    entry_id: str,
+    payload: UserMemoryUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update a user-directed memory entry."""
+    entry = db.query(UserMemory).filter(
+        UserMemory.id == entry_id,
+        UserMemory.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Memory entry not found")
+
+    if payload.content is not None:
+        entry.content = payload.content
+    if payload.category is not None:
+        entry.category = payload.category
+    if payload.is_active is not None:
+        entry.is_active = payload.is_active
+
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.delete("/entries/{entry_id}", status_code=204)
+async def delete_memory_entry(
+    entry_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a user-directed memory entry."""
+    entry = db.query(UserMemory).filter(
+        UserMemory.id == entry_id,
+        UserMemory.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Memory entry not found")
+    db.delete(entry)
+    db.commit()
+
+
+# ── Memory settings ───────────────────────────────────────────────────────────
+
+@router.get("/settings", response_model=MemorySettingsResponse)
+async def get_memory_settings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the user's memory settings."""
+    prefs = current_user.preferences or {}
+    return MemorySettingsResponse(memory_enabled=prefs.get("memory_enabled", True))
+
+
+@router.put("/settings", response_model=MemorySettingsResponse)
+async def update_memory_settings(
+    payload: MemorySettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the user's memory settings."""
+    prefs = dict(current_user.preferences or {})
+    prefs["memory_enabled"] = payload.memory_enabled
+    current_user.preferences = prefs
+    db.commit()
+    return MemorySettingsResponse(memory_enabled=payload.memory_enabled)
