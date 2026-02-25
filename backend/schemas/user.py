@@ -12,6 +12,7 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: str
+    org_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

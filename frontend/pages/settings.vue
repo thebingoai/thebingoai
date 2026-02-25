@@ -28,6 +28,9 @@
     <div class="flex-1 overflow-y-auto">
       <SettingsConnections v-if="currentSection === 'connections'" />
       <SettingsProfile v-else-if="currentSection === 'profile'" />
+      <SettingsOrganization v-else-if="currentSection === 'organization'" />
+      <SettingsTeam v-else-if="currentSection === 'team'" />
+      <SettingsPolicies v-else-if="currentSection === 'policies'" />
       <div v-else class="p-6">
         <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
         <p class="text-gray-500">This section is under construction.</p>
@@ -43,6 +46,9 @@ const router = useRouter()
 
 const sections = [
   { id: 'connections', name: 'Connections' },
+  { id: 'organization', name: 'Organization' },
+  { id: 'team', name: 'Team' },
+  { id: 'policies', name: 'Policies' },
   { id: 'jobs', name: 'Jobs' },
   { id: 'memory', name: 'Memory' },
   { id: 'usage', name: 'Usage' },

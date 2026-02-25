@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from backend.database.session import get_db
 from backend.api.auth import get_current_user
 from backend.models.user import User
@@ -30,6 +30,45 @@ class MembershipResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MemberDetailResponse(BaseModel):
+    id: str
+    user_id: str
+    user_email: str
+    team_id: str
+    role: str
+    created_at: str
+
+
+@router.get("/{team_id}/members", response_model=List[MemberDetailResponse])
+async def list_members(
+    team_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all members of a team with their email addresses."""
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    memberships = (
+        db.query(TeamMembership, User)
+        .join(User, TeamMembership.user_id == User.id)
+        .filter(TeamMembership.team_id == team_id)
+        .all()
+    )
+    return [
+        MemberDetailResponse(
+            id=m.id,
+            user_id=m.user_id,
+            user_email=u.email,
+            team_id=m.team_id,
+            role=m.role.value,
+            created_at=str(m.created_at),
+        )
+        for m, u in memberships
+    ]
 
 
 @router.post("/{team_id}/members", response_model=MembershipResponse, status_code=status.HTTP_201_CREATED)

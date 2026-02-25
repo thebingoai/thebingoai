@@ -345,6 +345,89 @@ export const useApi = () => {
           headers: getHeaders()
         })
       }
+    },
+
+    // Organization endpoints
+    orgs: {
+      async get(orgId: string) {
+        return $fetch(`/api/orgs/${orgId}`, {
+          headers: getHeaders()
+        })
+      },
+      async getTeams(orgId: string) {
+        return $fetch(`/api/orgs/${orgId}/teams`, {
+          headers: getHeaders()
+        })
+      },
+      async createTeam(orgId: string, name: string) {
+        return $fetch(`/api/orgs/${orgId}/teams`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: { name }
+        })
+      }
+    },
+
+    // Team endpoints
+    teams: {
+      async getMembers(teamId: string) {
+        return $fetch(`/api/teams/${teamId}/members`, {
+          headers: getHeaders()
+        })
+      },
+      async addMember(teamId: string, userId: string, role: string) {
+        return $fetch(`/api/teams/${teamId}/members`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: { user_id: userId, role }
+        })
+      },
+      async removeMember(teamId: string, userId: string) {
+        return $fetch(`/api/teams/${teamId}/members/${userId}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async updateMemberRole(teamId: string, userId: string, role: string) {
+        return $fetch(`/api/teams/${teamId}/members/${userId}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { role }
+        })
+      }
+    },
+
+    // Policy endpoints
+    policies: {
+      async getToolCatalog() {
+        return $fetch('/api/tools/catalog', {
+          headers: getHeaders()
+        })
+      },
+      async getToolPolicy(teamId: string) {
+        return $fetch(`/api/tools/teams/${teamId}/policies/tools`, {
+          headers: getHeaders()
+        })
+      },
+      async setToolPolicy(teamId: string, toolKeys: string[]) {
+        return $fetch(`/api/tools/teams/${teamId}/policies/tools`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: { tool_keys: toolKeys }
+        })
+      },
+      async getConnectionPolicy(teamId: string) {
+        return $fetch(`/api/tools/teams/${teamId}/policies/connections`, {
+          headers: getHeaders()
+        })
+      },
+      async setConnectionPolicy(teamId: string, connectionIds: number[]) {
+        return $fetch(`/api/tools/teams/${teamId}/policies/connections`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: { connection_ids: connectionIds }
+        })
+      }
     }
   }
 }

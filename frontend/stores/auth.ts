@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 export interface User {
   id: string
   email: string
+  org_id: string | null
   created_at: string
 }
 
