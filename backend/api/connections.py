@@ -5,6 +5,8 @@ from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
+from backend.models.team_membership import TeamMembership
+from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.schemas.connection import (
     ConnectionCreate, ConnectionUpdate, ConnectionResponse,
     ConnectionTestResponse, SchemaRefreshResponse, ConnectorTypeResponse,
@@ -15,8 +17,10 @@ from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
     refresh_schema, delete_schema_file, load_schema_file
 )
+from backend.config import settings
 from datetime import datetime
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +59,20 @@ async def create_connection(
     db.add(connection)
     db.commit()
     db.refresh(connection)
+
+    # Auto-enable connection for creator's teams (governance only)
+    if settings.enable_governance:
+        user_memberships = db.query(TeamMembership).filter(
+            TeamMembership.user_id == current_user.id
+        ).all()
+        for membership in user_memberships:
+            db.add(TeamConnectionPolicy(
+                id=str(uuid.uuid4()),
+                team_id=membership.team_id,
+                connection_id=connection.id,
+            ))
+        if user_memberships:
+            db.commit()
 
     # Auto-discover schema
     try:
@@ -103,6 +121,23 @@ async def list_connections(
         DatabaseConnection.user_id == current_user.id
     ).all()
 
+    return connections
+
+
+@router.get("/org", response_model=List[ConnectionResponse])
+async def list_org_connections(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all connections in the current user's organization (for policy management)."""
+    if not current_user.org_id:
+        return []
+    org_user_ids = [
+        row.id for row in db.query(User.id).filter(User.org_id == current_user.org_id).all()
+    ]
+    connections = db.query(DatabaseConnection).filter(
+        DatabaseConnection.user_id.in_(org_user_ids)
+    ).all()
     return connections
 
 
@@ -197,6 +232,11 @@ async def delete_connection(
 
     # Delete schema JSON file
     delete_schema_file(connection_id)
+
+    # Remove any team connection policies first to avoid FK violations
+    db.query(TeamConnectionPolicy).filter(
+        TeamConnectionPolicy.connection_id == connection_id
+    ).delete()
 
     # Delete connection from database
     db.delete(connection)

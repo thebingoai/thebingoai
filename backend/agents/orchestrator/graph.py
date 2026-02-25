@@ -28,20 +28,70 @@ def build_orchestrator_tools(
     """
     Build orchestrator tools.
 
-    When custom_agents is provided (Phase 4), each custom agent is wrapped as a
-    single tool for the orchestrator to invoke. Runtime enforcement filters out
-    tools and connections that are no longer in the team's policy.
+    When custom_agents is provided, each custom agent is wrapped as a single
+    tool for the orchestrator to invoke. Runtime enforcement filters out tools
+    and connections that are no longer in the team's policy.
 
     When custom_agents is None or empty, falls back to the legacy static tools
     (data_agent, rag_agent, recall_memory + skills) for backward compatibility.
 
-    db_session_factory is passed through to _build_agent_management_tools() so
-    the orchestrator can create/list/deactivate agents during a conversation.
+    Agent management tools (create_agent, list_my_agents, deactivate_agent) are
+    kept in code but not wired in — the assistant persona does not expose them.
     """
-    agent_mgmt_tools = _build_agent_management_tools(context, db_session_factory)
+    preference_tools = _build_preference_tools(context, db_session_factory)
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + agent_mgmt_tools
-    return _build_legacy_tools(context) + agent_mgmt_tools
+        return _build_dynamic_tools(context, custom_agents) + preference_tools
+    return _build_legacy_tools(context) + preference_tools
+
+
+def _build_preference_tools(
+    context: AgentContext,
+    db_session_factory: Optional[Callable] = None,
+) -> List:
+    """Build the save_user_preference tool for persisting user preferences."""
+    if db_session_factory is None:
+        return []
+
+    @tool
+    async def save_user_preference(key: str, value: str) -> str:
+        """Save a preference or fact learned about the user during conversation.
+
+        Use this to remember things the user tells you about themselves so you
+        can greet them by name and tailor responses in future conversations.
+
+        Args:
+            key: Preference key (e.g. "name", "role", "tone", "notes")
+            value: Preference value (e.g. "Ed", "Product Manager", "concise")
+
+        Returns:
+            Confirmation message
+        """
+        from sqlalchemy import text
+
+        db = db_session_factory()
+        try:
+            # Atomic JSONB merge — safe when called concurrently (parallel tool calls)
+            result = db.execute(
+                text(
+                    "UPDATE users "
+                    "SET preferences = COALESCE(preferences::jsonb, '{}'::jsonb) || CAST(:patch AS jsonb) "
+                    "WHERE id = :user_id "
+                    "RETURNING id"
+                ),
+                {"patch": json.dumps({key: value}), "user_id": context.user_id},
+            )
+            if result.rowcount == 0:
+                return json.dumps({"success": False, "message": "User not found"})
+            db.commit()
+            return json.dumps({"success": True, "message": f"Remembered {key}: {value}"})
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"save_user_preference failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    return [save_user_preference]
 
 
 def _build_agent_management_tools(
@@ -245,10 +295,14 @@ def _build_legacy_tools(context: AgentContext):
             JSON with relevant past interactions or empty if none found
         """
         from backend.memory.retriever import MemoryRetriever
-        retriever = MemoryRetriever()
-        context_str = await retriever.get_relevant_context(
-            user_id=context.user_id, query=query, top_k=5
-        )
+        try:
+            retriever = MemoryRetriever()
+            context_str = await retriever.get_relevant_context(
+                user_id=context.user_id, query=query, top_k=5
+            )
+        except Exception as mem_exc:
+            logger.warning(f"recall_memory failed: {mem_exc}")
+            return json.dumps({"success": True, "memories": [], "message": "No memories available yet"})
         if not context_str:
             return json.dumps({"success": True, "memories": [], "message": "No relevant memories found"})
         return json.dumps({"success": True, "memories": context_str})
@@ -339,6 +393,7 @@ async def run_orchestrator(
     custom_agents: Optional[List["CustomAgent"]] = None,
     db_session_factory: Optional[Callable] = None,
     memory_context: str = "",
+    user_preferences: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -347,14 +402,15 @@ async def run_orchestrator(
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
         custom_agents: Optional list of active CustomAgent records for this user
-        db_session_factory: Optional callable returning a SQLAlchemy Session (for agent management tools)
+        db_session_factory: Optional callable returning a SQLAlchemy Session
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
+        user_preferences: Optional dict of user preferences from User.preferences column
 
     Returns:
         Dict with success, message, metadata
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_preferences=user_preferences)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -406,6 +462,7 @@ async def stream_orchestrator(
     custom_agents: Optional[List["CustomAgent"]] = None,
     db_session_factory: Optional[Callable] = None,
     memory_context: str = "",
+    user_preferences: Optional[dict] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -414,8 +471,9 @@ async def stream_orchestrator(
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
         custom_agents: Optional list of active CustomAgent records for this user
-        db_session_factory: Optional callable returning a SQLAlchemy Session (for agent management tools)
+        db_session_factory: Optional callable returning a SQLAlchemy Session
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
+        user_preferences: Optional dict of user preferences from User.preferences column
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -424,7 +482,7 @@ async def stream_orchestrator(
         yield {"type": "status", "content": "Starting orchestrator..."}
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_preferences=user_preferences)
 
         provider = get_provider(settings.default_llm_provider)
 

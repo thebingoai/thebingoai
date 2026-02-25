@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Feature flags
+    enable_governance: bool = True
+
     @field_validator("chunk_overlap")
     @classmethod
     def validate_overlap(cls, v):

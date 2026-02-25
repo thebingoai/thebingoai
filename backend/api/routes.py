@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query
-from backend.api import organizations, teams, policies, agents as custom_agents
+from backend.api import feature_config
+from backend.config import settings
 
 router = APIRouter()
 
@@ -22,15 +23,16 @@ router.include_router(memory.router)
 # Usage Tracking (Phase 07)
 router.include_router(usage.router)
 
-# Enterprise: Org/Team Foundation (Phase 1)
-router.include_router(organizations.router)
-router.include_router(teams.router)
+# Feature config (always available so frontend can check flags)
+router.include_router(feature_config.router)
 
-# Enterprise: Tool Policies (Phase 2)
-router.include_router(policies.router)
-
-# Enterprise: Custom Agent Registry (Phase 3)
-router.include_router(custom_agents.router)
+# Enterprise: Org/Team/Policy/Agent routes (Phase 1-3)
+if settings.enable_governance:
+    from backend.api import organizations, teams, policies, agents as custom_agents
+    router.include_router(organizations.router)
+    router.include_router(teams.router)
+    router.include_router(policies.router)
+    router.include_router(custom_agents.router)
 
 # Upload
 router.post("/upload", tags=["upload"])(upload.upload_file)

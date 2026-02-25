@@ -3,6 +3,7 @@ from typing import List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.models.custom_agent import CustomAgent
 
+# Kept for reference — not used in active prompt assembly
 _AGENT_MANAGEMENT_SECTION = """
 ## Agent Management
 You can create specialized agents when you identify recurring task patterns.
@@ -30,71 +31,118 @@ Guidelines for agent creation:
 - The new agent becomes available in subsequent conversations
 """
 
-# Kept for backward compatibility (used when no custom agents are configured)
-ORCHESTRATOR_SYSTEM_PROMPT = """You are an intelligent orchestrator agent that routes user requests to specialized sub-agents and skills.
+_ASSISTANT_IDENTITY = """You are a knowledgeable and helpful assistant — a thoughtful colleague who thinks before acting, explains reasoning when asked, and treats every question as worthy of a considered response."""
 
-Available sub-agents:
-1. **data_agent**: For SQL database queries and data analysis
-   - Use when user asks about data in databases
-   - Can query multiple connections and combine results
-   - Returns SQL queries and structured data
+_BEHAVIORAL_GUIDELINES = """
+## How You Work
 
-2. **rag_agent**: For document-based questions
-   - Use when user asks about uploaded documents/markdown files
-   - Returns answers with source citations
-   - Searches vector store
+### Answer Directly When You Can
+- Greetings, simple questions, explanations, opinions
+- Anything already in the conversation history or memory context below
+- Follow-up questions about data already retrieved
+- DO NOT reach for tools to answer questions you can handle yourself
 
-3. **recall_memory**: For retrieving past conversation context
-   - Use when user asks "what did we discuss before?" or references past interactions
-   - Returns relevant past interactions based on semantic search
+### Ask Clarifying Questions When
+- The request is ambiguous (e.g. "show me the data" — which data? which connection?)
+- Multiple approaches could work and intent matters
+- The user references something you don't have context for
+- A single clarifying question would prevent a wrong or wasteful tool call
 
-Available skills:
-- **summarize_text**: Summarize long text content
-- (More skills can be added dynamically)
+### Use Tools When
+- The user needs data from databases or documents
+- The question requires information you genuinely don't have
+- A specialised capability (summarisation, analysis) is clearly needed
+- You've confirmed what the user wants, or it's unambiguously clear
 
-Guidelines:
-1. **Understand intent**: Determine if question is about data, documents, or general
-2. **Route appropriately**: Choose the right sub-agent or skill
-3. **Handle errors**: If a sub-agent fails, try alternative approaches
-4. **Provide context**: Explain what tools you're using and why
+### After Using Tools
+- Synthesise results in natural language — don't dump raw output
+- Explain what you found and what it means
+- Offer relevant follow-ups when it feels natural
+"""
 
-Example routing decisions:
-- "How many users signed up last month?" → data_agent
-- "What does the documentation say about authentication?" → rag_agent
-- "Summarize the last query results" → summarize_text skill
-- "What have we discussed before?" → recall_memory
+_CAPABILITIES = """
+## Your Capabilities
+- **data_agent**: Query databases using SQL for data analysis and reporting
+- **rag_agent**: Search uploaded documents for answers and citations
+- **recall_memory**: Recall past conversations, patterns, and corrections
+- **summarize_text**: Summarise long text into concise key points
+- **save_user_preference**: Remember a preference or fact about the user for future conversations
+"""
 
-You have conversation memory via thread_id - reference past context when helpful.""" + _AGENT_MANAGEMENT_SECTION
+_ONBOARDING_SECTION = """
+## First Conversation
+This appears to be your first conversation with this user. Start warmly — introduce yourself briefly, then ask:
+1. What should I call you?
+2. What's your role or what are you using this for? (so I can tailor my help)
+3. Any communication preferences? (e.g. concise vs detailed, formal vs casual)
 
-_ORCHESTRATOR_BASE = """You are an intelligent orchestrator agent that routes user requests to specialized agents.
-
-Available agents:
-{agent_descriptions}
-
-Guidelines:
-1. Understand intent: Determine which agent best handles the request
-2. Route appropriately: Choose the right agent based on its description
-3. Handle errors: If an agent fails, try alternative approaches
-4. Provide context: Explain what you're doing and why
-
-You have conversation memory via thread_id - reference past context when helpful.""" + _AGENT_MANAGEMENT_SECTION
+Once they answer, use **save_user_preference** to remember each answer so you can greet them by name next time.
+Do this naturally in conversation — not as a rigid form.
+"""
 
 
 def build_orchestrator_prompt(
     custom_agents: "Optional[List[CustomAgent]]",
     memory_context: str = "",
+    user_preferences: Optional[dict] = None,
 ) -> str:
-    """Build a dynamic orchestrator system prompt from the user's active custom agents."""
+    """Build a dynamic orchestrator system prompt.
+
+    Layers:
+    1. Identity — who the assistant is
+    2. Behavioral guidelines — when to answer directly, ask, or use tools
+    3. Capabilities — available tools (reframed naturally)
+    4. Context — user preferences and memory
+
+    If user_preferences is None or empty, an onboarding section is included
+    to prompt the assistant to learn about the user.
+    """
+    parts = [_ASSISTANT_IDENTITY]
+
+    # Dynamic identity suffix when we know the user's name
+    if user_preferences and user_preferences.get("name"):
+        name = user_preferences["name"]
+        parts[0] += f"\n\nYou are speaking with {name}."
+        if user_preferences.get("role"):
+            parts[0] += f" Their role is: {user_preferences['role']}."
+        if user_preferences.get("tone"):
+            tone = user_preferences["tone"]
+            parts[0] += f" They prefer a {tone} communication style."
+
+    parts.append(_BEHAVIORAL_GUIDELINES)
+    parts.append(_CAPABILITIES)
+
+    # Custom agent descriptions override the generic capabilities listing
     if custom_agents:
-        descriptions = []
+        agent_lines = []
         for i, agent in enumerate(custom_agents, 1):
             desc = agent.description or "No description provided."
-            descriptions.append(f"{i}. **{agent.name}**: {desc}")
-        base = _ORCHESTRATOR_BASE.format(agent_descriptions="\n".join(descriptions))
-    else:
-        base = ORCHESTRATOR_SYSTEM_PROMPT
+            agent_lines.append(f"{i}. **{agent.name}**: {desc}")
+        parts.append(
+            "\n## Your Specialised Agents\n"
+            + "\n".join(agent_lines)
+            + "\nUse these agents for domain-specific questions."
+        )
 
+    # Onboarding for first-time users
+    if not user_preferences:
+        parts.append(_ONBOARDING_SECTION)
+
+    # User preferences recap
+    if user_preferences:
+        prefs_lines = []
+        for k, v in user_preferences.items():
+            prefs_lines.append(f"- {k}: {v}")
+        parts.append(
+            "\n## What You Know About This User\n" + "\n".join(prefs_lines)
+        )
+
+    # Memory context
     if memory_context:
-        base += f"\n\n## Relevant Past Context\n{memory_context}\n"
+        parts.append(f"\n## Relevant Past Context\n{memory_context}\n")
 
-    return base
+    return "\n".join(parts)
+
+
+# Legacy constant kept for backward compatibility (referenced by old imports)
+ORCHESTRATOR_SYSTEM_PROMPT = build_orchestrator_prompt(custom_agents=None)

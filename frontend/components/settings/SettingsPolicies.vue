@@ -159,13 +159,17 @@ const teamOptions = computed(() =>
   teams.value.map(t => ({ label: t.name, value: t.id }))
 )
 
+const CATEGORY_ORDER = ['data', 'document', 'memory', 'skill']
+
 const catalogByCategory = computed(() => {
   const groups: Record<string, ToolCatalogItem[]> = {}
   for (const tool of catalog.value) {
     if (!groups[tool.category]) groups[tool.category] = []
     groups[tool.category].push(tool)
   }
-  return Object.entries(groups).map(([category, tools]) => ({ category, tools }))
+  return CATEGORY_ORDER
+    .filter(cat => groups[cat])
+    .map(cat => ({ category: cat, tools: groups[cat] }))
 })
 
 watch(selectedTeamId, async (id) => {
@@ -204,7 +208,7 @@ async function fetchPolicies(teamId: string) {
       api.policies.getToolCatalog() as Promise<ToolCatalogItem[]>,
       api.policies.getToolPolicy(teamId) as Promise<TeamToolPolicy>,
       api.policies.getConnectionPolicy(teamId) as Promise<TeamConnectionPolicy>,
-      api.connections.list() as Promise<DatabaseConnection[]>
+      api.connections.listOrg() as Promise<DatabaseConnection[]>
     ])
 
     catalog.value = catalogData
@@ -219,19 +223,17 @@ async function fetchPolicies(teamId: string) {
 }
 
 function toggleTool(toolKey: string) {
-  if (enabledTools.value.has(toolKey)) {
-    enabledTools.value.delete(toolKey)
-  } else {
-    enabledTools.value.add(toolKey)
-  }
+  const next = new Set(enabledTools.value)
+  if (next.has(toolKey)) next.delete(toolKey)
+  else next.add(toolKey)
+  enabledTools.value = next
 }
 
 function toggleConnection(connId: number) {
-  if (enabledConnections.value.has(connId)) {
-    enabledConnections.value.delete(connId)
-  } else {
-    enabledConnections.value.add(connId)
-  }
+  const next = new Set(enabledConnections.value)
+  if (next.has(connId)) next.delete(connId)
+  else next.add(connId)
+  enabledConnections.value = next
 }
 
 async function saveToolPolicy() {

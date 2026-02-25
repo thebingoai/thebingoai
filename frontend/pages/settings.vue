@@ -44,21 +44,32 @@ import { X } from 'lucide-vue-next'
 
 const router = useRouter()
 
-const sections = [
+const governanceEnabled = ref(false)
+
+onMounted(async () => {
+  try {
+    const config = await $fetch('/api/config') as { governance_enabled: boolean }
+    governanceEnabled.value = config.governance_enabled
+  } catch {}
+})
+
+const sections = computed(() => [
   { id: 'connections', name: 'Connections' },
-  { id: 'organization', name: 'Organization' },
-  { id: 'team', name: 'Team' },
-  { id: 'policies', name: 'Policies' },
+  ...(governanceEnabled.value ? [
+    { id: 'organization', name: 'Organization' },
+    { id: 'team', name: 'Team' },
+    { id: 'policies', name: 'Policies' },
+  ] : []),
   { id: 'jobs', name: 'Jobs' },
   { id: 'memory', name: 'Memory' },
   { id: 'usage', name: 'Usage' },
-  { id: 'profile', name: 'Profile' }
-]
+  { id: 'profile', name: 'Profile' },
+])
 
 const currentSection = ref('connections')
 
 const currentSectionName = computed(() => {
-  return sections.find(s => s.id === currentSection.value)?.name || ''
+  return sections.value.find(s => s.id === currentSection.value)?.name || ''
 })
 
 definePageMeta({

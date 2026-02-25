@@ -95,6 +95,11 @@ export const useApi = () => {
           headers: getHeaders()
         })
       },
+      async listOrg() {
+        return $fetch('/api/connections/org', {
+          headers: getHeaders()
+        })
+      },
       async executeQuery(connectionId: string, sql: string, limit?: number) {
         return $fetch(`/api/connections/${connectionId}/query`, {
           method: 'POST',

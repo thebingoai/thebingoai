@@ -34,14 +34,14 @@ class BaseSkill(ABC):
 
     def to_tool(self):
         """
-        Convert skill to LangChain tool.
+        Convert skill to a LangChain StructuredTool.
 
-        Returns a tool function that wraps execute().
+        Returns a tool wrapping execute() with the skill's name and description.
         """
-        from langchain_core.tools import tool
+        from langchain_core.tools import StructuredTool
 
-        @tool(name=self.name, description=self.description)
-        async def skill_tool(**kwargs) -> Dict[str, Any]:
-            return await self.execute(**kwargs)
-
-        return skill_tool
+        return StructuredTool.from_function(
+            coroutine=self.execute,
+            name=self.name,
+            description=self.description,
+        )

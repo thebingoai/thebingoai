@@ -47,15 +47,16 @@ async def register(
     db.commit()
     db.refresh(user)
 
-    # Assign to default org and team
-    user.org_id = DEFAULT_ORG_ID
-    membership = TeamMembership(
-        user_id=user.id,
-        team_id=DEFAULT_TEAM_ID,
-        role=MemberRole.MEMBER,
-    )
-    db.add(membership)
-    db.commit()
+    # Assign to default org and team (governance only)
+    if settings.enable_governance:
+        user.org_id = DEFAULT_ORG_ID
+        membership = TeamMembership(
+            user_id=user.id,
+            team_id=DEFAULT_TEAM_ID,
+            role=MemberRole.MEMBER,
+        )
+        db.add(membership)
+        db.commit()
 
     # Create JWT token
     access_token = create_access_token(data={"sub": user.id})
