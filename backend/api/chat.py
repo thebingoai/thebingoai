@@ -107,6 +107,7 @@ async def chat(
     # Load team policies and custom agents (Phase 4)
     from backend.services.policy_service import PolicyService
     from backend.models.custom_agent import CustomAgent as CustomAgentModel
+    from backend.models.user_skill import UserSkill as UserSkillModel
     team_id = PolicyService.get_user_primary_team(db, current_user.id)
     allowed_tool_keys: list = []
     team_connection_ids: list = accessible_ids
@@ -122,6 +123,12 @@ async def chat(
             CustomAgentModel.team_id == team_id,
             CustomAgentModel.is_active == True,
         ).all()
+
+    # Load user's active skills
+    user_skills = db.query(UserSkillModel).filter(
+        UserSkillModel.user_id == current_user.id,
+        UserSkillModel.is_active == True,
+    ).all()
 
     # Build AgentContext
     context = AgentContext(
@@ -156,6 +163,7 @@ async def chat(
         custom_agents=custom_agents or None,
         db_session_factory=SessionLocal,
         memory_context=memory_context,
+        user_skills=user_skills or None,
     )
 
     # Save assistant message
@@ -259,6 +267,7 @@ async def chat_stream(
             # Load team policies and custom agents (Phase 4)
             from backend.services.policy_service import PolicyService
             from backend.models.custom_agent import CustomAgent as CustomAgentModel
+            from backend.models.user_skill import UserSkill as UserSkillModel
             stream_team_id = PolicyService.get_user_primary_team(db, current_user.id)
             stream_allowed_tools: list = []
             stream_connection_ids: list = accessible_ids
@@ -273,6 +282,12 @@ async def chat_stream(
                     CustomAgentModel.team_id == stream_team_id,
                     CustomAgentModel.is_active == True,
                 ).all()
+
+            # Load user's active skills
+            stream_user_skills = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == current_user.id,
+                UserSkillModel.is_active == True,
+            ).all()
 
             # Build AgentContext
             context = AgentContext(
@@ -302,7 +317,7 @@ async def chat_stream(
             from backend.database.session import SessionLocal
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None, db_session_factory=SessionLocal, memory_context=stream_memory_context):
+            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None, db_session_factory=SessionLocal, memory_context=stream_memory_context, user_skills=stream_user_skills or None):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

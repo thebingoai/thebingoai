@@ -2,32 +2,46 @@ from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.models.custom_agent import CustomAgent
+    from backend.models.user_skill import UserSkill
 
-_AGENT_MANAGEMENT_SECTION = """
-## Agent Management
-You can create specialized agents when you identify recurring task patterns.
-Use recall_memory first to check if the user has asked similar questions before.
+_SKILL_MANAGEMENT_SECTION = """
+## Your Custom Skills
+You can create and use reusable skills. A skill stores a prompt template and/or
+Python code that can be executed on demand.
 
-- **create_agent**: Create a new specialized agent with specific tools and a focused system prompt
-- **list_my_agents**: See what agents already exist for this user
-- **deactivate_agent**: Remove an agent that is no longer useful
+- **create_skill**: Create a new skill with a name, description, optional prompt template, and optional Python code
+- **list_my_skills**: See what skills you have available
+- **use_skill**: Execute a skill by name, passing any required parameters as JSON
+- **delete_skill**: Remove a skill that is no longer needed
 
-Available tool_keys for create_agent (use ONLY these exact keys):
-- `execute_query` — execute read-only SQL SELECT queries
-- `list_tables` — list all tables in a database connection
-- `get_table_schema` — get column definitions and row count for a table
-- `search_tables` — search tables and columns by keyword
-- `rag_search` — search uploaded documents using semantic search
-- `recall_memory` — recall past conversation context
-- `summarize_text` — summarize long text into key points
+### When to create a skill
+- User explicitly asks you to create or save a reusable capability
+- User pastes API documentation and asks you to build a skill that consumes it
+- A task would benefit from a stored prompt template for consistent formatting
 
-Guidelines for agent creation:
-- Only create when you see a clear recurring pattern (NOT for one-off requests)
-- Choose the minimum set of tools needed for the agent's purpose
-- For database/data analysis agents use: `["execute_query", "list_tables", "get_table_schema", "search_tables"]`
-- For document search agents use: `["rag_search"]`
-- Write a focused system prompt that describes the agent's purpose clearly
-- The new agent becomes available in subsequent conversations
+### Writing good prompt templates
+A prompt template is a system prompt used to format the skill's output. Example:
+  "You are a data formatter. Present the input data as a markdown table with columns:
+   Property Name | Location | Price | Bedrooms. Sort by price ascending."
+
+### Writing skill code
+Code must define `async def run()`. The globals `params` and `secrets` are available.
+Only these imports are allowed: httpx, json, datetime, re, math.
+
+Example:
+```python
+async def run():
+    import httpx
+    api_key = secrets.get("api_key", "")
+    region = params.get("region", "all")
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.example.com/listings",
+            headers={"Authorization": f"Bearer {api_key}"},
+            params={"region": region},
+        )
+        return resp.json()
+```
 """
 
 # Kept for backward compatibility (used when no custom agents are configured)
@@ -64,7 +78,7 @@ Example routing decisions:
 - "Summarize the last query results" → summarize_text skill
 - "What have we discussed before?" → recall_memory
 
-You have conversation memory via thread_id - reference past context when helpful.""" + _AGENT_MANAGEMENT_SECTION
+You have conversation memory via thread_id - reference past context when helpful.""" + _SKILL_MANAGEMENT_SECTION
 
 _ORCHESTRATOR_BASE = """You are an intelligent orchestrator agent that routes user requests to specialized agents.
 
@@ -77,14 +91,15 @@ Guidelines:
 3. Handle errors: If an agent fails, try alternative approaches
 4. Provide context: Explain what you're doing and why
 
-You have conversation memory via thread_id - reference past context when helpful.""" + _AGENT_MANAGEMENT_SECTION
+You have conversation memory via thread_id - reference past context when helpful.""" + _SKILL_MANAGEMENT_SECTION
 
 
 def build_orchestrator_prompt(
     custom_agents: "Optional[List[CustomAgent]]",
     memory_context: str = "",
+    user_skills: "Optional[List[UserSkill]]" = None,
 ) -> str:
-    """Build a dynamic orchestrator system prompt from the user's active custom agents."""
+    """Build a dynamic orchestrator system prompt from the user's active custom agents and skills."""
     if custom_agents:
         descriptions = []
         for i, agent in enumerate(custom_agents, 1):
@@ -93,6 +108,12 @@ def build_orchestrator_prompt(
         base = _ORCHESTRATOR_BASE.format(agent_descriptions="\n".join(descriptions))
     else:
         base = ORCHESTRATOR_SYSTEM_PROMPT
+
+    if user_skills:
+        skill_lines = "\n".join(
+            f"- **{s.name}**: {s.description}" for s in user_skills
+        )
+        base += f"\n\n## Available Custom Skills ({len(user_skills)})\nUse `use_skill` when a request matches one of these:\n{skill_lines}\n"
 
     if memory_context:
         base += f"\n\n## Relevant Past Context\n{memory_context}\n"

@@ -16,6 +16,7 @@ import time
 
 if TYPE_CHECKING:
     from backend.models.custom_agent import CustomAgent
+    from backend.models.user_skill import UserSkill
 
 logger = logging.getLogger(__name__)
 
@@ -24,32 +25,34 @@ def build_orchestrator_tools(
     context: AgentContext,
     custom_agents: Optional[List["CustomAgent"]] = None,
     db_session_factory: Optional[Callable] = None,
+    user_skills: Optional[List["UserSkill"]] = None,
 ):
     """
     Build orchestrator tools.
 
-    When custom_agents is provided (Phase 4), each custom agent is wrapped as a
+    When custom_agents is provided, each custom agent is wrapped as a
     single tool for the orchestrator to invoke. Runtime enforcement filters out
     tools and connections that are no longer in the team's policy.
 
     When custom_agents is None or empty, falls back to the legacy static tools
     (data_agent, rag_agent, recall_memory + skills) for backward compatibility.
 
-    db_session_factory is passed through to _build_agent_management_tools() so
-    the orchestrator can create/list/deactivate agents during a conversation.
+    db_session_factory is passed through to _build_skill_tools() so the
+    orchestrator can create/list/use/delete skills during a conversation.
     """
-    agent_mgmt_tools = _build_agent_management_tools(context, db_session_factory)
+    skill_tools = _build_skill_tools(context, user_skills, db_session_factory)
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + agent_mgmt_tools
-    return _build_legacy_tools(context) + agent_mgmt_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools
+    return _build_legacy_tools(context) + skill_tools
 
 
-def _build_agent_management_tools(
+def _build_skill_tools(
     context: AgentContext,
+    user_skills: Optional[List["UserSkill"]] = None,
     db_session_factory: Optional[Callable] = None,
 ) -> List:
     """
-    Build tools that allow the orchestrator to create, list, and deactivate custom agents.
+    Build tools that allow the orchestrator to create, list, use, and delete user skills.
 
     Tools are no-ops (returning an informative error) when db_session_factory is not provided.
     """
@@ -57,148 +60,238 @@ def _build_agent_management_tools(
         return []
 
     @tool
-    async def create_agent(
+    async def create_skill(
         name: str,
         description: str,
-        system_prompt: str,
-        tool_keys: str,
+        prompt_template: str = "",
+        code: str = "",
+        parameters_schema: str = "",
+        secrets: str = "",
     ) -> str:
         """
-        Create a new specialized agent to handle recurring tasks.
-        Only use when you've identified a pattern that would benefit from a dedicated agent.
+        Create a new reusable skill. Skills store a prompt template and/or Python code
+        that can be invoked in future conversations.
 
         Args:
-            name: Short name for the agent (e.g. "Sales Analyst")
-            description: What this agent does (used for routing decisions)
-            system_prompt: System instructions for the agent
-            tool_keys: JSON array of tool keys (e.g. '["execute_query", "list_tables"]')
+            name: Unique snake_case name (e.g. "get_property_listings")
+            description: What this skill does (used for routing decisions)
+            prompt_template: Formatting instructions the LLM follows when using this skill
+            code: Python async function body. Must define `async def run()`. May use params/secrets globals.
+            parameters_schema: JSON object mapping param names to types (e.g. '{"region": "str"}')
+            secrets: JSON object of secret key-value pairs (e.g. '{"api_key": "sk-..."}')
 
         Returns:
-            JSON with success status and agent details
+            JSON with success status and skill details
         """
-        from backend.models.custom_agent import CustomAgent as CustomAgentModel
-        from backend.services.policy_service import PolicyService
+        from backend.models.user_skill import UserSkill as UserSkillModel
         import uuid
-
-        try:
-            parsed_keys = json.loads(tool_keys)
-        except (json.JSONDecodeError, TypeError):
-            return json.dumps({"success": False, "message": f"tool_keys must be a JSON array string, got: {tool_keys!r}"})
-
-        if not isinstance(parsed_keys, list):
-            return json.dumps({"success": False, "message": "tool_keys must be a JSON array"})
-
-        if not context.team_id:
-            return json.dumps({"success": False, "message": "Cannot create agent: user is not a member of any team. Please contact an administrator to assign you to a team."})
 
         db = db_session_factory()
         try:
-            # Validate tool_keys against team policy when team_id is available
-            if context.team_id:
-                is_valid, violations = PolicyService.validate_agent_tools(db, context.team_id, parsed_keys)
-                if not is_valid:
-                    return json.dumps({
-                        "success": False,
-                        "message": f"Policy violation: tools not allowed for this team: {violations}",
-                    })
-                # Default connection IDs to all team-allowed connections
-                connection_ids = PolicyService.get_team_allowed_connections(db, context.team_id)
-            else:
-                connection_ids = list(context.available_connections)
+            existing = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.name == name,
+                UserSkillModel.is_active == True,
+            ).first()
+            if existing:
+                return json.dumps({
+                    "success": False,
+                    "message": f"A skill named '{name}' already exists. Use a different name or delete the existing one first.",
+                })
 
-            agent = CustomAgentModel(
+            parsed_schema = None
+            if parameters_schema:
+                try:
+                    parsed_schema = json.loads(parameters_schema)
+                except json.JSONDecodeError:
+                    return json.dumps({"success": False, "message": "parameters_schema must be valid JSON"})
+
+            parsed_secrets = None
+            if secrets:
+                try:
+                    parsed_secrets = json.loads(secrets)
+                except json.JSONDecodeError:
+                    return json.dumps({"success": False, "message": "secrets must be valid JSON"})
+
+            skill = UserSkillModel(
                 id=str(uuid.uuid4()),
                 user_id=context.user_id,
-                team_id=context.team_id,
                 name=name,
                 description=description,
-                system_prompt=system_prompt,
-                tool_keys=parsed_keys,
-                connection_ids=connection_ids,
+                prompt_template=prompt_template or None,
+                code=code or None,
+                parameters_schema=parsed_schema,
+                secrets=parsed_secrets,
                 is_active=True,
             )
-            db.add(agent)
+            db.add(skill)
             db.commit()
-            db.refresh(agent)
+            db.refresh(skill)
             return json.dumps({
                 "success": True,
-                "message": f"Agent '{name}' created successfully. It will be available in your next conversation.",
-                "agent_id": agent.id,
-                "tool_keys": parsed_keys,
+                "message": f"Skill '{name}' created successfully.",
+                "skill_id": skill.id,
+                "has_code": bool(code),
+                "has_prompt_template": bool(prompt_template),
             })
         except Exception as exc:
             db.rollback()
-            logger.error(f"create_agent failed: {exc}")
+            logger.error(f"create_skill failed: {exc}")
             return json.dumps({"success": False, "message": str(exc)})
         finally:
             db.close()
 
     @tool
-    async def list_my_agents() -> str:
+    async def list_my_skills() -> str:
         """
-        List all your active specialized agents.
+        List all your active skills with their names and descriptions.
 
         Returns:
-            JSON array of active agents with name, description, and tool_keys
+            JSON array of active skills
         """
-        from backend.models.custom_agent import CustomAgent as CustomAgentModel
+        from backend.models.user_skill import UserSkill as UserSkillModel
 
         db = db_session_factory()
         try:
-            agents = db.query(CustomAgentModel).filter(
-                CustomAgentModel.user_id == context.user_id,
-                CustomAgentModel.is_active == True,
+            skills = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.is_active == True,
             ).all()
             return json.dumps({
                 "success": True,
-                "agents": [
+                "skills": [
                     {
-                        "name": a.name,
-                        "description": a.description,
-                        "tool_keys": a.tool_keys,
+                        "name": s.name,
+                        "description": s.description,
+                        "has_code": s.code is not None,
+                        "has_prompt_template": s.prompt_template is not None,
+                        "parameters_schema": s.parameters_schema,
                     }
-                    for a in agents
+                    for s in skills
                 ],
             })
         except Exception as exc:
-            logger.error(f"list_my_agents failed: {exc}")
+            logger.error(f"list_my_skills failed: {exc}")
             return json.dumps({"success": False, "message": str(exc)})
         finally:
             db.close()
 
     @tool
-    async def deactivate_agent(agent_name: str) -> str:
+    async def use_skill(skill_name: str, params_json: str = "{}") -> str:
         """
-        Deactivate a specialized agent that is no longer needed.
+        Execute a previously created skill.
+
+        If the skill has Python code, it will be executed in a sandbox and the
+        result formatted using the prompt_template (if any). If the skill only
+        has a prompt_template, that template is returned for you to apply directly.
 
         Args:
-            agent_name: The exact name of the agent to deactivate
+            skill_name: Exact name of the skill to run
+            params_json: JSON object of parameters to pass to the skill (e.g. '{"region": "Dublin"}')
+
+        Returns:
+            The skill's output or the prompt template to apply
+        """
+        from backend.models.user_skill import UserSkill as UserSkillModel
+        from backend.agents.skills.executor import execute_skill_code
+
+        db = db_session_factory()
+        try:
+            skill = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.name == skill_name,
+                UserSkillModel.is_active == True,
+            ).first()
+            if not skill:
+                return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+            try:
+                params = json.loads(params_json) if params_json else {}
+            except json.JSONDecodeError:
+                return json.dumps({"success": False, "message": "params_json must be valid JSON"})
+
+            raw_output = None
+
+            # Execute code if present
+            if skill.code:
+                result = await execute_skill_code(
+                    code=skill.code,
+                    params=params,
+                    secrets=skill.secrets or {},
+                )
+                if isinstance(result, dict) and "error" in result:
+                    return json.dumps({"success": False, "message": result["error"]})
+                raw_output = result
+
+            # Format using prompt_template via LLM if we have both
+            if skill.prompt_template and raw_output is not None:
+                provider = get_provider(settings.default_llm_provider)
+                format_messages = [
+                    {
+                        "role": "system",
+                        "content": skill.prompt_template,
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Data to format:\n{json.dumps(raw_output, default=str)}",
+                    },
+                ]
+                formatted = await provider.chat(format_messages, temperature=0.3)
+                return json.dumps({"success": True, "result": formatted, "raw": raw_output})
+
+            # Only prompt_template, no code — return template as instructions
+            if skill.prompt_template and raw_output is None:
+                return json.dumps({
+                    "success": True,
+                    "prompt_template": skill.prompt_template,
+                    "message": "Apply this template to the relevant data.",
+                })
+
+            # Only code, no prompt_template — return raw output
+            if raw_output is not None:
+                return json.dumps({"success": True, "result": raw_output})
+
+            return json.dumps({"success": False, "message": "Skill has neither code nor a prompt template"})
+
+        except Exception as exc:
+            logger.error(f"use_skill failed for '{skill_name}': {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
+    async def delete_skill(skill_name: str) -> str:
+        """
+        Delete (deactivate) a skill that is no longer needed.
+
+        Args:
+            skill_name: Exact name of the skill to delete
 
         Returns:
             JSON with success status
         """
-        from backend.models.custom_agent import CustomAgent as CustomAgentModel
+        from backend.models.user_skill import UserSkill as UserSkillModel
 
         db = db_session_factory()
         try:
-            agent = db.query(CustomAgentModel).filter(
-                CustomAgentModel.user_id == context.user_id,
-                CustomAgentModel.name == agent_name,
-                CustomAgentModel.is_active == True,
+            skill = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.name == skill_name,
+                UserSkillModel.is_active == True,
             ).first()
-            if not agent:
-                return json.dumps({"success": False, "message": f"No active agent named '{agent_name}' found"})
-            agent.is_active = False
+            if not skill:
+                return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+            skill.is_active = False
             db.commit()
-            return json.dumps({"success": True, "message": f"Agent '{agent_name}' has been deactivated"})
+            return json.dumps({"success": True, "message": f"Skill '{skill_name}' has been deleted"})
         except Exception as exc:
             db.rollback()
-            logger.error(f"deactivate_agent failed: {exc}")
+            logger.error(f"delete_skill failed: {exc}")
             return json.dumps({"success": False, "message": str(exc)})
         finally:
             db.close()
 
-    return [create_agent, list_my_agents, deactivate_agent]
+    return [create_skill, list_my_skills, use_skill, delete_skill]
 
 
 def _build_legacy_tools(context: AgentContext):
@@ -339,6 +432,7 @@ async def run_orchestrator(
     custom_agents: Optional[List["CustomAgent"]] = None,
     db_session_factory: Optional[Callable] = None,
     memory_context: str = "",
+    user_skills: Optional[List["UserSkill"]] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -347,14 +441,15 @@ async def run_orchestrator(
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
         custom_agents: Optional list of active CustomAgent records for this user
-        db_session_factory: Optional callable returning a SQLAlchemy Session (for agent management tools)
+        db_session_factory: Optional callable returning a SQLAlchemy Session (for skill tools)
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
+        user_skills: Optional list of active UserSkill records for this user
 
     Returns:
         Dict with success, message, metadata
     """
-    tools = build_orchestrator_tools(context, custom_agents, db_session_factory)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context)
+    tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -406,6 +501,7 @@ async def stream_orchestrator(
     custom_agents: Optional[List["CustomAgent"]] = None,
     db_session_factory: Optional[Callable] = None,
     memory_context: str = "",
+    user_skills: Optional[List["UserSkill"]] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -414,8 +510,9 @@ async def stream_orchestrator(
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
         custom_agents: Optional list of active CustomAgent records for this user
-        db_session_factory: Optional callable returning a SQLAlchemy Session (for agent management tools)
+        db_session_factory: Optional callable returning a SQLAlchemy Session (for skill tools)
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
+        user_skills: Optional list of active UserSkill records for this user
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -423,8 +520,8 @@ async def stream_orchestrator(
     try:
         yield {"type": "status", "content": "Starting orchestrator..."}
 
-        tools = build_orchestrator_tools(context, custom_agents, db_session_factory)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context)
+        tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills)
 
         provider = get_provider(settings.default_llm_provider)
 
