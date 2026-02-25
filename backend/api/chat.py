@@ -136,12 +136,26 @@ async def chat(
     history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
     history = history[:-1]
 
+    # Pre-fetch memory context
+    memory_context = ""
+    try:
+        from backend.memory.retriever import MemoryRetriever
+        retriever = MemoryRetriever()
+        memory_context = await retriever.get_relevant_context(
+            user_id=current_user.id, query=request.message, top_k=3
+        )
+    except Exception as mem_err:
+        logger.warning(f"Memory retrieval failed: {mem_err}")
+
     # Run orchestrator
+    from backend.database.session import SessionLocal
     result = await run_orchestrator(
         user_question=request.message,
         context=context,
         history=history,
         custom_agents=custom_agents or None,
+        db_session_factory=SessionLocal,
+        memory_context=memory_context,
     )
 
     # Save assistant message
@@ -273,10 +287,22 @@ async def chat_stream(
             history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
             history = history[:-1]
 
+            # Pre-fetch memory context
+            stream_memory_context = ""
+            try:
+                from backend.memory.retriever import MemoryRetriever
+                retriever = MemoryRetriever()
+                stream_memory_context = await retriever.get_relevant_context(
+                    user_id=current_user.id, query=request.message, top_k=3
+                )
+            except Exception as mem_err:
+                logger.warning(f"Memory retrieval failed: {mem_err}")
+
             # Stream orchestrator execution
+            from backend.database.session import SessionLocal
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None):
+            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None, db_session_factory=SessionLocal, memory_context=stream_memory_context):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

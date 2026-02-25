@@ -9,7 +9,7 @@ from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
 from backend.llm.factory import get_provider
 from backend.config import settings
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 import json
 import logging
 import time
@@ -20,7 +20,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def build_orchestrator_tools(context: AgentContext, custom_agents: Optional[List["CustomAgent"]] = None):
+def build_orchestrator_tools(
+    context: AgentContext,
+    custom_agents: Optional[List["CustomAgent"]] = None,
+    db_session_factory: Optional[Callable] = None,
+):
     """
     Build orchestrator tools.
 
@@ -30,10 +34,171 @@ def build_orchestrator_tools(context: AgentContext, custom_agents: Optional[List
 
     When custom_agents is None or empty, falls back to the legacy static tools
     (data_agent, rag_agent, recall_memory + skills) for backward compatibility.
+
+    db_session_factory is passed through to _build_agent_management_tools() so
+    the orchestrator can create/list/deactivate agents during a conversation.
     """
+    agent_mgmt_tools = _build_agent_management_tools(context, db_session_factory)
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents)
-    return _build_legacy_tools(context)
+        return _build_dynamic_tools(context, custom_agents) + agent_mgmt_tools
+    return _build_legacy_tools(context) + agent_mgmt_tools
+
+
+def _build_agent_management_tools(
+    context: AgentContext,
+    db_session_factory: Optional[Callable] = None,
+) -> List:
+    """
+    Build tools that allow the orchestrator to create, list, and deactivate custom agents.
+
+    Tools are no-ops (returning an informative error) when db_session_factory is not provided.
+    """
+    if db_session_factory is None:
+        return []
+
+    @tool
+    async def create_agent(
+        name: str,
+        description: str,
+        system_prompt: str,
+        tool_keys: str,
+    ) -> str:
+        """
+        Create a new specialized agent to handle recurring tasks.
+        Only use when you've identified a pattern that would benefit from a dedicated agent.
+
+        Args:
+            name: Short name for the agent (e.g. "Sales Analyst")
+            description: What this agent does (used for routing decisions)
+            system_prompt: System instructions for the agent
+            tool_keys: JSON array of tool keys (e.g. '["execute_query", "list_tables"]')
+
+        Returns:
+            JSON with success status and agent details
+        """
+        from backend.models.custom_agent import CustomAgent as CustomAgentModel
+        from backend.services.policy_service import PolicyService
+        import uuid
+
+        try:
+            parsed_keys = json.loads(tool_keys)
+        except (json.JSONDecodeError, TypeError):
+            return json.dumps({"success": False, "message": f"tool_keys must be a JSON array string, got: {tool_keys!r}"})
+
+        if not isinstance(parsed_keys, list):
+            return json.dumps({"success": False, "message": "tool_keys must be a JSON array"})
+
+        if not context.team_id:
+            return json.dumps({"success": False, "message": "Cannot create agent: user is not a member of any team. Please contact an administrator to assign you to a team."})
+
+        db = db_session_factory()
+        try:
+            # Validate tool_keys against team policy when team_id is available
+            if context.team_id:
+                is_valid, violations = PolicyService.validate_agent_tools(db, context.team_id, parsed_keys)
+                if not is_valid:
+                    return json.dumps({
+                        "success": False,
+                        "message": f"Policy violation: tools not allowed for this team: {violations}",
+                    })
+                # Default connection IDs to all team-allowed connections
+                connection_ids = PolicyService.get_team_allowed_connections(db, context.team_id)
+            else:
+                connection_ids = list(context.available_connections)
+
+            agent = CustomAgentModel(
+                id=str(uuid.uuid4()),
+                user_id=context.user_id,
+                team_id=context.team_id,
+                name=name,
+                description=description,
+                system_prompt=system_prompt,
+                tool_keys=parsed_keys,
+                connection_ids=connection_ids,
+                is_active=True,
+            )
+            db.add(agent)
+            db.commit()
+            db.refresh(agent)
+            return json.dumps({
+                "success": True,
+                "message": f"Agent '{name}' created successfully. It will be available in your next conversation.",
+                "agent_id": agent.id,
+                "tool_keys": parsed_keys,
+            })
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"create_agent failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
+    async def list_my_agents() -> str:
+        """
+        List all your active specialized agents.
+
+        Returns:
+            JSON array of active agents with name, description, and tool_keys
+        """
+        from backend.models.custom_agent import CustomAgent as CustomAgentModel
+
+        db = db_session_factory()
+        try:
+            agents = db.query(CustomAgentModel).filter(
+                CustomAgentModel.user_id == context.user_id,
+                CustomAgentModel.is_active == True,
+            ).all()
+            return json.dumps({
+                "success": True,
+                "agents": [
+                    {
+                        "name": a.name,
+                        "description": a.description,
+                        "tool_keys": a.tool_keys,
+                    }
+                    for a in agents
+                ],
+            })
+        except Exception as exc:
+            logger.error(f"list_my_agents failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
+    async def deactivate_agent(agent_name: str) -> str:
+        """
+        Deactivate a specialized agent that is no longer needed.
+
+        Args:
+            agent_name: The exact name of the agent to deactivate
+
+        Returns:
+            JSON with success status
+        """
+        from backend.models.custom_agent import CustomAgent as CustomAgentModel
+
+        db = db_session_factory()
+        try:
+            agent = db.query(CustomAgentModel).filter(
+                CustomAgentModel.user_id == context.user_id,
+                CustomAgentModel.name == agent_name,
+                CustomAgentModel.is_active == True,
+            ).first()
+            if not agent:
+                return json.dumps({"success": False, "message": f"No active agent named '{agent_name}' found"})
+            agent.is_active = False
+            db.commit()
+            return json.dumps({"success": True, "message": f"Agent '{agent_name}' has been deactivated"})
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"deactivate_agent failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    return [create_agent, list_my_agents, deactivate_agent]
 
 
 def _build_legacy_tools(context: AgentContext):
@@ -71,20 +236,22 @@ def _build_legacy_tools(context: AgentContext):
     @tool
     async def recall_memory(query: str) -> str:
         """
-        Recall past conversation context (Phase 06 - currently stub).
+        Recall past conversation context and patterns.
 
         Args:
-            query: What to recall from memory
+            query: What to recall — topics, tables, patterns, past questions
 
         Returns:
-            JSON string with recalled context
+            JSON with relevant past interactions or empty if none found
         """
-        result = {
-            "success": False,
-            "message": "Memory system not yet implemented (Phase 06)",
-            "past_results": None
-        }
-        return json.dumps(result)
+        from backend.memory.retriever import MemoryRetriever
+        retriever = MemoryRetriever()
+        context_str = await retriever.get_relevant_context(
+            user_id=context.user_id, query=query, top_k=5
+        )
+        if not context_str:
+            return json.dumps({"success": True, "memories": [], "message": "No relevant memories found"})
+        return json.dumps({"success": True, "memories": context_str})
 
     # Get skills from registry
     skill_tools = get_skill_registry().to_tools()
@@ -128,10 +295,13 @@ def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent
         agent_tools = build_tools_for_keys(effective_tool_keys, agent_context)
 
         agent_name = agent_def.name
+        # Sanitize to match OpenAI tool name pattern: ^[a-zA-Z0-9_-]+$
+        import re as _re
+        tool_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', agent_name)
         agent_description = agent_def.description or f"Custom agent: {agent_name}"
         agent_system_prompt = agent_def.system_prompt
 
-        @tool(name=agent_name, description=agent_description)
+        @tool(tool_name, description=agent_description)
         async def invoke_custom_agent(
             question: str,
             _system_prompt: str = agent_system_prompt,
@@ -167,6 +337,8 @@ async def run_orchestrator(
     context: AgentContext,
     history: list = None,
     custom_agents: Optional[List["CustomAgent"]] = None,
+    db_session_factory: Optional[Callable] = None,
+    memory_context: str = "",
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -175,12 +347,14 @@ async def run_orchestrator(
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
         custom_agents: Optional list of active CustomAgent records for this user
+        db_session_factory: Optional callable returning a SQLAlchemy Session (for agent management tools)
+        memory_context: Optional pre-fetched memory context string to prepend to the system prompt
 
     Returns:
         Dict with success, message, metadata
     """
-    tools = build_orchestrator_tools(context, custom_agents)
-    prompt = build_orchestrator_prompt(custom_agents) if custom_agents else ORCHESTRATOR_SYSTEM_PROMPT
+    tools = build_orchestrator_tools(context, custom_agents, db_session_factory)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -230,6 +404,8 @@ async def stream_orchestrator(
     context: AgentContext,
     history: list = None,
     custom_agents: Optional[List["CustomAgent"]] = None,
+    db_session_factory: Optional[Callable] = None,
+    memory_context: str = "",
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -238,6 +414,8 @@ async def stream_orchestrator(
         user_question: User's natural language question
         context: AgentContext with user_id, available_connections, thread_id
         custom_agents: Optional list of active CustomAgent records for this user
+        db_session_factory: Optional callable returning a SQLAlchemy Session (for agent management tools)
+        memory_context: Optional pre-fetched memory context string to prepend to the system prompt
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -245,8 +423,8 @@ async def stream_orchestrator(
     try:
         yield {"type": "status", "content": "Starting orchestrator..."}
 
-        tools = build_orchestrator_tools(context, custom_agents)
-        prompt = build_orchestrator_prompt(custom_agents) if custom_agents else ORCHESTRATOR_SYSTEM_PROMPT
+        tools = build_orchestrator_tools(context, custom_agents, db_session_factory)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context)
 
         provider = get_provider(settings.default_llm_provider)
 

@@ -11,7 +11,11 @@ from backend.database.base import Base
 from backend.config import settings
 
 # Import all models to register them with Base
-from backend.models import user, database_connection, conversation, message, agent_step, token_usage
+from backend.models import (
+    user, database_connection, conversation, message, agent_step, token_usage,
+    organization, team, team_membership, tool_catalog, team_tool_policy,
+    team_connection_policy, custom_agent,
+)
 
 config = context.config
 config.set_main_option('sqlalchemy.url', settings.database_url)

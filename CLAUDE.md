@@ -11,23 +11,27 @@ FastAPI backend for indexing and querying markdown files using LLMs, with Nuxt 4
 ### Local Development (Recommended)
 
 ```bash
-# Start all services (backend + Redis + Celery)
+# Start all services (Docker backend + native frontend)
 ./start.sh
 
 # Access points:
+# - Frontend: http://localhost:3000
 # - API: http://localhost:8000
 # - API Docs: http://localhost:8000/docs
 # - Health: http://localhost:8000/health
 ```
 
 Requirements:
-- Redis must be running locally (`redis-cli ping` should return `PONG`)
-- `.env` configured with `OPENAI_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`
+- Docker and Docker Compose must be installed and running
+- Node.js must be installed (for the frontend)
+- `.env` configured with required API keys
 
-### Docker Development
+`start.sh` runs `docker-compose up -d` for all backend services (Postgres, Redis, Qdrant, backend, celery-worker), waits for the health check, then starts the Nuxt frontend natively with `npm run dev`. Ctrl+C stops everything.
+
+### Backend Only (Docker)
 
 ```bash
-# Start all containers
+# Start backend services without the frontend
 docker-compose up -d
 
 # View logs
@@ -38,10 +42,10 @@ docker-compose logs -f celery-worker
 docker-compose up --build -d
 ```
 
-### Manual Setup
+### Manual Setup (Advanced)
 
 ```bash
-# Backend only
+# Backend only (requires local Postgres, Redis, Qdrant)
 uvicorn backend.main:app --reload
 
 # Celery worker (in separate terminal)

@@ -35,7 +35,7 @@ def upgrade():
         sa.Column('display_name', sa.String(), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('category', sa.Enum('data', 'document', 'memory', 'skill', name='toolcategory'), nullable=False),
-        sa.Column('is_system', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('is_system', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('tool_key'),
@@ -46,7 +46,7 @@ def upgrade():
         sa.Column('id', sa.String(), nullable=False),
         sa.Column('team_id', sa.String(), nullable=False),
         sa.Column('tool_key', sa.String(), nullable=False),
-        sa.Column('is_enabled', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('is_enabled', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['team_id'], ['teams.id']),
         sa.PrimaryKeyConstraint('id'),
@@ -58,7 +58,7 @@ def upgrade():
         sa.Column('id', sa.String(), nullable=False),
         sa.Column('team_id', sa.String(), nullable=False),
         sa.Column('connection_id', sa.Integer(), nullable=False),
-        sa.Column('is_enabled', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('is_enabled', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['team_id'], ['teams.id']),
         sa.ForeignKeyConstraint(['connection_id'], ['database_connections.id']),
@@ -73,7 +73,7 @@ def upgrade():
     for tool_key, display_name, description, category in _SEED_TOOLS:
         bind.execute(sa.text(
             "INSERT INTO tool_catalog (id, tool_key, display_name, description, category, is_system, created_at) "
-            "VALUES (:id, :tool_key, :display_name, :description, :category, 1, :now)"
+            "VALUES (:id, :tool_key, :display_name, :description, :category, true, :now)"
         ), {
             "id": str(uuid.uuid4()),
             "tool_key": tool_key,

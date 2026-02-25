@@ -27,7 +27,7 @@ def upgrade():
         sa.Column('system_prompt', sa.Text(), nullable=False),
         sa.Column('tool_keys', sa.JSON(), nullable=False),
         sa.Column('connection_ids', sa.JSON(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['user_id'], ['users.id']),

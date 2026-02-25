@@ -46,26 +46,29 @@ def _build_rag_search_tool(context: AgentContext) -> List:
 
 
 def _build_recall_memory_tool(context: AgentContext) -> List:
-    """Return [recall_memory] stub tool."""
+    """Return [recall_memory] tool backed by MemoryRetriever."""
     from langchain_core.tools import tool
+    from backend.memory.retriever import MemoryRetriever
     import json
 
     @tool
     async def recall_memory(query: str) -> str:
         """
-        Recall past conversation context (currently a stub).
+        Recall past conversation context and patterns.
 
         Args:
-            query: What to recall from memory
+            query: What to recall — topics, tables, patterns, past questions
 
         Returns:
-            JSON string with recalled context
+            JSON with relevant past interactions or empty if none found
         """
-        return json.dumps({
-            "success": False,
-            "message": "Memory system not yet implemented (Phase 06)",
-            "past_results": None,
-        })
+        retriever = MemoryRetriever()
+        context_str = await retriever.get_relevant_context(
+            user_id=context.user_id, query=query, top_k=5
+        )
+        if not context_str:
+            return json.dumps({"success": True, "memories": [], "message": "No relevant memories found"})
+        return json.dumps({"success": True, "memories": context_str})
 
     return [recall_memory]
 
