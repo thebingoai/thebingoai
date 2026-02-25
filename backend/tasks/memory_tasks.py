@@ -26,11 +26,18 @@ def generate_daily_memories():
         yesterday = datetime.utcnow() - timedelta(days=1)
 
         for user in users:
+            prefs = user.preferences or {}
+            if not prefs.get("memory_enabled", True):
+                logger.info(f"Skipping memory generation for user {user.id} (memory_enabled=False)")
+                continue
             try:
                 logger.info(f"Generating memory for user {user.id}")
                 # Use sync wrapper for Celery task
                 summary = generator.generate_daily_memory_sync(db, user.id, yesterday)
-                logger.info(f"Memory generated: {summary['memory_id']}")
+                if "memory_id" in summary:
+                    logger.info(f"Memory generated: {summary['memory_id']}")
+                else:
+                    logger.info(f"No conversations found for user {user.id} on {yesterday.date()}")
             except Exception as e:
                 logger.error(f"Failed to generate memory for user {user.id}: {str(e)}")
 

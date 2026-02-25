@@ -32,3 +32,14 @@ export interface UserMemoryListResponse {
 export interface MemorySettings {
   memory_enabled: boolean
 }
+
+export interface MemoryHeatmapEntry {
+  date: string
+  count: number
+}
+
+export interface MemoryHeatmapResponse {
+  data: MemoryHeatmapEntry[]
+  total_days: number
+  total_conversations: number
+}

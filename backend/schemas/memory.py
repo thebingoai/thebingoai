@@ -52,6 +52,19 @@ class UserMemoryListResponse(BaseModel):
     total: int
 
 
+# Memory heatmap schemas
+
+class MemoryHeatmapEntry(BaseModel):
+    date: str
+    count: int
+
+
+class MemoryHeatmapResponse(BaseModel):
+    data: List[MemoryHeatmapEntry]
+    total_days: int
+    total_conversations: int
+
+
 # Memory settings schemas
 
 class MemorySettingsResponse(BaseModel):

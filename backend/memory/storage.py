@@ -1,6 +1,6 @@
 """Memory storage in Qdrant."""
 
-from backend.vectordb.qdrant import upsert_vectors, query_vectors, delete_by_filter
+from backend.vectordb.qdrant import upsert_vectors, query_vectors, delete_by_filter, scroll_all_points
 from backend.embedder.openai import OpenAIEmbedder
 from backend.config import settings
 from typing import List, Dict, Any
@@ -91,6 +91,34 @@ class MemoryStorage:
 
         logger.info(f"Retrieved {len(memories)} memories for user {user_id}")
         return memories
+
+    def list_memory_dates(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        List all memory dates and conversation counts for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of dicts with 'date' (YYYY-MM-DD) and 'count' (query_count)
+        """
+        points = scroll_all_points(
+            collection=settings.qdrant_memories_collection,
+            tenant_id=user_id,
+            payload_fields=["date", "query_count"]
+        )
+
+        result = []
+        for payload in points:
+            raw_date = payload.get("date", "")
+            date_str = raw_date[:10] if raw_date else ""
+            if date_str:
+                result.append({
+                    "date": date_str,
+                    "count": payload.get("query_count", 1)
+                })
+
+        return result
 
     async def delete_user_memories(self, user_id: str):
         """

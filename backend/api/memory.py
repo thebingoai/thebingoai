@@ -11,7 +11,9 @@ from backend.schemas.memory import (
     MemorySearchResponse, MemoryGenerateResponse,
     UserMemoryCreate, UserMemoryUpdate, UserMemoryResponse, UserMemoryListResponse,
     MemorySettingsResponse, MemorySettingsUpdate,
+    MemoryHeatmapEntry, MemoryHeatmapResponse,
 )
+from backend.memory.storage import MemoryStorage
 from backend.tasks.memory_tasks import generate_user_memory
 from backend.memory.retriever import MemoryRetriever
 from datetime import datetime
@@ -75,6 +77,24 @@ async def delete_all_memories(
     """Delete all auto-generated memories for current user."""
     retriever = MemoryRetriever()
     await retriever.storage.delete_user_memories(current_user.id)
+
+
+# ── Heatmap ───────────────────────────────────────────────────────────────────
+
+@router.get("/heatmap", response_model=MemoryHeatmapResponse)
+async def get_memory_heatmap(
+    current_user: User = Depends(get_current_user)
+):
+    """Get daily conversation memory activity for heatmap visualization."""
+    storage = MemoryStorage()
+    entries = storage.list_memory_dates(current_user.id)
+
+    total_conversations = sum(e["count"] for e in entries)
+    return MemoryHeatmapResponse(
+        data=[MemoryHeatmapEntry(date=e["date"], count=e["count"]) for e in entries],
+        total_days=len(entries),
+        total_conversations=total_conversations,
+    )
 
 
 # ── User-directed memory entries ──────────────────────────────────────────────

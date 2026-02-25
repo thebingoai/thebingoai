@@ -1,6 +1,7 @@
 """Celery tasks for async file processing."""
 
 from celery import Celery
+from celery.schedules import crontab
 from datetime import datetime
 from typing import Optional
 
@@ -35,6 +36,13 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # Process one task at a time per worker
     include=["backend.tasks.memory_tasks"],
 )
+
+celery_app.conf.beat_schedule = {
+    "generate-daily-memories": {
+        "task": "generate_daily_memories",
+        "schedule": crontab(hour=0, minute=0),  # midnight UTC
+    },
+}
 
 
 @celery_app.task(bind=True, max_retries=settings.celery_max_retries)

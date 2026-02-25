@@ -365,6 +365,9 @@ export const useApi = () => {
           headers: getHeaders(),
           body: { memory_enabled }
         })
+      },
+      async heatmap() {
+        return $fetch('/api/memory/heatmap', { headers: getHeaders() })
       }
     },
 
