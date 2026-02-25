@@ -88,12 +88,12 @@ def _build_skill_tools(
 
         db = db_session_factory()
         try:
+            # Check for any existing record (active or soft-deleted)
             existing = db.query(UserSkillModel).filter(
                 UserSkillModel.user_id == context.user_id,
                 UserSkillModel.name == name,
-                UserSkillModel.is_active == True,
             ).first()
-            if existing:
+            if existing and existing.is_active:
                 return json.dumps({
                     "success": False,
                     "message": f"A skill named '{name}' already exists. Use a different name or delete the existing one first.",
@@ -113,18 +113,28 @@ def _build_skill_tools(
                 except json.JSONDecodeError:
                     return json.dumps({"success": False, "message": "secrets must be valid JSON"})
 
-            skill = UserSkillModel(
-                id=str(uuid.uuid4()),
-                user_id=context.user_id,
-                name=name,
-                description=description,
-                prompt_template=prompt_template or None,
-                code=code or None,
-                parameters_schema=parsed_schema,
-                secrets=parsed_secrets,
-                is_active=True,
-            )
-            db.add(skill)
+            if existing:
+                # Reactivate and update the soft-deleted record
+                existing.description = description
+                existing.prompt_template = prompt_template or None
+                existing.code = code or None
+                existing.parameters_schema = parsed_schema
+                existing.secrets = parsed_secrets
+                existing.is_active = True
+                skill = existing
+            else:
+                skill = UserSkillModel(
+                    id=str(uuid.uuid4()),
+                    user_id=context.user_id,
+                    name=name,
+                    description=description,
+                    prompt_template=prompt_template or None,
+                    code=code or None,
+                    parameters_schema=parsed_schema,
+                    secrets=parsed_secrets,
+                    is_active=True,
+                )
+                db.add(skill)
             db.commit()
             db.refresh(skill)
             return json.dumps({
