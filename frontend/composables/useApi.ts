@@ -123,6 +123,7 @@ export const useApi = () => {
         callbacks: {
           onToken?: (content: string) => void
           onToolCall?: (data: any) => void
+          onReasoning?: (data: any) => void
           onToolResult?: (data: any) => void
           onStatus?: (status: string) => void
           onDone?: (data: any) => void
@@ -182,6 +183,9 @@ export const useApi = () => {
                         break
                       case 'tool_call':
                         callbacks.onToolCall?.(data)
+                        break
+                      case 'reasoning':
+                        callbacks.onReasoning?.(data)
                         break
                       case 'tool_result':
                         callbacks.onToolResult?.(data)

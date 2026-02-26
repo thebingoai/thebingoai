@@ -21,102 +21,23 @@
       </p>
     </div>
 
-    <!-- Steps list -->
-    <div v-else class="flex-1 overflow-y-auto px-4 py-4">
-      <div class="space-y-3">
-        <div
-          v-for="(step, idx) in steps"
-          :key="idx"
-        >
-          <!-- tool_call step -->
-          <template v-if="step.step_type === 'tool_call'">
-            <!-- Card -->
-            <div class="rounded-lg border border-gray-100 bg-gray-50 overflow-hidden">
-              <div class="flex items-center gap-2 px-3 py-2 bg-gray-100">
-                <span
-                  class="w-2 h-2 rounded-full shrink-0"
-                  :class="step.status === 'completed' ? 'bg-green-400' : 'bg-amber-400'"
-                />
-                <span class="text-xs font-medium text-gray-700 truncate">{{ formatToolName(step.tool_name) }}</span>
-                <span class="ml-auto text-xs text-gray-400">{{ agentLabel(step.agent_type) }}</span>
-                <span v-if="typeof step.duration_ms === 'number'" class="text-[10px] text-gray-400 font-mono">{{ formatDuration(step.duration_ms) }}</span>
-              </div>
-
-              <!-- Args -->
-              <div v-if="hasContent(step.content?.args)" class="px-3 py-2 border-t border-gray-100">
-                <div class="text-xs text-gray-500 mb-1">Input</div>
-                <div v-if="step.content.args?.question" class="text-xs text-gray-700 italic">
-                  "{{ step.content.args.question }}"
-                </div>
-                <div v-else-if="step.content.args?.sql" class="rounded bg-white border border-gray-200 p-2 mt-1">
-                  <pre class="text-xs text-gray-800 whitespace-pre-wrap break-all">{{ step.content.args.sql }}</pre>
-                </div>
-                <div v-else-if="connectionLabel(step.content.args)" class="text-xs text-gray-700">
-                  {{ connectionLabel(step.content.args) }}
-                </div>
-                <div v-else class="text-xs text-gray-600 font-mono break-all">
-                  {{ JSON.stringify(step.content.args, null, 2) }}
-                </div>
-              </div>
-
-              <!-- Result summary (collapsed into tool_call for cleaner UI) -->
-              <div v-if="step.status === 'completed' && hasContent(step.content?.result)" class="px-3 py-2 border-t border-gray-100">
-                <div class="text-xs text-gray-500 mb-1">Result</div>
-                <ChatReasoningResultSummary :result="step.content.result" :tool-name="step.tool_name" />
-              </div>
-
-              <!-- Timestamp footer -->
-              <div v-if="stepTimestamp(step)" class="flex justify-end px-3 py-1 border-t border-gray-100">
-                <span class="text-[9px] text-gray-400 font-mono">{{ stepTimestamp(step) }}</span>
-              </div>
-
-              <!-- Data agent sub-steps -->
-              <div v-if="step.content?.sub_steps?.length" class="border-t border-gray-100">
-                <div class="px-3 py-1.5 bg-gray-50">
-                  <button
-                    @click="toggleSubSteps(idx)"
-                    class="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-                  >
-                    <span>{{ expandedSubSteps.has(idx) ? '▼' : '▸' }}</span>
-                    <span>{{ step.content.sub_steps.length }} internal steps</span>
-                  </button>
-                </div>
-                <div v-if="expandedSubSteps.has(idx)" class="px-3 py-2 space-y-2">
-                  <div
-                    v-for="(subStep, subIdx) in step.content.sub_steps"
-                    :key="subIdx"
-                    class="rounded border border-gray-100 bg-white overflow-hidden"
-                  >
-                    <div class="flex items-center gap-2 px-2 py-1.5 bg-gray-50">
-                      <span class="w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
-                      <span class="text-xs font-medium text-gray-600">{{ formatToolName(subStep.tool_name) }}</span>
-                    </div>
-                    <div v-if="hasContent(subStep.content?.args)" class="px-2 py-1.5">
-                      <div v-if="subStep.content?.args?.sql" class="rounded bg-gray-50 p-1.5">
-                        <pre class="text-xs text-gray-700 whitespace-pre-wrap break-all">{{ subStep.content.args.sql }}</pre>
-                      </div>
-                      <div v-else-if="connectionLabel(subStep.content.args)" class="text-xs text-gray-700">
-                        {{ connectionLabel(subStep.content.args) }}
-                      </div>
-                      <div v-else class="text-xs text-gray-600 font-mono break-all">
-                        {{ JSON.stringify(subStep.content.args) }}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <!-- tool_result step (standalone — only shown if not merged into tool_call above) -->
-          <template v-else-if="step.step_type === 'tool_result' && !isResultMerged(idx)">
-            <div class="rounded-lg border border-gray-100 bg-white px-3 py-2">
-              <div class="text-xs text-gray-500 mb-1">{{ formatToolName(step.tool_name) }} result</div>
-              <ChatReasoningResultSummary :result="step.content?.result" :tool-name="step.tool_name" />
-            </div>
-          </template>
-        </div>
+    <!-- Tree view -->
+    <div v-else class="flex-1 overflow-y-auto px-4 py-4 font-mono text-xs">
+      <!-- Root: Orchestrator -->
+      <div class="flex items-center gap-1.5 py-0.5 mb-0.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+        <span class="font-medium text-gray-800 font-sans">Orchestrator</span>
+        <span v-if="rootTimestamp" class="ml-auto text-[10px] font-mono text-gray-400">{{ rootTimestamp }}</span>
       </div>
+
+      <!-- Root's children -->
+      <ChatReasoningTreeNode
+        v-for="(child, idx) in treeNodes.children"
+        :key="idx"
+        :node="child"
+        :is-last="idx === treeNodes.children.length - 1"
+        :ancestors="[]"
+      />
     </div>
   </div>
 </template>
@@ -124,22 +45,22 @@
 <script setup lang="ts">
 import type { AgentStep } from '~/stores/chat'
 
-const chatStore = useChatStore()
-const { ensureLoaded, getConnectionLabel } = useConnections()
-
-// Ensure connections are cached when the panel mounts
-onMounted(ensureLoaded)
-
-const connectionLabel = (args: Record<string, any> | undefined): string | null => {
-  if (!args || !('connection_id' in args)) return null
-  return getConnectionLabel(args.connection_id)
+interface TreeNode {
+  type: 'agent' | 'action' | 'result' | 'reasoning'
+  label: string
+  detail?: string
+  status?: 'in-progress' | 'completed'
+  duration?: string
+  timestamp?: string
+  children: TreeNode[]
 }
+
+const chatStore = useChatStore()
 
 // Determine which message's steps to show
 const selectedMessage = computed(() => {
   const id = chatStore.selectedMessageId
   if (id) return chatStore.messages.find(m => m.id === id) || null
-  // Fall back to latest assistant message
   const msgs = chatStore.messages
   for (let i = msgs.length - 1; i >= 0; i--) {
     if (msgs[i].role === 'assistant') return msgs[i]
@@ -149,51 +70,11 @@ const selectedMessage = computed(() => {
 
 const steps = computed((): AgentStep[] => selectedMessage.value?.agent_steps || [])
 
-// Sub-step expansion tracking
-const expandedSubSteps = ref(new Set<number>())
-const toggleSubSteps = (idx: number) => {
-  if (expandedSubSteps.value.has(idx)) {
-    expandedSubSteps.value.delete(idx)
-  } else {
-    expandedSubSteps.value.add(idx)
-  }
-}
-
-// When a new message is selected, reset sub-step expansion
-watch(() => chatStore.selectedMessageId, () => {
-  expandedSubSteps.value.clear()
-})
-
-// A tool_result is "merged" if the preceding tool_call already shows the result inline
-const isResultMerged = (idx: number): boolean => {
-  const step = steps.value[idx]
-  if (idx === 0) return false
-  const prev = steps.value[idx - 1]
-  return (
-    prev.step_type === 'tool_call' &&
-    prev.tool_name === step.tool_name &&
-    prev.status === 'completed'
-  )
-}
-
-const hasContent = (val: any): boolean => {
-  if (!val) return false
-  if (typeof val === 'object') return Object.keys(val).length > 0
-  return Boolean(val)
-}
+// --- Formatting helpers ---
 
 const formatToolName = (name?: string): string => {
   if (!name) return 'Tool'
   return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
-const agentLabel = (agentType: string): string => {
-  const labels: Record<string, string> = {
-    orchestrator: 'Orchestrator',
-    data_agent: 'Data Agent',
-    rag_agent: 'RAG Agent'
-  }
-  return labels[agentType] || agentType
 }
 
 const formatDuration = (ms: number): string => {
@@ -201,13 +82,137 @@ const formatDuration = (ms: number): string => {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-const stepTimestamp = (step: AgentStep): string => {
-  if (step.started_at) {
-    return new Date(step.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  }
-  if (step.created_at) {
-    return new Date(step.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  }
-  return ''
+const formatTimestamp = (step: AgentStep): string => {
+  const ts = step.started_at ?? (step.created_at ? new Date(step.created_at).getTime() : undefined)
+  if (!ts) return ''
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
+
+const getResultLabel = (result: any): string => {
+  if (!result) return 'Completed'
+  if (Array.isArray(result)) return `Found ${result.length} item${result.length !== 1 ? 's' : ''}`
+  if (typeof result === 'object') {
+    if ('row_count' in result) return `Completed: ${result.row_count} row${result.row_count !== 1 ? 's' : ''}`
+    if ('rows' in result && Array.isArray(result.rows)) return `Completed: ${result.rows.length} row${result.rows.length !== 1 ? 's' : ''}`
+  }
+  return 'Completed'
+}
+
+const formatArgs = (args: Record<string, any> | undefined): string | undefined => {
+  if (!args || Object.keys(args).length === 0) return undefined
+  const entries = Object.entries(args).filter(([k]) => !k.startsWith('_'))
+  if (entries.length === 0) return undefined
+  return entries
+    .map(([k, v]) => {
+      const val = typeof v === 'string' ? v : JSON.stringify(v, null, 2)
+      return `**${k}**: ${val}`
+    })
+    .join('\n\n')
+}
+
+// --- Tree transformation ---
+
+const SUB_AGENT_TOOLS = new Set(['data_agent', 'rag_agent'])
+const AGENT_LABELS: Record<string, string> = {
+  data_agent: 'Data Agent',
+  rag_agent: 'RAG Agent',
+}
+
+const rootTimestamp = computed((): string | undefined => {
+  const first = steps.value[0]
+  return first ? formatTimestamp(first) || undefined : undefined
+})
+
+const treeNodes = computed((): TreeNode => {
+  const root: TreeNode = { type: 'agent', label: 'Orchestrator', children: [] }
+
+  for (const step of steps.value) {
+    // Handle reasoning steps
+    if (step.step_type === 'reasoning') {
+      root.children.push({
+        type: 'reasoning',
+        label: step.content?.text || 'Thinking...',
+        status: 'completed',
+        timestamp: formatTimestamp(step) || undefined,
+        children: [],
+      })
+      continue
+    }
+
+    if (step.step_type !== 'tool_call') continue
+
+    const ts = formatTimestamp(step) || undefined
+    const dur = typeof step.duration_ms === 'number' ? formatDuration(step.duration_ms) : undefined
+    const nodeStatus: 'in-progress' | 'completed' = step.status === 'completed' ? 'completed' : 'in-progress'
+    const argsDetail = formatArgs(step.content?.args)
+
+    if (SUB_AGENT_TOOLS.has(step.tool_name || '')) {
+      const agentLabel = AGENT_LABELS[step.tool_name!] || formatToolName(step.tool_name)
+      const agentNode: TreeNode = { type: 'agent', label: agentLabel, children: [] }
+
+      // Sub-steps from content.sub_steps
+      for (const subStep of (step.content?.sub_steps || [])) {
+        let subTs: string | undefined
+        if (subStep.started_at) {
+          subTs = new Date(subStep.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        } else if (subStep.created_at) {
+          subTs = new Date(subStep.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        }
+        agentNode.children.push({
+          type: 'action',
+          label: formatToolName(subStep.tool_name),
+          timestamp: subTs,
+          status: subStep.status === 'completed' ? 'completed' : 'in-progress',
+          children: [],
+        })
+      }
+
+      // Result node when completed
+      if (step.status === 'completed' && step.content?.result !== undefined) {
+        agentNode.children.push({
+          type: 'result',
+          label: getResultLabel(step.content.result),
+          status: 'completed',
+          timestamp: ts,
+          children: [],
+        })
+      }
+
+      root.children.push({
+        type: 'action',
+        label: `Routing to ${agentLabel}`,
+        detail: argsDetail,
+        status: nodeStatus,
+        duration: dur,
+        timestamp: ts,
+        children: [agentNode],
+      })
+    } else {
+      // Direct orchestrator tool call
+      root.children.push({
+        type: 'action',
+        label: formatToolName(step.tool_name),
+        detail: argsDetail,
+        status: nodeStatus,
+        duration: dur,
+        timestamp: ts,
+        children: [],
+      })
+    }
+  }
+
+  // Synthetic "Response generated" node when streaming is done
+  if (steps.value.length > 0 && !chatStore.isStreaming) {
+    const lastStep = steps.value[steps.value.length - 1]
+    root.children.push({
+      type: 'result',
+      label: 'Response generated',
+      status: 'completed',
+      timestamp: formatTimestamp(lastStep) || undefined,
+      children: [],
+    })
+  }
+
+  return root
+})
 </script>

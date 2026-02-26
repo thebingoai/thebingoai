@@ -103,7 +103,7 @@ Guidelines:
 1. **Understand intent**: Determine if question is about data, documents, or general
 2. **Route appropriately**: Choose the right sub-agent or skill
 3. **Handle errors**: If a sub-agent fails, try alternative approaches
-4. **Provide context**: Explain what tools you're using and why
+4. **Provide context**: After completing tasks, briefly explain what you found or did
 
 Example routing decisions:
 - "How many users signed up last month?" → data_agent
@@ -122,7 +122,7 @@ Guidelines:
 1. Understand intent: Determine which agent best handles the request
 2. Route appropriately: Choose the right agent based on its description
 3. Handle errors: If an agent fails, try alternative approaches
-4. Provide context: Explain what you're doing and why
+4. Provide context: After completing tasks, briefly explain what you found or did
 
 You have conversation memory via thread_id - reference past context when helpful.""" + _SKILL_MANAGEMENT_SECTION
 
