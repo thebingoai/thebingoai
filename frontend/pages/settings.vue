@@ -28,6 +28,7 @@
     <div class="flex-1 overflow-y-auto">
       <SettingsConnections v-if="currentSection === 'connections'" />
       <SettingsSkills v-else-if="currentSection === 'skills'" />
+      <SettingsJobs v-else-if="currentSection === 'jobs'" />
       <SettingsMemory v-else-if="currentSection === 'memory'" />
       <SettingsProfile v-else-if="currentSection === 'profile'" />
       <div v-else class="p-6">

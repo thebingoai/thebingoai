@@ -491,6 +491,54 @@ export const useApi = () => {
           headers: getHeaders()
         })
       }
+    },
+
+    // Heartbeat Jobs endpoints
+    heartbeatJobs: {
+      async list() {
+        return $fetch('/api/heartbeat-jobs', { headers: getHeaders() })
+      },
+      async create(data: any) {
+        return $fetch('/api/heartbeat-jobs', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async get(id: string) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, { headers: getHeaders() })
+      },
+      async update(id: string, data: any) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async toggle(id: string, isActive: boolean) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { is_active: isActive }
+        })
+      },
+      async remove(id: string) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async listRuns(id: string, limit = 20, offset = 0) {
+        return $fetch(`/api/heartbeat-jobs/${id}/runs?limit=${limit}&offset=${offset}`, {
+          headers: getHeaders()
+        })
+      },
+      async triggerRun(id: string) {
+        return $fetch(`/api/heartbeat-jobs/${id}/run`, {
+          method: 'POST',
+          headers: getHeaders()
+        })
+      }
     }
   }
 }

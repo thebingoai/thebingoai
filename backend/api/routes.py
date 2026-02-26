@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query
-from backend.api import agents as custom_agents, skills
+from backend.api import agents as custom_agents, skills, heartbeat_jobs
 
 router = APIRouter()
 
@@ -27,6 +27,9 @@ router.include_router(custom_agents.router)
 
 # User Skills
 router.include_router(skills.router)
+
+# Heartbeat Jobs
+router.include_router(heartbeat_jobs.router)
 
 # Upload
 router.post("/upload", tags=["upload"])(upload.upload_file)
