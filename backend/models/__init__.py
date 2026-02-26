@@ -26,6 +26,8 @@ from backend.models.custom_agent import CustomAgent
 
 # Phase 5: User Skills & Memories
 from backend.models.user_memory import UserMemory
+from backend.models.skill_reference import SkillReference
+from backend.models.skill_suggestion import SkillSuggestion
 
 # Phase 6: Heartbeat Jobs
 from backend.models.heartbeat_job import HeartbeatJob

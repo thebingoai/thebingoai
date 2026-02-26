@@ -63,28 +63,50 @@ def _build_skill_tools(
     async def create_skill(
         name: str,
         description: str,
+        instructions: str = "",
         prompt_template: str = "",
         code: str = "",
         parameters_schema: str = "",
         secrets: str = "",
+        activation_hint: str = "",
+        references: str = "",
     ) -> str:
         """
-        Create a new reusable skill. Skills store a prompt template and/or Python code
-        that can be invoked in future conversations.
+        Create a new reusable skill with progressive disclosure support.
+
+        Skill type is auto-determined:
+        - instructions + code → hybrid
+        - instructions only → instruction
+        - code (with or without prompt_template) → code
+        - prompt_template only → prompt
 
         Args:
             name: Unique snake_case name (e.g. "get_property_listings")
             description: What this skill does (used for routing decisions)
+            instructions: Rich Markdown workflow, domain expertise, or decision tree (for instruction/hybrid skills)
             prompt_template: Formatting instructions the LLM follows when using this skill
             code: Python async function body. Must define `async def run()`. May use params/secrets globals.
             parameters_schema: JSON object mapping param names to types (e.g. '{"region": "str"}')
             secrets: JSON object of secret key-value pairs (e.g. '{"api_key": "sk-..."}')
+            activation_hint: Optional hint for better skill discovery (e.g. "Use when user asks about SEO")
+            references: JSON array of {"title": "...", "content": "..."} reference documents
 
         Returns:
             JSON with success status and skill details
         """
         from backend.models.user_skill import UserSkill as UserSkillModel
+        from backend.models.skill_reference import SkillReference as SkillReferenceModel
         import uuid
+
+        # Auto-determine skill_type
+        if instructions and code:
+            skill_type = "hybrid"
+        elif instructions:
+            skill_type = "instruction"
+        elif code:
+            skill_type = "code"
+        else:
+            skill_type = "prompt"
 
         db = db_session_factory()
         try:
@@ -113,14 +135,27 @@ def _build_skill_tools(
                 except json.JSONDecodeError:
                     return json.dumps({"success": False, "message": "secrets must be valid JSON"})
 
+            parsed_references = []
+            if references:
+                try:
+                    parsed_references = json.loads(references)
+                    if not isinstance(parsed_references, list):
+                        return json.dumps({"success": False, "message": "references must be a JSON array"})
+                except json.JSONDecodeError:
+                    return json.dumps({"success": False, "message": "references must be valid JSON array"})
+
             if existing:
                 # Reactivate and update the soft-deleted record
                 existing.description = description
+                existing.instructions = instructions or None
                 existing.prompt_template = prompt_template or None
                 existing.code = code or None
                 existing.parameters_schema = parsed_schema
                 existing.secrets = parsed_secrets
+                existing.skill_type = skill_type
+                existing.activation_hint = activation_hint or None
                 existing.is_active = True
+                existing.version = (existing.version or 1) + 1
                 skill = existing
             else:
                 skill = UserSkillModel(
@@ -128,21 +163,42 @@ def _build_skill_tools(
                     user_id=context.user_id,
                     name=name,
                     description=description,
+                    instructions=instructions or None,
                     prompt_template=prompt_template or None,
                     code=code or None,
                     parameters_schema=parsed_schema,
                     secrets=parsed_secrets,
+                    skill_type=skill_type,
+                    activation_hint=activation_hint or None,
                     is_active=True,
+                    version=1,
                 )
                 db.add(skill)
+
+            db.flush()
+
+            # Add references
+            for i, ref in enumerate(parsed_references):
+                ref_obj = SkillReferenceModel(
+                    id=str(uuid.uuid4()),
+                    skill_id=skill.id,
+                    title=ref.get("title", f"Reference {i+1}"),
+                    content=ref.get("content", ""),
+                    sort_order=i,
+                )
+                db.add(ref_obj)
+
             db.commit()
             db.refresh(skill)
             return json.dumps({
                 "success": True,
                 "message": f"Skill '{name}' created successfully.",
                 "skill_id": skill.id,
+                "skill_type": skill_type,
                 "has_code": bool(code),
+                "has_instructions": bool(instructions),
                 "has_prompt_template": bool(prompt_template),
+                "reference_count": len(parsed_references),
             })
         except Exception as exc:
             db.rollback()
@@ -152,9 +208,68 @@ def _build_skill_tools(
             db.close()
 
     @tool
+    async def activate_skill(skill_name: str) -> str:
+        """
+        Load a skill's full content before using it. REQUIRED before first use.
+
+        Returns instructions, code status, prompt template, reference list, and usage guidance.
+
+        Args:
+            skill_name: Exact name of the skill to activate
+
+        Returns:
+            JSON with full skill content and usage guidance
+        """
+        from backend.models.user_skill import UserSkill as UserSkillModel
+        from backend.models.skill_reference import SkillReference as SkillReferenceModel
+        from sqlalchemy.orm import joinedload
+
+        db = db_session_factory()
+        try:
+            skill = db.query(UserSkillModel).options(
+                joinedload(UserSkillModel.references)
+            ).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.name == skill_name,
+                UserSkillModel.is_active == True,
+            ).first()
+
+            if not skill:
+                return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+            ref_titles = [r.title for r in sorted(skill.references, key=lambda r: r.sort_order)] if skill.references else []
+
+            skill_type = skill.skill_type or "code"
+            if skill_type == "instruction":
+                guidance = "This is an instruction skill. Follow the instructions directly to fulfill the user's request. Do NOT call use_skill."
+            elif skill_type == "hybrid":
+                guidance = "This is a hybrid skill. Follow the instructions, then call use_skill for the code parts."
+            elif skill_type == "prompt":
+                guidance = "This is a prompt skill. Apply the prompt_template to format the relevant data."
+            else:
+                guidance = "This is a code skill. Call use_skill to execute it."
+
+            return json.dumps({
+                "success": True,
+                "skill_name": skill_name,
+                "skill_type": skill_type,
+                "instructions": skill.instructions,
+                "prompt_template": skill.prompt_template,
+                "has_code": bool(skill.code),
+                "parameters_schema": skill.parameters_schema,
+                "references": ref_titles,
+                "guidance": guidance,
+            })
+        except Exception as exc:
+            logger.error(f"activate_skill failed for '{skill_name}': {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
     async def list_my_skills() -> str:
         """
-        List all your active skills with their names and descriptions.
+        List all your active skills with their names, types, and descriptions.
 
         Returns:
             JSON array of active skills
@@ -173,6 +288,8 @@ def _build_skill_tools(
                     {
                         "name": s.name,
                         "description": s.description,
+                        "skill_type": s.skill_type or "code",
+                        "has_instructions": s.instructions is not None,
                         "has_code": s.code is not None,
                         "has_prompt_template": s.prompt_template is not None,
                         "parameters_schema": s.parameters_schema,
@@ -189,18 +306,16 @@ def _build_skill_tools(
     @tool
     async def use_skill(skill_name: str, params_json: str = "{}") -> str:
         """
-        Execute a previously created skill.
+        Execute a previously created skill. Call activate_skill first to load the skill.
 
-        If the skill has Python code, it will be executed in a sandbox and the
-        result formatted using the prompt_template (if any). If the skill only
-        has a prompt_template, that template is returned for you to apply directly.
+        For instruction-only skills, use activate_skill and follow the instructions instead.
 
         Args:
             skill_name: Exact name of the skill to run
             params_json: JSON object of parameters to pass to the skill (e.g. '{"region": "Dublin"}')
 
         Returns:
-            The skill's output or the prompt template to apply
+            The skill's output or instructions to follow
         """
         from backend.models.user_skill import UserSkill as UserSkillModel
         from backend.agents.skills.executor import execute_skill_code
@@ -214,6 +329,16 @@ def _build_skill_tools(
             ).first()
             if not skill:
                 return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+            # Handle instruction-only skills
+            skill_type = skill.skill_type or "code"
+            if skill_type == "instruction" and not skill.code:
+                return json.dumps({
+                    "success": True,
+                    "skill_type": "instruction",
+                    "instructions": skill.instructions,
+                    "message": "Follow these instructions to fulfill the request. Do not call use_skill for instruction skills.",
+                })
 
             try:
                 params = json.loads(params_json) if params_json else {}
@@ -270,6 +395,167 @@ def _build_skill_tools(
             db.close()
 
     @tool
+    async def read_skill_reference(skill_name: str, reference_title: str) -> str:
+        """
+        Load a specific reference document from a skill. Use when activate_skill shows references.
+
+        Args:
+            skill_name: Exact name of the skill
+            reference_title: Exact title of the reference to load
+
+        Returns:
+            JSON with the reference content
+        """
+        from backend.models.user_skill import UserSkill as UserSkillModel
+        from backend.models.skill_reference import SkillReference as SkillReferenceModel
+
+        db = db_session_factory()
+        try:
+            skill = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.name == skill_name,
+                UserSkillModel.is_active == True,
+            ).first()
+            if not skill:
+                return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+            ref = db.query(SkillReferenceModel).filter(
+                SkillReferenceModel.skill_id == skill.id,
+                SkillReferenceModel.title == reference_title,
+            ).first()
+            if not ref:
+                return json.dumps({"success": False, "message": f"No reference titled '{reference_title}' found in skill '{skill_name}'"})
+
+            return json.dumps({
+                "success": True,
+                "skill_name": skill_name,
+                "reference_title": reference_title,
+                "content": ref.content,
+            })
+        except Exception as exc:
+            logger.error(f"read_skill_reference failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
+    async def update_skill(
+        skill_name: str,
+        description: str = "",
+        instructions: str = "",
+        prompt_template: str = "",
+        code: str = "",
+        parameters_schema: str = "",
+        activation_hint: str = "",
+        add_references: str = "",
+        remove_reference_titles: str = "",
+    ) -> str:
+        """
+        Update an existing skill's content. Only provided fields are updated. Increments version.
+
+        Args:
+            skill_name: Exact name of the skill to update
+            description: New description (leave empty to keep current)
+            instructions: New Markdown instructions (leave empty to keep current)
+            prompt_template: New prompt template (leave empty to keep current)
+            code: New Python code (leave empty to keep current)
+            parameters_schema: New JSON parameters schema (leave empty to keep current)
+            activation_hint: New activation hint (leave empty to keep current)
+            add_references: JSON array of {"title": "...", "content": "..."} to add
+            remove_reference_titles: JSON array of reference titles to remove
+
+        Returns:
+            JSON with success status and updated version number
+        """
+        from backend.models.user_skill import UserSkill as UserSkillModel
+        from backend.models.skill_reference import SkillReference as SkillReferenceModel
+        import uuid
+
+        db = db_session_factory()
+        try:
+            skill = db.query(UserSkillModel).filter(
+                UserSkillModel.user_id == context.user_id,
+                UserSkillModel.name == skill_name,
+                UserSkillModel.is_active == True,
+            ).first()
+            if not skill:
+                return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+            if description:
+                skill.description = description
+            if instructions:
+                skill.instructions = instructions
+            if prompt_template:
+                skill.prompt_template = prompt_template
+            if code:
+                skill.code = code
+            if activation_hint:
+                skill.activation_hint = activation_hint
+            if parameters_schema:
+                try:
+                    skill.parameters_schema = json.loads(parameters_schema)
+                except json.JSONDecodeError:
+                    return json.dumps({"success": False, "message": "parameters_schema must be valid JSON"})
+
+            # Recalculate skill_type
+            has_instructions = bool(skill.instructions)
+            has_code = bool(skill.code)
+            if has_instructions and has_code:
+                skill.skill_type = "hybrid"
+            elif has_instructions:
+                skill.skill_type = "instruction"
+            elif has_code:
+                skill.skill_type = "code"
+            else:
+                skill.skill_type = "prompt"
+
+            # Remove references
+            if remove_reference_titles:
+                try:
+                    titles_to_remove = json.loads(remove_reference_titles)
+                    db.query(SkillReferenceModel).filter(
+                        SkillReferenceModel.skill_id == skill.id,
+                        SkillReferenceModel.title.in_(titles_to_remove),
+                    ).delete(synchronize_session=False)
+                except json.JSONDecodeError:
+                    return json.dumps({"success": False, "message": "remove_reference_titles must be a JSON array"})
+
+            # Add new references
+            if add_references:
+                try:
+                    new_refs = json.loads(add_references)
+                    existing_count = db.query(SkillReferenceModel).filter(
+                        SkillReferenceModel.skill_id == skill.id
+                    ).count()
+                    for i, ref in enumerate(new_refs):
+                        ref_obj = SkillReferenceModel(
+                            id=str(uuid.uuid4()),
+                            skill_id=skill.id,
+                            title=ref.get("title", f"Reference {existing_count + i + 1}"),
+                            content=ref.get("content", ""),
+                            sort_order=existing_count + i,
+                        )
+                        db.add(ref_obj)
+                except json.JSONDecodeError:
+                    return json.dumps({"success": False, "message": "add_references must be a JSON array"})
+
+            skill.version = (skill.version or 1) + 1
+            db.commit()
+
+            return json.dumps({
+                "success": True,
+                "message": f"Skill '{skill_name}' updated to version {skill.version}.",
+                "skill_type": skill.skill_type,
+                "version": skill.version,
+            })
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"update_skill failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
     async def delete_skill(skill_name: str) -> str:
         """
         Delete (deactivate) a skill that is no longer needed.
@@ -301,7 +587,105 @@ def _build_skill_tools(
         finally:
             db.close()
 
-    return [create_skill, list_my_skills, use_skill, delete_skill]
+    @tool
+    async def check_skill_suggestions() -> str:
+        """
+        Check for pending skill suggestions detected by background analysis.
+
+        Call this at the start of each conversation to surface patterns the system detected.
+
+        Returns:
+            JSON with up to 3 pending suggestions
+        """
+        from backend.models.skill_suggestion import SkillSuggestion as SkillSuggestionModel
+
+        db = db_session_factory()
+        try:
+            suggestions = db.query(SkillSuggestionModel).filter(
+                SkillSuggestionModel.user_id == context.user_id,
+                SkillSuggestionModel.status == "pending",
+            ).order_by(SkillSuggestionModel.confidence.desc()).limit(3).all()
+
+            return json.dumps({
+                "success": True,
+                "suggestions": [
+                    {
+                        "id": s.id,
+                        "suggested_name": s.suggested_name,
+                        "suggested_description": s.suggested_description,
+                        "suggested_skill_type": s.suggested_skill_type,
+                        "pattern_summary": s.pattern_summary,
+                        "confidence": s.confidence,
+                    }
+                    for s in suggestions
+                ],
+            })
+        except Exception as exc:
+            logger.error(f"check_skill_suggestions failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    @tool
+    async def respond_to_skill_suggestion(suggestion_id: str, action: str) -> str:
+        """
+        Accept or dismiss a background-detected skill suggestion.
+
+        Args:
+            suggestion_id: ID of the suggestion (from check_skill_suggestions)
+            action: "accept" to create the skill, "dismiss" to decline
+
+        Returns:
+            JSON with success status
+        """
+        from backend.models.skill_suggestion import SkillSuggestion as SkillSuggestionModel
+        from backend.models.user_skill import UserSkill as UserSkillModel
+        import uuid
+
+        if action not in ("accept", "dismiss"):
+            return json.dumps({"success": False, "message": "action must be 'accept' or 'dismiss'"})
+
+        db = db_session_factory()
+        try:
+            suggestion = db.query(SkillSuggestionModel).filter(
+                SkillSuggestionModel.id == suggestion_id,
+                SkillSuggestionModel.user_id == context.user_id,
+            ).first()
+            if not suggestion:
+                return json.dumps({"success": False, "message": "Suggestion not found"})
+
+            if action == "accept":
+                new_skill = UserSkillModel(
+                    id=str(uuid.uuid4()),
+                    user_id=context.user_id,
+                    name=suggestion.suggested_name,
+                    description=suggestion.suggested_description or "",
+                    skill_type=suggestion.suggested_skill_type or "instruction",
+                    instructions=suggestion.suggested_instructions,
+                    is_active=True,
+                    version=1,
+                )
+                db.add(new_skill)
+                suggestion.status = "accepted"
+                message = f"Skill '{suggestion.suggested_name}' created from suggestion."
+            else:
+                suggestion.status = "dismissed"
+                message = "Suggestion dismissed."
+
+            db.commit()
+            return json.dumps({"success": True, "message": message})
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"respond_to_skill_suggestion failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    return [
+        create_skill, activate_skill, list_my_skills, use_skill,
+        read_skill_reference, update_skill, delete_skill,
+        check_skill_suggestions, respond_to_skill_suggestion,
+    ]
 
 
 def _build_legacy_tools(context: AgentContext):
@@ -444,6 +828,7 @@ async def run_orchestrator(
     memory_context: str = "",
     user_skills: Optional[List["UserSkill"]] = None,
     user_memories_context: str = "",
+    skill_suggestions: Optional[list] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -456,12 +841,13 @@ async def run_orchestrator(
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
         user_skills: Optional list of active UserSkill records for this user
         user_memories_context: Optional user-directed memories to inject as instructions
+        skill_suggestions: Optional list of pending skill suggestions to surface
 
     Returns:
         Dict with success, message, metadata
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -515,6 +901,7 @@ async def stream_orchestrator(
     memory_context: str = "",
     user_skills: Optional[List["UserSkill"]] = None,
     user_memories_context: str = "",
+    skill_suggestions: Optional[list] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -527,6 +914,7 @@ async def stream_orchestrator(
         memory_context: Optional pre-fetched memory context string to prepend to the system prompt
         user_skills: Optional list of active UserSkill records for this user
         user_memories_context: Optional user-directed memories to inject as instructions
+        skill_suggestions: Optional list of pending skill suggestions to surface
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -535,7 +923,7 @@ async def stream_orchestrator(
         yield {"type": "status", "content": "Starting orchestrator..."}
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions)
 
         provider = get_provider(settings.default_llm_provider)
 

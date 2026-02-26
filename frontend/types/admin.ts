@@ -39,14 +39,46 @@ export interface TeamConnectionPolicy {
   connection_ids: number[]
 }
 
+export type SkillType = 'code' | 'prompt' | 'instruction' | 'hybrid'
+
+export interface SkillReference {
+  id: string
+  title: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export interface UserSkill {
   id: string
   name: string
   description: string
+  skill_type: SkillType
   has_prompt_template: boolean
   has_code: boolean
+  has_instructions: boolean
+  reference_count: number
+  version: number
   parameters_schema: Record<string, any> | null
   is_active: boolean
   created_at: string
   updated_at: string
+}
+
+export interface UserSkillDetail extends UserSkill {
+  instructions: string | null
+  prompt_template: string | null
+  activation_hint: string | null
+  references: SkillReference[]
+}
+
+export interface SkillSuggestion {
+  id: string
+  suggested_name: string
+  suggested_description: string | null
+  suggested_skill_type: SkillType
+  pattern_summary: string | null
+  confidence: number
+  status: string
+  created_at: string
 }

@@ -23,6 +23,7 @@ class OrchestratorInvocationContext:
     memory_context: str = ""
     user_skills: list = field(default_factory=list)
     user_memories_context: str = ""
+    skill_suggestions: list = field(default_factory=list)
 
 
 async def build_orchestrator_context(
@@ -80,10 +81,28 @@ async def build_orchestrator_context(
         ).all()
 
     # Load user's active skills
+    from backend.models.skill_suggestion import SkillSuggestion as SkillSuggestionModel
+
     user_skills = db.query(UserSkillModel).filter(
         UserSkillModel.user_id == user.id,
         UserSkillModel.is_active == True,
     ).all()
+
+    # Load pending skill suggestions (limit 3 for prompt injection)
+    raw_suggestions = db.query(SkillSuggestionModel).filter(
+        SkillSuggestionModel.user_id == user.id,
+        SkillSuggestionModel.status == "pending",
+    ).order_by(SkillSuggestionModel.confidence.desc()).limit(3).all()
+
+    skill_suggestions = [
+        {
+            "id": s.id,
+            "suggested_name": s.suggested_name,
+            "pattern_summary": s.pattern_summary,
+            "confidence": s.confidence,
+        }
+        for s in raw_suggestions
+    ]
 
     # Build AgentContext
     agent_context = AgentContext(
@@ -127,4 +146,5 @@ async def build_orchestrator_context(
         memory_context=memory_context,
         user_skills=user_skills,
         user_memories_context=user_memories_context,
+        skill_suggestions=skill_suggestions,
     )

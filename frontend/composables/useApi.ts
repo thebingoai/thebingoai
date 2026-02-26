@@ -478,6 +478,12 @@ export const useApi = () => {
       async list() {
         return $fetch('/api/skills', { headers: getHeaders() })
       },
+      async get(id: string) {
+        return $fetch(`/api/skills/${id}`, { headers: getHeaders() })
+      },
+      async listReferences(skillId: string) {
+        return $fetch(`/api/skills/${skillId}/references`, { headers: getHeaders() })
+      },
       async toggle(id: string, isActive: boolean) {
         return $fetch(`/api/skills/${id}`, {
           method: 'PATCH',
@@ -489,6 +495,16 @@ export const useApi = () => {
         return $fetch(`/api/skills/${id}`, {
           method: 'DELETE',
           headers: getHeaders()
+        })
+      },
+      async listSuggestions() {
+        return $fetch('/api/skills/suggestions', { headers: getHeaders() })
+      },
+      async respondToSuggestion(id: string, action: 'accept' | 'dismiss') {
+        return $fetch(`/api/skills/suggestions/${id}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { action }
         })
       }
     },

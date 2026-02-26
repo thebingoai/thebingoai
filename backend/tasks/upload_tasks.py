@@ -34,7 +34,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=settings.celery_task_time_limit,
     worker_prefetch_multiplier=1,  # Process one task at a time per worker
-    include=["backend.tasks.memory_tasks", "backend.tasks.heartbeat_tasks"],
+    include=["backend.tasks.memory_tasks", "backend.tasks.heartbeat_tasks", "backend.tasks.skill_detection_tasks"],
 )
 
 celery_app.conf.beat_schedule = {
@@ -45,6 +45,10 @@ celery_app.conf.beat_schedule = {
     "dispatch-heartbeat-jobs": {
         "task": "dispatch_heartbeat_jobs",
         "schedule": 60.0,  # every 60 seconds
+    },
+    "detect-skill-patterns": {
+        "task": "detect_skill_patterns",
+        "schedule": crontab(hour="*/6"),  # every 6 hours
     },
 }
 
