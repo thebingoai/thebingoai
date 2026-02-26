@@ -16,6 +16,7 @@ export const useChat = () => {
       created_at: new Date().toISOString()
     }
     chatStore.addMessage(userMessage)
+    chatStore.clearInput()
 
     // Add empty assistant message placeholder
     const assistantMessage: Message = {
@@ -146,7 +147,6 @@ export const useChat = () => {
       })
     } finally {
       chatStore.isStreaming = false
-      chatStore.clearInput()
     }
   }
 

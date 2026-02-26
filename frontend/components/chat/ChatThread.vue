@@ -1,27 +1,29 @@
 <template>
   <div class="relative flex-1 flex flex-col min-h-0">
-    <!-- Title overlay — aligned with toggle button at top-3 -->
-    <div v-if="chatStore.currentThreadId" class="absolute top-3 left-0 right-0 z-10 text-center pointer-events-none">
-      <input
-        v-if="isEditingTitle"
-        ref="titleInput"
-        v-model="editTitle"
-        @blur="saveTitle"
-        @keydown.enter="saveTitle"
-        @keydown.escape="cancelEdit"
-        class="pointer-events-auto text-center text-sm text-gray-500 bg-transparent border-b border-gray-300 outline-none w-64"
-      />
-      <span
-        v-else
-        @click="startEditTitle"
-        class="pointer-events-auto text-sm text-gray-400 cursor-pointer hover:text-gray-600 transition-colors"
-      >
-        {{ currentTitle }}
-      </span>
+    <!-- Header bar — full-width white background keeps scroll content below the toggle button -->
+    <div class="flex-shrink-0 flex items-center h-16 bg-white pl-14 pr-4 pt-1">
+      <div v-if="chatStore.currentThreadId" class="flex w-full items-center pointer-events-none">
+        <input
+          v-if="isEditingTitle"
+          ref="titleInput"
+          v-model="editTitle"
+          @blur="saveTitle"
+          @keydown.enter="saveTitle"
+          @keydown.escape="cancelEdit"
+          class="w-full pointer-events-auto text-sm text-gray-700 bg-transparent border-b border-gray-300 outline-none w-48 "
+        />
+        <span
+          v-else
+          @click="startEditTitle"
+          class="pointer-events-auto text-sm text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
+        >
+          {{ currentTitle }}
+        </span>
+      </div>
     </div>
 
     <!-- Scrollable message content -->
-    <div ref="threadRef" class="flex-1 overflow-y-auto px-24 py-6 pt-20">
+    <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 py-6">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
         <div class="text-center">
           <h2 class="text-2xl font-medium text-gray-900 mb-2">Ask me anything about your data</h2>

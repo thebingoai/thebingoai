@@ -11,11 +11,11 @@
       <!-- Toggle button inside main, top-left -->
       <button
         @click="layoutStore.toggleMainExpand()"
-        class="absolute left-3 top-3 z-30 rounded-lg bg-white p-2 shadow-md transition-colors hover:bg-gray-100"
+        class="absolute left-3 top-1.5 z-30 rounded-lg p-2 pt-4 ml-1 transition-colors"
         :aria-label="layoutStore.isMainExpanded ? 'Show sidebar' : 'Hide sidebar'"
       >
-        <PanelLeftOpen v-if="layoutStore.isMainExpanded" class="h-5 w-5 text-gray-600" />
-        <PanelLeftClose v-else class="h-5 w-5 text-gray-600" />
+        <PanelLeftOpen v-if="layoutStore.isMainExpanded" class="h-6 w-6 text-gray-600" />
+        <PanelLeftClose v-else class="h-6 w-6 text-gray-600" />
       </button>
 
       <slot />
