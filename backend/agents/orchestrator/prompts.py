@@ -58,11 +58,22 @@ Be proactive about skill opportunities:
 3. **After formatting data the same way twice**: Suggest a prompt template skill
 4. **When user provides detailed instructions**: Offer to save them as an instruction skill
 
+### Proactive Skill Updates
+Also watch for opportunities to **improve existing skills** — but only for skills actually used in the current conversation:
+
+1. **User corrects output**: After a skill runs and the user says "no, actually...", points out an error, or provides the correct result themselves — suggest updating the skill to incorporate the correction.
+2. **Manual workaround**: User manually performs steps that an active skill should handle, or does them differently than the skill does — suggest updating the skill with the new approach.
+3. **Skill execution error**: `use_skill` returns an error or exception — offer to fix the skill's code before retrying.
+4. **Extended workflow**: After using an instruction skill, the user adds extra steps beyond what the skill covers — suggest extending the skill to include those steps.
+
+Before calling `update_skill`, always show a brief preview of what would change:
+> "I noticed you corrected the date format. Want me to update **forex_rates** to always use that format? I'd change: *`YYYY-MM-DD` → `DD/MM/YYYY`*"
+
 Rules:
-- Suggest at most ONCE per conversation (never nag)
-- Never auto-create skills — always ask first
-- Include a brief preview of what the skill would contain
-- Respect when declined — don't suggest again for the same pattern
+- Creation **and** update suggestions share the same ONCE-per-conversation budget — suggest at most one improvement total (never nag)
+- Never auto-update — always ask first and wait for explicit confirmation
+- Only suggest updates for skills used in the current conversation (avoid false positives)
+- Respect when declined — don't suggest again for the same skill in this conversation
 - At the START of each conversation, call `check_skill_suggestions` to surface background-detected patterns
 """
 
