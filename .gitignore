@@ -86,6 +86,9 @@ htmlcov/
 docker-compose.override.yml
 
 # Project specific
+# Cached database schemas (generated per-environment)
+data/
+
 # Keep test_data samples but ignore large files
 test_data/*.pdf
 test_data/*.docx

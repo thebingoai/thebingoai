@@ -61,9 +61,8 @@ async def chat(
     - RAG Agent: For document-based questions
     - Skills: For specialized tasks (summarization, etc.)
     """
-    # Lazy import to avoid loading LangGraph unless needed
     from backend.agents import run_orchestrator
-    from backend.agents.context import AgentContext
+    from backend.services.heartbeat_context import build_orchestrator_context
 
     # Get or create conversation
     if request.thread_id:
@@ -78,87 +77,43 @@ async def chat(
         )
 
     # Save user message
-    ConversationService.add_message(
-        db, conversation.id, "user", request.message
-    )
+    ConversationService.add_message(db, conversation.id, "user", request.message)
 
-    # Get user's accessible connections
+    # Validate requested connection access
     if request.connection_ids:
-        # Verify access
-        accessible_connections = db.query(DatabaseConnection.id).filter(
+        accessible = db.query(DatabaseConnection.id).filter(
             DatabaseConnection.id.in_(request.connection_ids),
             DatabaseConnection.user_id == current_user.id
         ).all()
+        if len(accessible) != len(request.connection_ids):
+            raise HTTPException(status_code=403, detail="Access denied to one or more connections")
 
-        accessible_ids = [conn.id for conn in accessible_connections]
-
-        if len(accessible_ids) != len(request.connection_ids):
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied to one or more connections"
-            )
-    else:
-        # Get all user connections
-        accessible_connections = db.query(DatabaseConnection.id).filter(
-            DatabaseConnection.user_id == current_user.id
-        ).all()
-        accessible_ids = [conn.id for conn in accessible_connections]
-
-    # Load team policies and custom agents (Phase 4)
-    team_id = None
-    allowed_tool_keys: list = []
-    team_connection_ids: list = accessible_ids
-    custom_agents = []
-    if settings.enable_governance:
-        from backend.services.policy_service import PolicyService
-        from backend.models.custom_agent import CustomAgent as CustomAgentModel
-        team_id = PolicyService.get_user_primary_team(db, current_user.id)
-        if team_id:
-            allowed_tool_keys = PolicyService.get_team_allowed_tools(db, team_id)
-            team_allowed_connections = PolicyService.get_team_allowed_connections(db, team_id)
-            # Intersect user-accessible connections with team policy
-            if team_allowed_connections:
-                team_connection_ids = [c for c in accessible_ids if c in team_allowed_connections]
-            custom_agents = db.query(CustomAgentModel).filter(
-                CustomAgentModel.user_id == current_user.id,
-                CustomAgentModel.team_id == team_id,
-                CustomAgentModel.is_active == True,
-            ).all()
-
-    # Build AgentContext
-    context = AgentContext(
-        user_id=current_user.id,
-        available_connections=team_connection_ids,
+    # Build orchestrator context (connections, teams, skills, memories)
+    ctx = await build_orchestrator_context(
+        db=db,
+        user=current_user,
+        query=request.message,
+        connection_ids=request.connection_ids or None,
         thread_id=conversation.thread_id,
-        team_id=team_id,
-        allowed_tool_keys=allowed_tool_keys,
     )
 
     # Fetch conversation history (exclude the just-saved user message)
     history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
     history = history[:-1]
 
-    # Pre-fetch memory context
-    memory_context = ""
-    try:
-        from backend.memory.retriever import MemoryRetriever
-        retriever = MemoryRetriever()
-        memory_context = await retriever.get_relevant_context(
-            user_id=current_user.id, query=request.message, top_k=3
-        )
-    except Exception as mem_err:
-        logger.warning(f"Memory retrieval failed: {mem_err}")
-
     # Run orchestrator
     from backend.database.session import SessionLocal
     result = await run_orchestrator(
         user_question=request.message,
-        context=context,
+        context=ctx.agent_context,
         history=history,
-        custom_agents=custom_agents or None,
+        custom_agents=ctx.custom_agents or None,
         db_session_factory=SessionLocal,
-        memory_context=memory_context,
-        user_preferences=current_user.preferences,
+        memory_context=ctx.memory_context,
+        user_skills=ctx.user_skills or None,
+        user_memories_context=ctx.user_memories_context,
+        skill_suggestions=ctx.skill_suggestions or None,
+        soul_prompt=ctx.soul_prompt,
     )
 
     # Save assistant message
@@ -222,6 +177,8 @@ async def chat_stream(
 
     async def event_generator():
         try:
+            from backend.services.heartbeat_context import build_orchestrator_context
+
             # Track whether this is a brand-new conversation for title generation
             is_new_conversation = not request.thread_id
 
@@ -241,73 +198,34 @@ async def chat_stream(
             # Save user message
             ConversationService.add_message(db, conversation.id, "user", request.message)
 
-            # Get user's accessible connections
+            # Validate requested connection access
             if request.connection_ids:
-                accessible_connections = db.query(DatabaseConnection.id).filter(
+                accessible = db.query(DatabaseConnection.id).filter(
                     DatabaseConnection.id.in_(request.connection_ids),
                     DatabaseConnection.user_id == current_user.id
                 ).all()
-
-                accessible_ids = [conn.id for conn in accessible_connections]
-
-                if len(accessible_ids) != len(request.connection_ids):
+                if len(accessible) != len(request.connection_ids):
                     yield f"data: {json.dumps({'type': 'error', 'content': 'Access denied to connections'})}\n\n"
                     return
-            else:
-                accessible_connections = db.query(DatabaseConnection.id).filter(
-                    DatabaseConnection.user_id == current_user.id
-                ).all()
-                accessible_ids = [conn.id for conn in accessible_connections]
 
-            # Load team policies and custom agents (Phase 4)
-            stream_team_id = None
-            stream_allowed_tools: list = []
-            stream_connection_ids: list = accessible_ids
-            stream_custom_agents = []
-            if settings.enable_governance:
-                from backend.services.policy_service import PolicyService
-                from backend.models.custom_agent import CustomAgent as CustomAgentModel
-                stream_team_id = PolicyService.get_user_primary_team(db, current_user.id)
-                if stream_team_id:
-                    stream_allowed_tools = PolicyService.get_team_allowed_tools(db, stream_team_id)
-                    stream_team_connections = PolicyService.get_team_allowed_connections(db, stream_team_id)
-                    if stream_team_connections:
-                        stream_connection_ids = [c for c in accessible_ids if c in stream_team_connections]
-                    stream_custom_agents = db.query(CustomAgentModel).filter(
-                        CustomAgentModel.user_id == current_user.id,
-                        CustomAgentModel.team_id == stream_team_id,
-                        CustomAgentModel.is_active == True,
-                    ).all()
-
-            # Build AgentContext
-            context = AgentContext(
-                user_id=current_user.id,
-                available_connections=stream_connection_ids,
+            # Build orchestrator context (connections, teams, skills, memories)
+            ctx = await build_orchestrator_context(
+                db=db,
+                user=current_user,
+                query=request.message,
+                connection_ids=request.connection_ids or None,
                 thread_id=conversation.thread_id,
-                team_id=stream_team_id,
-                allowed_tool_keys=stream_allowed_tools,
             )
 
             # Fetch conversation history (exclude the just-saved user message)
             history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
             history = history[:-1]
 
-            # Pre-fetch memory context
-            stream_memory_context = ""
-            try:
-                from backend.memory.retriever import MemoryRetriever
-                retriever = MemoryRetriever()
-                stream_memory_context = await retriever.get_relevant_context(
-                    user_id=current_user.id, query=request.message, top_k=3
-                )
-            except Exception as mem_err:
-                logger.warning(f"Memory retrieval failed: {mem_err}")
-
             # Stream orchestrator execution
             from backend.database.session import SessionLocal
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, context, history=history, custom_agents=stream_custom_agents or None, db_session_factory=SessionLocal, memory_context=stream_memory_context, user_preferences=current_user.preferences):
+            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

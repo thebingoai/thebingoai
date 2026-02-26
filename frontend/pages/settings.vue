@@ -27,10 +27,10 @@
     <!-- Settings Content -->
     <div class="flex-1 overflow-y-auto">
       <SettingsConnections v-if="currentSection === 'connections'" />
+      <SettingsSkills v-else-if="currentSection === 'skills'" />
+      <SettingsJobs v-else-if="currentSection === 'jobs'" />
+      <SettingsMemory v-else-if="currentSection === 'memory'" />
       <SettingsProfile v-else-if="currentSection === 'profile'" />
-      <SettingsOrganization v-else-if="currentSection === 'organization'" />
-      <SettingsTeam v-else-if="currentSection === 'team'" />
-      <SettingsPolicies v-else-if="currentSection === 'policies'" />
       <div v-else class="p-6">
         <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
         <p class="text-gray-500">This section is under construction.</p>
@@ -44,32 +44,19 @@ import { X } from 'lucide-vue-next'
 
 const router = useRouter()
 
-const governanceEnabled = ref(false)
-
-onMounted(async () => {
-  try {
-    const config = await $fetch('/api/config') as { governance_enabled: boolean }
-    governanceEnabled.value = config.governance_enabled
-  } catch {}
-})
-
-const sections = computed(() => [
+const sections = [
   { id: 'connections', name: 'Connections' },
-  ...(governanceEnabled.value ? [
-    { id: 'organization', name: 'Organization' },
-    { id: 'team', name: 'Team' },
-    { id: 'policies', name: 'Policies' },
-  ] : []),
+  { id: 'skills', name: 'Skills' },
   { id: 'jobs', name: 'Jobs' },
   { id: 'memory', name: 'Memory' },
   { id: 'usage', name: 'Usage' },
-  { id: 'profile', name: 'Profile' },
-])
+  { id: 'profile', name: 'Profile' }
+]
 
 const currentSection = ref('connections')
 
 const currentSectionName = computed(() => {
-  return sections.value.find(s => s.id === currentSection.value)?.name || ''
+  return sections.find(s => s.id === currentSection.value)?.name || ''
 })
 
 definePageMeta({

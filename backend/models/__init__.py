@@ -23,3 +23,12 @@ from backend.models.team_connection_policy import TeamConnectionPolicy
 
 # Phase 3: Custom Agent Registry
 from backend.models.custom_agent import CustomAgent
+
+# Phase 5: User Skills & Memories
+from backend.models.user_memory import UserMemory
+from backend.models.skill_reference import SkillReference
+from backend.models.skill_suggestion import SkillSuggestion
+
+# Phase 6: Heartbeat Jobs
+from backend.models.heartbeat_job import HeartbeatJob
+from backend.models.heartbeat_job_run import HeartbeatJobRun

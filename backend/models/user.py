@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, JSON
+from sqlalchemy import Column, String, ForeignKey, JSON, Text, Integer
 from sqlalchemy.orm import relationship
 from backend.database.base import Base, TimestampMixin
 import uuid
@@ -12,6 +12,8 @@ class User(Base, TimestampMixin):
     hashed_password = Column(String, nullable=False)
     org_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     preferences = Column(JSON, nullable=True)  # {"name": "Ed", "role": "PM", "tone": "concise"}
+    soul_prompt = Column(Text, nullable=True)
+    soul_version = Column(Integer, nullable=False, default=0)
 
     # Relationships
     database_connections = relationship(

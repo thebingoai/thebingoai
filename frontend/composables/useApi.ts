@@ -128,6 +128,7 @@ export const useApi = () => {
         callbacks: {
           onToken?: (content: string) => void
           onToolCall?: (data: any) => void
+          onReasoning?: (data: any) => void
           onToolResult?: (data: any) => void
           onStatus?: (status: string) => void
           onDone?: (data: any) => void
@@ -187,6 +188,9 @@ export const useApi = () => {
                         break
                       case 'tool_call':
                         callbacks.onToolCall?.(data)
+                        break
+                      case 'reasoning':
+                        callbacks.onReasoning?.(data)
                         break
                       case 'tool_result':
                         callbacks.onToolResult?.(data)
@@ -330,6 +334,49 @@ export const useApi = () => {
           method: 'DELETE',
           headers: getHeaders()
         })
+      },
+      async listEntries(skip?: number, limit?: number) {
+        const params = new URLSearchParams()
+        if (skip !== undefined) params.append('skip', skip.toString())
+        if (limit !== undefined) params.append('limit', limit.toString())
+        return $fetch(`/api/memory/entries?${params.toString()}`, {
+          headers: getHeaders()
+        })
+      },
+      async createEntry(content: string, category?: string) {
+        return $fetch('/api/memory/entries', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: { content, category }
+        })
+      },
+      async updateEntry(id: string, data: { content?: string; category?: string | null; is_active?: boolean }) {
+        return $fetch(`/api/memory/entries/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async deleteEntry(id: string) {
+        return $fetch(`/api/memory/entries/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async getSettings() {
+        return $fetch('/api/memory/settings', {
+          headers: getHeaders()
+        })
+      },
+      async updateSettings(memory_enabled: boolean) {
+        return $fetch('/api/memory/settings', {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: { memory_enabled }
+        })
+      },
+      async heatmap() {
+        return $fetch('/api/memory/heatmap', { headers: getHeaders() })
       }
     },
 
@@ -431,6 +478,90 @@ export const useApi = () => {
           method: 'PUT',
           headers: getHeaders(),
           body: { connection_ids: connectionIds }
+        })
+      }
+    },
+
+    // Skills endpoints
+    skills: {
+      async list() {
+        return $fetch('/api/skills', { headers: getHeaders() })
+      },
+      async get(id: string) {
+        return $fetch(`/api/skills/${id}`, { headers: getHeaders() })
+      },
+      async listReferences(skillId: string) {
+        return $fetch(`/api/skills/${skillId}/references`, { headers: getHeaders() })
+      },
+      async toggle(id: string, isActive: boolean) {
+        return $fetch(`/api/skills/${id}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { is_active: isActive }
+        })
+      },
+      async remove(id: string) {
+        return $fetch(`/api/skills/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async listSuggestions() {
+        return $fetch('/api/skills/suggestions', { headers: getHeaders() })
+      },
+      async respondToSuggestion(id: string, action: 'accept' | 'dismiss') {
+        return $fetch(`/api/skills/suggestions/${id}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { action }
+        })
+      }
+    },
+
+    // Heartbeat Jobs endpoints
+    heartbeatJobs: {
+      async list() {
+        return $fetch('/api/heartbeat-jobs', { headers: getHeaders() })
+      },
+      async create(data: any) {
+        return $fetch('/api/heartbeat-jobs', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async get(id: string) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, { headers: getHeaders() })
+      },
+      async update(id: string, data: any) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data
+        })
+      },
+      async toggle(id: string, isActive: boolean) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { is_active: isActive }
+        })
+      },
+      async remove(id: string) {
+        return $fetch(`/api/heartbeat-jobs/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+      },
+      async listRuns(id: string, limit = 20, offset = 0) {
+        return $fetch(`/api/heartbeat-jobs/${id}/runs?limit=${limit}&offset=${offset}`, {
+          headers: getHeaders()
+        })
+      },
+      async triggerRun(id: string) {
+        return $fetch(`/api/heartbeat-jobs/${id}/run`, {
+          method: 'POST',
+          headers: getHeaders()
         })
       }
     }

@@ -1,7 +1,8 @@
 """Pydantic schemas for memory system."""
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 
 class MemoryGenerateRequest(BaseModel):
@@ -20,3 +21,66 @@ class MemorySearchRequest(BaseModel):
 
 class MemorySearchResponse(BaseModel):
     memories: List[Dict[str, Any]]
+
+
+# User-directed memory schemas
+
+class UserMemoryCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+    category: Optional[str] = Field(None, max_length=100)
+
+
+class UserMemoryUpdate(BaseModel):
+    content: Optional[str] = Field(None, min_length=1, max_length=2000)
+    category: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
+
+
+class UserMemoryResponse(BaseModel):
+    id: str
+    content: str
+    category: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserMemoryListResponse(BaseModel):
+    entries: List[UserMemoryResponse]
+    total: int
+
+
+# Memory heatmap schemas
+
+class MemoryHeatmapEntry(BaseModel):
+    date: str
+    count: int
+
+
+class MemoryHeatmapResponse(BaseModel):
+    data: List[MemoryHeatmapEntry]
+    total_days: int
+    total_conversations: int
+
+
+# Memory settings schemas
+
+class MemorySettingsResponse(BaseModel):
+    memory_enabled: bool
+
+
+class MemorySettingsUpdate(BaseModel):
+    memory_enabled: bool
+
+
+# Soul schemas
+
+class SoulResponse(BaseModel):
+    soul_prompt: Optional[str]
+    soul_version: int
+
+
+class SoulUpdate(BaseModel):
+    soul_prompt: str = Field(..., max_length=3000)

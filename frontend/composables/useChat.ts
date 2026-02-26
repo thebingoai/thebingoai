@@ -1,6 +1,25 @@
 import { useChatStore } from '~/stores/chat'
 import type { Message, AgentStep } from '~/stores/chat'
 
+const synthesizeReasoning = (toolName: string, args: Record<string, any>): string => {
+  const name = args?.skill_name || args?.name || ''
+  switch (toolName) {
+    case 'list_my_skills': return "I'll retrieve your skill catalog."
+    case 'activate_skill': return `I'll load the "${name}" skill.`
+    case 'use_skill': return `I'll execute the "${name}" skill.`
+    case 'create_skill': return `I'll create a new skill called "${name}".`
+    case 'update_skill': return `I'll update the "${name}" skill.`
+    case 'delete_skill': return `I'll delete the "${name}" skill.`
+    case 'read_skill_reference': return `I'll read the reference "${args?.title || 'document'}".`
+    case 'check_skill_suggestions': return "I'll check for any skill improvement suggestions."
+    case 'respond_to_skill_suggestion': return "I'll respond to the skill suggestion."
+    case 'data_agent': return "I'll query the database for this data."
+    case 'rag_agent': return "I'll search your documents for this."
+    case 'recall_memory': return "I'll search my memory for relevant past context."
+    default: return `I'll use ${toolName.replace(/_/g, ' ')} to handle this.`
+  }
+}
+
 export const useChat = () => {
   const chatStore = useChatStore()
   const api = useApi()
@@ -16,6 +35,7 @@ export const useChat = () => {
       created_at: new Date().toISOString()
     }
     chatStore.addMessage(userMessage)
+    chatStore.clearInput()
 
     // Add empty assistant message placeholder
     const assistantMessage: Message = {
@@ -56,6 +76,18 @@ export const useChat = () => {
             const toolName = data.content?.tool || data.tool || 'Tool'
             const args = data.content?.args || {}
 
+            // Inject synthetic reasoning if backend didn't capture actual reasoning
+            const lastStep = agentSteps[agentSteps.length - 1]
+            if (!lastStep || lastStep.step_type !== 'reasoning') {
+              agentSteps.push({
+                agent_type: 'orchestrator',
+                step_type: 'reasoning',
+                content: { text: synthesizeReasoning(toolName, args) },
+                status: 'completed',
+                started_at: Date.now()
+              })
+            }
+
             // Rich agent step
             const step: AgentStep = {
               agent_type: 'orchestrator',
@@ -73,6 +105,17 @@ export const useChat = () => {
               thinking_steps: [...thinkingSteps],
               agent_steps: [...agentSteps]
             })
+          },
+          onReasoning: (data: any) => {
+            const step: AgentStep = {
+              agent_type: 'orchestrator',
+              step_type: 'reasoning',
+              content: { text: data.content?.text || '' },
+              status: 'completed',
+              started_at: Date.now()
+            }
+            agentSteps.push(step)
+            chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
           },
           onToolResult: (data: any) => {
             const toolName = data.content?.tool || data.tool || 'Tool'
@@ -146,7 +189,6 @@ export const useChat = () => {
       })
     } finally {
       chatStore.isStreaming = false
-      chatStore.clearInput()
     }
   }
 

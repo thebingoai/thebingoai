@@ -11,7 +11,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
     Filter, FieldCondition, MatchValue,
-    FilterSelector, SearchRequest, ScoredPoint
+    FilterSelector, SearchRequest, ScoredPoint,
+    PayloadSelectorInclude
 )
 from backend.config import settings
 from typing import List, Dict, Any, Optional
@@ -232,6 +233,58 @@ async def delete_namespace(namespace: str) -> None:
     """
     collection_name, tenant_id = _namespace_to_collection(namespace)
     await delete_by_filter(collection_name, {"tenant_id": tenant_id})
+
+
+def scroll_all_points(
+    collection: str,
+    tenant_id: str,
+    payload_fields: List[str]
+) -> List[Dict[str, Any]]:
+    """
+    Scroll through all points for a tenant, returning only requested payload fields.
+
+    Args:
+        collection: Collection name
+        tenant_id: Tenant ID to filter by
+        payload_fields: List of payload field names to return
+
+    Returns:
+        List of payload dicts for all matching points
+    """
+    client = get_client()
+
+    tenant_filter = Filter(
+        must=[
+            FieldCondition(
+                key="tenant_id",
+                match=MatchValue(value=tenant_id)
+            )
+        ]
+    )
+
+    results = []
+    offset = None
+    batch_size = 256
+
+    while True:
+        points, next_offset = client.scroll(
+            collection_name=collection,
+            scroll_filter=tenant_filter,
+            limit=batch_size,
+            offset=offset,
+            with_payload=PayloadSelectorInclude(include=payload_fields),
+            with_vectors=False,
+        )
+
+        for point in points:
+            results.append(point.payload or {})
+
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    logger.info(f"Scrolled {len(results)} points from {collection} (tenant: {tenant_id})")
+    return results
 
 
 def health_check() -> bool:

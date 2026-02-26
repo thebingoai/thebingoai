@@ -1,15 +1,13 @@
 """Add preferences column to users table
 
 Revision ID: a9b8c7d6e5f4
-Revises: f4d5e6f7a8b9
+Revises: a1b2c3d4e5f6
 Create Date: 2026-02-25 17:00:00.000000
 
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision = 'a9b8c7d6e5f4'
 down_revision = 'a1b2c3d4e5f6'
 branch_labels = None

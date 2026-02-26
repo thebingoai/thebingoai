@@ -6,10 +6,12 @@
       <ChatInputBar @send="handleSend" />
     </div>
     <!-- Reasoning panel (slides in from the right) -->
-    <ChatReasoningPanel
-      v-if="chatStore.reasoningPanelOpen"
-      class="w-96 shrink-0 border-l border-gray-200"
-    />
+    <div
+      class="shrink-0 overflow-hidden transition-all duration-300 ease-in-out"
+      :class="chatStore.reasoningPanelOpen ? 'w-96 border-l border-gray-200' : 'w-0'"
+    >
+      <ChatReasoningPanel v-if="chatStore.reasoningPanelOpen" class="w-96" />
+    </div>
   </div>
 </template>
 
