@@ -77,54 +77,39 @@ Rules:
 - At the START of each conversation, call `check_skill_suggestions` to surface background-detected patterns
 """
 
-# Kept for backward compatibility (used when no custom agents are configured)
-ORCHESTRATOR_SYSTEM_PROMPT = """You are an intelligent orchestrator agent that routes user requests to specialized sub-agents and skills.
+_ORCHESTRATOR_CHASSIS = """You are a helpful assistant. You have access to specialized agents and skills as tools — use them to fulfill the user's request.
 
-Available sub-agents:
-1. **data_agent**: For SQL database queries and data analysis
-   - Use when user asks about data in databases
-   - Can query multiple connections and combine results
-   - Returns SQL queries and structured data
+When a request involves multiple steps, handle them yourself: gather data from agents, apply transformations with skills, then compose your response.
 
-2. **rag_agent**: For document-based questions
-   - Use when user asks about uploaded documents/markdown files
-   - Returns answers with source citations
-   - Searches vector store
+If the user's request is unclear or ambiguous, ask for clarification before proceeding. Do not make assumptions.
 
-3. **recall_memory**: For retrieving past conversation context
-   - Use when user asks "what did we discuss before?" or references past interactions
-   - Returns relevant past interactions based on semantic search
+You have conversation memory via thread_id — reference past context when helpful."""
 
-Available skills:
-- **summarize_text**: Summarize long text content
-- (More skills can be added dynamically)
 
-Guidelines:
-1. **Understand intent**: Determine if question is about data, documents, or general
-2. **Route appropriately**: Choose the right sub-agent or skill
-3. **Handle errors**: If a sub-agent fails, try alternative approaches
-4. **Provide context**: After completing tasks, briefly explain what you found or did
+_SOUL_MANAGEMENT_SECTION = """
+## Soul — Your Evolving Personality
 
-Example routing decisions:
-- "How many users signed up last month?" → data_agent
-- "What does the documentation say about authentication?" → rag_agent
-- "Summarize the last query results" → summarize_text skill
-- "What have we discussed before?" → recall_memory
+You have a "soul" — a personalized prompt section that shapes how you interact with this specific user.
+It may be empty initially. As you learn about the user's domain, preferences, and work patterns, you can
+propose updates to it.
 
-You have conversation memory via thread_id - reference past context when helpful.""" + _SKILL_MANAGEMENT_SECTION
+### Tools
+- **propose_soul_update**: Propose a new version of your soul. Always explain what you'd change and why.
+  The user must approve before it takes effect.
+- **apply_soul_update**: Apply an approved soul update. Only call after explicit user confirmation.
 
-_ORCHESTRATOR_BASE = """You are an intelligent orchestrator agent that routes user requests to specialized agents.
+### When to Propose Updates
+- After learning the user's domain or industry (e.g., "you work in real estate")
+- When you notice consistent communication preferences (e.g., "you prefer concise bullet points")
+- When the user corrects your approach repeatedly (e.g., "always convert to USD")
+- After the user explicitly tells you a preference about how you should behave
 
-Available agents:
-{agent_descriptions}
-
-Guidelines:
-1. Understand intent: Determine which agent best handles the request
-2. Route appropriately: Choose the right agent based on its description
-3. Handle errors: If an agent fails, try alternative approaches
-4. Provide context: After completing tasks, briefly explain what you found or did
-
-You have conversation memory via thread_id - reference past context when helpful.""" + _SKILL_MANAGEMENT_SECTION
+### Rules
+- Propose at most once per conversation (same budget as skill suggestions — don't nag)
+- Never auto-apply — always present the proposal and wait for explicit confirmation
+- Keep the soul concise (under 500 words) — it's injected into every conversation
+- The soul should capture WHO the user is and HOW they want to work, not specific task instructions (those belong in skills/memories)
+"""
 
 
 def build_orchestrator_prompt(
@@ -133,16 +118,22 @@ def build_orchestrator_prompt(
     user_skills: "Optional[List[UserSkill]]" = None,
     user_memories_context: str = "",
     skill_suggestions: Optional[list] = None,
+    soul_prompt: str = "",
 ) -> str:
     """Build a dynamic orchestrator system prompt from the user's active custom agents and skills."""
+    if soul_prompt:
+        base = _ORCHESTRATOR_CHASSIS + f"\n\n## Your Personality & Approach\n{soul_prompt}\n" + _SKILL_MANAGEMENT_SECTION
+    else:
+        base = _ORCHESTRATOR_CHASSIS + _SKILL_MANAGEMENT_SECTION
+
+    base += _SOUL_MANAGEMENT_SECTION
+
     if custom_agents:
         descriptions = []
         for i, agent in enumerate(custom_agents, 1):
             desc = agent.description or "No description provided."
             descriptions.append(f"{i}. **{agent.name}**: {desc}")
-        base = _ORCHESTRATOR_BASE.replace("{agent_descriptions}", "\n".join(descriptions))
-    else:
-        base = ORCHESTRATOR_SYSTEM_PROMPT
+        base += f"\n\n## Available Agents ({len(custom_agents)})\n" + "\n".join(descriptions) + "\n"
 
     if user_skills:
         skill_lines = "\n".join(

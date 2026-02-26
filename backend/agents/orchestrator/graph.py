@@ -1,7 +1,7 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
-from backend.agents.orchestrator.prompts import ORCHESTRATOR_SYSTEM_PROMPT, build_orchestrator_prompt
+from backend.agents.orchestrator.prompts import build_orchestrator_prompt
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.skills import get_skill_registry
@@ -41,9 +41,10 @@ def build_orchestrator_tools(
     orchestrator can create/list/use/delete skills during a conversation.
     """
     skill_tools = _build_skill_tools(context, user_skills, db_session_factory)
+    soul_tools = _build_soul_tools(context, db_session_factory)
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools
-    return _build_legacy_tools(context) + skill_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools
+    return _build_legacy_tools(context) + skill_tools + soul_tools
 
 
 def _build_skill_tools(
@@ -688,6 +689,85 @@ def _build_skill_tools(
     ]
 
 
+def _build_soul_tools(
+    context: AgentContext,
+    db_session_factory: Optional[Callable] = None,
+) -> List:
+    """
+    Build tools for the orchestrator to propose and apply soul updates.
+
+    propose_soul_update: Stages a soul proposal for user review (no DB write).
+    apply_soul_update: Persists the soul to the DB after user confirms.
+    """
+    if db_session_factory is None:
+        return []
+
+    @tool
+    async def propose_soul_update(proposed_soul: str, reason: str) -> str:
+        """
+        Propose an update to your soul — the personalized prompt that shapes your behavior for this user.
+
+        This does NOT apply the update automatically. Present the proposal to the user and wait for
+        explicit confirmation before calling apply_soul_update.
+
+        Args:
+            proposed_soul: The full updated soul text (under 500 words)
+            reason: Why you're proposing this change
+
+        Returns:
+            Formatted proposal ready to present to the user
+        """
+        word_count = len(proposed_soul.split())
+        if word_count > 600:
+            return json.dumps({
+                "success": False,
+                "message": f"Soul is too long ({word_count} words). Keep it under 500 words."
+            })
+        proposal = (
+            f"I'd like to update my soul — the part of my personality that shapes how I work with you.\n\n"
+            f"**Why:** {reason}\n\n"
+            f"**Proposed soul:**\n---\n{proposed_soul}\n---\n\n"
+            f"Would you like me to apply this? Reply 'yes' or 'approve' to confirm, or 'no' to decline."
+        )
+        return json.dumps({"success": True, "proposal": proposal, "proposed_soul": proposed_soul})
+
+    @tool
+    async def apply_soul_update(proposed_soul: str) -> str:
+        """
+        Apply a soul update that the user has explicitly approved.
+
+        Only call this after the user has confirmed the proposal from propose_soul_update.
+
+        Args:
+            proposed_soul: The soul text to save (must match what was proposed)
+
+        Returns:
+            JSON with success status and new version number
+        """
+        db = db_session_factory()
+        try:
+            from backend.models.user import User as UserModel
+            user = db.query(UserModel).filter(UserModel.id == context.user_id).first()
+            if not user:
+                return json.dumps({"success": False, "message": "User not found"})
+            user.soul_prompt = proposed_soul
+            user.soul_version = (user.soul_version or 0) + 1
+            db.commit()
+            return json.dumps({
+                "success": True,
+                "message": "Soul updated successfully.",
+                "soul_version": user.soul_version,
+            })
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"apply_soul_update failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
+
+    return [propose_soul_update, apply_soul_update]
+
+
 def _build_legacy_tools(context: AgentContext):
     """Legacy static tools used when no custom agents are configured."""
 
@@ -764,10 +844,14 @@ def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent
             k for k in (agent_def.tool_keys or [])
             if context.can_use_tool(k)
         ]
-        effective_connection_ids = [
-            c for c in (agent_def.connection_ids or [])
-            if context.can_access_connection(c)
-        ]
+        if agent_def.connection_ids:
+            effective_connection_ids = [
+                c for c in agent_def.connection_ids
+                if context.can_access_connection(c)
+            ]
+        else:
+            # No explicit connections configured — inherit parent's accessible connections
+            effective_connection_ids = list(context.available_connections)
 
         # Scoped context for this sub-agent
         agent_context = AgentContext(
@@ -829,6 +913,7 @@ async def run_orchestrator(
     user_skills: Optional[List["UserSkill"]] = None,
     user_memories_context: str = "",
     skill_suggestions: Optional[list] = None,
+    soul_prompt: str = "",
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -842,12 +927,13 @@ async def run_orchestrator(
         user_skills: Optional list of active UserSkill records for this user
         user_memories_context: Optional user-directed memories to inject as instructions
         skill_suggestions: Optional list of pending skill suggestions to surface
+        soul_prompt: Optional per-user soul text to inject into the orchestrator prompt
 
     Returns:
         Dict with success, message, metadata
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -902,6 +988,7 @@ async def stream_orchestrator(
     user_skills: Optional[List["UserSkill"]] = None,
     user_memories_context: str = "",
     skill_suggestions: Optional[list] = None,
+    soul_prompt: str = "",
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -915,6 +1002,7 @@ async def stream_orchestrator(
         user_skills: Optional list of active UserSkill records for this user
         user_memories_context: Optional user-directed memories to inject as instructions
         skill_suggestions: Optional list of pending skill suggestions to surface
+        soul_prompt: Optional per-user soul text to inject into the orchestrator prompt
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -923,7 +1011,7 @@ async def stream_orchestrator(
         yield {"type": "status", "content": "Starting orchestrator..."}
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt)
 
         provider = get_provider(settings.default_llm_provider)
 

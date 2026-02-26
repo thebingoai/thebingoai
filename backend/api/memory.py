@@ -12,6 +12,7 @@ from backend.schemas.memory import (
     UserMemoryCreate, UserMemoryUpdate, UserMemoryResponse, UserMemoryListResponse,
     MemorySettingsResponse, MemorySettingsUpdate,
     MemoryHeatmapEntry, MemoryHeatmapResponse,
+    SoulResponse, SoulUpdate,
 )
 from backend.memory.storage import MemoryStorage
 from backend.tasks.memory_tasks import generate_user_memory
@@ -212,3 +213,43 @@ async def update_memory_settings(
     current_user.preferences = prefs
     db.commit()
     return MemorySettingsResponse(memory_enabled=payload.memory_enabled)
+
+
+# ── Soul ──────────────────────────────────────────────────────────────────────
+
+@router.get("/soul", response_model=SoulResponse)
+async def get_soul(
+    current_user: User = Depends(get_current_user),
+):
+    """Get the current user's soul prompt and version."""
+    return SoulResponse(
+        soul_prompt=current_user.soul_prompt,
+        soul_version=current_user.soul_version or 0,
+    )
+
+
+@router.put("/soul", response_model=SoulResponse)
+async def update_soul(
+    payload: SoulUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manually update the user's soul prompt (direct edit from UI)."""
+    current_user.soul_prompt = payload.soul_prompt or None
+    current_user.soul_version = (current_user.soul_version or 0) + 1
+    db.commit()
+    return SoulResponse(
+        soul_prompt=current_user.soul_prompt,
+        soul_version=current_user.soul_version,
+    )
+
+
+@router.delete("/soul", status_code=204)
+async def delete_soul(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reset the user's soul to empty."""
+    current_user.soul_prompt = None
+    current_user.soul_version = 0
+    db.commit()

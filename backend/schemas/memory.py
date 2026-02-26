@@ -73,3 +73,14 @@ class MemorySettingsResponse(BaseModel):
 
 class MemorySettingsUpdate(BaseModel):
     memory_enabled: bool
+
+
+# Soul schemas
+
+class SoulResponse(BaseModel):
+    soul_prompt: Optional[str]
+    soul_version: int
+
+
+class SoulUpdate(BaseModel):
+    soul_prompt: str = Field(..., max_length=3000)

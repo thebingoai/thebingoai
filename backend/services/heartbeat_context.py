@@ -24,6 +24,7 @@ class OrchestratorInvocationContext:
     user_skills: list = field(default_factory=list)
     user_memories_context: str = ""
     skill_suggestions: list = field(default_factory=list)
+    soul_prompt: str = ""
 
 
 async def build_orchestrator_context(
@@ -147,4 +148,5 @@ async def build_orchestrator_context(
         user_skills=user_skills,
         user_memories_context=user_memories_context,
         skill_suggestions=skill_suggestions,
+        soul_prompt=user.soul_prompt or "",
     )
