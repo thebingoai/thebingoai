@@ -158,6 +158,8 @@ async def _run_orchestrator_for_job(job: HeartbeatJob, user: User) -> str:
         memory_context=ctx.memory_context,
         user_skills=ctx.user_skills or None,
         user_memories_context=ctx.user_memories_context,
+        soul_prompt=ctx.soul_prompt,
+        skill_suggestions=ctx.skill_suggestions,
     )
 
     return result.get("message", "")
