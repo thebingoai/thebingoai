@@ -11,14 +11,14 @@
         </p>
       </div>
       <span class="ml-3 flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
-        {{ dashboard.charts.length }} {{ dashboard.charts.length === 1 ? 'chart' : 'charts' }}
+        {{ dashboard.widgetCount }} {{ dashboard.widgetCount === 1 ? 'widget' : 'widgets' }}
       </span>
     </div>
 
-    <div v-if="chartTypeIcons.length > 0" class="flex items-center gap-1.5">
+    <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
       <component
         :is="icon"
-        v-for="(icon, i) in chartTypeIcons"
+        v-for="(icon, i) in widgetTypeIcons"
         :key="i"
         class="h-3.5 w-3.5 text-gray-300"
       />
@@ -27,36 +27,26 @@
 </template>
 
 <script setup lang="ts">
-import { BarChart3, LineChart, PieChart, ScatterChart, TrendingUp } from 'lucide-vue-next'
-import type { DashboardConfig, ChartType } from '~/types/chart'
+import { BarChart3, LineChart, TrendingUp, Table2, FileText, SlidersHorizontal } from 'lucide-vue-next'
+import type { DashboardListItem, WidgetType } from '~/types/dashboard'
 
 const props = defineProps<{
-  dashboard: DashboardConfig
+  dashboard: DashboardListItem
 }>()
 
 const emit = defineEmits<{
   click: []
 }>()
 
-const chartIconMap: Record<ChartType, any> = {
-  bar: BarChart3,
-  line: LineChart,
-  area: TrendingUp,
-  pie: PieChart,
-  doughnut: PieChart,
-  scatter: ScatterChart,
+const widgetIconMap: Record<WidgetType, any> = {
+  kpi: TrendingUp,
+  chart: BarChart3,
+  table: Table2,
+  text: FileText,
+  filter: SlidersHorizontal,
 }
 
-const chartTypeIcons = computed(() => {
-  const seen = new Set<ChartType>()
-  return props.dashboard.charts
-    .map(c => c.type)
-    .filter(t => {
-      if (seen.has(t)) return false
-      seen.add(t)
-      return true
-    })
-    .slice(0, 5)
-    .map(t => chartIconMap[t])
-})
+const widgetTypeIcons = computed(() =>
+  props.dashboard.widgetTypes.slice(0, 5).map(t => widgetIconMap[t]),
+)
 </script>
