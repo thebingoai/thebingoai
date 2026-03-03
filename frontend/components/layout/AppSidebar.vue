@@ -31,6 +31,20 @@
       </button>
     </div>
 
+    <!-- Dashboard link -->
+    <div>
+      <button
+        @click="router.push('/dashboard')"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+        :class="route.path === '/dashboard' ? 'bg-gray-100' : ''"
+      >
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900">
+          <LayoutDashboard class="h-3.5 w-3.5 text-white" />
+        </span>
+        Dashboard
+      </button>
+    </div>
+
     <!-- New Task Button -->
     <div>
       <button
@@ -96,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles } from 'lucide-vue-next'
+import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard } from 'lucide-vue-next'
 import { formatDateLabel } from '~/utils/format'
 import type { Conversation } from '~/stores/chat'
 
