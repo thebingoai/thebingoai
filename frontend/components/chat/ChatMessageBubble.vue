@@ -9,6 +9,16 @@
 
     <!-- Assistant message: left-aligned plain text -->
     <div v-else class="pr-32">
+      <!-- Heartbeat source label -->
+      <div v-if="message.source === 'heartbeat'" class="mb-1.5 flex items-center gap-1.5">
+        <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+          <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Scheduled
+        </span>
+      </div>
+
       <!-- Typing indicator when assistant message is empty during streaming -->
       <div v-if="!message.content && chatStore.isStreaming" class="typing-indicator">
         <span class="typing-dot"></span>
@@ -84,7 +94,8 @@ const chatStore = useChatStore()
 
 const hasSteps = computed(() =>
   props.message.role === 'assistant' &&
-  (props.message.agent_steps?.length || props.message.thinking_steps?.length)
+  props.message.source !== 'heartbeat' &&
+  !!(props.message.agent_steps?.length || props.message.thinking_steps?.length)
 )
 
 const stepCount = computed(() =>

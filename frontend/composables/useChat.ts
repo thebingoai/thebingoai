@@ -23,11 +23,12 @@ const synthesizeReasoning = (toolName: string, args: Record<string, any>): strin
 export const useChat = () => {
   const chatStore = useChatStore()
   const api = useApi()
+  const ws = useWebSocket()
 
   const sendMessage = async (message: string) => {
     chatStore.isStreaming = true
 
-    // Add user message
+    // Add user message optimistically
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -37,7 +38,7 @@ export const useChat = () => {
     chatStore.addMessage(userMessage)
     chatStore.clearInput()
 
-    // Add empty assistant message placeholder
+    // Add empty assistant placeholder
     const assistantMessage: Message = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
@@ -48,148 +49,155 @@ export const useChat = () => {
     }
     chatStore.addMessage(assistantMessage)
 
-    // Accumulate streaming content
+    const requestId = crypto.randomUUID()
     let accumulatedContent = ''
     let wordBuffer = ''
     const thinkingSteps: Array<{ step: string; description: string }> = []
     const agentSteps: AgentStep[] = []
 
-    try {
-      await api.chat.streamChat(
-        message,
-        chatStore.currentThreadId || undefined,
-        {
-          onToken: (content: string) => {
-            wordBuffer += content
-            accumulatedContent += content
+    // Register one-time handlers scoped to this request_id
+    const unsubs: Array<() => void> = []
 
-            // Check if we have a complete word (space, punctuation, or newline)
-            const hasCompleteWord = /[\s\n.,!?;:]/.test(content)
-
-            if (hasCompleteWord) {
-              // Update UI with accumulated content
-              chatStore.updateLastMessage({ content: accumulatedContent })
-              wordBuffer = ''
-            }
-          },
-          onToolCall: (data: any) => {
-            const toolName = data.content?.tool || data.tool || 'Tool'
-            const args = data.content?.args || {}
-
-            // Inject synthetic reasoning if backend didn't capture actual reasoning
-            const lastStep = agentSteps[agentSteps.length - 1]
-            if (!lastStep || lastStep.step_type !== 'reasoning') {
-              agentSteps.push({
-                agent_type: 'orchestrator',
-                step_type: 'reasoning',
-                content: { text: synthesizeReasoning(toolName, args) },
-                status: 'completed',
-                started_at: Date.now()
-              })
-            }
-
-            // Rich agent step
-            const step: AgentStep = {
-              agent_type: 'orchestrator',
-              step_type: 'tool_call',
-              tool_name: toolName,
-              content: { args },
-              status: 'started',
-              started_at: Date.now()
-            }
-            agentSteps.push(step)
-
-            // Legacy thinking step for backward compat
-            thinkingSteps.push({ step: toolName, description: 'Running...' })
-            chatStore.updateLastMessage({
-              thinking_steps: [...thinkingSteps],
-              agent_steps: [...agentSteps]
-            })
-          },
-          onReasoning: (data: any) => {
-            const step: AgentStep = {
-              agent_type: 'orchestrator',
-              step_type: 'reasoning',
-              content: { text: data.content?.text || '' },
-              status: 'completed',
-              started_at: Date.now()
-            }
-            agentSteps.push(step)
-            chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
-          },
-          onToolResult: (data: any) => {
-            const toolName = data.content?.tool || data.tool || 'Tool'
-            const result = data.content?.result || {}
-            const serverDuration = data.content?.duration_ms
-
-            // Find the most recent started tool_call step for this tool and mark it completed
-            const lastPendingIdx = [...agentSteps].reverse().findIndex(
-              s => s.step_type === 'tool_call' && s.status === 'started' && s.tool_name === toolName
-            )
-            if (lastPendingIdx !== -1) {
-              const realIdx = agentSteps.length - 1 - lastPendingIdx
-              const step = agentSteps[realIdx]
-              step.status = 'completed'
-              step.content.result = result
-              // Prefer server-provided duration, fall back to client-side calculation
-              step.duration_ms = serverDuration ?? (step.started_at ? Date.now() - step.started_at : undefined)
-              // Attach data agent sub-steps if present
-              if (result?.steps) {
-                step.content.sub_steps = result.steps
-              }
-            }
-
-            // Legacy thinking step update
-            if (thinkingSteps.length > 0) {
-              thinkingSteps[thinkingSteps.length - 1].description = 'Completed'
-            }
-            chatStore.updateLastMessage({
-              thinking_steps: [...thinkingSteps],
-              agent_steps: [...agentSteps]
-            })
-          },
-          onStatus: (status: string) => {
-            console.log('Status:', status)
-          },
-          onDone: (data: any) => {
-            // Flush any remaining content in the word buffer
-            if (wordBuffer) {
-              chatStore.updateLastMessage({ content: accumulatedContent })
-              wordBuffer = ''
-            }
-
-            // Update thread ID if new
-            if (data.thread_id && !chatStore.currentThreadId) {
-              chatStore.setCurrentThread(data.thread_id)
-              chatStore.addConversation({
-                id: data.thread_id,
-                title: 'Untitled',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                message_count: 2
-              })
-            }
-          },
-          onTitle: (title: string) => {
-            if (chatStore.currentThreadId) {
-              chatStore.updateConversationTitle(chatStore.currentThreadId, title)
-            }
-          },
-          onError: (error: string) => {
-            chatStore.updateLastMessage({
-              content: `Error: ${error}`
-            })
-          }
-        }
+    const onEvent = (type: string, handler: (data: any) => void) => {
+      unsubs.push(
+        ws.on(type, (data: any) => {
+          if (data.request_id && data.request_id !== requestId) return
+          handler(data)
+        })
       )
-    } catch (error: any) {
-      console.error('Chat error:', error)
-      chatStore.updateLastMessage({
-        content: 'Sorry, I encountered an error. Please try again.'
-      })
-    } finally {
-      chatStore.isStreaming = false
     }
+
+    return new Promise<void>((resolve) => {
+      const cleanup = () => {
+        unsubs.forEach(fn => fn())
+        chatStore.isStreaming = false
+        resolve()
+      }
+
+      onEvent('chat.token', (data) => {
+        const content = data.content || ''
+        wordBuffer += content
+        accumulatedContent += content
+        const hasCompleteWord = /[\s\n.,!?;:]/.test(content)
+        if (hasCompleteWord) {
+          chatStore.updateLastMessage({ content: accumulatedContent })
+          wordBuffer = ''
+        }
+      })
+
+      onEvent('chat.tool_call', (data) => {
+        const toolName = data.content?.tool || data.tool || 'Tool'
+        const args = data.content?.args || {}
+
+        const lastStep = agentSteps[agentSteps.length - 1]
+        if (!lastStep || lastStep.step_type !== 'reasoning') {
+          agentSteps.push({
+            agent_type: 'orchestrator',
+            step_type: 'reasoning',
+            content: { text: synthesizeReasoning(toolName, args) },
+            status: 'completed',
+            started_at: Date.now()
+          })
+        }
+
+        agentSteps.push({
+          agent_type: 'orchestrator',
+          step_type: 'tool_call',
+          tool_name: toolName,
+          content: { args },
+          status: 'started',
+          started_at: Date.now()
+        })
+        thinkingSteps.push({ step: toolName, description: 'Running...' })
+        chatStore.updateLastMessage({
+          thinking_steps: [...thinkingSteps],
+          agent_steps: [...agentSteps]
+        })
+      })
+
+      onEvent('chat.reasoning', (data) => {
+        agentSteps.push({
+          agent_type: 'orchestrator',
+          step_type: 'reasoning',
+          content: { text: data.content?.text || '' },
+          status: 'completed',
+          started_at: Date.now()
+        })
+        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+      })
+
+      onEvent('chat.tool_result', (data) => {
+        const toolName = data.content?.tool || data.tool || 'Tool'
+        const result = data.content?.result || {}
+        const serverDuration = data.content?.duration_ms
+
+        const lastPendingIdx = [...agentSteps].reverse().findIndex(
+          s => s.step_type === 'tool_call' && s.status === 'started' && s.tool_name === toolName
+        )
+        if (lastPendingIdx !== -1) {
+          const realIdx = agentSteps.length - 1 - lastPendingIdx
+          const step = agentSteps[realIdx]
+          step.status = 'completed'
+          step.content.result = result
+          step.duration_ms = serverDuration ?? (step.started_at ? Date.now() - step.started_at : undefined)
+          if (result?.steps) step.content.sub_steps = result.steps
+        }
+
+        if (thinkingSteps.length > 0) {
+          thinkingSteps[thinkingSteps.length - 1].description = 'Completed'
+        }
+        chatStore.updateLastMessage({
+          thinking_steps: [...thinkingSteps],
+          agent_steps: [...agentSteps]
+        })
+      })
+
+      onEvent('chat.status', (data) => {
+        console.log('[WS] status:', data.content)
+      })
+
+      onEvent('chat.done', (data) => {
+        if (wordBuffer) {
+          chatStore.updateLastMessage({ content: accumulatedContent })
+          wordBuffer = ''
+        }
+
+        const threadId: string = data.thread_id
+        if (threadId && !chatStore.currentThreadId) {
+          chatStore.setCurrentThread(threadId)
+          chatStore.addConversation({
+            id: threadId,
+            title: 'New Task',
+            type: 'task',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            message_count: 2
+          })
+        }
+        cleanup()
+      })
+
+      onEvent('chat.title', (data) => {
+        const threadId = data.thread_id || chatStore.currentThreadId
+        if (threadId) {
+          chatStore.updateConversationTitle(threadId, data.content)
+        }
+      })
+
+      onEvent('chat.error', (data) => {
+        chatStore.updateLastMessage({ content: `Error: ${data.content}` })
+        cleanup()
+      })
+
+      // Send via WebSocket
+      ws.send({
+        type: 'chat.send',
+        request_id: requestId,
+        thread_id: chatStore.currentThreadId || null,
+        message,
+        connection_ids: []
+      })
+    })
   }
 
   const newChat = () => {
@@ -199,16 +207,21 @@ export const useChat = () => {
   const loadConversations = async () => {
     try {
       const response = await api.chat.getConversations() as any
-      // Backend returns { conversations: ConversationResponse[] }
-      // Map to frontend Conversation type
       const conversations = (response.conversations || []).map((conv: any) => ({
         id: conv.thread_id,
         title: conv.title || 'Untitled',
+        type: conv.type || 'task',
         created_at: conv.created_at,
         updated_at: conv.updated_at,
         message_count: conv.messages?.length || 0
       }))
       chatStore.setConversations(conversations)
+
+      // Auto-select permanent conversation if no active thread
+      const permanent = conversations.find((c: any) => c.type === 'permanent')
+      if (permanent && !chatStore.currentThreadId) {
+        await loadMessages(permanent.id)
+      }
     } catch (error) {
       console.error('Failed to load conversations:', error)
     }
@@ -216,13 +229,12 @@ export const useChat = () => {
 
   const loadMessages = async (threadId: string) => {
     try {
-      // Backend returns ConversationResponse with embedded messages
       const conversation = await api.chat.getMessages(threadId) as any
-      // Map ChatMessage[] to frontend Message type
       const messages: Message[] = (conversation.messages || []).map((msg: any, index: number) => ({
         id: msg.id ? String(msg.id) : `${threadId}-${index}`,
         role: msg.role,
         content: msg.content,
+        source: msg.source || 'chat',
         created_at: msg.timestamp,
         agent_steps: [],
         thinking_steps: []
@@ -230,9 +242,9 @@ export const useChat = () => {
       chatStore.setMessages(messages)
       chatStore.setCurrentThread(threadId)
 
-      // Load agent steps for assistant messages
+      // Load agent steps for assistant messages from chat source
       for (const msg of messages) {
-        if (msg.role === 'assistant' && msg.id && !msg.id.includes('-')) {
+        if (msg.role === 'assistant' && msg.source === 'chat' && msg.id && !msg.id.includes('-')) {
           try {
             const stepsResponse = await api.chat.getMessageSteps(threadId, msg.id) as any
             if (stepsResponse?.steps?.length > 0) {
@@ -264,11 +276,40 @@ export const useChat = () => {
     chatStore.updateConversationTitle(threadId, title)
   }
 
+  // Handle incoming heartbeat messages from WebSocket
+  const registerHeartbeatHandler = () => {
+    return ws.on('heartbeat.message', (data: any) => {
+      const threadId: string = data.thread_id
+      const msg = data.message
+
+      if (!msg) return
+
+      const frontendMsg: Message = {
+        id: String(msg.id),
+        role: 'assistant',
+        content: msg.content,
+        source: 'heartbeat',
+        created_at: msg.timestamp,
+        agent_steps: [],
+        thinking_steps: []
+      }
+
+      // If viewing the permanent conversation, append directly
+      if (chatStore.currentThreadId === threadId) {
+        chatStore.addMessage(frontendMsg)
+      }
+
+      // Increment unread count on the permanent conversation entry
+      chatStore.incrementUnread(threadId)
+    })
+  }
+
   return {
     sendMessage,
     newChat,
     loadConversations,
     loadMessages,
-    renameConversation
+    renameConversation,
+    registerHeartbeatHandler,
   }
 }

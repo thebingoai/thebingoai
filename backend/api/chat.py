@@ -192,7 +192,7 @@ async def chat_stream(
                     return
             else:
                 conversation = ConversationService.create_conversation(
-                    db, current_user.id, title="Untitled"
+                    db, current_user.id, title="New Task"
                 )
 
             # Save user message
@@ -321,7 +321,10 @@ async def delete_conversation(
     db: Session = Depends(get_db)
 ):
     """Delete a conversation and all its messages."""
-    deleted = ConversationService.delete_conversation(db, thread_id, current_user.id)
+    try:
+        deleted = ConversationService.delete_conversation(db, thread_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")

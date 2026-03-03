@@ -8,38 +8,61 @@
       </span>
     </div>
 
-    <!-- New Chat Button -->
+    <!-- Permanent conversation (pinned) -->
+    <div v-if="chatStore.permanentConversation" class="border-b border-gray-100">
+      <button
+        @click="handleSelectConversation(chatStore.permanentConversation!.id)"
+        class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        :class="chatStore.currentThreadId === chatStore.permanentConversation.id ? 'bg-gray-100' : ''"
+      >
+        <span class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-900">
+          <Sparkles class="h-3.5 w-3.5 text-white" />
+        </span>
+        <span class="flex-1 min-w-0 text-sm font-light text-gray-900 truncate">
+          {{ chatStore.permanentConversation.title || 'Bingo AI' }}
+        </span>
+        <!-- Unread badge -->
+        <span
+          v-if="chatStore.permanentConversation.unread_count && chatStore.permanentConversation.unread_count > 0"
+          class="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gray-900 px-1.5 text-[10px] font-medium text-white"
+        >
+          {{ chatStore.permanentConversation.unread_count > 99 ? '99+' : chatStore.permanentConversation.unread_count }}
+        </span>
+      </button>
+    </div>
+
+    <!-- New Task Button -->
     <div>
       <button
-        @click="handleNewChat"
+        @click="handleNewTask"
         class="flex w-full items-center gap-2 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
       >
         <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900">
           <Plus class="h-3 w-3 text-white" />
         </span>
-        New Chat
+        New Task
       </button>
     </div>
 
-    <!-- Conversation List -->
+    <!-- Task conversation list -->
     <div class="flex-1 overflow-y-auto">
-      <!-- Recent section header -->
+      <!-- Recent tasks section header -->
       <button
         @click="isRecentExpanded = !isRecentExpanded"
         class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 hover:text-gray-600"
       >
         <ChevronDown v-if="isRecentExpanded" class="h-3.5 w-3.5" />
         <ChevronRight v-else class="h-3.5 w-3.5" />
-        Recent
+        Recent Tasks
       </button>
 
-      <!-- Conversation list (collapsible) -->
+      <!-- Task list (collapsible) -->
       <div v-show="isRecentExpanded">
-        <div v-if="chatStore.conversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
-          No conversations yet
+        <div v-if="chatStore.taskConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
+          No tasks yet
         </div>
         <button
-          v-for="conv in chatStore.conversations"
+          v-for="conv in chatStore.taskConversations"
           :key="conv.id"
           @click="handleSelectConversation(conv.id)"
           class="w-full rounded-lg px-4 py-0.5 text-left text-sm hover:bg-gray-50"
@@ -70,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
@@ -85,35 +108,25 @@ const userInitial = computed(() => {
   return email.charAt(0).toUpperCase()
 })
 
-// Load conversations on mount
+// Load conversations on mount and register heartbeat handler
 onMounted(() => {
   chat.loadConversations()
+  chat.registerHeartbeatHandler()
 })
 
-const handleNewChat = () => {
+const handleNewTask = () => {
   chat.newChat()
-  // Navigate to chat page if not already there
   if (route.path !== '/chat') {
     navigateTo('/chat')
   }
 }
 
 const handleSelectConversation = (id: string) => {
+  // Clear unread when opening the conversation
+  chatStore.clearUnread(id)
   chat.loadMessages(id)
-  // Navigate to chat page if not already there
   if (route.path !== '/chat') {
     navigateTo('/chat')
   }
-}
-
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`
-  return `${Math.floor(diffMins / 1440)}d ago`
 }
 </script>

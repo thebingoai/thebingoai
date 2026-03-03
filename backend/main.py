@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from backend.vectordb.pinecone import init_pinecone
 from backend.api import routes
+from backend.api.websocket import router as ws_router
 from backend.logging_config import setup_logging
 from backend.api import health as health_module
 from backend.config import settings
@@ -40,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(routes.router, prefix="/api")
+app.include_router(ws_router)  # WebSocket at /ws (no /api prefix — WS upgrade bypasses proxy)
 
 @app.get("/health")
 async def health_check():
