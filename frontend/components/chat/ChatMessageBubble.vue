@@ -79,6 +79,16 @@
           <span>{{ stepCount }} reasoning step{{ stepCount !== 1 ? 's' : '' }}</span>
         </button>
       </div>
+
+      <!-- Soul proposal action buttons -->
+      <div v-if="showActions" class="mt-3 flex items-center gap-2">
+        <UiButton size="sm" variant="primary" @click="emit('send-action', 'yes')">
+          Yes, apply
+        </UiButton>
+        <UiButton size="sm" variant="outline" @click="emit('send-action', 'no')">
+          No thanks
+        </UiButton>
+      </div>
     </div>
   </div>
 </template>
@@ -88,6 +98,11 @@ import type { Message } from '~/stores/chat'
 
 const props = defineProps<{
   message: Message
+  showActions?: boolean
+}>()
+
+const emit = defineEmits<{
+  'send-action': [text: string]
 }>()
 
 const chatStore = useChatStore()

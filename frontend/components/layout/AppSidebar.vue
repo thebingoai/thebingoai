@@ -35,10 +35,10 @@
     <div>
       <button
         @click="handleNewTask"
-        class="flex w-full items-center gap-2 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
       >
-        <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900">
-          <Plus class="h-3 w-3 text-white" />
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900">
+          <Plus class="h-3.5 w-3.5 text-white" />
         </span>
         New Task
       </button>

@@ -288,6 +288,7 @@ async def list_conversations(
     db: Session = Depends(get_db)
 ):
     """List all conversations for the current user."""
+    ConversationService.get_or_create_permanent_conversation(db, current_user.id)
     conversations = ConversationService.list_conversations(db, current_user.id)
     return ConversationListResponse(conversations=conversations)
 

@@ -727,7 +727,7 @@ def _build_soul_tools(
             f"I'd like to update my soul — the part of my personality that shapes how I work with you.\n\n"
             f"**Why:** {reason}\n\n"
             f"**Proposed soul:**\n---\n{proposed_soul}\n---\n\n"
-            f"Would you like me to apply this? Reply 'yes' or 'approve' to confirm, or 'no' to decline."
+            f"Would you like me to apply this?"
         )
         return json.dumps({"success": True, "proposal": proposal, "proposed_soul": proposed_soul})
 

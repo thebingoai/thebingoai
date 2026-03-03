@@ -239,6 +239,7 @@ export const useChat = () => {
         agent_steps: [],
         thinking_steps: []
       }))
+      messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       chatStore.setMessages(messages)
       chatStore.setCurrentThread(threadId)
 

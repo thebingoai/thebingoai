@@ -1,6 +1,6 @@
 <template>
-  <div class="border-t border-gray-200 bg-white px-24 py-4">
-    <form @submit.prevent="handleSubmit" class="rounded-xl border border-gray-300 flex flex-col focus-within:border-gray-400 transition-colors">
+  <div class="px-16 pb-4 ">
+    <form @submit.prevent="handleSubmit" class="shadow-lg rounded-xl border border-gray-300 flex flex-col focus-within:border-gray-400 transition-colors">
       <textarea
         ref="textareaRef"
         v-model="chatStore.inputText"

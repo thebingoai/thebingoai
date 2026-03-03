@@ -2,7 +2,7 @@
   <div class="flex flex-1 overflow-hidden">
     <!-- Main chat area -->
     <div class="flex flex-1 flex-col min-w-0 min-h-0">
-      <ChatThread />
+      <ChatThread @send-action="handleAction" />
       <ChatInputBar @send="handleSend" @reset="handleReset" />
     </div>
     <!-- Reasoning panel (slides in from the right) -->
@@ -22,6 +22,12 @@ const chat = useChat()
 const handleSend = () => {
   if (chatStore.inputText.trim()) {
     chat.sendMessage(chatStore.inputText)
+  }
+}
+
+const handleAction = (text: string) => {
+  if (!chatStore.isStreaming) {
+    chat.sendMessage(text)
   }
 }
 
