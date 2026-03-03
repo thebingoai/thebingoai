@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* GridStack layout */
+@import 'gridstack/dist/gridstack.min.css';
+
+/* GridStack theme overrides */
+.grid-stack {
+  background: transparent;
+}
+
+.grid-stack-item-content {
+  @apply rounded-xl border border-gray-100 bg-white overflow-hidden;
+  inset: 4px !important;
+}
+
+.grid-stack-placeholder > .placeholder-content {
+  @apply rounded-xl border-2 border-dashed border-gray-200 bg-gray-50;
+  inset: 4px !important;
+}
+
+/* Edit mode highlight */
+.grid-stack.edit-mode .grid-stack-item:hover > .grid-stack-item-content {
+  @apply border-gray-300 shadow-md;
+}
+
 @layer base {
   /* Custom scrollbar */
   ::-webkit-scrollbar {

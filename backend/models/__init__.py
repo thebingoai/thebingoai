@@ -24,6 +24,9 @@ from backend.models.team_connection_policy import TeamConnectionPolicy
 # Phase 3: Custom Agent Registry
 from backend.models.custom_agent import CustomAgent
 
+# Dashboard Persistence
+from backend.models.dashboard import Dashboard
+
 # Phase 5: User Skills & Memories
 from backend.models.user_memory import UserMemory
 from backend.models.skill_reference import SkillReference

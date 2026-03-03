@@ -9,14 +9,20 @@ class ConversationService:
     """Service for managing conversations and messages."""
 
     @staticmethod
-    def create_conversation(db: Session, user_id: str, title: Optional[str] = None) -> Conversation:
+    def create_conversation(
+        db: Session,
+        user_id: str,
+        title: Optional[str] = None,
+        conv_type: str = "task",
+    ) -> Conversation:
         """Create a new conversation."""
         thread_id = str(uuid.uuid4())
 
         conversation = Conversation(
             thread_id=thread_id,
             user_id=user_id,
-            title=title or "New Chat"
+            title=title or ("New Task" if conv_type == "task" else "Bingo AI"),
+            type=conv_type,
         )
 
         db.add(conversation)
@@ -24,6 +30,24 @@ class ConversationService:
         db.refresh(conversation)
 
         return conversation
+
+    @staticmethod
+    def get_permanent_conversation(db: Session, user_id: str) -> Optional[Conversation]:
+        """Return the user's permanent conversation, or None if not yet created."""
+        return db.query(Conversation).filter(
+            Conversation.user_id == user_id,
+            Conversation.type == "permanent",
+        ).first()
+
+    @staticmethod
+    def get_or_create_permanent_conversation(db: Session, user_id: str) -> Conversation:
+        """Return the user's permanent conversation, creating it if it doesn't exist."""
+        conv = ConversationService.get_permanent_conversation(db, user_id)
+        if conv:
+            return conv
+        return ConversationService.create_conversation(
+            db, user_id, title="Bingo AI", conv_type="permanent"
+        )
 
     @staticmethod
     def get_conversation_by_thread(db: Session, thread_id: str, user_id: str) -> Optional[Conversation]:
@@ -87,12 +111,29 @@ class ConversationService:
             db.commit()
 
     @staticmethod
+    def add_context_reset(db: Session, conversation_id: int) -> Message:
+        """Insert a context reset marker into a conversation."""
+        message = Message(
+            conversation_id=conversation_id,
+            role="system",
+            content="",
+            source="context_reset",
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return message
+
+    @staticmethod
     def delete_conversation(db: Session, thread_id: str, user_id: str) -> bool:
-        """Delete a conversation."""
+        """Delete a conversation. Returns False if not found, raises ValueError for permanent."""
         conversation = ConversationService.get_conversation_by_thread(db, thread_id, user_id)
 
         if not conversation:
             return False
+
+        if conversation.type == "permanent":
+            raise ValueError("Cannot delete the permanent conversation")
 
         db.delete(conversation)
         db.commit()

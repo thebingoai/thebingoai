@@ -109,6 +109,9 @@ def execute_heartbeat_job(job_id: str):
 
         logger.info(f"Heartbeat job {job_id} run {run.id} completed in {duration_ms}ms")
 
+        # Deliver result to user's permanent conversation
+        _deliver_heartbeat_result(db, job=job, run_id=run.id, user_id=job.user_id, response=response)
+
     except Exception as e:
         logger.error(f"Heartbeat job {job_id} failed: {e}")
         if run is not None:
@@ -123,6 +126,51 @@ def execute_heartbeat_job(job_id: str):
                 db.rollback()
     finally:
         db.close()
+
+
+def _deliver_heartbeat_result(db, *, job: HeartbeatJob, run_id: str, user_id: str, response: str) -> None:
+    """
+    Save the heartbeat response to the user's permanent conversation and
+    publish a WebSocket notification via Redis Pub/Sub.
+
+    This is a synchronous helper (Celery workers are sync).
+    """
+    from backend.services.conversation_service import ConversationService
+    from backend.models.message import Message
+    from backend.services.ws_connection_manager import ConnectionManager
+
+    try:
+        perm_conv = ConversationService.get_or_create_permanent_conversation(db, user_id)
+
+        msg = Message(
+            conversation_id=perm_conv.id,
+            role="assistant",
+            content=response,
+            source="heartbeat",
+            heartbeat_job_id=job.id,
+        )
+        db.add(msg)
+        db.commit()
+        db.refresh(msg)
+
+        payload = {
+            "type": "heartbeat.message",
+            "thread_id": perm_conv.thread_id,
+            "message": {
+                "id": msg.id,
+                "role": "assistant",
+                "content": response,
+                "source": "heartbeat",
+                "job_name": job.name,
+                "job_id": job.id,
+                "timestamp": msg.timestamp.isoformat(),
+            },
+        }
+        ConnectionManager.publish_to_user_sync(user_id, payload)
+        logger.info(f"Heartbeat result delivered to permanent conv for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to deliver heartbeat result to user {user_id}: {e}")
 
 
 async def _run_orchestrator_for_job(job: HeartbeatJob, user: User) -> str:
@@ -158,6 +206,8 @@ async def _run_orchestrator_for_job(job: HeartbeatJob, user: User) -> str:
         memory_context=ctx.memory_context,
         user_skills=ctx.user_skills or None,
         user_memories_context=ctx.user_memories_context,
+        soul_prompt=ctx.soul_prompt,
+        skill_suggestions=ctx.skill_suggestions,
     )
 
     return result.get("message", "")

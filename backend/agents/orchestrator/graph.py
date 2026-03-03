@@ -1,5 +1,5 @@
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
 from backend.agents.orchestrator.prompts import build_orchestrator_prompt
 from backend.agents.data_agent import invoke_data_agent
@@ -727,7 +727,7 @@ def _build_soul_tools(
             f"I'd like to update my soul — the part of my personality that shapes how I work with you.\n\n"
             f"**Why:** {reason}\n\n"
             f"**Proposed soul:**\n---\n{proposed_soul}\n---\n\n"
-            f"Would you like me to apply this? Reply 'yes' or 'approve' to confirm, or 'no' to decline."
+            f"Would you like me to apply this?"
         )
         return json.dumps({"success": True, "proposal": proposal, "proposed_soul": proposed_soul})
 
@@ -953,6 +953,21 @@ async def run_orchestrator(
                     messages.append(AIMessage(content=msg.content))
         messages.append(HumanMessage(content=user_question))
 
+        if not soul_prompt:
+            if not history:
+                messages.insert(0, SystemMessage(content=(
+                    "IMPORTANT: Your soul is empty — this is your first conversation with this user. "
+                    "You have no name or personality yet. Introduce yourself as a new assistant that can be personalized. "
+                    "Invite the user to give you a name and describe how they'd like you to behave. "
+                    "If they skip it, proceed normally — don't push."
+                )))
+            else:
+                messages.insert(0, SystemMessage(content=(
+                    "IMPORTANT: Your soul is still empty. If the user has provided a name, preferences, "
+                    "or personality instructions in this conversation, you MUST call propose_soul_update "
+                    "to capture them. Do NOT just acknowledge verbally — use the tool to persist it."
+                )))
+
         result = await orchestrator.ainvoke({"messages": messages})
 
         messages = result.get("messages", [])
@@ -1029,6 +1044,21 @@ async def stream_orchestrator(
                 elif msg.role == "assistant":
                     messages.append(AIMessage(content=msg.content))
         messages.append(HumanMessage(content=user_question))
+
+        if not soul_prompt:
+            if not history:
+                messages.insert(0, SystemMessage(content=(
+                    "IMPORTANT: Your soul is empty — this is your first conversation with this user. "
+                    "You have no name or personality yet. Introduce yourself as a new assistant that can be personalized. "
+                    "Invite the user to give you a name and describe how they'd like you to behave. "
+                    "If they skip it, proceed normally — don't push."
+                )))
+            else:
+                messages.insert(0, SystemMessage(content=(
+                    "IMPORTANT: Your soul is still empty. If the user has provided a name, preferences, "
+                    "or personality instructions in this conversation, you MUST call propose_soul_update "
+                    "to capture them. Do NOT just acknowledge verbally — use the tool to persist it."
+                )))
 
         collected_steps = []
         step_number = 0

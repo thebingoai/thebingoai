@@ -23,27 +23,71 @@
     </div>
 
     <!-- Scrollable message content -->
-    <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 py-6">
+    <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 pt-6 pb-36">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
-        <div class="text-center">
+        <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
+          <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to Bingo AI</h2>
+          <p class="text-gray-500 mb-4">I'm your personal assistant — you can give me a name, set my personality, and teach me how you like to work.</p>
+          <p class="text-gray-400 text-sm">For one-off data queries, use <span class="font-medium text-gray-500">New Task</span>.</p>
+        </div>
+        <div v-else class="text-center">
           <h2 class="text-2xl font-medium text-gray-900 mb-2">Ask me anything about your data</h2>
           <p class="text-gray-500">I can write SQL queries and analyze your database</p>
         </div>
       </div>
       <div v-else>
-        <ChatMessageBubble
-          v-for="message in chatStore.messages"
-          :key="message.id"
-          :message="message"
-        />
+        <template v-for="(message, index) in chatStore.messages" :key="message.id">
+          <!-- Date header (shown when date changes between messages) -->
+          <div
+            v-if="message.source !== 'context_reset' && getDateLabel(message, index)"
+            class="flex items-center gap-3 my-4 pr-32"
+          >
+            <div class="flex-1 border-t border-gray-100" />
+            <span class="text-xs text-gray-400">{{ getDateLabel(message, index) }}</span>
+            <div class="flex-1 border-t border-gray-100" />
+          </div>
+
+          <!-- Context reset divider -->
+          <div v-if="message.source === 'context_reset'" class="flex items-center gap-3 my-6 pr-32">
+            <div class="flex-1 border-t border-gray-200" />
+            <span class="text-xs text-gray-400 whitespace-nowrap">New Topic</span>
+            <div class="flex-1 border-t border-gray-200" />
+          </div>
+
+          <!-- Regular message bubble -->
+          <ChatMessageBubble
+            v-else
+            :message="message"
+            :show-actions="shouldShowActions(message, index)"
+            @send-action="emit('send-action', $event)"
+          />
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { formatDateLabel, isSameDay } from '~/utils/format'
+import type { Message } from '~/stores/chat'
+
+const emit = defineEmits<{
+  'send-action': [text: string]
+}>()
+
 const chatStore = useChatStore()
 const chat = useChat()
+
+const shouldShowActions = (message: Message, index: number): boolean => {
+  if (message.role !== 'assistant') return false
+  if (chatStore.isStreaming && index === chatStore.messages.length - 1) return false
+  const hasSoulProposal = message.agent_steps?.some(
+    step => step.tool_name === 'propose_soul_update'
+  )
+  if (!hasSoulProposal) return false
+  return !chatStore.messages.slice(index + 1).some(m => m.role === 'user')
+}
+
 const threadRef = ref<HTMLElement>()
 const titleInput = ref<HTMLInputElement>()
 const isEditingTitle = ref(false)
@@ -77,6 +121,20 @@ const cancelEdit = () => {
   isEditingTitle.value = false
 }
 
+// Returns the date label to show above a message, or null if no label needed
+const getDateLabel = (message: Message, index: number): string | null => {
+  const messageDate = new Date(message.created_at)
+  if (index === 0) return formatDateLabel(messageDate)
+  // Find the previous non-context-reset message's date
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = chatStore.messages[i]
+    if (prev.source !== 'context_reset') {
+      return isSameDay(messageDate, new Date(prev.created_at)) ? null : formatDateLabel(messageDate)
+    }
+  }
+  return formatDateLabel(messageDate)
+}
+
 // Scroll function
 const scrollToBottom = () => {
   if (threadRef.value) {
@@ -84,14 +142,26 @@ const scrollToBottom = () => {
   }
 }
 
-// Throttled scroll for streaming content updates (leading-edge: scrolls immediately on first trigger)
+// Scroll to bottom on initial mount (handles pre-existing messages)
+onMounted(() => {
+  nextTick(() => scrollToBottom())
+})
+
+// Throttled scroll for streaming content updates (leading + trailing edge)
 let scrollThrottleTimer: NodeJS.Timeout | null = null
+let pendingScroll = false
 const throttledScroll = () => {
   if (!scrollThrottleTimer) {
     scrollToBottom()
     scrollThrottleTimer = setTimeout(() => {
       scrollThrottleTimer = null
+      if (pendingScroll) {
+        pendingScroll = false
+        scrollToBottom()
+      }
     }, 100)
+  } else {
+    pendingScroll = true
   }
 }
 
@@ -116,4 +186,11 @@ watch(
     }
   }
 )
+
+// Scroll once more when streaming ends to catch the final word-buffer flush
+watch(() => chatStore.isStreaming, (streaming, wasStreaming) => {
+  if (wasStreaming && !streaming) {
+    nextTick(() => scrollToBottom())
+  }
+})
 </script>

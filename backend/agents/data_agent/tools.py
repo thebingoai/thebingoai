@@ -38,7 +38,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             List of table names
         """
         if not context.can_access_connection(connection_id):
-            return []
+            return [f"Error: Connection {connection_id} not authorized or not available"]
 
         try:
             schema_json = load_schema_file(connection_id)
@@ -61,7 +61,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             and row_count
         """
         if not context.can_access_connection(connection_id):
-            return {}
+            return {"error": f"Connection {connection_id} not authorized or not available"}
 
         try:
             schema_json = load_schema_file(connection_id)
@@ -95,7 +95,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             List of matching table names
         """
         if not context.can_access_connection(connection_id):
-            return []
+            return [f"Error: Connection {connection_id} not authorized or not available"]
 
         try:
             schema_json = load_schema_file(connection_id)

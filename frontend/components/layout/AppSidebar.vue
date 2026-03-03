@@ -8,52 +8,92 @@
       </span>
     </div>
 
-    <!-- New Chat Button -->
-    <div>
+    <!-- Permanent conversation (pinned) -->
+    <div v-if="chatStore.permanentConversation" class="border-b border-gray-100">
       <button
-        @click="handleNewChat"
-        class="flex w-full items-center gap-2 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+        @click="handleSelectConversation(chatStore.permanentConversation!.id)"
+        class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        :class="chatStore.currentThreadId === chatStore.permanentConversation.id ? 'bg-gray-100' : ''"
       >
-        <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gray-900">
-          <Plus class="h-3 w-3 text-white" />
+        <span class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-900">
+          <Sparkles class="h-3.5 w-3.5 text-white" />
         </span>
-        New Chat
+        <span class="flex-1 min-w-0 text-sm font-light text-gray-900 truncate">
+          {{ chatStore.permanentConversation.title || 'Bingo AI' }}
+        </span>
+        <!-- Unread badge -->
+        <span
+          v-if="chatStore.permanentConversation.unread_count && chatStore.permanentConversation.unread_count > 0"
+          class="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gray-900 px-1.5 text-[10px] font-medium text-white"
+        >
+          {{ chatStore.permanentConversation.unread_count > 99 ? '99+' : chatStore.permanentConversation.unread_count }}
+        </span>
       </button>
     </div>
 
-    <!-- Conversation List -->
+    <!-- Dashboard link -->
+    <div>
+      <button
+        @click="router.push('/dashboard')"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+        :class="route.path === '/dashboard' ? 'bg-gray-100' : ''"
+      >
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900">
+          <LayoutDashboard class="h-3.5 w-3.5 text-white" />
+        </span>
+        Dashboard
+      </button>
+    </div>
+
+    <!-- New Task Button -->
+    <div>
+      <button
+        @click="handleNewTask"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+      >
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900">
+          <Plus class="h-3.5 w-3.5 text-white" />
+        </span>
+        New Task
+      </button>
+    </div>
+
+    <!-- Task conversation list -->
     <div class="flex-1 overflow-y-auto">
-      <!-- Recent section header -->
+      <!-- Recent tasks section header -->
       <button
         @click="isRecentExpanded = !isRecentExpanded"
         class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 hover:text-gray-600"
       >
         <ChevronDown v-if="isRecentExpanded" class="h-3.5 w-3.5" />
         <ChevronRight v-else class="h-3.5 w-3.5" />
-        Recent
+        Recent Tasks
       </button>
 
-      <!-- Conversation list (collapsible) -->
+      <!-- Task list (collapsible) -->
       <div v-show="isRecentExpanded">
-        <div v-if="chatStore.conversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
-          No conversations yet
+        <div v-if="chatStore.taskConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
+          No tasks yet
         </div>
-        <button
-          v-for="conv in chatStore.conversations"
-          :key="conv.id"
-          @click="handleSelectConversation(conv.id)"
-          class="w-full rounded-lg px-4 py-0.5 text-left text-sm hover:bg-gray-50"
-          :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
-        >
-          <div class="font-extralight text-gray-500 truncate">{{ conv.title }}</div>
-        </button>
+        <template v-for="group in groupedTasks" :key="group.label">
+          <div class="px-4 py-1.5 text-[11px] text-gray-400">{{ group.label }}</div>
+          <button
+            v-for="conv in group.conversations"
+            :key="conv.id"
+            @click="handleSelectConversation(conv.id)"
+            class="w-full rounded-lg px-4 py-0.5 text-left text-sm hover:bg-gray-50"
+            :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
+          >
+            <div class="font-extralight text-gray-500 truncate">{{ conv.title }}</div>
+          </button>
+        </template>
       </div>
     </div>
 
     <!-- User account button -->
     <button
       @click="router.push('/settings')"
-      class="border-t border-gray-200 px-4 py-5 hover:bg-gray-50 transition-colors w-full text-left"
+      class="border-t border-gray-200 px-4 pb-6 pt-5 hover:bg-gray-50 transition-colors w-full text-left"
     >
       <div class="flex items-center">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-light">
@@ -70,13 +110,30 @@
 </template>
 
 <script setup lang="ts">
-import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard } from 'lucide-vue-next'
+import { formatDateLabel } from '~/utils/format'
+import type { Conversation } from '~/stores/chat'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
 const chat = useChat()
 const router = useRouter()
 const route = useRoute()
+
+const groupedTasks = computed(() => {
+  const groups: { label: string; conversations: Conversation[] }[] = []
+  let currentLabel = ''
+  for (const conv of chatStore.taskConversations) {
+    const label = formatDateLabel(new Date(conv.updated_at))
+    if (label !== currentLabel) {
+      groups.push({ label, conversations: [conv] })
+      currentLabel = label
+    } else {
+      groups[groups.length - 1].conversations.push(conv)
+    }
+  }
+  return groups
+})
 
 const isRecentExpanded = ref(true)
 
@@ -85,35 +142,25 @@ const userInitial = computed(() => {
   return email.charAt(0).toUpperCase()
 })
 
-// Load conversations on mount
+// Load conversations on mount and register heartbeat handler
 onMounted(() => {
   chat.loadConversations()
+  chat.registerHeartbeatHandler()
 })
 
-const handleNewChat = () => {
+const handleNewTask = () => {
   chat.newChat()
-  // Navigate to chat page if not already there
   if (route.path !== '/chat') {
     navigateTo('/chat')
   }
 }
 
 const handleSelectConversation = (id: string) => {
+  // Clear unread when opening the conversation
+  chatStore.clearUnread(id)
   chat.loadMessages(id)
-  // Navigate to chat page if not already there
   if (route.path !== '/chat') {
     navigateTo('/chat')
   }
-}
-
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`
-  return `${Math.floor(diffMins / 1440)}d ago`
 }
 </script>

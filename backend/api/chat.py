@@ -100,6 +100,11 @@ async def chat(
     # Fetch conversation history (exclude the just-saved user message)
     history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
     history = history[:-1]
+    # Truncate at last context reset boundary
+    for i in range(len(history) - 1, -1, -1):
+        if history[i].source == "context_reset":
+            history = history[i + 1:]
+            break
 
     # Run orchestrator
     from backend.database.session import SessionLocal
@@ -192,7 +197,7 @@ async def chat_stream(
                     return
             else:
                 conversation = ConversationService.create_conversation(
-                    db, current_user.id, title="Untitled"
+                    db, current_user.id, title="New Task"
                 )
 
             # Save user message
@@ -220,6 +225,11 @@ async def chat_stream(
             # Fetch conversation history (exclude the just-saved user message)
             history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
             history = history[:-1]
+            # Truncate at last context reset boundary
+            for i in range(len(history) - 1, -1, -1):
+                if history[i].source == "context_reset":
+                    history = history[i + 1:]
+                    break
 
             # Stream orchestrator execution
             from backend.database.session import SessionLocal
@@ -278,6 +288,7 @@ async def list_conversations(
     db: Session = Depends(get_db)
 ):
     """List all conversations for the current user."""
+    ConversationService.get_or_create_permanent_conversation(db, current_user.id)
     conversations = ConversationService.list_conversations(db, current_user.id)
     return ConversationListResponse(conversations=conversations)
 
@@ -321,7 +332,10 @@ async def delete_conversation(
     db: Session = Depends(get_db)
 ):
     """Delete a conversation and all its messages."""
-    deleted = ConversationService.delete_conversation(db, thread_id, current_user.id)
+    try:
+        deleted = ConversationService.delete_conversation(db, thread_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")

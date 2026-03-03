@@ -14,6 +14,7 @@ class ChatMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime
+    source: str = "chat"
 
     class Config:
         from_attributes = True
@@ -32,6 +33,7 @@ class ConversationResponse(BaseModel):
     thread_id: str
     user_id: str
     title: Optional[str]
+    type: str = "task"
     created_at: datetime
     updated_at: datetime
     messages: List[ChatMessage] = []
