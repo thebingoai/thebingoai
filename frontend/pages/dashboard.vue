@@ -9,7 +9,11 @@
           <h1 class="text-base font-semibold text-gray-900">Dashboards</h1>
         </div>
         <div class="flex-1 overflow-y-auto px-6 pb-6">
+          <div v-if="store.loading" class="flex items-center justify-center py-16 text-sm text-gray-400">
+            Loading dashboards...
+          </div>
           <DashboardListView
+            v-else
             :items="dashboardListItems"
             @open="store.openDashboard"
           />
@@ -18,12 +22,15 @@
 
       <!-- Dashboard drill-down view -->
       <template v-else>
-        <!-- Title bar: back + title + edit toggle -->
+        <!-- Title bar: back + title + edit toggle + save -->
         <DashboardTitleBar
           :title="store.currentDashboard.title"
           :edit-mode="store.editMode"
+          :dirty="store.dirty"
+          :saving="store.saving"
           @back="store.closeDashboard()"
           @toggle-edit="store.toggleEditMode()"
+          @save="store.saveDashboard()"
         />
 
         <!-- Edit toolbar (visible only in edit mode) -->
@@ -67,15 +74,11 @@
 import { LayoutGrid, Clock, Activity } from 'lucide-vue-next'
 import { useDashboardStore } from '~/stores/dashboard'
 import { toDashboardListItem } from '~/types/dashboard'
-import { sampleDashboard } from '~/constants/sampleDashboard'
 
 const store = useDashboardStore()
 
-// Load sample data on mount (Phase 2 will replace this with API fetch)
 onMounted(() => {
-  if (store.dashboards.length === 0) {
-    store.setDashboards([sampleDashboard])
-  }
+  store.fetchDashboards()
 })
 
 const dashboardListItems = computed(() =>

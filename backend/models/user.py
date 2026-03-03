@@ -25,3 +25,6 @@ class User(Base, TimestampMixin):
     token_usage = relationship(
         "TokenUsage", back_populates="user", cascade="all, delete-orphan"
     )
+    dashboards = relationship(
+        "Dashboard", back_populates="user", cascade="all, delete-orphan"
+    )

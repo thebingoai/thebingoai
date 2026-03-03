@@ -405,6 +405,36 @@ export const useApi = () => {
       }
     },
 
+    // Dashboard endpoints
+    dashboards: {
+      async list() {
+        return $fetch('/api/dashboards', { headers: getHeaders() })
+      },
+      async get(id: number) {
+        return $fetch(`/api/dashboards/${id}`, { headers: getHeaders() })
+      },
+      async create(data: any) {
+        return $fetch('/api/dashboards', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data,
+        })
+      },
+      async update(id: number, data: any) {
+        return $fetch(`/api/dashboards/${id}`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data,
+        })
+      },
+      async delete(id: number) {
+        return $fetch(`/api/dashboards/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders(),
+        })
+      },
+    },
+
     // Heartbeat Jobs endpoints
     heartbeatJobs: {
       async list() {

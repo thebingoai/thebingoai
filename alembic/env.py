@@ -15,7 +15,7 @@ from backend.models import (
     user, database_connection, conversation, message, agent_step, token_usage,
     organization, team, team_membership, tool_catalog, team_tool_policy,
     team_connection_policy, custom_agent, heartbeat_job, heartbeat_job_run,
-    skill_reference, skill_suggestion,
+    skill_reference, skill_suggestion, dashboard,
 )
 
 config = context.config

@@ -82,7 +82,7 @@ export interface DashboardWidget {
 
 // A full dashboard with its widget collection
 export interface Dashboard {
-  id: string
+  id: number
   title: string
   description?: string
   widgets: DashboardWidget[]
@@ -92,7 +92,7 @@ export interface Dashboard {
 
 // Lightweight representation for the dashboard card list view
 export interface DashboardListItem {
-  id: string
+  id: number
   title: string
   description?: string
   widgetCount: number
