@@ -76,7 +76,7 @@
     <!-- User account button -->
     <button
       @click="router.push('/settings')"
-      class="border-t border-gray-200 px-4 py-5 hover:bg-gray-50 transition-colors w-full text-left"
+      class="border-t border-gray-200 px-4 pb-6 pt-5 hover:bg-gray-50 transition-colors w-full text-left"
     >
       <div class="flex items-center">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-light">
