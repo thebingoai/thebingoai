@@ -86,6 +86,43 @@ If the user's request is unclear or ambiguous, ask for clarification before proc
 You have conversation memory via thread_id — reference past context when helpful."""
 
 
+_DASHBOARD_SECTION = """
+## Dashboard Creation
+
+You can create persistent dashboards using the `create_dashboard` tool.
+
+### When to Create Dashboards
+Only create a dashboard when the user explicitly requests one (e.g. "create a dashboard", "build me a dashboard", "make a dashboard showing...").
+
+### Recommended Workflow
+1. Use `data_agent` to run queries and confirm what metrics are actually available in the database
+2. Design widgets based on real query results — do NOT invent values
+3. Call `create_dashboard` with the widget configuration
+
+### 12-Column Grid Layout Guidelines
+Use a 12-column grid with integer x/y/w/h values:
+
+| Widget type   | w  | h | Suggested y |
+|---------------|----|---|-------------|
+| KPI card      | 3  | 2 | 0           |
+| Half chart    | 6  | 4 | 2           |
+| Full chart    | 12 | 4 | 2           |
+| Table         | 12 | 5 | 6           |
+
+Place up to 4 KPIs in row y=0 at x=0, 3, 6, 9. Place charts starting at y=2. Place tables at y=6 or lower.
+
+### Widget Config Quick Reference
+
+**KPI** (type: "kpi"): title, value (number or string), unit (optional), trend (optional: direction up/down/neutral, value %, label)
+
+**Chart** (type: "chart"): title, chartType (bar/line/pie/area), labels array, datasets array [{label, data array}]
+
+**Table** (type: "table"): title, columns [{key, label, sortable}], rows [{key: value}]
+
+**Text** (type: "text"): title (optional), content (markdown string)
+"""
+
+
 _SOUL_MANAGEMENT_SECTION = """
 ## Soul — Your Evolving Personality
 
@@ -134,6 +171,7 @@ def build_orchestrator_prompt(
         base = _ORCHESTRATOR_CHASSIS + _SKILL_MANAGEMENT_SECTION
 
     base += _SOUL_MANAGEMENT_SECTION
+    base += _DASHBOARD_SECTION
 
     if custom_agents:
         descriptions = []

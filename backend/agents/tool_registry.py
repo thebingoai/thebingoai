@@ -12,6 +12,7 @@ from backend.agents.data_agent.tools import (
     build_search_tables_tool,
     build_execute_query_tool,
 )
+from backend.agents.dashboard_tools import build_create_dashboard_tool
 import logging
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "rag_search": _build_rag_search_tool,
     "recall_memory": _build_recall_memory_tool,
     "summarize_text": _build_summarize_tool,
+    "create_dashboard": build_create_dashboard_tool,
 }
 
 

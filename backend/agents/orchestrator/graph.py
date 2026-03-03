@@ -7,6 +7,7 @@ from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.skills import get_skill_registry
 from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
+from backend.agents.dashboard_tools import build_dashboard_tools
 from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
@@ -42,9 +43,10 @@ def build_orchestrator_tools(
     """
     skill_tools = _build_skill_tools(context, user_skills, db_session_factory)
     soul_tools = _build_soul_tools(context, db_session_factory)
+    dashboard_tools = build_dashboard_tools(context, db_session_factory)
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools
-    return _build_legacy_tools(context) + skill_tools + soul_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools
+    return _build_legacy_tools(context) + skill_tools + soul_tools + dashboard_tools
 
 
 def _build_skill_tools(
