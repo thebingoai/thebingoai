@@ -62,35 +62,65 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
         Args:
             title: Dashboard title (e.g. "Property Overview Dashboard")
             description: Brief description of what the dashboard shows
-            widgets_json: JSON array of widget objects. Each widget must have:
-                - id: unique string identifier (e.g. "kpi_total_listings")
-                - position: {x, y, w, h} on a 12-column grid
-                  Layout guidelines:
-                    KPI cards:    w=3, h=2, row y=0  (4 per row)
-                    Charts:       w=6, h=4, row y=2  (2 per row)
-                    Full charts:  w=12, h=4
-                    Tables:       w=12, h=5, row y=6
-                - widget: {
-                    type: "kpi" | "chart" | "table" | "text" | "filter",
+            widgets_json: JSON array of widget objects. CRITICAL: each widget.widget must have
+                a nested "config" sub-object containing the display data. Layout uses a 12-column grid.
 
-                    For "kpi":
-                      title, value (number|string), unit (optional),
-                      trend: {direction: "up"|"down"|"neutral", value: number, label: string} (optional)
-
-                    For "chart":
-                      title, chartType: "bar"|"line"|"pie"|"area",
-                      labels: [...], datasets: [{label, data: [...], color (optional)}]
-
-                    For "table":
-                      title, columns: [{key, label, sortable (optional)}],
-                      rows: [{key: value, ...}]
-
-                    For "text":
-                      title (optional), content (markdown string)
-
-                    For "filter":
-                      title (optional), controls: [{type, label, ...}]
+                EXACT structure required:
+                [
+                  {
+                    "id": "kpi_total_listings",
+                    "position": {"x": 0, "y": 0, "w": 3, "h": 2},
+                    "widget": {
+                      "type": "kpi",
+                      "config": {
+                        "label": "Total Listings",
+                        "value": 38121,
+                        "suffix": "properties"
+                      }
+                    }
+                  },
+                  {
+                    "id": "chart_by_type",
+                    "position": {"x": 0, "y": 2, "w": 12, "h": 4},
+                    "widget": {
+                      "type": "chart",
+                      "config": {
+                        "type": "bar",
+                        "title": "Listings by Property Type",
+                        "data": {
+                          "labels": ["Condominium", "Apartment"],
+                          "datasets": [{"label": "Count", "data": [6870, 1933]}]
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "table_top",
+                    "position": {"x": 0, "y": 6, "w": 12, "h": 5},
+                    "widget": {
+                      "type": "table",
+                      "config": {
+                        "columns": [{"key": "address", "label": "Address"}, {"key": "price", "label": "Price", "sortable": true}],
+                        "rows": [{"address": "...", "price": 450000}]
+                      }
+                    }
                   }
+                ]
+
+                Per-type config fields:
+                - kpi: label (string, required), value (number|string, required), prefix (optional), suffix (optional),
+                       trend: {direction: "up"|"down"|"neutral", value: number, period: string} (optional)
+                - chart: type ("bar"|"line"|"pie"|"doughnut"|"area"), title (optional),
+                         data: {labels: [...], datasets: [{label, data: [...]}]}
+                - table: columns: [{key, label, sortable?}], rows: [{key: value, ...}]
+                - text: content (markdown string), alignment (optional)
+                - filter: controls: [{type, label, key}]
+
+                Layout guidelines (12-column grid):
+                  KPI cards:    w=3, h=2, y=0  (place up to 4 at x=0,3,6,9)
+                  Half charts:  w=6, h=4, y=2
+                  Full charts:  w=12, h=4, y=2
+                  Tables:       w=12, h=5, y=6
 
         Returns:
             JSON with success, dashboard_id, and message

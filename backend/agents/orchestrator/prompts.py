@@ -111,15 +111,28 @@ Use a 12-column grid with integer x/y/w/h values:
 
 Place up to 4 KPIs in row y=0 at x=0, 3, 6, 9. Place charts starting at y=2. Place tables at y=6 or lower.
 
-### Widget Config Quick Reference
+### CRITICAL: Widget JSON Structure
 
-**KPI** (type: "kpi"): title, value (number or string), unit (optional), trend (optional: direction up/down/neutral, value %, label)
+Every widget MUST have a nested `config` sub-object inside `widget`. Flat fields will NOT render.
 
-**Chart** (type: "chart"): title, chartType (bar/line/pie/area), labels array, datasets array [{label, data array}]
+```
+{
+  "id": "kpi_total",
+  "position": {"x": 0, "y": 0, "w": 3, "h": 2},
+  "widget": {
+    "type": "kpi",
+    "config": { "label": "Total Listings", "value": 38121 }
+  }
+}
+```
 
-**Table** (type: "table"): title, columns [{key, label, sortable}], rows [{key: value}]
+**KPI** `config`: `label` (string, required — NOT "title"), `value` (number|string), `prefix`, `suffix`, `trend` ({direction: "up"|"down"|"neutral", value: number, period: string})
 
-**Text** (type: "text"): title (optional), content (markdown string)
+**Chart** `config`: `type` ("bar"|"line"|"pie"|"doughnut"|"area"), `title` (optional), `data`: {`labels`: [...], `datasets`: [{`label`, `data`: [...]}]}
+
+**Table** `config`: `columns` [{`key`, `label`, `sortable`?}], `rows` [{key: value, ...}]
+
+**Text** `config`: `content` (markdown), `alignment` (optional)
 """
 
 
