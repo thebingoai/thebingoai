@@ -13,7 +13,7 @@ export interface AgentStep {
 
 export interface Message {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system'
   content: string
   sql?: string
   results?: any[]
@@ -21,7 +21,7 @@ export interface Message {
   agent_steps?: AgentStep[]
   created_at: string
   attachments?: FileAttachment[]
-  source?: 'chat' | 'heartbeat' | 'system'
+  source?: 'chat' | 'heartbeat' | 'system' | 'context_reset'
 }
 
 export interface ThinkingStep {
@@ -67,7 +67,9 @@ export const useChatStore = defineStore('chat', {
       return state.conversations.find(c => c.type === 'permanent') ?? null
     },
     taskConversations: (state) => {
-      return state.conversations.filter(c => c.type === 'task')
+      return state.conversations
+        .filter(c => c.type === 'task')
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     }
   },
 

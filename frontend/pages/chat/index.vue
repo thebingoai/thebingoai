@@ -3,7 +3,7 @@
     <!-- Main chat area -->
     <div class="flex flex-1 flex-col min-w-0 min-h-0">
       <ChatThread />
-      <ChatInputBar @send="handleSend" />
+      <ChatInputBar @send="handleSend" @reset="handleReset" />
     </div>
     <!-- Reasoning panel (slides in from the right) -->
     <div
@@ -23,6 +23,10 @@ const handleSend = () => {
   if (chatStore.inputText.trim()) {
     chat.sendMessage(chatStore.inputText)
   }
+}
+
+const handleReset = () => {
+  chat.resetContext()
 }
 
 definePageMeta({

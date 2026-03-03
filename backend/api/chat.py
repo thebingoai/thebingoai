@@ -100,6 +100,11 @@ async def chat(
     # Fetch conversation history (exclude the just-saved user message)
     history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
     history = history[:-1]
+    # Truncate at last context reset boundary
+    for i in range(len(history) - 1, -1, -1):
+        if history[i].source == "context_reset":
+            history = history[i + 1:]
+            break
 
     # Run orchestrator
     from backend.database.session import SessionLocal
@@ -220,6 +225,11 @@ async def chat_stream(
             # Fetch conversation history (exclude the just-saved user message)
             history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
             history = history[:-1]
+            # Truncate at last context reset boundary
+            for i in range(len(history) - 1, -1, -1):
+                if history[i].source == "context_reset":
+                    history = history[i + 1:]
+                    break
 
             # Stream orchestrator execution
             from backend.database.session import SessionLocal

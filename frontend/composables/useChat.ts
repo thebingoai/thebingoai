@@ -271,6 +271,25 @@ export const useChat = () => {
     }
   }
 
+  const resetContext = () => {
+    if (!chatStore.currentThreadId) return
+    const threadId = chatStore.currentThreadId
+    const unsub = ws.on('context.reset_ack', (data: any) => {
+      if (data.thread_id !== threadId) return
+      unsub()
+      chatStore.addMessage({
+        id: String(data.message_id),
+        role: 'system' as const,
+        content: '',
+        source: 'context_reset',
+        created_at: data.timestamp,
+        agent_steps: [],
+        thinking_steps: [],
+      })
+    })
+    ws.send({ type: 'context.reset', thread_id: threadId })
+  }
+
   const renameConversation = async (threadId: string, title: string) => {
     await api.chat.updateTitle(threadId, title)
     chatStore.updateConversationTitle(threadId, title)
@@ -311,5 +330,6 @@ export const useChat = () => {
     loadMessages,
     renameConversation,
     registerHeartbeatHandler,
+    resetContext,
   }
 }

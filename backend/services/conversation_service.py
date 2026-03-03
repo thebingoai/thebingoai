@@ -111,6 +111,20 @@ class ConversationService:
             db.commit()
 
     @staticmethod
+    def add_context_reset(db: Session, conversation_id: int) -> Message:
+        """Insert a context reset marker into a conversation."""
+        message = Message(
+            conversation_id=conversation_id,
+            role="system",
+            content="",
+            source="context_reset",
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return message
+
+    @staticmethod
     def delete_conversation(db: Session, thread_id: str, user_id: str) -> bool:
         """Delete a conversation. Returns False if not found, raises ValueError for permanent."""
         conversation = ConversationService.get_conversation_by_thread(db, thread_id, user_id)

@@ -61,15 +61,18 @@
         <div v-if="chatStore.taskConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
           No tasks yet
         </div>
-        <button
-          v-for="conv in chatStore.taskConversations"
-          :key="conv.id"
-          @click="handleSelectConversation(conv.id)"
-          class="w-full rounded-lg px-4 py-0.5 text-left text-sm hover:bg-gray-50"
-          :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
-        >
-          <div class="font-extralight text-gray-500 truncate">{{ conv.title }}</div>
-        </button>
+        <template v-for="group in groupedTasks" :key="group.label">
+          <div class="px-4 py-1.5 text-[11px] text-gray-400">{{ group.label }}</div>
+          <button
+            v-for="conv in group.conversations"
+            :key="conv.id"
+            @click="handleSelectConversation(conv.id)"
+            class="w-full rounded-lg px-4 py-0.5 text-left text-sm hover:bg-gray-50"
+            :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
+          >
+            <div class="font-extralight text-gray-500 truncate">{{ conv.title }}</div>
+          </button>
+        </template>
       </div>
     </div>
 
@@ -94,12 +97,29 @@
 
 <script setup lang="ts">
 import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles } from 'lucide-vue-next'
+import { formatDateLabel } from '~/utils/format'
+import type { Conversation } from '~/stores/chat'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
 const chat = useChat()
 const router = useRouter()
 const route = useRoute()
+
+const groupedTasks = computed(() => {
+  const groups: { label: string; conversations: Conversation[] }[] = []
+  let currentLabel = ''
+  for (const conv of chatStore.taskConversations) {
+    const label = formatDateLabel(new Date(conv.updated_at))
+    if (label !== currentLabel) {
+      groups.push({ label, conversations: [conv] })
+      currentLabel = label
+    } else {
+      groups[groups.length - 1].conversations.push(conv)
+    }
+  }
+  return groups
+})
 
 const isRecentExpanded = ref(true)
 

@@ -31,17 +31,39 @@
         </div>
       </div>
       <div v-else>
-        <ChatMessageBubble
-          v-for="message in chatStore.messages"
-          :key="message.id"
-          :message="message"
-        />
+        <template v-for="(message, index) in chatStore.messages" :key="message.id">
+          <!-- Date header (shown when date changes between messages) -->
+          <div
+            v-if="message.source !== 'context_reset' && getDateLabel(message, index)"
+            class="flex items-center gap-3 my-4 pr-32"
+          >
+            <div class="flex-1 border-t border-gray-100" />
+            <span class="text-xs text-gray-400">{{ getDateLabel(message, index) }}</span>
+            <div class="flex-1 border-t border-gray-100" />
+          </div>
+
+          <!-- Context reset divider -->
+          <div v-if="message.source === 'context_reset'" class="flex items-center gap-3 my-6 pr-32">
+            <div class="flex-1 border-t border-gray-200" />
+            <span class="text-xs text-gray-400 whitespace-nowrap">New Topic</span>
+            <div class="flex-1 border-t border-gray-200" />
+          </div>
+
+          <!-- Regular message bubble -->
+          <ChatMessageBubble
+            v-else
+            :message="message"
+          />
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { formatDateLabel, isSameDay } from '~/utils/format'
+import type { Message } from '~/stores/chat'
+
 const chatStore = useChatStore()
 const chat = useChat()
 const threadRef = ref<HTMLElement>()
@@ -75,6 +97,20 @@ const saveTitle = async () => {
 
 const cancelEdit = () => {
   isEditingTitle.value = false
+}
+
+// Returns the date label to show above a message, or null if no label needed
+const getDateLabel = (message: Message, index: number): string | null => {
+  const messageDate = new Date(message.created_at)
+  if (index === 0) return formatDateLabel(messageDate)
+  // Find the previous non-context-reset message's date
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = chatStore.messages[i]
+    if (prev.source !== 'context_reset') {
+      return isSameDay(messageDate, new Date(prev.created_at)) ? null : formatDateLabel(messageDate)
+    }
+  }
+  return formatDateLabel(messageDate)
 }
 
 // Scroll function

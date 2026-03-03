@@ -12,7 +12,7 @@ class Message(Base):
     role = Column(String, nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    source = Column(String(20), nullable=False, default="chat", server_default="chat")  # "chat" | "heartbeat" | "system"
+    source = Column(String(20), nullable=False, default="chat", server_default="chat")  # "chat" | "heartbeat" | "system" | "context_reset"
     heartbeat_job_id = Column(String, ForeignKey("heartbeat_jobs.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships

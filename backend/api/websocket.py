@@ -125,6 +125,11 @@ async def _handle_chat_send(
         # Conversation history (exclude just-saved user message)
         history = ConversationService.get_conversation_history(db, conversation.thread_id, user.id)
         history = history[:-1]
+        # Truncate at last context reset boundary
+        for i in range(len(history) - 1, -1, -1):
+            if history[i].source == "context_reset":
+                history = history[i + 1:]
+                break
 
         # Stream orchestrator
         from backend.database.session import SessionLocal as _SF
@@ -269,6 +274,25 @@ async def websocket_endpoint(ws: WebSocket):
 
             elif msg_type == "conversation.switch":
                 pass  # Frontend-only state change
+
+            elif msg_type == "context.reset":
+                reset_thread_id = data.get("thread_id") or None
+                if reset_thread_id:
+                    db_reset: Session = SessionLocal()
+                    try:
+                        conv_reset = ConversationService.get_conversation_by_thread(db_reset, reset_thread_id, user.id)
+                        if conv_reset:
+                            msg_reset = ConversationService.add_context_reset(db_reset, conv_reset.id)
+                            await ws.send_text(json.dumps({
+                                "type": "context.reset_ack",
+                                "thread_id": reset_thread_id,
+                                "message_id": msg_reset.id,
+                                "timestamp": msg_reset.timestamp.isoformat(),
+                            }))
+                    except Exception as reset_err:
+                        logger.exception(f"context.reset error: {reset_err}")
+                    finally:
+                        db_reset.close()
 
             else:
                 logger.debug(f"Unknown WS message type: {msg_type}")
