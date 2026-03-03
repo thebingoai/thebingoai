@@ -23,7 +23,7 @@
     </div>
 
     <!-- Scrollable message content -->
-    <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 py-6">
+    <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 pt-6 pb-36">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
         <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
           <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to Bingo AI</h2>
@@ -142,14 +142,26 @@ const scrollToBottom = () => {
   }
 }
 
-// Throttled scroll for streaming content updates (leading-edge: scrolls immediately on first trigger)
+// Scroll to bottom on initial mount (handles pre-existing messages)
+onMounted(() => {
+  nextTick(() => scrollToBottom())
+})
+
+// Throttled scroll for streaming content updates (leading + trailing edge)
 let scrollThrottleTimer: NodeJS.Timeout | null = null
+let pendingScroll = false
 const throttledScroll = () => {
   if (!scrollThrottleTimer) {
     scrollToBottom()
     scrollThrottleTimer = setTimeout(() => {
       scrollThrottleTimer = null
+      if (pendingScroll) {
+        pendingScroll = false
+        scrollToBottom()
+      }
     }, 100)
+  } else {
+    pendingScroll = true
   }
 }
 
@@ -174,4 +186,11 @@ watch(
     }
   }
 )
+
+// Scroll once more when streaming ends to catch the final word-buffer flush
+watch(() => chatStore.isStreaming, (streaming, wasStreaming) => {
+  if (wasStreaming && !streaming) {
+    nextTick(() => scrollToBottom())
+  }
+})
 </script>
