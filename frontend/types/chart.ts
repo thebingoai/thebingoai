@@ -36,6 +36,9 @@ export interface ChartOptions {
   showTooltips?: boolean         // default true
   stacked?: boolean              // for bar/line charts
   indexAxis?: 'x' | 'y'         // horizontal bar charts
+  sortBy?: 'none' | 'label' | 'value'
+  sortDirection?: 'asc' | 'desc'
+  showValues?: boolean             // default false
 }
 
 // Main chart config — the JSON spec AI will generate

@@ -18,6 +18,7 @@ import {
   type ChartOptions as ChartJsOptions,
   type ChartDataset,
 } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 import type { Ref } from 'vue'
 import type { ChartConfig, ChartType } from '~/types/chart'
 
@@ -36,7 +37,8 @@ Chart.register(
   ArcElement,
   Legend,
   Tooltip,
-  Filler
+  Filler,
+  ChartDataLabels
 )
 
 const DEFAULT_PALETTE = [
@@ -83,6 +85,33 @@ function applyDefaultColors(
   })
 }
 
+function sortChartData(config: ChartConfig): { labels: string[]; datasets: ChartConfig['data']['datasets'] } {
+  const { labels, datasets } = config.data
+  const sortBy = config.options?.sortBy
+  const sortDir = config.options?.sortDirection ?? 'asc'
+
+  if (!sortBy || sortBy === 'none' || labels.length === 0) {
+    return { labels, datasets }
+  }
+
+  const indices = labels.map((_, i) => i)
+  if (sortBy === 'label') {
+    indices.sort((a, b) => sortDir === 'asc'
+      ? labels[a].localeCompare(labels[b])
+      : labels[b].localeCompare(labels[a]))
+  } else {
+    const values = datasets[0]?.data ?? []
+    indices.sort((a, b) => sortDir === 'asc'
+      ? (values[a] as number ?? 0) - (values[b] as number ?? 0)
+      : (values[b] as number ?? 0) - (values[a] as number ?? 0))
+  }
+
+  return {
+    labels: indices.map(i => labels[i]),
+    datasets: datasets.map(ds => ({ ...ds, data: indices.map(i => ds.data[i]) })),
+  }
+}
+
 function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): ChartJsOptions {
   const opts = config.options ?? {}
   const isPieOrDoughnut = config.type === 'pie' || config.type === 'doughnut'
@@ -91,6 +120,11 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
     responsive: opts.responsive ?? true,
     maintainAspectRatio: opts.maintainAspectRatio ?? true,
     animation: enableAnimation ? undefined : false,
+    layout: {
+      padding: {
+        top: opts.showValues ? 20 : 0,
+      },
+    },
     plugins: {
       legend: {
         display: opts.showLegend ?? true,
@@ -98,6 +132,13 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
       },
       tooltip: {
         enabled: opts.showTooltips ?? true,
+      },
+      datalabels: {
+        display: opts.showValues ?? false,
+        color: isPieOrDoughnut ? '#fff' : '#374151',
+        font: { size: 11, weight: 'bold' as const },
+        anchor: isPieOrDoughnut ? 'center' : 'end',
+        align: isPieOrDoughnut ? 'center' : 'top',
       },
     },
   }
@@ -111,6 +152,7 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
       y: {
         grid: { display: opts.showGrid ?? true },
         stacked: opts.stacked ?? false,
+        grace: opts.showValues ? '20%' : undefined,
       },
     }
     if (opts.indexAxis) {
@@ -136,13 +178,14 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
     const config = configRef.value
     const enableAnimation = config.animation?.chartAnimation ?? true
     const chartJsType = resolveChartJsType(config.type)
-    const datasets = applyDefaultColors(config.data.datasets, config.type)
+    const sorted = sortChartData(config)
+    const datasets = applyDefaultColors(sorted.datasets, config.type)
     const options = buildChartJsOptions(config, enableAnimation)
 
     chartInstance = new Chart(canvas, {
       type: chartJsType,
       data: {
-        labels: config.data.labels,
+        labels: sorted.labels,
         datasets,
       },
       options,
@@ -154,10 +197,14 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
     if (!chartInstance) return
 
     const config = configRef.value
-    const datasets = applyDefaultColors(config.data.datasets, config.type)
+    const sorted = sortChartData(config)
+    const datasets = applyDefaultColors(sorted.datasets, config.type)
+    const enableAnimation = config.animation?.chartAnimation ?? true
+    const options = buildChartJsOptions(config, enableAnimation)
 
-    chartInstance.data.labels = config.data.labels
+    chartInstance.data.labels = sorted.labels
     chartInstance.data.datasets = datasets as any
+    chartInstance.options = options as any
     chartInstance.update()
   }
 

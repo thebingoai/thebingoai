@@ -1,11 +1,11 @@
 <template>
   <div class="space-y-2">
     <!-- Chart mapping -->
-    <template v-if="mapping.type === 'chart'">
+    <template v-if="mapping.type === 'chart' && (mapping.labelColumn || mapping.datasetColumns.length > 0)">
       <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Column Mapping</div>
       <table class="w-full text-xs">
         <tbody class="divide-y divide-gray-100">
-          <tr>
+          <tr v-if="mapping.labelColumn">
             <td class="py-1 pr-3 text-gray-500 w-24">X-axis labels</td>
             <td class="py-1 font-mono text-gray-800">{{ mapping.labelColumn }}</td>
           </tr>
@@ -18,7 +18,7 @@
     </template>
 
     <!-- KPI mapping -->
-    <template v-else-if="mapping.type === 'kpi'">
+    <template v-else-if="mapping.type === 'kpi' && mapping.valueColumn">
       <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Column Mapping</div>
       <table class="w-full text-xs">
         <tbody class="divide-y divide-gray-100">
@@ -39,7 +39,7 @@
     </template>
 
     <!-- Table mapping -->
-    <template v-else-if="mapping.type === 'table'">
+    <template v-else-if="mapping.type === 'table' && mapping.columnConfig.length > 0">
       <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Column Mapping</div>
       <table class="w-full text-xs">
         <thead>

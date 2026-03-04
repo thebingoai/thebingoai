@@ -93,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { LayoutGrid, Clock, Activity } from 'lucide-vue-next'
 import { useDashboardStore } from '~/stores/dashboard'
 import { toDashboardListItem } from '~/types/dashboard'
@@ -108,6 +108,10 @@ onMounted(() => {
 
 const sqlEditorWidget = ref<DashboardWidget | null>(null)
 const configEditorWidget = ref<DashboardWidget | null>(null)
+
+watch(() => store.editMode, (editing) => {
+  if (!editing) configEditorWidget.value = null
+})
 
 function openSqlEditor(widgetId: string) {
   sqlEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null

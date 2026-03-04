@@ -1,6 +1,6 @@
 <template>
   <!-- Backdrop -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" @click.self="emit('close')">
+  <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" @click.self="emit('close')">
     <div class="relative flex flex-col w-full max-w-2xl max-h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden">
 
       <!-- Header -->

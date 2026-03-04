@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { Dashboard, DashboardWidget, GridPosition, WidgetType } from '~/types/dashboard'
+import type { Dashboard, DashboardWidget, GridPosition, WidgetDataSource, WidgetType } from '~/types/dashboard'
 import { WIDGET_DEFAULTS } from '~/types/dashboard'
 import { useApi } from '~/composables/useApi'
 
@@ -189,6 +189,15 @@ export const useDashboardStore = defineStore('dashboard', {
       if (!w) return
       if (meta.title !== undefined) w.title = meta.title
       if (meta.description !== undefined) w.description = meta.description
+      this.dirty = true
+    },
+
+    setWidgetDataSource(widgetId: string, dataSource: WidgetDataSource) {
+      const dashboard = this.currentDashboard
+      if (!dashboard) return
+      const w = dashboard.widgets.find(w => w.id === widgetId)
+      if (!w) return
+      w.dataSource = dataSource
       this.dirty = true
     },
 

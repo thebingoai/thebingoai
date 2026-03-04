@@ -46,75 +46,123 @@
       </div>
     </div>
 
-    <!-- SQL Data Source section (only shown when widget has a dataSource) -->
-    <div v-if="props.widget.dataSource" class="flex-shrink-0 border-b border-gray-100 px-5 py-3 space-y-3">
-      <div class="flex items-center justify-between">
-        <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">SQL Data Source</h3>
-        <button
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          :disabled="testLoading"
-          @click="testQuery()"
-        >
-          <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': testLoading }" />
-          Test Query
-        </button>
-      </div>
-
-      <!-- SQL textarea -->
-      <textarea
-        v-model="localSql"
-        :readonly="!editMode"
-        rows="5"
-        class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors"
-        :class="editMode ? 'bg-white' : 'cursor-default'"
-        spellcheck="false"
-        @blur="onSqlBlur()"
-      />
-
-      <!-- Column mapping display -->
-      <DashboardMappingDisplay :mapping="props.widget.dataSource.mapping" />
-
-      <!-- Preview error -->
-      <div v-if="previewError" class="rounded-lg bg-rose-50 border border-rose-100 px-3 py-2 text-xs text-rose-600">
-        {{ previewError }}
-      </div>
-
-      <!-- Preview table -->
-      <div v-else-if="previewRows.length > 0" class="space-y-1">
-        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Preview ({{ previewRows.length }} rows)</div>
-        <div class="overflow-x-auto rounded-lg border border-gray-100">
-          <table class="w-full text-xs">
-            <thead class="bg-gray-50">
-              <tr>
-                <th
-                  v-for="col in previewColumns"
-                  :key="col"
-                  class="px-3 py-1.5 text-left font-medium text-gray-500"
-                >{{ col }}</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              <tr v-for="(row, i) in previewRows" :key="i" class="hover:bg-gray-50">
-                <td v-for="(val, j) in row" :key="j" class="px-3 py-1.5 text-gray-700 font-mono">{{ val }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <!-- Tab bar (only for data widgets) -->
+    <div v-if="isDataWidget" class="flex flex-shrink-0 border-b border-gray-200 px-5">
+      <button
+        class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
+        :class="activeTab === 'configure'
+          ? 'border-indigo-500 text-indigo-600'
+          : 'border-transparent text-gray-500 hover:text-gray-700'"
+        @click="activeTab = 'configure'"
+      >
+        Configure
+      </button>
+      <button
+        class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
+        :class="activeTab === 'data'
+          ? 'border-indigo-500 text-indigo-600'
+          : 'border-transparent text-gray-500 hover:text-gray-700'"
+        @click="activeTab = 'data'"
+      >
+        Data Source
+      </button>
     </div>
 
-    <!-- Type-specific editor body -->
-    <div class="min-h-0 flex-1 overflow-hidden">
-      <component
-        :is="editorComponent"
-        v-if="editorComponent"
-        :model-value="currentConfig"
-        :edit-mode="editMode"
-        class="h-full"
-        @update:model-value="onConfigUpdate"
-      />
-      <div v-else class="flex h-full items-center justify-center p-10 text-sm text-gray-400">
-        Configuration editor not yet available for this widget type.
+    <!-- Tab content area -->
+    <div class="flex-1 min-h-0 overflow-hidden">
+
+      <!-- Configure tab (or full area for text widgets) -->
+      <div
+        v-if="!isDataWidget || activeTab === 'configure'"
+        class="h-full overflow-hidden"
+      >
+        <component
+          :is="editorComponent"
+          v-if="editorComponent"
+          :model-value="currentConfig"
+          :edit-mode="editMode"
+          class="h-full"
+          @update:model-value="onConfigUpdate"
+        />
+        <div v-else class="flex h-full items-center justify-center p-10 text-sm text-gray-400">
+          Configuration editor not yet available for this widget type.
+        </div>
+      </div>
+
+      <!-- Data Source tab -->
+      <div
+        v-else-if="activeTab === 'data'"
+        class="h-full overflow-y-auto px-5 py-3 space-y-3"
+      >
+        <div class="flex items-center justify-between">
+          <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">SQL Data Source</h3>
+          <button
+            class="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            :disabled="testLoading || !props.widget.dataSource"
+            @click="testQuery()"
+          >
+            <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': testLoading }" />
+            Test Query
+          </button>
+        </div>
+
+        <!-- Connection picker -->
+        <div class="space-y-1">
+          <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Connection</label>
+          <select
+            v-model="selectedConnectionId"
+            :disabled="!editMode"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            @change="onConnectionChange()"
+          >
+            <option :value="null" disabled>Select a connection…</option>
+            <option v-for="conn in connections" :key="conn.id" :value="conn.id">
+              {{ conn.name }}
+            </option>
+          </select>
+        </div>
+
+        <!-- SQL textarea -->
+        <textarea
+          v-model="localSql"
+          :readonly="!editMode"
+          rows="5"
+          class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors"
+          :class="editMode ? 'bg-white' : 'cursor-default'"
+          spellcheck="false"
+          @blur="onSqlBlur()"
+        />
+
+        <!-- Column mapping display (only when dataSource exists) -->
+        <DashboardMappingDisplay v-if="props.widget.dataSource" :mapping="props.widget.dataSource.mapping" />
+
+        <!-- Preview error -->
+        <div v-if="previewError" class="rounded-lg bg-rose-50 border border-rose-100 px-3 py-2 text-xs text-rose-600">
+          {{ previewError }}
+        </div>
+
+        <!-- Preview table -->
+        <div v-else-if="previewRows.length > 0" class="space-y-1">
+          <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Preview ({{ previewRows.length }} rows)</div>
+          <div class="overflow-x-auto rounded-lg border border-gray-100">
+            <table class="w-full text-xs">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th
+                    v-for="col in previewColumns"
+                    :key="col"
+                    class="px-3 py-1.5 text-left font-medium text-gray-500"
+                  >{{ col }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                <tr v-for="(row, i) in previewRows" :key="i" class="hover:bg-gray-50">
+                  <td v-for="(val, j) in row" :key="j" class="px-3 py-1.5 text-gray-700 font-mono">{{ val }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -133,12 +181,14 @@ const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> 
 </script>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { X, RefreshCw } from 'lucide-vue-next'
-import type { DashboardWidget, WidgetConfig } from '~/types/dashboard'
+import type { DashboardWidget, WidgetConfig, WidgetDataSource } from '~/types/dashboard'
 import { useDashboardStore } from '~/stores/dashboard'
 import { useApi } from '~/composables/useApi'
 import DashboardMappingDisplay from '~/components/dashboard/DashboardMappingDisplay.vue'
+
+const DATA_WIDGET_TYPES = new Set(['chart', 'kpi', 'table'])
 
 const props = defineProps<{
   widget: DashboardWidget
@@ -152,16 +202,23 @@ const emit = defineEmits<{
 const store = useDashboardStore()
 const api = useApi()
 
+// Tab state (only relevant for data widgets)
+const activeTab = ref<'configure' | 'data'>('configure')
+
 // Local meta state (title/description)
 const localTitle = ref(props.widget.title ?? '')
 const localDescription = ref(props.widget.description ?? '')
 
 // SQL section state
 const localSql = ref(props.widget.dataSource?.sql ?? '')
+const selectedConnectionId = ref<number | null>(props.widget.dataSource?.connectionId ?? null)
+const connections = ref<{ id: number; name: string }[]>([])
 const testLoading = ref(false)
 const previewColumns = ref<string[]>([])
 const previewRows = ref<any[][]>([])
 const previewError = ref<string | null>(null)
+
+const isDataWidget = computed(() => DATA_WIDGET_TYPES.has(props.widget.widget.type))
 
 // Current config is read from the store so the widget on canvas stays in sync
 const currentConfig = computed(() => props.widget.widget)
@@ -182,6 +239,18 @@ const editorComponent = computed(() =>
   editorComponents[props.widget.widget.type] ?? null,
 )
 
+/** Reset local state when a different widget is selected */
+watch(() => props.widget.id, () => {
+  localTitle.value = props.widget.title ?? ''
+  localDescription.value = props.widget.description ?? ''
+  localSql.value = props.widget.dataSource?.sql ?? ''
+  selectedConnectionId.value = props.widget.dataSource?.connectionId ?? null
+  previewColumns.value = []
+  previewRows.value = []
+  previewError.value = null
+  activeTab.value = 'configure'
+})
+
 /** Live update: write directly to store so the widget on canvas reflects changes immediately */
 function onConfigUpdate(newConfig: WidgetConfig) {
   store.updateWidgetConfig(props.widget.id, newConfig)
@@ -194,9 +263,37 @@ function saveMeta() {
   })
 }
 
+function getDefaultMapping(type: string): WidgetDataSource['mapping'] {
+  if (type === 'chart') return { type: 'chart', labelColumn: '', datasetColumns: [] }
+  if (type === 'kpi') return { type: 'kpi', valueColumn: '' }
+  return { type: 'table', columnConfig: [] }
+}
+
 function onSqlBlur() {
-  if (props.widget.dataSource && localSql.value !== props.widget.dataSource.sql) {
-    store.updateWidgetSql(props.widget.id, localSql.value)
+  if (!props.editMode) return
+  const ds = props.widget.dataSource
+  if (ds) {
+    if (localSql.value !== ds.sql) {
+      store.updateWidgetSql(props.widget.id, localSql.value)
+    }
+  } else if (selectedConnectionId.value !== null && localSql.value.trim()) {
+    // Create dataSource for the first time
+    store.setWidgetDataSource(props.widget.id, {
+      connectionId: selectedConnectionId.value,
+      sql: localSql.value,
+      mapping: getDefaultMapping(props.widget.widget.type),
+    })
+  }
+}
+
+function onConnectionChange() {
+  if (!props.editMode) return
+  const ds = props.widget.dataSource
+  if (ds && selectedConnectionId.value !== null) {
+    store.setWidgetDataSource(props.widget.id, {
+      ...ds,
+      connectionId: selectedConnectionId.value,
+    })
   }
 }
 
@@ -243,6 +340,16 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
 
-onMounted(() => document.addEventListener('keydown', onKeydown))
+onMounted(async () => {
+  document.addEventListener('keydown', onKeydown)
+  if (isDataWidget.value) {
+    try {
+      const data = await api.connections.list() as { id: number; name: string }[]
+      connections.value = data
+    } catch {
+      // silently ignore — connections will just be empty
+    }
+  }
+})
 onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>

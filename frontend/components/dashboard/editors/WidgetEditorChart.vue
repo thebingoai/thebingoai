@@ -21,87 +21,161 @@
       </div>
     </div>
 
-    <!-- Chart title -->
-    <div class="space-y-1.5">
-      <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Chart Title</label>
-      <input
-        v-model="localChartTitle"
-        type="text"
-        placeholder="Optional chart title"
-        class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
-        :readonly="!editMode"
-        :class="!editMode ? 'cursor-default bg-gray-50' : ''"
-        @input="emitDebounced()"
-      />
-    </div>
-
     <!-- Options -->
     <div class="space-y-3">
       <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Options</h3>
 
-      <div class="space-y-2">
-        <label class="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            :checked="localOptions.showLegend !== false"
-            :disabled="!editMode"
-            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
-            @change="localOptions.showLegend = ($event.target as HTMLInputElement).checked; emitDebounced()"
-          />
+      <div class="space-y-1">
+        <div class="flex items-center justify-between py-1">
           <span class="text-sm text-gray-700">Show legend</span>
-        </label>
-
-        <label class="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            :checked="localOptions.showGrid !== false"
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="localOptions.showLegend !== false"
             :disabled="!editMode"
-            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
-            @change="localOptions.showGrid = ($event.target as HTMLInputElement).checked; emitDebounced()"
-          />
+            class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="localOptions.showLegend !== false ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (localOptions.showLegend = !(localOptions.showLegend !== false), emitDebounced())"
+          >
+            <span
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="localOptions.showLegend !== false ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between py-1">
           <span class="text-sm text-gray-700">Show grid</span>
-        </label>
-
-        <label class="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            :checked="localOptions.showTooltips !== false"
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="localOptions.showGrid !== false"
             :disabled="!editMode"
-            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
-            @change="localOptions.showTooltips = ($event.target as HTMLInputElement).checked; emitDebounced()"
-          />
+            class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="localOptions.showGrid !== false ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (localOptions.showGrid = !(localOptions.showGrid !== false), emitDebounced())"
+          >
+            <span
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="localOptions.showGrid !== false ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between py-1">
           <span class="text-sm text-gray-700">Show tooltips</span>
-        </label>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="localOptions.showTooltips !== false"
+            :disabled="!editMode"
+            class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="localOptions.showTooltips !== false ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (localOptions.showTooltips = !(localOptions.showTooltips !== false), emitDebounced())"
+          >
+            <span
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="localOptions.showTooltips !== false ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
 
-        <label
+        <div class="flex items-center justify-between py-1">
+          <span class="text-sm text-gray-700">Show values</span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="!!localOptions.showValues"
+            :disabled="!editMode"
+            class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="localOptions.showValues ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (localOptions.showValues = !localOptions.showValues, emitDebounced())"
+          >
+            <span
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="localOptions.showValues ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
+
+        <div
           v-if="localType === 'bar' || localType === 'line'"
-          class="flex items-center gap-2 cursor-pointer select-none"
+          class="flex items-center justify-between py-1"
         >
-          <input
-            type="checkbox"
-            :checked="localOptions.stacked"
-            :disabled="!editMode"
-            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
-            @change="localOptions.stacked = ($event.target as HTMLInputElement).checked; emitDebounced()"
-          />
           <span class="text-sm text-gray-700">Stacked</span>
-        </label>
-
-        <label
-          v-if="localType === 'bar'"
-          class="flex items-center gap-2 cursor-pointer select-none"
-        >
-          <input
-            type="checkbox"
-            :checked="localOptions.indexAxis === 'y'"
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="!!localOptions.stacked"
             :disabled="!editMode"
-            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
-            @change="localOptions.indexAxis = ($event.target as HTMLInputElement).checked ? 'y' : 'x'; emitDebounced()"
-          />
+            class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="localOptions.stacked ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (localOptions.stacked = !localOptions.stacked, emitDebounced())"
+          >
+            <span
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="localOptions.stacked ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
+
+        <div
+          v-if="localType === 'bar'"
+          class="flex items-center justify-between py-1"
+        >
           <span class="text-sm text-gray-700">Horizontal bars</span>
-        </label>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="localOptions.indexAxis === 'y'"
+            :disabled="!editMode"
+            class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="localOptions.indexAxis === 'y' ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (localOptions.indexAxis = localOptions.indexAxis === 'y' ? 'x' : 'y', emitDebounced())"
+          >
+            <span
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="localOptions.indexAxis === 'y' ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
       </div>
     </div>
+
+    <!-- Sort -->
+    <div v-if="localType !== 'scatter'" class="space-y-3">
+      <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Sort</h3>
+      <div class="space-y-2">
+        <div class="space-y-1.5">
+          <label class="text-[11px] text-gray-500">Sort by</label>
+          <select
+            v-model="localOptions.sortBy"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+            :disabled="!editMode"
+            :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+            @change="emitDebounced()"
+          >
+            <option value="none">None</option>
+            <option value="label">Label</option>
+            <option value="value">Value</option>
+          </select>
+        </div>
+        <div v-if="localOptions.sortBy && localOptions.sortBy !== 'none'" class="space-y-1.5">
+          <label class="text-[11px] text-gray-500">Direction</label>
+          <select
+            v-model="localOptions.sortDirection"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+            :disabled="!editMode"
+            :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+            @change="emitDebounced()"
+          >
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -124,7 +198,6 @@ const chartConfig = computed(() => props.modelValue.config as ChartWidgetConfig)
 
 // Local state
 const localType = ref<ChartType>(chartConfig.value.type)
-const localChartTitle = ref(chartConfig.value.title ?? '')
 const localOptions = ref<ChartOptions>(JSON.parse(JSON.stringify(chartConfig.value.options ?? {})))
 
 // Debounced emit (150ms) to avoid rapid store updates while typing
@@ -142,7 +215,6 @@ function buildConfig(): WidgetConfig {
     type: 'chart',
     config: {
       type: localType.value,
-      title: localChartTitle.value || undefined,
       data: chartConfig.value.data,
       options: Object.keys(localOptions.value).length > 0 ? localOptions.value : undefined,
     },
