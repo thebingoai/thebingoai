@@ -47,6 +47,7 @@
             :widgets="store.currentWidgets"
             :edit-mode="store.editMode"
             @open-sql-editor="openSqlEditor"
+            @edit-config="openConfigEditor"
           />
         </div>
       </template>
@@ -57,6 +58,14 @@
         :widget="sqlEditorWidget"
         :edit-mode="store.editMode"
         @close="sqlEditorWidget = null"
+      />
+
+      <!-- Widget config editor modal -->
+      <DashboardWidgetEditor
+        v-if="configEditorWidget"
+        :widget="configEditorWidget"
+        :edit-mode="store.editMode"
+        @close="configEditorWidget = null"
       />
     </div>
 
@@ -87,6 +96,7 @@ import { LayoutGrid, Clock, Activity } from 'lucide-vue-next'
 import { useDashboardStore } from '~/stores/dashboard'
 import { toDashboardListItem } from '~/types/dashboard'
 import type { DashboardWidget } from '~/types/dashboard'
+import DashboardWidgetEditor from '~/components/dashboard/editors/DashboardWidgetEditor.vue'
 
 const store = useDashboardStore()
 
@@ -95,9 +105,14 @@ onMounted(() => {
 })
 
 const sqlEditorWidget = ref<DashboardWidget | null>(null)
+const configEditorWidget = ref<DashboardWidget | null>(null)
 
 function openSqlEditor(widgetId: string) {
   sqlEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null
+}
+
+function openConfigEditor(widgetId: string) {
+  configEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null
 }
 
 const dashboardListItems = computed(() =>

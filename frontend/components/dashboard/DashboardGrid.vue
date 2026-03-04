@@ -15,6 +15,7 @@
         :edit-mode="editMode"
         @remove="onRemove"
         @open-sql-editor="emit('open-sql-editor', $event)"
+        @edit-config="emit('edit-config', $event)"
       />
     </Teleport>
   </template>
@@ -32,6 +33,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'open-sql-editor': [id: string]
+  'edit-config': [id: string]
 }>()
 
 const store = useDashboardStore()

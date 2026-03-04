@@ -173,6 +173,25 @@ export const useDashboardStore = defineStore('dashboard', {
       this.dirty = true
     },
 
+    updateWidgetConfig(widgetId: string, widget: DashboardWidget['widget']) {
+      const dashboard = this.currentDashboard
+      if (!dashboard) return
+      const w = dashboard.widgets.find(w => w.id === widgetId)
+      if (!w) return
+      w.widget = widget
+      this.dirty = true
+    },
+
+    updateWidgetMeta(widgetId: string, meta: { title?: string; description?: string }) {
+      const dashboard = this.currentDashboard
+      if (!dashboard) return
+      const w = dashboard.widgets.find(w => w.id === widgetId)
+      if (!w) return
+      if (meta.title !== undefined) w.title = meta.title
+      if (meta.description !== undefined) w.description = meta.description
+      this.dirty = true
+    },
+
     async refreshAllWidgets() {
       const dashboard = this.currentDashboard
       if (!dashboard) return
