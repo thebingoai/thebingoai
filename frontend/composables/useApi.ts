@@ -438,6 +438,19 @@ export const useApi = () => {
           headers: getHeaders(),
         })
       },
+      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number }) {
+        return $fetch('/api/dashboards/widgets/refresh', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data,
+        })
+      },
+      async refreshAll(dashboardId: number) {
+        return $fetch(`/api/dashboards/${dashboardId}/refresh`, {
+          method: 'POST',
+          headers: getHeaders(),
+        })
+      },
     },
 
     // Heartbeat Jobs endpoints

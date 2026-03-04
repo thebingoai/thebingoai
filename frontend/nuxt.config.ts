@@ -18,7 +18,10 @@ export default defineNuxtConfig({
     }
   ],
 
-  css: ['~/assets/css/main.css'],
+  css: [
+    'gridstack/dist/gridstack.min.css',
+    '~/assets/css/main.css',
+  ],
 
   googleFonts: {
     families: {

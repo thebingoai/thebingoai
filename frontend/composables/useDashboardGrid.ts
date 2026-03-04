@@ -25,12 +25,14 @@ export function useDashboardGrid(
         margin: 4,
         animate: true,
         float: false,
-        staticGrid: !store.editMode,
         resizable: { handles: 'se' },
         draggable: { handle: '.widget-drag-handle' },
       },
       el,
     )
+
+    // Explicitly set static state from current store value
+    grid.setStatic(!store.editMode)
 
     // Sync positions back to store after drag/resize
     grid.on('change', (_event: Event, nodes: GridStackNode[]) => {
@@ -54,27 +56,20 @@ export function useDashboardGrid(
 
     const { x, y, w, h, minW, minH } = widget.position
 
-    // Build .grid-stack-item with gs-* data attributes so makeWidget can read them
-    const item = document.createElement('div')
-    item.classList.add('grid-stack-item')
-    item.dataset.widgetId = widget.id
-    item.setAttribute('gs-x', String(x))
-    item.setAttribute('gs-y', String(y))
-    item.setAttribute('gs-w', String(w))
-    item.setAttribute('gs-h', String(h))
-    if (minW) item.setAttribute('gs-min-w', String(minW))
-    if (minH) item.setAttribute('gs-min-h', String(minH))
-    item.setAttribute('gs-id', widget.id)
+    // Use addWidget with explicit options so GridStack handles DOM creation and
+    // grid node registration in one call, correctly respecting position values
+    const el = grid.addWidget({
+      x, y, w, h,
+      minW: minW || undefined,
+      minH: minH || undefined,
+      id: widget.id,
+    })
 
-    const content = document.createElement('div')
-    content.classList.add('grid-stack-item-content')
-    item.appendChild(content)
-
-    // Append to grid container then register with GridStack
-    grid.el.appendChild(item)
-    grid.makeWidget(item)
-
-    contentRefs.set(widget.id, content)
+    el.dataset.widgetId = widget.id
+    const content = el.querySelector('.grid-stack-item-content') as HTMLElement
+    if (content) {
+      contentRefs.set(widget.id, content)
+    }
   }
 
   function removeWidgetFromGrid(widgetId: string) {
@@ -92,8 +87,12 @@ export function useDashboardGrid(
   // Initial setup
   onMounted(() => {
     initGrid()
-    for (const widget of widgets.value) {
-      addWidgetToGrid(widget)
+    if (grid && widgets.value.length) {
+      grid.batchUpdate()
+      for (const widget of widgets.value) {
+        addWidgetToGrid(widget)
+      }
+      grid.batchUpdate(false)
     }
   })
 
@@ -114,10 +113,11 @@ export function useDashboardGrid(
     },
   )
 
-  // Watch edit mode
+  // Watch edit mode — immediate ensures correct state even if editMode was already true on mount
   watch(
     () => store.editMode,
     (isEdit) => syncStaticMode(!isEdit),
+    { flush: 'post', immediate: true },
   )
 
   onBeforeUnmount(() => {

@@ -14,6 +14,7 @@
         :widget="widget"
         :edit-mode="editMode"
         @remove="onRemove"
+        @open-sql-editor="emit('open-sql-editor', $event)"
       />
     </Teleport>
   </template>
@@ -27,6 +28,10 @@ import { useDashboardStore } from '~/stores/dashboard'
 const props = defineProps<{
   widgets: DashboardWidget[]
   editMode: boolean
+}>()
+
+const emit = defineEmits<{
+  'open-sql-editor': [id: string]
 }>()
 
 const store = useDashboardStore()

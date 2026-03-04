@@ -11,6 +11,44 @@ import logging
 logger = logging.getLogger(__name__)
 
 _VALID_WIDGET_TYPES = {"kpi", "chart", "table", "text", "filter"}
+_DATA_WIDGET_TYPES = {"kpi", "chart", "table"}
+_VALID_MAPPING_TYPES = {"kpi", "chart", "table"}
+
+
+def _validate_data_source(data_source: dict, widget_type: str, widget_index: int) -> str | None:
+    """Validate optional dataSource field. Returns error message or None if valid."""
+    if not isinstance(data_source, dict):
+        return f"Widget at index {widget_index}: dataSource must be an object"
+
+    if "connectionId" not in data_source:
+        return f"Widget at index {widget_index}: dataSource missing required field: connectionId"
+    if not isinstance(data_source["connectionId"], int):
+        return f"Widget at index {widget_index}: dataSource.connectionId must be an integer"
+
+    if "sql" not in data_source:
+        return f"Widget at index {widget_index}: dataSource missing required field: sql"
+    if not isinstance(data_source["sql"], str) or not data_source["sql"].strip():
+        return f"Widget at index {widget_index}: dataSource.sql must be a non-empty string"
+
+    if "mapping" not in data_source:
+        return f"Widget at index {widget_index}: dataSource missing required field: mapping"
+    mapping = data_source["mapping"]
+    if not isinstance(mapping, dict):
+        return f"Widget at index {widget_index}: dataSource.mapping must be an object"
+
+    mapping_type = mapping.get("type")
+    if mapping_type not in _VALID_MAPPING_TYPES:
+        return (
+            f"Widget at index {widget_index}: dataSource.mapping.type must be one of "
+            f"{sorted(_VALID_MAPPING_TYPES)}"
+        )
+    if mapping_type != widget_type:
+        return (
+            f"Widget at index {widget_index}: dataSource.mapping.type '{mapping_type}' "
+            f"must match widget.type '{widget_type}'"
+        )
+
+    return None
 
 
 def _validate_widgets(widgets: list) -> str | None:
@@ -39,6 +77,12 @@ def _validate_widgets(widgets: list) -> str | None:
             return f"Widget at index {i}: widget missing required field: type"
         if widget_config["type"] not in _VALID_WIDGET_TYPES:
             return f"Widget at index {i}: widget.type must be one of {sorted(_VALID_WIDGET_TYPES)}"
+
+        # Validate optional dataSource for data widgets
+        if "dataSource" in widget:
+            error = _validate_data_source(widget["dataSource"], widget_config["type"], i)
+            if error:
+                return error
 
     return None
 
@@ -122,6 +166,38 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                   Full charts:  w=12, h=4, y=2
                   Tables:       w=12, h=5, y=6
 
+                SQL-backed widgets (RECOMMENDED for chart/kpi/table):
+                Add an optional "dataSource" field so data can be refreshed live:
+                {
+                  "id": "chart_sales",
+                  "position": {"x": 0, "y": 2, "w": 12, "h": 4},
+                  "widget": {
+                    "type": "chart",
+                    "config": {
+                      "type": "bar",
+                      "title": "Sales by City",
+                      "data": {"labels": ["NY", "LA"], "datasets": [{"label": "Sales", "data": [500, 300]}]}
+                    }
+                  },
+                  "dataSource": {
+                    "connectionId": <connection_id>,
+                    "sql": "SELECT city, SUM(amount) as sales FROM orders GROUP BY city",
+                    "mapping": {
+                      "type": "chart",
+                      "labelColumn": "city",
+                      "datasetColumns": [{"column": "sales", "label": "Sales"}]
+                    }
+                  }
+                }
+
+                Mapping types:
+                - chart:  { type, labelColumn, datasetColumns: [{column, label}] }
+                - kpi:    { type, valueColumn, trendValueColumn? (optional), sparklineColumn? (optional) }
+                - table:  { type, columnConfig: [{column, label, sortable?, format?}] }
+
+                IMPORTANT: Always populate widget.config with real query data for immediate display.
+                The dataSource enables refresh later — it does NOT replace config.
+
         Returns:
             JSON with success, dashboard_id, and message
         """
@@ -138,6 +214,16 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
         error = _validate_widgets(widgets)
         if error:
             return json.dumps({"success": False, "message": f"Widget validation failed: {error}"})
+
+        # Verify connection access for any SQL-backed widgets
+        for w in widgets:
+            if "dataSource" in w:
+                cid = w["dataSource"]["connectionId"]
+                if not context.can_access_connection(cid):
+                    return json.dumps({
+                        "success": False,
+                        "message": f"Connection {cid} in dataSource is not accessible to you.",
+                    })
 
         db = db_session_factory()
         try:

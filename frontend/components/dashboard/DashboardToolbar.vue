@@ -22,7 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const widgetTypes = [
-  { type: 'kpi' as WidgetType,    label: 'KPI',    icon: TrendingUp },
+  { type: 'kpi' as WidgetType,    label: 'Score Chart',    icon: TrendingUp },
   { type: 'chart' as WidgetType,  label: 'Chart',  icon: BarChart3 },
   { type: 'table' as WidgetType,  label: 'Table',  icon: Table2 },
   { type: 'text' as WidgetType,   label: 'Text',   icon: FileText },

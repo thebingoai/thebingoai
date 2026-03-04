@@ -133,6 +133,48 @@ Every widget MUST have a nested `config` sub-object inside `widget`. Flat fields
 **Table** `config`: `columns` [{`key`, `label`, `sortable`?}], `rows` [{key: value, ...}]
 
 **Text** `config`: `content` (markdown), `alignment` (optional)
+
+### SQL-Backed Widgets (REQUIRED for chart/kpi/table when using data_agent)
+
+After running queries with `data_agent`, add a `dataSource` field to every chart, KPI, and table
+widget. This lets users refresh data on demand without recreating the dashboard.
+
+Example with dataSource:
+```
+{
+  "id": "chart_revenue",
+  "position": {"x": 0, "y": 2, "w": 12, "h": 4},
+  "widget": {
+    "type": "chart",
+    "config": {
+      "type": "bar",
+      "title": "Revenue by Month",
+      "data": {"labels": ["Jan", "Feb"], "datasets": [{"label": "Revenue", "data": [50000, 62000]}]}
+    }
+  },
+  "dataSource": {
+    "connectionId": <the connection_id used in data_agent>,
+    "sql": "SELECT month, SUM(revenue) AS revenue FROM sales GROUP BY month ORDER BY month",
+    "mapping": {
+      "type": "chart",
+      "labelColumn": "month",
+      "datasetColumns": [{"column": "revenue", "label": "Revenue"}]
+    }
+  }
+}
+```
+
+Mapping rules per widget type:
+- **chart**: `{ "type": "chart", "labelColumn": "<x-axis col>", "datasetColumns": [{"column": "<col>", "label": "<display name>"}] }`
+- **kpi**: `{ "type": "kpi", "valueColumn": "<main value col>", "trendValueColumn": "<optional>", "sparklineColumn": "<optional>" }`
+- **table**: `{ "type": "table", "columnConfig": [{"column": "<col>", "label": "<display name>", "sortable": true}] }`
+
+**CRITICAL rules for dataSource:**
+1. Always populate `widget.config` with real query result data for immediate display
+2. `dataSource.sql` must be the exact SELECT query that produced the config data
+3. `dataSource.mapping.type` MUST match `widget.type`
+4. Use the actual `connectionId` from your data_agent call — do not guess
+5. Only chart/kpi/table widgets get `dataSource` — text and filter widgets never have it
 """
 
 

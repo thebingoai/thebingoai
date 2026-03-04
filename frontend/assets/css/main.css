@@ -2,9 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* GridStack layout */
-@import 'gridstack/dist/gridstack.min.css';
-
 /* GridStack theme overrides */
 .grid-stack {
   background: transparent;

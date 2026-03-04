@@ -28,9 +28,11 @@
           :edit-mode="store.editMode"
           :dirty="store.dirty"
           :saving="store.saving"
+          :refreshing="store.refreshing"
           @back="store.closeDashboard()"
           @toggle-edit="store.toggleEditMode()"
           @save="store.saveDashboard()"
+          @refresh-all="store.refreshAllWidgets()"
         />
 
         <!-- Edit toolbar (visible only in edit mode) -->
@@ -44,9 +46,18 @@
           <DashboardGrid
             :widgets="store.currentWidgets"
             :edit-mode="store.editMode"
+            @open-sql-editor="openSqlEditor"
           />
         </div>
       </template>
+
+      <!-- SQL editor modal -->
+      <DashboardSqlEditor
+        v-if="sqlEditorWidget"
+        :widget="sqlEditorWidget"
+        :edit-mode="store.editMode"
+        @close="sqlEditorWidget = null"
+      />
     </div>
 
     <!-- Right-side vertical tabs -->
@@ -71,15 +82,23 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { LayoutGrid, Clock, Activity } from 'lucide-vue-next'
 import { useDashboardStore } from '~/stores/dashboard'
 import { toDashboardListItem } from '~/types/dashboard'
+import type { DashboardWidget } from '~/types/dashboard'
 
 const store = useDashboardStore()
 
 onMounted(() => {
   store.fetchDashboards()
 })
+
+const sqlEditorWidget = ref<DashboardWidget | null>(null)
+
+function openSqlEditor(widgetId: string) {
+  sqlEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null
+}
 
 const dashboardListItems = computed(() =>
   store.dashboards.map(toDashboardListItem),

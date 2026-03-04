@@ -63,6 +63,35 @@ export interface FilterWidgetConfig {
   controls: FilterControl[]
 }
 
+// DataSource mapping types — one per refreshable widget type
+export interface ChartDataSourceMapping {
+  type: 'chart'
+  labelColumn: string
+  datasetColumns: { column: string; label: string }[]
+}
+
+export interface KpiDataSourceMapping {
+  type: 'kpi'
+  valueColumn: string
+  trendValueColumn?: string
+  sparklineColumn?: string
+}
+
+export interface TableDataSourceMapping {
+  type: 'table'
+  columnConfig: { column: string; label: string; sortable?: boolean; format?: string }[]
+}
+
+export type DataSourceMapping = ChartDataSourceMapping | KpiDataSourceMapping | TableDataSourceMapping
+
+// Links a widget to a live SQL query for on-demand refresh
+export interface WidgetDataSource {
+  connectionId: number
+  sql: string
+  mapping: DataSourceMapping
+  lastRefreshedAt?: string
+}
+
 // Discriminated union — enables type narrowing in templates
 export type WidgetConfig =
   | { type: 'kpi'; config: KpiWidgetConfig }
@@ -78,6 +107,7 @@ export interface DashboardWidget {
   description?: string
   position: GridPosition
   widget: WidgetConfig
+  dataSource?: WidgetDataSource
 }
 
 // A full dashboard with its widget collection

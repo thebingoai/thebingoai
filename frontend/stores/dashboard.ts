@@ -9,6 +9,7 @@ interface DashboardState {
   editMode: boolean
   loading: boolean
   saving: boolean
+  refreshing: boolean
   dirty: boolean
 }
 
@@ -19,6 +20,7 @@ export const useDashboardStore = defineStore('dashboard', {
     editMode: false,
     loading: false,
     saving: false,
+    refreshing: false,
     dirty: false,
   }),
 
@@ -41,6 +43,7 @@ export const useDashboardStore = defineStore('dashboard', {
         const data = await api.dashboards.list() as Dashboard[]
         this.dashboards = data.map(d => ({
           ...d,
+          widgets: (d.widgets ?? []).map(normalizeWidget),
           createdAt: (d as any).created_at,
           updatedAt: (d as any).updated_at,
         }))
@@ -56,6 +59,7 @@ export const useDashboardStore = defineStore('dashboard', {
         const data = await api.dashboards.get(id) as any
         const dashboard: Dashboard = {
           ...data,
+          widgets: (data.widgets ?? []).map(normalizeWidget),
           createdAt: data.created_at,
           updatedAt: data.updated_at,
         }
@@ -168,15 +172,61 @@ export const useDashboardStore = defineStore('dashboard', {
       Object.assign(widget.position, position)
       this.dirty = true
     },
+
+    async refreshAllWidgets() {
+      const dashboard = this.currentDashboard
+      if (!dashboard) return
+      const api = useApi()
+      this.refreshing = true
+      try {
+        const response = await api.dashboards.refreshAll(dashboard.id) as { widgets: Record<string, any> }
+        for (const [widgetId, result] of Object.entries(response.widgets)) {
+          if ('error' in result) continue
+          const widget = dashboard.widgets.find(w => w.id === widgetId)
+          if (!widget) continue
+          Object.assign(widget.widget.config, result.config)
+          if (widget.dataSource) {
+            widget.dataSource.lastRefreshedAt = result.refreshed_at
+          }
+        }
+      } finally {
+        this.refreshing = false
+      }
+    },
   },
 })
+
+/** Migrate old flat widget format (no config wrapper) to current schema. */
+function normalizeWidget(raw: any): DashboardWidget {
+  const w = raw?.widget
+  if (!w?.type) return raw as DashboardWidget
+
+  // Step 1: ensure config sub-object exists
+  let config = w.config
+  if (!config) {
+    const { type: _type, ...rest } = w
+    config = rest
+  }
+
+  // Step 2: normalize old chart format
+  // Old: { chartType, title, labels, datasets }
+  // New: { type, title, data: { labels, datasets } }
+  if (w.type === 'chart') {
+    const { chartType, labels, datasets, type: cfgType, data, ...rest } = config
+    const resolvedType = cfgType ?? chartType
+    const resolvedData = data ?? (labels != null ? { labels, datasets: datasets ?? [] } : undefined)
+    config = { ...rest, ...(resolvedType ? { type: resolvedType } : {}), ...(resolvedData ? { data: resolvedData } : {}) }
+  }
+
+  return { ...raw, widget: { type: w.type, config }, dataSource: raw.dataSource } as DashboardWidget
+}
 
 function getDefaultWidgetConfig(type: WidgetType): DashboardWidget['widget'] {
   switch (type) {
     case 'kpi':
       return {
         type: 'kpi',
-        config: { value: 0, label: 'New KPI' },
+        config: { value: 0, label: 'New Score Chart' },
       }
     case 'chart':
       return {

@@ -19,8 +19,19 @@
       />
     </div>
 
-    <!-- Right: save + edit toggle -->
+    <!-- Right: refresh all + save + edit toggle -->
     <div class="flex items-center gap-2 flex-shrink-0">
+      <!-- Refresh All button — visible in view mode -->
+      <button
+        v-if="!editMode"
+        class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+        :disabled="refreshing"
+        @click="emit('refresh-all')"
+      >
+        <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
+        {{ refreshing ? 'Refreshing...' : 'Refresh All' }}
+      </button>
+
       <!-- Save button — only visible in edit mode -->
       <button
         v-if="editMode"
@@ -50,18 +61,20 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronLeft, Pencil, Eye, Save } from 'lucide-vue-next'
+import { ChevronLeft, Pencil, Eye, Save, RefreshCw } from 'lucide-vue-next'
 
 defineProps<{
   title: string
   editMode: boolean
   dirty: boolean
   saving: boolean
+  refreshing: boolean
 }>()
 
 const emit = defineEmits<{
   back: []
   'toggle-edit': []
   save: []
+  'refresh-all': []
 }>()
 </script>
