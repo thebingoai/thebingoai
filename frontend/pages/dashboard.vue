@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-1 overflow-hidden">
     <!-- Main content area -->
-    <div class="flex flex-1 flex-col overflow-hidden min-w-0 min-h-0">
+    <div class="flex flex-1 flex-col overflow-hidden min-w-0 min-h-0 relative">
 
       <!-- List view -->
       <template v-if="!store.currentDashboard">
@@ -41,14 +41,24 @@
           @add-widget="store.addWidget"
         />
 
-        <!-- Grid -->
-        <div class="flex-1 overflow-y-auto p-4">
-          <DashboardGrid
-            :widgets="store.currentWidgets"
-            :edit-mode="store.editMode"
-            @open-sql-editor="openSqlEditor"
-            @edit-config="openConfigEditor"
-          />
+        <!-- Grid + inline editor -->
+        <div class="flex flex-1 overflow-hidden">
+          <div class="flex-1 overflow-y-auto p-4">
+            <DashboardGrid
+              :widgets="store.currentWidgets"
+              :edit-mode="store.editMode"
+              @open-sql-editor="openSqlEditor"
+              @edit-config="openConfigEditor"
+            />
+          </div>
+          <Transition name="panel-slide">
+            <DashboardWidgetEditor
+              v-if="configEditorWidget"
+              :widget="configEditorWidget"
+              :edit-mode="store.editMode"
+              @close="configEditorWidget = null"
+            />
+          </Transition>
         </div>
       </template>
 
@@ -58,14 +68,6 @@
         :widget="sqlEditorWidget"
         :edit-mode="store.editMode"
         @close="sqlEditorWidget = null"
-      />
-
-      <!-- Widget config editor modal -->
-      <DashboardWidgetEditor
-        v-if="configEditorWidget"
-        :widget="configEditorWidget"
-        :edit-mode="store.editMode"
-        @close="configEditorWidget = null"
       />
     </div>
 
@@ -131,3 +133,17 @@ definePageMeta({
   middleware: 'auth',
 })
 </script>
+
+<style scoped>
+.panel-slide-enter-active {
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+.panel-slide-leave-active {
+  transition: transform 0.15s ease-in, opacity 0.15s ease-in;
+}
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+</style>

@@ -192,6 +192,15 @@ export const useDashboardStore = defineStore('dashboard', {
       this.dirty = true
     },
 
+    updateWidgetSql(widgetId: string, sql: string) {
+      const dashboard = this.currentDashboard
+      if (!dashboard) return
+      const w = dashboard.widgets.find(w => w.id === widgetId)
+      if (!w?.dataSource) return
+      w.dataSource.sql = sql
+      this.dirty = true
+    },
+
     async refreshAllWidgets() {
       const dashboard = this.currentDashboard
       if (!dashboard) return
