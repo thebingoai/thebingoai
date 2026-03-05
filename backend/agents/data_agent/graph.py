@@ -1,7 +1,7 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage, ToolMessage
 from backend.agents.data_agent.tools import build_data_agent_tools
-from backend.agents.data_agent.prompts import DATA_AGENT_SYSTEM_PROMPT
+from backend.agents.data_agent.prompts import DATA_AGENT_SYSTEM_PROMPT, build_data_agent_prompt
 from backend.agents.context import AgentContext
 from backend.llm.factory import get_provider
 from backend.config import settings
@@ -36,7 +36,7 @@ async def invoke_data_agent(
     agent = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        prompt=DATA_AGENT_SYSTEM_PROMPT
+        prompt=build_data_agent_prompt(context.available_connections)
     )
 
     try:

@@ -116,6 +116,13 @@
       >
         Retry
       </button>
+      <button
+        v-if="hasDataSource"
+        class="flex-shrink-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
+        @click="emit('open-sql-editor', widget.id, error ?? undefined)"
+      >
+        Fix
+      </button>
     </div>
   </div>
 </template>
@@ -133,7 +140,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   remove: [id: string]
-  'open-sql-editor': [id: string]
+  'open-sql-editor': [id: string, error?: string]
   'edit-config': [id: string]
 }>()
 

@@ -451,6 +451,13 @@ export const useApi = () => {
           headers: getHeaders(),
         })
       },
+      async suggestFix(data: { connection_id: number; sql: string; error_message: string; mapping: any; widget_title?: string; widget_description?: string }) {
+        return $fetch('/api/dashboards/widgets/suggest-fix', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data,
+        }) as Promise<{ suggested_sql: string; explanation: string }>
+      },
     },
 
     // Heartbeat Jobs endpoints

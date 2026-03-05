@@ -14,7 +14,7 @@
         :widget="widget"
         :edit-mode="editMode"
         @remove="onRemove"
-        @open-sql-editor="emit('open-sql-editor', $event)"
+        @open-sql-editor="(id, err) => emit('open-sql-editor', id, err)"
         @edit-config="emit('edit-config', $event)"
       />
     </Teleport>
@@ -32,7 +32,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'open-sql-editor': [id: string]
+  'open-sql-editor': [id: string, error?: string]
   'edit-config': [id: string]
 }>()
 

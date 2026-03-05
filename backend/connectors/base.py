@@ -530,7 +530,7 @@ class BaseConnector(ABC):
         dangerous_keywords = [
             'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
             'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE',
-            'COPY', 'LOAD', 'SET', 'CALL', 'RENAME', 'REPLACE'
+            'COPY', 'LOAD', 'SET', 'CALL', 'RENAME',
         ]
 
         for keyword in dangerous_keywords:

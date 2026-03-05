@@ -7,7 +7,7 @@ from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.models.dashboard import Dashboard
-from backend.schemas.widget_data import FilterParam, WidgetRefreshRequest, WidgetRefreshResponse, BulkRefreshResponse
+from backend.schemas.widget_data import FilterParam, WidgetRefreshRequest, WidgetRefreshResponse, BulkRefreshResponse, WidgetSuggestFixRequest, WidgetSuggestFixResponse
 from backend.services.widget_transform import transform_widget_data
 import logging
 from typing import List, Optional, Tuple
@@ -220,3 +220,103 @@ async def refresh_dashboard_widgets(
             connector.close()
 
     return BulkRefreshResponse(widgets=results)
+
+
+from backend.services.schema_utils import extract_table_names as _extract_table_names, build_schema_summary as _build_schema_summary
+
+
+@router.post("/widgets/suggest-fix", response_model=WidgetSuggestFixResponse)
+async def suggest_fix(
+    request: WidgetSuggestFixRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Use the LLM to suggest a corrected SQL query based on the error message and schema.
+    """
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == request.connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    from backend.services.schema_discovery import load_schema_file
+    from backend.llm.factory import get_provider
+    from backend.config import settings
+
+    schema_summary = ""
+    try:
+        schema_json = load_schema_file(request.connection_id)
+        referenced_tables = _extract_table_names(request.sql)
+        schema_summary = _build_schema_summary(schema_json, referenced_tables)
+    except FileNotFoundError:
+        logger.warning(f"Schema file not found for connection {request.connection_id}, proceeding without schema")
+
+    mapping_info = ', '.join(f"{k}={v}" for k, v in request.mapping.items() if k != 'type')
+    mapping_type = request.mapping.get('type', 'unknown')
+
+    title_context = ""
+    if request.widget_title:
+        title_context += f"\nWidget title: {request.widget_title}"
+    if request.widget_description:
+        title_context += f"\nWidget description: {request.widget_description}"
+
+    prompt = f"""You are a SQL expert. Fix the SQL query that produced an error.
+
+Original SQL:
+```sql
+{request.sql}
+```
+
+Error:
+{request.error_message}
+
+Widget type: {mapping_type}
+Expected output columns: {mapping_info}
+Database type: {connection.db_type}{title_context}
+IMPORTANT: Only use table and column names that exist in the schema below. Do NOT invent table or column names.
+"""
+
+    if title_context:
+        prompt += """
+SEMANTIC CHECK: The fixed SQL must correctly query data that matches the widget title.
+For example, if the title says "Average Price", the SQL must query a price-related column — not floor_area, size, or other unrelated columns.
+"""
+
+    if schema_summary:
+        prompt += f"\nDatabase schema:\n{schema_summary}\n"
+
+    prompt += """
+SQL validation rules (your output must comply):
+- Query must start with SELECT or WITH (single statement only)
+- Forbidden keywords: INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, GRANT, REVOKE, EXEC, EXECUTE, COPY, LOAD, SET, CALL, RENAME
+- String functions like REPLACE(), SUBSTRING(), TRIM() are allowed
+
+Return ONLY a JSON object with this exact structure (no markdown, no extra text):
+{"suggested_sql": "...", "explanation": "..."}
+
+The explanation should be one sentence describing what was wrong and what was changed."""
+
+    try:
+        provider = get_provider(settings.default_llm_provider)
+        messages = [{"role": "user", "content": prompt}]
+        response = await provider.chat(messages, temperature=0.2)
+        content = response.strip()
+
+        # Strip markdown code blocks if present
+        if content.startswith("```"):
+            content = re.sub(r'^```[a-z]*\n?', '', content)
+            content = re.sub(r'\n?```$', '', content)
+            content = content.strip()
+
+        import json
+        result = json.loads(content)
+        return WidgetSuggestFixResponse(
+            suggested_sql=result["suggested_sql"],
+            explanation=result["explanation"],
+        )
+    except Exception as e:
+        logger.error(f"suggest_fix LLM call failed: {e}")
+        raise HTTPException(status_code=500, detail=f"AI suggestion failed: {e}")

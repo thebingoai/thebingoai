@@ -27,3 +27,17 @@ class WidgetRefreshResponse(BaseModel):
 class BulkRefreshResponse(BaseModel):
     # widgetId -> {config, refreshed_at} on success, or {error} on failure
     widgets: Dict[str, Any]
+
+
+class WidgetSuggestFixRequest(BaseModel):
+    connection_id: int
+    sql: str = Field(..., min_length=1, max_length=10000)
+    error_message: str = Field(..., min_length=1, max_length=5000)
+    mapping: Dict[str, Any]
+    widget_title: Optional[str] = None
+    widget_description: Optional[str] = None
+
+
+class WidgetSuggestFixResponse(BaseModel):
+    suggested_sql: str
+    explanation: str

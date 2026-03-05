@@ -44,6 +44,7 @@ let sparklineInstance: Chart | null = null
 
 const formattedValue = computed(() => {
   const v = props.config.value
+  if (v === null || v === undefined) return '—'
   if (typeof v === 'number') {
     if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M'
     if (v >= 1_000) return v.toLocaleString()

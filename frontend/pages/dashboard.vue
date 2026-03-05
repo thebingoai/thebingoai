@@ -67,7 +67,8 @@
         v-if="sqlEditorWidget"
         :widget="sqlEditorWidget"
         :edit-mode="store.editMode"
-        @close="sqlEditorWidget = null"
+        :widget-error="sqlEditorError"
+        @close="sqlEditorWidget = null; sqlEditorError = null"
       />
     </div>
 
@@ -107,14 +108,16 @@ onMounted(() => {
 })
 
 const sqlEditorWidget = ref<DashboardWidget | null>(null)
+const sqlEditorError = ref<string | null>(null)
 const configEditorWidget = ref<DashboardWidget | null>(null)
 
 watch(() => store.editMode, (editing) => {
   if (!editing) configEditorWidget.value = null
 })
 
-function openSqlEditor(widgetId: string) {
+function openSqlEditor(widgetId: string, error?: string) {
   sqlEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null
+  sqlEditorError.value = error ?? null
 }
 
 function openConfigEditor(widgetId: string) {

@@ -262,6 +262,14 @@ Mapping rules per widget type:
 3. Use the actual `connectionId` from your data_agent call — do not guess
 4. Only chart/kpi/table widgets get `dataSource` — text and filter widgets never have it
 5. If SQL execution fails, the dashboard still creates — widgets just show empty until refreshed
+
+### SQL Semantic Verification Checklist
+Before calling `create_dashboard`, verify each widget's SQL:
+1. **Title-SQL alignment**: "Average Price" must query a price-related column, not floor_area_sqft or other unrelated columns
+2. **Column existence**: every column referenced in SQL must exist in the schema you explored with data_agent
+3. **Mapping columns in SELECT**: every column in the mapping (valueColumn, labelColumn, datasetColumns[].column, columnConfig[].column) must appear in the SQL SELECT output
+4. **No forbidden keywords**: SQL may not contain INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, GRANT, REVOKE, EXEC, EXECUTE, COPY, LOAD, SET, CALL, RENAME — string functions like REPLACE(), SUBSTRING(), TRIM() are allowed
+5. If `create_dashboard` returns a schema validation error, read the error, fix the SQL, and retry
 """
 
 
@@ -305,6 +313,7 @@ def build_orchestrator_prompt(
     user_memories_context: str = "",
     skill_suggestions: Optional[list] = None,
     soul_prompt: str = "",
+    available_connections: Optional[List[int]] = None,
 ) -> str:
     """Build a dynamic orchestrator system prompt from the user's active custom agents and skills."""
     if soul_prompt:
@@ -340,5 +349,9 @@ def build_orchestrator_prompt(
 
     if memory_context:
         base += f"\n\n## Relevant Past Context\n{memory_context}\n"
+
+    if available_connections:
+        connections_str = ", ".join(str(c) for c in available_connections)
+        base += f"\n\n## Available Database Connections\nConnection IDs: {connections_str}\nUse these for dataSource.connectionId in dashboard widgets.\n"
 
     return base
