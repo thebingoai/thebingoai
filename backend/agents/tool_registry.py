@@ -86,6 +86,33 @@ def _build_summarize_tool(context: AgentContext) -> List:
 # Registry mapping
 # ---------------------------------------------------------------------------
 
+def _build_dashboard_agent_tool(context: AgentContext) -> List:
+    """Return [dashboard_agent] tool that delegates to the dashboard sub-agent."""
+    from langchain_core.tools import tool
+    from backend.agents.dashboard_agent import invoke_dashboard_agent
+    from backend.database.session import SessionLocal
+    import json
+
+    @tool
+    async def dashboard_agent(request: str) -> str:
+        """
+        Create a persistent dashboard from a natural language request.
+
+        Autonomously explores the database schema, designs the layout,
+        generates valid SQL, and creates the dashboard.
+
+        Args:
+            request: Natural language description of the dashboard to create
+
+        Returns:
+            JSON string with success, dashboard_id, message, and steps
+        """
+        result = await invoke_dashboard_agent(request, context, SessionLocal)
+        return json.dumps(result)
+
+    return [dashboard_agent]
+
+
 TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "list_tables": build_list_tables_tool,
     "get_table_schema": build_get_table_schema_tool,
@@ -95,6 +122,7 @@ TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "recall_memory": _build_recall_memory_tool,
     "summarize_text": _build_summarize_tool,
     "create_dashboard": build_create_dashboard_tool,
+    "dashboard_agent": _build_dashboard_agent_tool,
 }
 
 

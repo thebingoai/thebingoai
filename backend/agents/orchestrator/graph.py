@@ -7,7 +7,7 @@ from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.skills import get_skill_registry
 from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
-from backend.agents.dashboard_tools import build_dashboard_tools
+from backend.agents.dashboard_agent import invoke_dashboard_agent
 from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
@@ -20,6 +20,58 @@ if TYPE_CHECKING:
     from backend.models.user_skill import UserSkill
 
 logger = logging.getLogger(__name__)
+
+
+def _friendly_error(e: Exception) -> str:
+    """Return a user-friendly warning message for known LLM API errors."""
+    msg = str(e)
+    if "insufficient_quota" in msg or "exceeded your current quota" in msg:
+        return (
+            "⚠️ The AI service is temporarily unavailable — the API quota has been exceeded. "
+            "Please check your billing details or try again later."
+        )
+    if "context_length_exceeded" in msg or "maximum context length" in msg:
+        return (
+            "⚠️ This conversation has become too long for the AI to process. "
+            "Please start a new conversation to continue."
+        )
+    if "rate_limit" in msg or "Rate limit" in msg or ("429" in msg and "insufficient_quota" not in msg):
+        return (
+            "⚠️ The AI service is rate-limited right now. Please wait a moment and try again."
+        )
+    if "401" in msg or "invalid_api_key" in msg or "Incorrect API key" in msg:
+        return (
+            "⚠️ The AI service API key is invalid or missing. "
+            "Please check your configuration."
+        )
+    # Unknown error — keep message but strip raw dict noise
+    return f"⚠️ Something went wrong: {msg}"
+
+
+def _build_dashboard_agent_tool(context: AgentContext, db_session_factory: Optional[Callable] = None) -> List:
+    """Return [dashboard_agent] tool when db_session_factory is available."""
+    if db_session_factory is None:
+        return []
+
+    @tool
+    async def dashboard_agent(request: str) -> str:
+        """
+        Create a persistent dashboard from a natural language request.
+
+        This agent autonomously explores the database schema, designs the layout,
+        generates valid SQL queries, and creates the dashboard. Use when the user
+        asks to create, build, or make a dashboard.
+
+        Args:
+            request: Natural language description of the dashboard to create
+
+        Returns:
+            JSON string with success, dashboard_id, message, and steps
+        """
+        result = await invoke_dashboard_agent(request, context, db_session_factory)
+        return json.dumps(result)
+
+    return [dashboard_agent]
 
 
 def build_orchestrator_tools(
@@ -43,10 +95,10 @@ def build_orchestrator_tools(
     """
     skill_tools = _build_skill_tools(context, user_skills, db_session_factory)
     soul_tools = _build_soul_tools(context, db_session_factory)
-    dashboard_tools = build_dashboard_tools(context, db_session_factory)
+    dashboard_tools = _build_dashboard_agent_tool(context, db_session_factory)
     if custom_agents:
         return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools
-    return _build_legacy_tools(context) + skill_tools + soul_tools + dashboard_tools
+    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools
 
 
 def _build_skill_tools(
@@ -770,7 +822,7 @@ def _build_soul_tools(
     return [propose_soul_update, apply_soul_update]
 
 
-def _build_legacy_tools(context: AgentContext):
+def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
     """Legacy static tools used when no custom agents are configured."""
 
     @tool
@@ -825,8 +877,7 @@ def _build_legacy_tools(context: AgentContext):
     # Get skills from registry
     skill_tools = get_skill_registry().to_tools()
 
-    # Combine sub-agent tools + skill tools
-    return [data_agent, rag_agent, recall_memory] + skill_tools
+    return [data_agent, rag_agent, recall_memory] + skill_tools + _build_dashboard_agent_tool(context, db_session_factory)
 
 
 def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent"]) -> List:
@@ -990,7 +1041,7 @@ async def run_orchestrator(
         logger.error(f"Orchestrator failed: {str(e)}")
         return {
             "success": False,
-            "message": f"Orchestrator failed: {str(e)}",
+            "message": _friendly_error(e),
             "thread_id": context.thread_id
         }
 
@@ -1160,5 +1211,5 @@ async def stream_orchestrator(
         logger.error(f"Orchestrator streaming failed: {str(e)}")
         yield {
             "type": "error",
-            "content": f"Orchestrator failed: {str(e)}"
+            "content": _friendly_error(e)
         }
