@@ -51,12 +51,19 @@ export interface TextWidgetConfig {
   alignment?: 'left' | 'center' | 'right'
 }
 
-// Filter widget (placeholder for Phase 5)
+// Filter widget
+export interface FilterOptionsSource {
+  connectionId: number
+  sql: string  // e.g. "SELECT DISTINCT col AS option_value FROM table ORDER BY 1 LIMIT 50"
+}
+
 export interface FilterControl {
   type: 'date_range' | 'dropdown' | 'search'
   label: string
   key: string
-  options?: string[]
+  column?: string                    // real DB column name (used for SQL filtering)
+  options?: string[]                 // static fallback options
+  optionsSource?: FilterOptionsSource // dynamic SQL-based options
 }
 
 export interface FilterWidgetConfig {
@@ -132,7 +139,7 @@ export interface DashboardListItem {
 // Default grid sizes per widget type
 export const WIDGET_DEFAULTS: Record<WidgetType, GridPosition> = {
   kpi:    { x: 0, y: 0, w: 3,  h: 2, minW: 2, minH: 2 },
-  chart:  { x: 0, y: 0, w: 6,  h: 4, minW: 3, minH: 3 },
+  chart:  { x: 0, y: 0, w: 6,  h: 5, minW: 3, minH: 3 },
   table:  { x: 0, y: 0, w: 12, h: 5, minW: 4, minH: 3 },
   text:   { x: 0, y: 0, w: 4,  h: 3, minW: 2, minH: 2 },
   filter: { x: 0, y: 0, w: 12, h: 2, minW: 4, minH: 2 },

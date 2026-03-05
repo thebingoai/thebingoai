@@ -19,7 +19,7 @@ export default defineNuxtConfig({
   ],
 
   css: [
-    'gridstack/dist/gridstack.min.css',
+    'gridstack/dist/gridstack.css',
     '~/assets/css/main.css',
   ],
 

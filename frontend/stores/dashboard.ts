@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
-import type { Dashboard, DashboardWidget, GridPosition, WidgetDataSource, WidgetType } from '~/types/dashboard'
+import type { Dashboard, DashboardWidget, FilterControl, GridPosition, WidgetDataSource, WidgetType } from '~/types/dashboard'
 import { WIDGET_DEFAULTS } from '~/types/dashboard'
 import { useApi } from '~/composables/useApi'
+
+export interface ActiveFilter {
+  column: string
+  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'ilike'
+  value: any
+}
 
 interface DashboardState {
   dashboards: Dashboard[]
@@ -11,6 +17,7 @@ interface DashboardState {
   saving: boolean
   refreshing: boolean
   dirty: boolean
+  filterValues: Record<string, any>  // control key → value (string | {from, to} | null)
 }
 
 export const useDashboardStore = defineStore('dashboard', {
@@ -22,6 +29,7 @@ export const useDashboardStore = defineStore('dashboard', {
     saving: false,
     refreshing: false,
     dirty: false,
+    filterValues: {},
   }),
 
   getters: {
@@ -32,6 +40,40 @@ export const useDashboardStore = defineStore('dashboard', {
 
     currentWidgets(): DashboardWidget[] {
       return this.currentDashboard?.widgets ?? []
+    },
+
+    /** Resolve filterValues → ActiveFilter[] by looking up control column mappings */
+    activeFilters(state): ActiveFilter[] {
+      const dashboard = state.currentDashboardId
+        ? state.dashboards.find(d => d.id === state.currentDashboardId)
+        : null
+      if (!dashboard) return []
+
+      // Collect all filter controls from filter widgets
+      const controls: FilterControl[] = []
+      for (const dw of dashboard.widgets) {
+        if (dw.widget.type === 'filter') {
+          controls.push(...(dw.widget.config as any).controls)
+        }
+      }
+
+      const result: ActiveFilter[] = []
+      for (const control of controls) {
+        const value = state.filterValues[control.key]
+        if (value === null || value === undefined || value === '') continue
+        if (!control.column) continue
+
+        if (control.type === 'dropdown') {
+          result.push({ column: control.column, op: 'eq', value })
+        } else if (control.type === 'search') {
+          result.push({ column: control.column, op: 'ilike', value: `%${value}%` })
+        } else if (control.type === 'date_range') {
+          const { from, to } = value as { from?: string; to?: string }
+          if (from) result.push({ column: control.column, op: 'gte', value: from })
+          if (to) result.push({ column: control.column, op: 'lte', value: to })
+        }
+      }
+      return result
     },
   },
 
@@ -119,6 +161,15 @@ export const useDashboardStore = defineStore('dashboard', {
       this.currentDashboardId = id
       this.editMode = false
       this.dirty = false
+      this.filterValues = {}
+    },
+
+    setFilterValue(key: string, value: any) {
+      this.filterValues = { ...this.filterValues, [key]: value }
+    },
+
+    clearFilters() {
+      this.filterValues = {}
     },
 
     closeDashboard() {

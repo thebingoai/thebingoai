@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -6,11 +7,72 @@ from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.models.dashboard import Dashboard
-from backend.schemas.widget_data import WidgetRefreshRequest, WidgetRefreshResponse, BulkRefreshResponse
+from backend.schemas.widget_data import FilterParam, WidgetRefreshRequest, WidgetRefreshResponse, BulkRefreshResponse
 from backend.services.widget_transform import transform_widget_data
 import logging
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Regex to find WHERE/GROUP BY/ORDER BY/HAVING/LIMIT clause boundaries (case-insensitive)
+_KEYWORD_PATTERN = re.compile(
+    r'\b(GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET)\b',
+    re.IGNORECASE,
+)
+_WHERE_PATTERN = re.compile(r'\bWHERE\b', re.IGNORECASE)
+
+
+def inject_filters(sql: str, filters: List[FilterParam]) -> Tuple[str, dict]:
+    """
+    Inject filter conditions into a SQL query by adding/extending the WHERE clause.
+
+    Returns (modified_sql, params_dict) where params_dict contains the parameterized values.
+    Column names are double-quoted to handle reserved words and mixed case.
+    Values are parameterized to prevent SQL injection.
+    """
+    if not filters:
+        return sql, {}
+
+    params: dict = {}
+    conditions: list[str] = []
+
+    op_map = {
+        'eq': '=',
+        'neq': '!=',
+        'gt': '>',
+        'gte': '>=',
+        'lt': '<',
+        'lte': '<=',
+        'ilike': 'ILIKE',
+    }
+
+    for i, f in enumerate(filters):
+        param_key = f'_f{i}'
+        col = f'"{f.column}"'
+        op = op_map[f.op]
+        conditions.append(f'{col} {op} %({param_key})s')
+        params[param_key] = f.value
+
+    condition_clause = ' AND '.join(conditions)
+
+    where_match = _WHERE_PATTERN.search(sql)
+    if where_match:
+        # Find where the next major keyword starts after WHERE to insert AND conditions
+        keyword_match = _KEYWORD_PATTERN.search(sql, where_match.end())
+        if keyword_match:
+            insert_pos = keyword_match.start()
+            modified = sql[:insert_pos].rstrip() + f' AND {condition_clause} ' + sql[insert_pos:]
+        else:
+            modified = sql.rstrip() + f' AND {condition_clause}'
+    else:
+        keyword_match = _KEYWORD_PATTERN.search(sql)
+        if keyword_match:
+            insert_pos = keyword_match.start()
+            modified = sql[:insert_pos].rstrip() + f' WHERE {condition_clause} ' + sql[insert_pos:]
+        else:
+            modified = sql.rstrip() + f' WHERE {condition_clause}'
+
+    return modified, params
 
 router = APIRouter(prefix="/dashboards", tags=["widget-data"])
 
@@ -49,7 +111,12 @@ async def refresh_widget(
     )
 
     try:
-        result = connector.execute_query(request.sql)
+        sql = request.sql
+        params = None
+        if request.filters:
+            sql, params = inject_filters(sql, request.filters)
+
+        result = connector.execute_query(sql, params=params)
 
         # Apply row limit
         truncated = result.row_count > request.limit

@@ -438,7 +438,7 @@ export const useApi = () => {
           headers: getHeaders(),
         })
       },
-      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number }) {
+      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number; filters?: Array<{ column: string; op: string; value: any }> }) {
         return $fetch('/api/dashboards/widgets/refresh', {
           method: 'POST',
           headers: getHeaders(),

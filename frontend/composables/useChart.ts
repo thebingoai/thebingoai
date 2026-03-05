@@ -118,7 +118,7 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
 
   const options: ChartJsOptions = {
     responsive: opts.responsive ?? true,
-    maintainAspectRatio: opts.maintainAspectRatio ?? true,
+    maintainAspectRatio: opts.maintainAspectRatio ?? false,
     animation: enableAnimation ? undefined : false,
     layout: {
       padding: {

@@ -95,21 +95,108 @@ You can create persistent dashboards using the `create_dashboard` tool.
 Only create a dashboard when the user explicitly requests one (e.g. "create a dashboard", "build me a dashboard", "make a dashboard showing...").
 
 ### Recommended Workflow
-1. Use `data_agent` to run queries and confirm what metrics are actually available in the database
-2. Design widgets based on real query results — do NOT invent values
-3. Call `create_dashboard` with the widget configuration
+1. Use `data_agent` to explore the schema and confirm what tables/columns are available
+2. Think about the **DATA STORY** — what question does this dashboard answer? What is the narrative?
+3. Identify key dimensions for **filters** — what should users be able to slice by? (categories, dates, text)
+4. Design widget SQL queries based on the real schema — do NOT invent column names
+5. Call `create_dashboard` with the widget configuration — the tool auto-executes SQL and populates data
 
-### 12-Column Grid Layout Guidelines
-Use a 12-column grid with integer x/y/w/h values:
+### Storytelling Framework (4-Section Structure)
 
-| Widget type   | w  | h | Suggested y |
-|---------------|----|---|-------------|
-| KPI card      | 3  | 2 | 0           |
-| Half chart    | 6  | 4 | 2           |
-| Full chart    | 12 | 4 | 2           |
-| Table         | 12 | 5 | 6           |
+Structure every dashboard as a top-to-bottom data story:
 
-Place up to 4 KPIs in row y=0 at x=0, 3, 6, 9. Place charts starting at y=2. Place tables at y=6 or lower.
+**Section 1 — Executive Summary (y=0):** 3-4 KPI cards answering "how are we doing at a glance?"
+
+**Section 2 — Filters (y=2):** A filter bar with dropdown, date_range, or search controls for the key dimensions. Lets users slice all charts/tables interactively.
+
+**Section 3 — Analysis & Trends (y=4 to y=14):** Text section header, then 3-5 charts with varied types, placed side-by-side where possible.
+
+**Section 4 — Detail & Drill-Down (y=15+):** Text section header, then 1-2 detail tables.
+
+### Layout Patterns (12-column grid)
+
+```
+Row 0:      KPI row — 3 KPIs at w=4 (x=0,4,8) or 4 KPIs at w=3 (x=0,3,6,9). h=2.
+Row 2:      Filter bar — w=12, h=2. Dropdowns for key categorical cols, date_range for time cols.
+Row 4:      Text section header — w=12, h=1 (e.g. "## Trends & Breakdown")
+Rows 5-9:   Primary charts SIDE-BY-SIDE:
+              Equal halves:  x=0 w=6 | x=6 w=6  (same y, h=5)
+              Emphasis:      x=0 w=8 | x=8 w=4  (or reversed)
+Rows 10-14: Secondary charts (another pair, or single w=12 ONLY for time-series, h=6)
+Row 15:     Text section header — w=12, h=1 (e.g. "## Detailed Records")
+Rows 16+:   Detail tables — w=12, h=5
+```
+
+### Filter Widget Guide
+
+Filter widgets use type `filter` with **NO dataSource** — controls are statically defined.
+
+- Place at y=2, w=12, h=2 (right after KPIs)
+- Include 2-4 controls based on the most useful slicing dimensions
+- Always include at least one dropdown for the primary categorical dimension
+- **Every control MUST have a `column` field** — the real DB column name used for SQL filtering
+- **Dropdown controls MUST have an `optionsSource`** — dynamically loaded from `SELECT DISTINCT col AS option_value FROM table ORDER BY 1 LIMIT 50`
+- Do NOT hardcode static `options` arrays — real DB values are fetched automatically via `optionsSource`
+
+Example filter config:
+```
+{
+  "id": "filter_bar",
+  "position": {"x": 0, "y": 2, "w": 12, "h": 2},
+  "widget": {
+    "type": "filter",
+    "config": {
+      "controls": [
+        {
+          "type": "dropdown",
+          "label": "Property Type",
+          "key": "property_type",
+          "column": "property_type",
+          "optionsSource": {
+            "connectionId": <connection_id>,
+            "sql": "SELECT DISTINCT property_type AS option_value FROM listings ORDER BY 1 LIMIT 50"
+          }
+        },
+        {"type": "date_range", "label": "Transaction Date", "key": "date", "column": "transaction_date"},
+        {"type": "search", "label": "Search", "key": "search", "column": "property_name"}
+      ]
+    }
+  }
+}
+```
+
+### Chart Type Selection Guide
+
+| Data pattern      | Best chart type  | Max width                          |
+|-------------------|------------------|------------------------------------|
+| Categories        | bar              | w=6 or w=8                         |
+| Trend over time   | line or area     | w=6, w=8, or w=12                  |
+| Part-of-whole     | pie or doughnut  | w=4 or w=6 (**NEVER w=12**)        |
+| Correlation       | scatter          | w=6 or w=8                         |
+
+Rules:
+- Use **at least 2 different chart types** per dashboard
+- Pie/doughnut charts are **never full-width** — max w=6
+- Default to w=6 and pair charts side-by-side at the same y row
+- w=12 only for time-series line/area charts
+
+### Widget Count Guidelines
+
+- Target **9-13 widgets** total (min 7, max 14)
+- 3-4 KPIs + 1 filter bar + 1-2 text headers + 3-5 charts + 1-2 tables
+
+### Text Section Header Example (no dataSource)
+
+```
+{
+  "id": "header_analysis",
+  "position": {"x": 0, "y": 4, "w": 12, "h": 1},
+  "widget": {
+    "type": "text",
+    "config": {"content": "## Trends & Breakdown"}
+  }
+}
+```
 
 ### CRITICAL: Widget JSON Structure
 
@@ -136,20 +223,20 @@ Every widget MUST have a nested `config` sub-object inside `widget`. Flat fields
 
 ### SQL-Backed Widgets (REQUIRED for chart/kpi/table when using data_agent)
 
-After running queries with `data_agent`, add a `dataSource` field to every chart, KPI, and table
-widget. This lets users refresh data on demand without recreating the dashboard.
+Add a `dataSource` field to every chart, KPI, and table widget. The `create_dashboard` tool
+**automatically executes the SQL and populates widget.config** — you do NOT need to pre-populate
+data fields. Only set non-data config fields (chart type, title, KPI label, table column headers, etc.).
 
-Example with dataSource:
+Example with dataSource (minimal config — data is auto-populated):
 ```
 {
   "id": "chart_revenue",
-  "position": {"x": 0, "y": 2, "w": 12, "h": 4},
+  "position": {"x": 0, "y": 5, "w": 12, "h": 5},
   "widget": {
     "type": "chart",
     "config": {
       "type": "bar",
-      "title": "Revenue by Month",
-      "data": {"labels": ["Jan", "Feb"], "datasets": [{"label": "Revenue", "data": [50000, 62000]}]}
+      "title": "Revenue by Month"
     }
   },
   "dataSource": {
@@ -170,11 +257,11 @@ Mapping rules per widget type:
 - **table**: `{ "type": "table", "columnConfig": [{"column": "<col>", "label": "<display name>", "sortable": true}] }`
 
 **CRITICAL rules for dataSource:**
-1. Always populate `widget.config` with real query result data for immediate display
-2. `dataSource.sql` must be the exact SELECT query that produced the config data
-3. `dataSource.mapping.type` MUST match `widget.type`
-4. Use the actual `connectionId` from your data_agent call — do not guess
-5. Only chart/kpi/table widgets get `dataSource` — text and filter widgets never have it
+1. `dataSource.sql` must be a valid SELECT query against the real schema you explored with data_agent
+2. `dataSource.mapping.type` MUST match `widget.type`
+3. Use the actual `connectionId` from your data_agent call — do not guess
+4. Only chart/kpi/table widgets get `dataSource` — text and filter widgets never have it
+5. If SQL execution fails, the dashboard still creates — widgets just show empty until refreshed
 """
 
 

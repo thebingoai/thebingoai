@@ -1,5 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+
+class FilterParam(BaseModel):
+    column: str = Field(..., pattern=r'^[a-zA-Z_][a-zA-Z0-9_.]*$')
+    op: str = Field(..., pattern=r'^(eq|neq|gt|gte|lt|lte|ilike)$')
+    value: Any
 
 
 class WidgetRefreshRequest(BaseModel):
@@ -7,6 +13,7 @@ class WidgetRefreshRequest(BaseModel):
     sql: str = Field(..., min_length=1, max_length=10000)
     mapping: Dict[str, Any]
     limit: int = Field(default=100, ge=1, le=1000)
+    filters: Optional[List[FilterParam]] = None
 
 
 class WidgetRefreshResponse(BaseModel):

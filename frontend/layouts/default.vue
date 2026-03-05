@@ -18,7 +18,9 @@
         <PanelLeftClose v-else class="h-6 w-6 text-gray-600" />
       </button>
 
-      <slot />
+      <div class="flex flex-1 flex-col overflow-hidden pt-12">
+        <slot />
+      </div>
     </main>
   </div>
 </template>
