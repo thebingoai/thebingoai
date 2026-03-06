@@ -80,13 +80,13 @@
         </button>
       </div>
 
-      <!-- Soul proposal action buttons -->
+      <!-- Proposal action buttons -->
       <div v-if="showActions" class="mt-3 flex items-center gap-2">
         <UiButton size="sm" variant="primary" @click="emit('send-action', 'yes')">
-          Yes, apply
+          {{ actionType === 'dashboard' ? 'Approve plan' : 'Yes, apply' }}
         </UiButton>
         <UiButton size="sm" variant="outline" @click="emit('send-action', 'no')">
-          No thanks
+          {{ actionType === 'dashboard' ? 'Revise' : 'No thanks' }}
         </UiButton>
       </div>
     </div>
@@ -99,6 +99,7 @@ import type { Message } from '~/stores/chat'
 const props = defineProps<{
   message: Message
   showActions?: boolean
+  actionType?: 'soul' | 'dashboard' | null
 }>()
 
 const emit = defineEmits<{

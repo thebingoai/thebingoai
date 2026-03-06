@@ -84,15 +84,24 @@ export function useDashboardGrid(
     grid?.setStatic(isStatic)
   }
 
-  // Initial setup
-  onMounted(() => {
+  // Track which widgets have been staggered in (for skeleton → content transition)
+  const renderedWidgets = ref(new Set<string>())
+
+  // Initial setup — stagger widget additions across animation frames to avoid
+  // blocking the main thread with simultaneous Chart.js/table rendering
+  onMounted(async () => {
     initGrid()
-    if (grid && widgets.value.length) {
+    if (!grid || !widgets.value.length) return
+
+    for (const widget of widgets.value) {
       grid.batchUpdate()
-      for (const widget of widgets.value) {
-        addWidgetToGrid(widget)
-      }
+      addWidgetToGrid(widget)
       grid.batchUpdate(false)
+
+      // Yield to the browser between widgets so each gets its own frame
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+
+      renderedWidgets.value.add(widget.id)
     }
   })
 
@@ -108,7 +117,10 @@ export function useDashboardGrid(
 
       for (const id of added) {
         const widget = widgets.value.find(w => w.id === id)
-        if (widget) addWidgetToGrid(widget)
+        if (widget) {
+          addWidgetToGrid(widget)
+          renderedWidgets.value.add(id)
+        }
       }
     },
   )
@@ -126,5 +138,5 @@ export function useDashboardGrid(
     contentRefs.clear()
   })
 
-  return { contentRefs }
+  return { contentRefs, renderedWidgets }
 }

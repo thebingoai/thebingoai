@@ -74,6 +74,28 @@ def _build_dashboard_agent_tool(context: AgentContext, db_session_factory: Optio
     return [dashboard_agent]
 
 
+def _build_dashboard_plan_tool() -> List:
+    """Return [propose_dashboard_plan] tool — a marker tool that triggers approval UI."""
+
+    @tool
+    async def propose_dashboard_plan(plan_markdown: str) -> str:
+        """
+        Present a structured dashboard plan to the user for approval before creation.
+
+        Call this after gathering requirements to show the user a structured plan.
+        Wait for the user to approve or request revisions before calling dashboard_agent.
+
+        Args:
+            plan_markdown: The full dashboard plan in markdown format
+
+        Returns:
+            JSON indicating the plan is awaiting user approval
+        """
+        return json.dumps({"success": True, "plan": plan_markdown, "awaiting_approval": True})
+
+    return [propose_dashboard_plan]
+
+
 def build_orchestrator_tools(
     context: AgentContext,
     custom_agents: Optional[List["CustomAgent"]] = None,
@@ -96,9 +118,10 @@ def build_orchestrator_tools(
     skill_tools = _build_skill_tools(context, user_skills, db_session_factory)
     soul_tools = _build_soul_tools(context, db_session_factory)
     dashboard_tools = _build_dashboard_agent_tool(context, db_session_factory)
+    plan_tools = _build_dashboard_plan_tool()
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools
-    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools + plan_tools
+    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + plan_tools
 
 
 def _build_skill_tools(

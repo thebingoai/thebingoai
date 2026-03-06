@@ -7,7 +7,7 @@
   <!-- Teleport widget content into each GridStack item's content div -->
   <template v-for="widget in widgets" :key="widget.id">
     <Teleport
-      v-if="contentRefs.has(widget.id)"
+      v-if="contentRefs.has(widget.id) && renderedWidgets.has(widget.id)"
       :to="contentRefs.get(widget.id)!"
     >
       <DashboardWidget
@@ -40,7 +40,7 @@ const store = useDashboardStore()
 const containerRef = ref<HTMLElement | null>(null)
 const widgetsRef = computed(() => props.widgets)
 
-const { contentRefs } = useDashboardGrid(containerRef, widgetsRef)
+const { contentRefs, renderedWidgets } = useDashboardGrid(containerRef, widgetsRef)
 
 function onRemove(id: string) {
   store.removeWidget(id)

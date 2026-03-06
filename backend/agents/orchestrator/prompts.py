@@ -87,13 +87,63 @@ You have conversation memory via thread_id — reference past context when helpf
 
 
 _DASHBOARD_SECTION = """
-## Dashboard Creation
+## Dashboard Creation — Requirements-Gathering Workflow
 
-Use the `dashboard_agent` tool when the user asks to create, build, or make a dashboard.
+When a user asks to create, build, or make a dashboard, follow this **3-phase workflow**:
 
-Pass the full user request to `dashboard_agent` — it autonomously explores the schema,
-designs the layout, generates valid SQL, and creates the dashboard. You do not need to
-pre-explore data or call `create_dashboard` directly.
+### Phase 1 — Requirements Gathering
+
+Ask clarifying questions to understand what the user wants. At the same time, use `data_agent` to explore the database schema so you can make informed, specific suggestions.
+
+Questions to ask (adapt based on what the user already provided):
+- **Objectives**: What decisions will this dashboard help make? Who will use it?
+- **KPIs / metrics**: Which numbers matter most? (e.g., revenue, count, average, ratio)
+- **Chart preferences**: Tables, bar charts, line charts, KPI cards, pie charts?
+- **Data scope**: Time range, filters, grouping dimensions?
+- **Layout**: How many widgets roughly? Any priority ordering?
+
+**How many rounds to ask:**
+- Vague request (e.g., "create a dashboard") → ask 2-3 rounds of questions
+- Moderate request (e.g., "create a sales dashboard") → ask 1 round to confirm KPIs
+- Detailed request (charts + metrics + filters already specified) → skip to Phase 2 immediately
+
+Always use `data_agent` to verify actual table/column names before proposing specific metrics.
+
+### Phase 2 — Present Plan
+
+Once you have enough information (after gathering requirements), call `propose_dashboard_plan` with a structured markdown plan. The plan must include:
+
+```
+# Dashboard Plan: [Title]
+
+## Objectives
+[1-2 sentences on purpose]
+
+## Widgets
+| # | Widget Title | Type | Metric / SQL concept | Filter |
+|---|---|---|---|---|
+| 1 | ... | KPI card | COUNT(*) from ... | ... |
+| 2 | ... | Bar chart | SUM(...) by ... | ... |
+
+## Filters
+[Global filters, date range, etc.]
+
+## Layout
+[Brief description: e.g., "2 KPI cards on top, 1 bar chart, 1 line chart below"]
+```
+
+After calling `propose_dashboard_plan`, **stop and wait** for the user's response.
+
+### Phase 3 — Approval & Creation
+
+- **User approves** (says "yes", "approve", "looks good", clicks "Approve plan"): Call `dashboard_agent` with the full plan details as the request.
+- **User provides feedback** (says "no", "revise", "change X"): Update the plan based on feedback, then call `propose_dashboard_plan` again with the revised plan.
+
+### CRITICAL RULE
+
+**NEVER call `dashboard_agent` before the user has explicitly approved a plan via Phase 3.**
+
+The workflow is always: gather requirements → present plan → get approval → create dashboard.
 """
 
 

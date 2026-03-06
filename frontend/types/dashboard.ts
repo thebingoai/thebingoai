@@ -1,4 +1,4 @@
-import type { ChartConfig } from './chart'
+import type { ChartConfig, ChartType } from './chart'
 
 export type WidgetType = 'kpi' | 'chart' | 'table' | 'text' | 'filter'
 
@@ -134,6 +134,7 @@ export interface DashboardListItem {
   description?: string
   widgetCount: number
   widgetTypes: WidgetType[]
+  widgets: { type: WidgetType; position: GridPosition; chartType?: ChartType }[]
 }
 
 // Default grid sizes per widget type
@@ -154,5 +155,10 @@ export function toDashboardListItem(dashboard: Dashboard): DashboardListItem {
     description: dashboard.description,
     widgetCount: dashboard.widgets.length,
     widgetTypes: types,
+    widgets: dashboard.widgets.map(w => ({
+      type: w.widget.type,
+      position: w.position,
+      chartType: w.widget.type === 'chart' ? (w.widget.config as ChartWidgetConfig).type : undefined,
+    })),
   }
 }

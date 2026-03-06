@@ -96,12 +96,9 @@
       />
     </div>
 
-    <!-- Loading overlay -->
-    <div
-      v-if="loading"
-      class="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-sm"
-    >
-      <RefreshCw class="h-5 w-5 animate-spin text-indigo-400" />
+    <!-- Loading skeleton -->
+    <div v-if="loading" class="absolute inset-0 z-20 bg-white">
+      <DashboardWidgetSkeleton :type="widget.widget.type" />
     </div>
 
     <!-- Error state -->

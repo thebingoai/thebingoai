@@ -59,6 +59,7 @@
             v-else
             :message="message"
             :show-actions="shouldShowActions(message, index)"
+            :action-type="getActionType(message)"
             @send-action="emit('send-action', $event)"
           />
         </template>
@@ -81,11 +82,17 @@ const chat = useChat()
 const shouldShowActions = (message: Message, index: number): boolean => {
   if (message.role !== 'assistant') return false
   if (chatStore.isStreaming && index === chatStore.messages.length - 1) return false
-  const hasSoulProposal = message.agent_steps?.some(
-    step => step.tool_name === 'propose_soul_update'
+  const hasProposal = message.agent_steps?.some(
+    step => step.tool_name === 'propose_soul_update' || step.tool_name === 'propose_dashboard_plan'
   )
-  if (!hasSoulProposal) return false
+  if (!hasProposal) return false
   return !chatStore.messages.slice(index + 1).some(m => m.role === 'user')
+}
+
+const getActionType = (message: Message): 'soul' | 'dashboard' | null => {
+  if (message.agent_steps?.some(s => s.tool_name === 'propose_dashboard_plan')) return 'dashboard'
+  if (message.agent_steps?.some(s => s.tool_name === 'propose_soul_update')) return 'soul'
+  return null
 }
 
 const threadRef = ref<HTMLElement>()

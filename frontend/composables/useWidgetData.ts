@@ -40,12 +40,14 @@ export function useWidgetData(widget: Ref<DashboardWidget>) {
     }
   }
 
-  // Re-run refresh when active filters change (only for SQL-backed widgets)
-  watch(() => store.activeFilters, () => {
-    if (hasDataSource.value) {
+  // Re-run refresh when active filters change (only for SQL-backed widgets).
+  // Serialize to string so the watcher only fires when values actually change,
+  // not when the getter recomputes due to unrelated widget array mutations.
+  watch(() => JSON.stringify(store.activeFilters), (newVal, oldVal) => {
+    if (hasDataSource.value && newVal !== oldVal) {
       refresh()
     }
-  }, { deep: true })
+  })
 
   return { loading, error, lastRefreshedAt, hasDataSource, refresh }
 }

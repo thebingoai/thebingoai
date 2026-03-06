@@ -427,13 +427,14 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
             widget["widget"]["config"].update(config)
             logger.info(f"Widget '{widget_id}': SQL executed, config populated with {result.row_count} rows")
             return
-        except Exception as first_error:
-            logger.warning(f"Widget '{widget_id}': SQL execution failed, attempting LLM fix: {first_error}")
+        except Exception as e:
+            first_error_msg = str(e)
+            logger.warning(f"Widget '{widget_id}': SQL execution failed, attempting LLM fix: {first_error_msg}")
 
         # Attempt LLM-powered SQL fix
         fixed_sql = await _attempt_sql_fix(
             sql=sql,
-            error_message=str(first_error),
+            error_message=first_error_msg,
             connection=connection,
             mapping=mapping,
             widget_id=widget_id,
@@ -453,7 +454,7 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
             data_source["sql"] = fixed_sql
             logger.info(f"Widget '{widget_id}': SQL fix succeeded, config populated with {result.row_count} rows")
         except Exception as retry_error:
-            logger.warning(f"Widget '{widget_id}': SQL fix also failed, using LLM-provided config. Original: {first_error} | Retry: {retry_error}")
+            logger.warning(f"Widget '{widget_id}': SQL fix also failed, using LLM-provided config. Original: {first_error_msg} | Retry: {retry_error}")
     finally:
         if connector:
             connector.close()
