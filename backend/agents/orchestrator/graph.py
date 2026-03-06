@@ -96,6 +96,32 @@ def _build_dashboard_plan_tool() -> List:
     return [propose_dashboard_plan]
 
 
+def _build_dashboard_question_tool() -> List:
+    """Return [ask_dashboard_question] tool — a marker tool that passes structured question data through the streaming pipeline."""
+
+    @tool
+    async def ask_dashboard_question(question: str, category: str, options: str, allow_multiple: bool = True) -> str:
+        """Present a structured question with selectable options during dashboard requirements gathering.
+
+        Args:
+            question: The question text to display
+            category: Question category (metrics, chart_types, filters)
+            options: JSON array of {"label": "...", "description": "..."} objects. Last must be Other.
+            allow_multiple: Whether user can select multiple options (default: true)
+        """
+        parsed = json.loads(options) if isinstance(options, str) else options
+        return json.dumps({
+            "success": True,
+            "question": question,
+            "category": category,
+            "options": parsed,
+            "allow_multiple": allow_multiple,
+            "awaiting_response": True
+        })
+
+    return [ask_dashboard_question]
+
+
 def build_orchestrator_tools(
     context: AgentContext,
     custom_agents: Optional[List["CustomAgent"]] = None,
@@ -119,9 +145,10 @@ def build_orchestrator_tools(
     soul_tools = _build_soul_tools(context, db_session_factory)
     dashboard_tools = _build_dashboard_agent_tool(context, db_session_factory)
     plan_tools = _build_dashboard_plan_tool()
+    question_tools = _build_dashboard_question_tool()
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools + plan_tools
-    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + plan_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools + plan_tools + question_tools
+    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + plan_tools + question_tools
 
 
 def _build_skill_tools(

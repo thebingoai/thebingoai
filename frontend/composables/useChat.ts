@@ -13,6 +13,7 @@ const synthesizeReasoning = (toolName: string, args: Record<string, any>): strin
     case 'read_skill_reference': return `I'll read the reference "${args?.title || 'document'}".`
     case 'check_skill_suggestions': return "I'll check for any skill improvement suggestions."
     case 'respond_to_skill_suggestion': return "I'll respond to the skill suggestion."
+    case 'ask_dashboard_question': return "I'm preparing a question about your dashboard requirements."
     case 'data_agent': return "I'll query the database for this data."
     case 'rag_agent': return "I'll search your documents for this."
     case 'recall_memory': return "I'll search my memory for relevant past context."

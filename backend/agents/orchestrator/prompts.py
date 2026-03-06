@@ -91,23 +91,30 @@ _DASHBOARD_SECTION = """
 
 When a user asks to create, build, or make a dashboard, follow this **3-phase workflow**:
 
-### Phase 1 — Requirements Gathering
+### Phase 1 — Structured Requirements Gathering
 
-Ask clarifying questions to understand what the user wants. At the same time, use `data_agent` to explore the database schema so you can make informed, specific suggestions.
+First, use `data_agent` to explore the database schema (tables, columns, row counts).
+Then ask structured questions using `ask_dashboard_question`. Each question offers
+3 AI-suggested options derived from actual schema data, plus an "Other" option.
 
-Questions to ask (adapt based on what the user already provided):
-- **Objectives**: What decisions will this dashboard help make? Who will use it?
-- **KPIs / metrics**: Which numbers matter most? (e.g., revenue, count, average, ratio)
-- **Chart preferences**: Tables, bar charts, line charts, KPI cards, pie charts?
-- **Data scope**: Time range, filters, grouping dimensions?
-- **Layout**: How many widgets roughly? Any priority ordering?
+**Question sequence** (skip questions whose answers are already provided):
+1. **metrics** — "What metrics would you like to track?"
+   → 3 options from real columns (e.g., "Monthly Revenue — SUM(amount) from orders")
+2. **chart_types** — "How would you like to visualize these?"
+   → Suggest chart types appropriate for selected metrics
+3. **filters** — "What filters should be available?"
+   → Suggest dimensions from schema (date range, region, category)
 
-**How many rounds to ask:**
-- Vague request (e.g., "create a dashboard") → ask 2-3 rounds of questions
-- Moderate request (e.g., "create a sales dashboard") → ask 1 round to confirm KPIs
-- Detailed request (charts + metrics + filters already specified) → skip to Phase 2 immediately
-
-Always use `data_agent` to verify actual table/column names before proposing specific metrics.
+**Rules:**
+- ALWAYS call `data_agent` BEFORE generating options — use actual table and column names
+- Each option: `{"label": "Display name", "description": "SQL concept or explanation"}`
+- Last option must always be `{"label": "Other", "description": "Specify your own"}`
+- Call `ask_dashboard_question` once per question, then STOP and WAIT for user response
+- After the user responds, ask the next question or proceed to Phase 2
+- NEVER ask requirements as free text — always use `ask_dashboard_question`
+- For vague requests (e.g., "create a dashboard") → ask all 3 questions
+- For moderate requests (e.g., "create a sales dashboard") → ask metrics + filters
+- For detailed requests (charts + metrics + filters specified) → skip to Phase 2 immediately
 
 ### Phase 2 — Present Plan
 

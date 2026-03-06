@@ -83,13 +83,14 @@ const shouldShowActions = (message: Message, index: number): boolean => {
   if (message.role !== 'assistant') return false
   if (chatStore.isStreaming && index === chatStore.messages.length - 1) return false
   const hasProposal = message.agent_steps?.some(
-    step => step.tool_name === 'propose_soul_update' || step.tool_name === 'propose_dashboard_plan'
+    step => step.tool_name === 'propose_soul_update' || step.tool_name === 'propose_dashboard_plan' || step.tool_name === 'ask_dashboard_question'
   )
   if (!hasProposal) return false
   return !chatStore.messages.slice(index + 1).some(m => m.role === 'user')
 }
 
-const getActionType = (message: Message): 'soul' | 'dashboard' | null => {
+const getActionType = (message: Message): 'soul' | 'dashboard' | 'dashboard_question' | null => {
+  if (message.agent_steps?.some(s => s.tool_name === 'ask_dashboard_question')) return 'dashboard_question'
   if (message.agent_steps?.some(s => s.tool_name === 'propose_dashboard_plan')) return 'dashboard'
   if (message.agent_steps?.some(s => s.tool_name === 'propose_soul_update')) return 'soul'
   return null
