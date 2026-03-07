@@ -1,4 +1,4 @@
-import type { ChartConfig } from './chart'
+import type { ChartConfig, ChartType } from './chart'
 
 export type WidgetType = 'kpi' | 'chart' | 'table' | 'text' | 'filter'
 
@@ -51,12 +51,19 @@ export interface TextWidgetConfig {
   alignment?: 'left' | 'center' | 'right'
 }
 
-// Filter widget (placeholder for Phase 5)
+// Filter widget
+export interface FilterOptionsSource {
+  connectionId: number
+  sql: string  // e.g. "SELECT DISTINCT col AS option_value FROM table ORDER BY 1 LIMIT 50"
+}
+
 export interface FilterControl {
   type: 'date_range' | 'dropdown' | 'search'
   label: string
   key: string
-  options?: string[]
+  column?: string                    // real DB column name (used for SQL filtering)
+  options?: string[]                 // static fallback options
+  optionsSource?: FilterOptionsSource // dynamic SQL-based options
 }
 
 export interface FilterWidgetConfig {
@@ -118,6 +125,28 @@ export interface Dashboard {
   widgets: DashboardWidget[]
   createdAt?: string
   updatedAt?: string
+  // Schedule fields
+  schedule_type?: 'preset' | 'cron' | null
+  schedule_value?: string | null
+  cron_expression?: string | null
+  schedule_active?: boolean
+  next_run_at?: string | null
+  last_run_at?: string | null
+}
+
+// Run history for a scheduled dashboard refresh
+export interface DashboardRefreshRun {
+  id: string
+  dashboard_id: number
+  status: 'running' | 'completed' | 'failed'
+  started_at: string
+  completed_at?: string | null
+  duration_ms?: number | null
+  widgets_total?: number | null
+  widgets_succeeded?: number | null
+  widgets_failed?: number | null
+  error?: string | null
+  widget_errors?: Record<string, string> | null
 }
 
 // Lightweight representation for the dashboard card list view
@@ -127,12 +156,13 @@ export interface DashboardListItem {
   description?: string
   widgetCount: number
   widgetTypes: WidgetType[]
+  widgets: { type: WidgetType; position: GridPosition; chartType?: ChartType }[]
 }
 
 // Default grid sizes per widget type
 export const WIDGET_DEFAULTS: Record<WidgetType, GridPosition> = {
   kpi:    { x: 0, y: 0, w: 3,  h: 2, minW: 2, minH: 2 },
-  chart:  { x: 0, y: 0, w: 6,  h: 4, minW: 3, minH: 3 },
+  chart:  { x: 0, y: 0, w: 6,  h: 5, minW: 3, minH: 3 },
   table:  { x: 0, y: 0, w: 12, h: 5, minW: 4, minH: 3 },
   text:   { x: 0, y: 0, w: 4,  h: 3, minW: 2, minH: 2 },
   filter: { x: 0, y: 0, w: 12, h: 2, minW: 4, minH: 2 },
@@ -147,5 +177,10 @@ export function toDashboardListItem(dashboard: Dashboard): DashboardListItem {
     description: dashboard.description,
     widgetCount: dashboard.widgets.length,
     widgetTypes: types,
+    widgets: dashboard.widgets.map(w => ({
+      type: w.widget.type,
+      position: w.position,
+      chartType: w.widget.type === 'chart' ? (w.widget.config as ChartWidgetConfig).type : undefined,
+    })),
   }
 }

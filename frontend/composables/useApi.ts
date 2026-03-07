@@ -438,7 +438,7 @@ export const useApi = () => {
           headers: getHeaders(),
         })
       },
-      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number }) {
+      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number; filters?: Array<{ column: string; op: string; value: any }> }) {
         return $fetch('/api/dashboards/widgets/refresh', {
           method: 'POST',
           headers: getHeaders(),
@@ -447,6 +447,44 @@ export const useApi = () => {
       },
       async refreshAll(dashboardId: number) {
         return $fetch(`/api/dashboards/${dashboardId}/refresh`, {
+          method: 'POST',
+          headers: getHeaders(),
+        })
+      },
+      async suggestFix(data: { connection_id: number; sql: string; error_message: string; mapping: any; widget_title?: string; widget_description?: string }) {
+        return $fetch('/api/dashboards/widgets/suggest-fix', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: data,
+        }) as Promise<{ suggested_sql: string; explanation: string }>
+      },
+      async setSchedule(id: number, data: { schedule_type: string; schedule_value: string }) {
+        return $fetch(`/api/dashboards/${id}/schedule`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data,
+        })
+      },
+      async toggleSchedule(id: number, active: boolean) {
+        return $fetch(`/api/dashboards/${id}/schedule`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { schedule_active: active },
+        })
+      },
+      async removeSchedule(id: number) {
+        return $fetch(`/api/dashboards/${id}/schedule`, {
+          method: 'DELETE',
+          headers: getHeaders(),
+        })
+      },
+      async listRefreshRuns(id: number, limit = 20, offset = 0) {
+        return $fetch(`/api/dashboards/${id}/schedule/runs?limit=${limit}&offset=${offset}`, {
+          headers: getHeaders(),
+        })
+      },
+      async triggerRefresh(id: number) {
+        return $fetch(`/api/dashboards/${id}/schedule/run`, {
           method: 'POST',
           headers: getHeaders(),
         })

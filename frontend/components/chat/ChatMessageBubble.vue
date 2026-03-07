@@ -80,13 +80,21 @@
         </button>
       </div>
 
-      <!-- Soul proposal action buttons -->
-      <div v-if="showActions" class="mt-3 flex items-center gap-2">
+      <!-- Dashboard question: multi-select chips -->
+      <ChatDashboardQuestion
+        v-if="showActions && actionType === 'dashboard_question' && dashboardQuestion"
+        :options="dashboardQuestion.options"
+        :allow-multiple="dashboardQuestion.allowMultiple"
+        @submit="emit('send-action', $event)"
+      />
+
+      <!-- Proposal action buttons (soul / dashboard plan) -->
+      <div v-else-if="showActions" class="mt-3 flex items-center gap-2">
         <UiButton size="sm" variant="primary" @click="emit('send-action', 'yes')">
-          Yes, apply
+          {{ actionType === 'dashboard' ? 'Approve plan' : 'Yes, apply' }}
         </UiButton>
         <UiButton size="sm" variant="outline" @click="emit('send-action', 'no')">
-          No thanks
+          {{ actionType === 'dashboard' ? 'Revise' : 'No thanks' }}
         </UiButton>
       </div>
     </div>
@@ -99,6 +107,7 @@ import type { Message } from '~/stores/chat'
 const props = defineProps<{
   message: Message
   showActions?: boolean
+  actionType?: 'soul' | 'dashboard' | 'dashboard_question' | null
 }>()
 
 const emit = defineEmits<{
@@ -120,6 +129,27 @@ const stepCount = computed(() =>
 const openReasoning = () => {
   chatStore.openReasoningPanel(props.message.id)
 }
+
+const dashboardQuestion = computed(() => {
+  const step = props.message.agent_steps?.find(s => s.tool_name === 'ask_dashboard_question')
+  if (!step) return null
+  // Try to get from tool result first, then args
+  const result = step.content?.result
+  if (result) {
+    try {
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result
+      if (parsed?.options) return { options: parsed.options, allowMultiple: parsed.allow_multiple !== false }
+    } catch {}
+  }
+  const args = step.content?.args
+  if (!args?.options) return null
+  try {
+    const options = typeof args.options === 'string' ? JSON.parse(args.options) : args.options
+    return { options, allowMultiple: args.allow_multiple !== false }
+  } catch {
+    return null
+  }
+})
 </script>
 
 <style scoped>

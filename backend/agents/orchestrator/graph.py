@@ -7,7 +7,7 @@ from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.skills import get_skill_registry
 from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
-from backend.agents.dashboard_tools import build_dashboard_tools
+from backend.agents.dashboard_agent import invoke_dashboard_agent
 from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
@@ -20,6 +20,106 @@ if TYPE_CHECKING:
     from backend.models.user_skill import UserSkill
 
 logger = logging.getLogger(__name__)
+
+
+def _friendly_error(e: Exception) -> str:
+    """Return a user-friendly warning message for known LLM API errors."""
+    msg = str(e)
+    if "insufficient_quota" in msg or "exceeded your current quota" in msg:
+        return (
+            "⚠️ The AI service is temporarily unavailable — the API quota has been exceeded. "
+            "Please check your billing details or try again later."
+        )
+    if "context_length_exceeded" in msg or "maximum context length" in msg:
+        return (
+            "⚠️ This conversation has become too long for the AI to process. "
+            "Please start a new conversation to continue."
+        )
+    if "rate_limit" in msg or "Rate limit" in msg or ("429" in msg and "insufficient_quota" not in msg):
+        return (
+            "⚠️ The AI service is rate-limited right now. Please wait a moment and try again."
+        )
+    if "401" in msg or "invalid_api_key" in msg or "Incorrect API key" in msg:
+        return (
+            "⚠️ The AI service API key is invalid or missing. "
+            "Please check your configuration."
+        )
+    # Unknown error — keep message but strip raw dict noise
+    return f"⚠️ Something went wrong: {msg}"
+
+
+def _build_dashboard_agent_tool(context: AgentContext, db_session_factory: Optional[Callable] = None) -> List:
+    """Return [dashboard_agent] tool when db_session_factory is available."""
+    if db_session_factory is None:
+        return []
+
+    @tool
+    async def dashboard_agent(request: str) -> str:
+        """
+        Create a persistent dashboard from a natural language request.
+
+        This agent autonomously explores the database schema, designs the layout,
+        generates valid SQL queries, and creates the dashboard. Use when the user
+        asks to create, build, or make a dashboard.
+
+        Args:
+            request: Natural language description of the dashboard to create
+
+        Returns:
+            JSON string with success, dashboard_id, message, and steps
+        """
+        result = await invoke_dashboard_agent(request, context, db_session_factory)
+        return json.dumps(result)
+
+    return [dashboard_agent]
+
+
+def _build_dashboard_plan_tool() -> List:
+    """Return [propose_dashboard_plan] tool — a marker tool that triggers approval UI."""
+
+    @tool
+    async def propose_dashboard_plan(plan_markdown: str) -> str:
+        """
+        Present a structured dashboard plan to the user for approval before creation.
+
+        Call this after gathering requirements to show the user a structured plan.
+        Wait for the user to approve or request revisions before calling dashboard_agent.
+
+        Args:
+            plan_markdown: The full dashboard plan in markdown format
+
+        Returns:
+            JSON indicating the plan is awaiting user approval
+        """
+        return json.dumps({"success": True, "plan": plan_markdown, "awaiting_approval": True})
+
+    return [propose_dashboard_plan]
+
+
+def _build_dashboard_question_tool() -> List:
+    """Return [ask_dashboard_question] tool — a marker tool that passes structured question data through the streaming pipeline."""
+
+    @tool
+    async def ask_dashboard_question(question: str, category: str, options: str, allow_multiple: bool = True) -> str:
+        """Present a structured question with selectable options during dashboard requirements gathering.
+
+        Args:
+            question: The question text to display
+            category: Question category (metrics, chart_types, filters)
+            options: JSON array of {"label": "...", "description": "..."} objects. Last must be Other.
+            allow_multiple: Whether user can select multiple options (default: true)
+        """
+        parsed = json.loads(options) if isinstance(options, str) else options
+        return json.dumps({
+            "success": True,
+            "question": question,
+            "category": category,
+            "options": parsed,
+            "allow_multiple": allow_multiple,
+            "awaiting_response": True
+        })
+
+    return [ask_dashboard_question]
 
 
 def build_orchestrator_tools(
@@ -43,10 +143,12 @@ def build_orchestrator_tools(
     """
     skill_tools = _build_skill_tools(context, user_skills, db_session_factory)
     soul_tools = _build_soul_tools(context, db_session_factory)
-    dashboard_tools = build_dashboard_tools(context, db_session_factory)
+    dashboard_tools = _build_dashboard_agent_tool(context, db_session_factory)
+    plan_tools = _build_dashboard_plan_tool()
+    question_tools = _build_dashboard_question_tool()
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools
-    return _build_legacy_tools(context) + skill_tools + soul_tools + dashboard_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools + plan_tools + question_tools
+    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + plan_tools + question_tools
 
 
 def _build_skill_tools(
@@ -749,12 +851,33 @@ def _build_soul_tools(
         db = db_session_factory()
         try:
             from backend.models.user import User as UserModel
+            from backend.models.conversation import Conversation
             user = db.query(UserModel).filter(UserModel.id == context.user_id).first()
             if not user:
                 return json.dumps({"success": False, "message": "User not found"})
             user.soul_prompt = proposed_soul
             user.soul_version = (user.soul_version or 0) + 1
             db.commit()
+            # Extract name from soul text and update permanent conversation title
+            for line in proposed_soul.splitlines():
+                stripped = line.strip()
+                if stripped.lower().startswith("name:"):
+                    extracted_name = stripped.split(":", 1)[1].strip()
+                    if extracted_name:
+                        perm_conv = db.query(Conversation).filter(
+                            Conversation.user_id == context.user_id,
+                            Conversation.type == "permanent",
+                        ).first()
+                        if perm_conv:
+                            perm_conv.title = extracted_name
+                            db.commit()
+                            from backend.services.ws_connection_manager import ConnectionManager
+                            ConnectionManager.publish_to_user_sync(context.user_id, {
+                                "type": "chat.title",
+                                "thread_id": perm_conv.thread_id,
+                                "content": extracted_name,
+                            })
+                    break
             return json.dumps({
                 "success": True,
                 "message": "Soul updated successfully.",
@@ -770,7 +893,7 @@ def _build_soul_tools(
     return [propose_soul_update, apply_soul_update]
 
 
-def _build_legacy_tools(context: AgentContext):
+def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
     """Legacy static tools used when no custom agents are configured."""
 
     @tool
@@ -825,8 +948,7 @@ def _build_legacy_tools(context: AgentContext):
     # Get skills from registry
     skill_tools = get_skill_registry().to_tools()
 
-    # Combine sub-agent tools + skill tools
-    return [data_agent, rag_agent, recall_memory] + skill_tools
+    return [data_agent, rag_agent, recall_memory] + skill_tools + _build_dashboard_agent_tool(context, db_session_factory)
 
 
 def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent"]) -> List:
@@ -935,7 +1057,7 @@ async def run_orchestrator(
         Dict with success, message, metadata
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt)
+    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -956,19 +1078,30 @@ async def run_orchestrator(
         messages.append(HumanMessage(content=user_question))
 
         if not soul_prompt:
-            if not history:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is empty — this is your first conversation with this user. "
-                    "You have no name or personality yet. Introduce yourself as a new assistant that can be personalized. "
-                    "Invite the user to give you a name and describe how they'd like you to behave. "
-                    "If they skip it, proceed normally — don't push."
-                )))
-            else:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is still empty. If the user has provided a name, preferences, "
-                    "or personality instructions in this conversation, you MUST call propose_soul_update "
-                    "to capture them. Do NOT just acknowledge verbally — use the tool to persist it."
-                )))
+            soul_already_handled = any(
+                msg.role == "assistant" and (
+                    "propose_soul_update" in (msg.content or "")
+                    or "soul updated" in (msg.content or "").lower()
+                    or "personalized" in (msg.content or "").lower()
+                )
+                for msg in (history or [])
+            )
+
+            if not soul_already_handled:
+                if not history:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: This is your first conversation with this user. You have no personal customization yet. "
+                        "Answer their request first, then at the end of your response briefly mention (1-2 sentences) that "
+                        "you can be personalized — they can give you a name and behavior preferences. "
+                        "If they share preferences, use propose_soul_update to capture them."
+                    )))
+                else:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: You have no personal customization yet for this user. If they have provided a name, preferences, "
+                        "or personality instructions in this conversation, you MUST call propose_soul_update "
+                        "to capture them. Do NOT just acknowledge verbally — use the tool to persist it. "
+                        "Otherwise, at the end of your response include a brief 1-sentence reminder that you can be personalized."
+                    )))
 
         result = await orchestrator.ainvoke({"messages": messages})
 
@@ -990,7 +1123,7 @@ async def run_orchestrator(
         logger.error(f"Orchestrator failed: {str(e)}")
         return {
             "success": False,
-            "message": f"Orchestrator failed: {str(e)}",
+            "message": _friendly_error(e),
             "thread_id": context.thread_id
         }
 
@@ -1028,7 +1161,7 @@ async def stream_orchestrator(
         yield {"type": "status", "content": "Starting orchestrator..."}
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
 
         provider = get_provider(settings.default_llm_provider)
 
@@ -1048,19 +1181,30 @@ async def stream_orchestrator(
         messages.append(HumanMessage(content=user_question))
 
         if not soul_prompt:
-            if not history:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is empty — this is your first conversation with this user. "
-                    "You have no name or personality yet. Introduce yourself as a new assistant that can be personalized. "
-                    "Invite the user to give you a name and describe how they'd like you to behave. "
-                    "If they skip it, proceed normally — don't push."
-                )))
-            else:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is still empty. If the user has provided a name, preferences, "
-                    "or personality instructions in this conversation, you MUST call propose_soul_update "
-                    "to capture them. Do NOT just acknowledge verbally — use the tool to persist it."
-                )))
+            soul_already_handled = any(
+                msg.role == "assistant" and (
+                    "propose_soul_update" in (msg.content or "")
+                    or "soul updated" in (msg.content or "").lower()
+                    or "personalized" in (msg.content or "").lower()
+                )
+                for msg in (history or [])
+            )
+
+            if not soul_already_handled:
+                if not history:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: This is your first conversation with this user. You have no personal customization yet. "
+                        "Answer their request first, then at the end of your response briefly mention (1-2 sentences) that "
+                        "you can be personalized — they can give you a name and behavior preferences. "
+                        "If they share preferences, use propose_soul_update to capture them."
+                    )))
+                else:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: You have no personal customization yet for this user. If they have provided a name, preferences, "
+                        "or personality instructions in this conversation, you MUST call propose_soul_update "
+                        "to capture them. Do NOT just acknowledge verbally — use the tool to persist it. "
+                        "Otherwise, at the end of your response include a brief 1-sentence reminder that you can be personalized."
+                    )))
 
         collected_steps = []
         step_number = 0
@@ -1160,5 +1304,5 @@ async def stream_orchestrator(
         logger.error(f"Orchestrator streaming failed: {str(e)}")
         yield {
             "type": "error",
-            "content": f"Orchestrator failed: {str(e)}"
+            "content": _friendly_error(e)
         }

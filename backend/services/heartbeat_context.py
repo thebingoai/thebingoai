@@ -141,6 +141,7 @@ async def build_orchestrator_context(
         lines = "\n".join(f"- {m.content}" for m in user_memory_entries)
         user_memories_context = lines
 
+    fresh_user = db.query(User).filter(User.id == user.id).first()
     return OrchestratorInvocationContext(
         agent_context=agent_context,
         custom_agents=custom_agents,
@@ -148,5 +149,5 @@ async def build_orchestrator_context(
         user_skills=user_skills,
         user_memories_context=user_memories_context,
         skill_suggestions=skill_suggestions,
-        soul_prompt=user.soul_prompt or "",
+        soul_prompt=(fresh_user.soul_prompt if fresh_user else None) or "",
     )

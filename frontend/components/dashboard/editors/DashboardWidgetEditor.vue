@@ -138,7 +138,24 @@
 
         <!-- Preview error -->
         <div v-if="previewError" class="rounded-lg bg-rose-50 border border-rose-100 px-3 py-2 text-xs text-rose-600">
-          {{ previewError }}
+          <div class="flex items-start justify-between gap-2">
+            <span class="flex-1">{{ previewError }}</span>
+            <button
+              v-if="editMode && widget.dataSource"
+              class="flex-shrink-0 flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40"
+              :disabled="suggestLoading"
+              @click="suggestFix()"
+            >
+              <Sparkles class="h-3 w-3" :class="{ 'animate-pulse': suggestLoading }" />
+              {{ suggestLoading ? 'Analyzing...' : 'Suggest Fix' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- AI suggestion explanation -->
+        <div v-if="suggestion" class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700">
+          <Sparkles class="h-3.5 w-3.5 inline mr-1" />
+          <span class="font-medium">AI Fix Applied:</span> {{ suggestion.explanation }}
         </div>
 
         <!-- Preview table -->
@@ -182,7 +199,7 @@ const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> 
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { X, RefreshCw } from 'lucide-vue-next'
+import { X, RefreshCw, Sparkles } from 'lucide-vue-next'
 import type { DashboardWidget, WidgetConfig, WidgetDataSource } from '~/types/dashboard'
 import { useDashboardStore } from '~/stores/dashboard'
 import { useApi } from '~/composables/useApi'
@@ -217,6 +234,8 @@ const testLoading = ref(false)
 const previewColumns = ref<string[]>([])
 const previewRows = ref<any[][]>([])
 const previewError = ref<string | null>(null)
+const suggestLoading = ref(false)
+const suggestion = ref<{ suggested_sql: string; explanation: string } | null>(null)
 
 const isDataWidget = computed(() => DATA_WIDGET_TYPES.has(props.widget.widget.type))
 
@@ -248,6 +267,7 @@ watch(() => props.widget.id, () => {
   previewColumns.value = []
   previewRows.value = []
   previewError.value = null
+  suggestion.value = null
   activeTab.value = 'configure'
 })
 
@@ -304,6 +324,7 @@ async function testQuery() {
   previewError.value = null
   previewColumns.value = []
   previewRows.value = []
+  suggestion.value = null
 
   try {
     const response = await api.dashboards.refreshWidget({
@@ -333,6 +354,30 @@ async function testQuery() {
     previewError.value = err?.data?.detail ?? err?.message ?? 'Query failed'
   } finally {
     testLoading.value = false
+  }
+}
+
+async function suggestFix() {
+  const ds = props.widget.dataSource
+  if (!ds || !previewError.value) return
+  suggestLoading.value = true
+  try {
+    const result = await api.dashboards.suggestFix({
+      connection_id: ds.connectionId,
+      sql: localSql.value,
+      error_message: previewError.value,
+      mapping: ds.mapping as any,
+      widget_title: localTitle.value || props.widget.widget.config?.title || props.widget.widget.config?.label,
+      widget_description: localDescription.value,
+    })
+    localSql.value = result.suggested_sql
+    suggestion.value = result
+    previewError.value = null
+    store.updateWidgetSql(props.widget.id, result.suggested_sql)
+  } catch (err: any) {
+    previewError.value = err?.data?.detail ?? err?.message ?? 'Suggest fix failed'
+  } finally {
+    suggestLoading.value = false
   }
 }
 

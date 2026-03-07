@@ -250,16 +250,179 @@
         <UiButton variant="danger" :loading="deleting" @click="confirmDelete">Delete</UiButton>
       </template>
     </UiDialog>
+
+    <!-- ── Dashboard Pipelines ──────────────────────────────────────────── -->
+    <div class="mt-10">
+      <div class="mb-4">
+        <h3 class="text-lg font-medium text-gray-900">Dashboard Pipelines</h3>
+        <p class="text-sm text-gray-500 mt-0.5">Scheduled refresh pipelines that keep dashboard widgets up-to-date automatically.</p>
+      </div>
+
+      <div v-if="dashboardsLoading" class="space-y-3">
+        <UiSkeleton class="h-16 w-full rounded-lg" />
+        <UiSkeleton class="h-16 w-full rounded-lg" />
+      </div>
+
+      <UiEmptyState
+        v-else-if="scheduledDashboards.length === 0"
+        title="No dashboard pipelines"
+        description="Open a dashboard and click the clock icon to set a refresh schedule."
+        :icon="LayoutDashboard"
+      />
+
+      <div v-else class="space-y-2">
+        <div
+          v-for="dashboard in scheduledDashboards"
+          :key="dashboard.id"
+          class="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3"
+        >
+          <!-- Active toggle -->
+          <button
+            type="button"
+            :title="dashboard.schedule_active ? 'Deactivate pipeline' : 'Activate pipeline'"
+            @click="handleDashboardToggle(dashboard)"
+            class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+            :class="dashboard.schedule_active ? 'bg-violet-500' : 'bg-gray-200'"
+          >
+            <span
+              class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+              :class="dashboard.schedule_active ? 'translate-x-4' : 'translate-x-0.5'"
+            />
+          </button>
+
+          <!-- Dashboard info -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <p class="text-sm font-medium text-gray-900 truncate">{{ dashboard.title }}</p>
+              <span class="shrink-0 text-xs bg-violet-50 text-violet-600 px-2 py-0.5 rounded-full font-mono">
+                {{ dashboard.cron_expression }}
+              </span>
+              <span class="shrink-0 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Dashboard</span>
+            </div>
+            <p class="text-xs text-gray-400 mt-0.5">
+              <span v-if="dashboard.last_run_at">Last: {{ formatRelative(dashboard.last_run_at) }} · </span>
+              <span v-if="dashboard.next_run_at && dashboard.schedule_active">Next: {{ formatRelative(dashboard.next_run_at) }}</span>
+              <span v-else-if="!dashboard.schedule_active" class="text-gray-300">Inactive</span>
+            </p>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              title="View run history"
+              @click="openDashboardRunHistory(dashboard)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            >
+              <component :is="History" class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              title="Trigger now"
+              @click="handleDashboardTrigger(dashboard)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition-colors"
+            >
+              <component :is="Play" class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              title="Remove schedule"
+              @click="handleDashboardRemoveSchedule(dashboard)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+            >
+              <component :is="Trash2" class="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard Run History Dialog -->
+    <UiDialog
+      v-model:open="showDashboardRunHistoryDialog"
+      :title="`Refresh History — ${dashboardHistoryItem?.title}`"
+      size="xl"
+    >
+      <div v-if="dashboardRunsLoading" class="space-y-2">
+        <UiSkeleton class="h-12 w-full rounded-lg" />
+        <UiSkeleton class="h-12 w-full rounded-lg" />
+      </div>
+
+      <UiEmptyState
+        v-else-if="dashboardRuns.length === 0"
+        title="No refresh runs yet"
+        description="This dashboard hasn't been refreshed by the schedule yet."
+        :icon="History"
+      />
+
+      <div v-else class="space-y-2">
+        <div
+          v-for="run in dashboardRuns"
+          :key="run.id"
+          class="rounded-lg border border-gray-200 overflow-hidden"
+        >
+          <div
+            class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+            @click="toggleRunExpand(run.id)"
+          >
+            <span
+              class="text-xs font-medium px-2 py-0.5 rounded-full"
+              :class="{
+                'bg-green-100 text-green-700': run.status === 'completed' && !run.widgets_failed,
+                'bg-yellow-100 text-yellow-700': run.status === 'completed' && run.widgets_failed,
+                'bg-red-100 text-red-700': run.status === 'failed',
+                'bg-blue-100 text-blue-700': run.status === 'running',
+              }"
+            >
+              {{ run.status }}
+            </span>
+            <span class="text-sm text-gray-700 flex-1">{{ formatDate(run.started_at) }}</span>
+            <span v-if="run.widgets_total" class="text-xs text-gray-500">
+              {{ run.widgets_succeeded }}/{{ run.widgets_total }} widgets
+            </span>
+            <span v-if="run.duration_ms" class="text-xs text-gray-400">{{ run.duration_ms }}ms</span>
+            <component :is="ChevronDown" class="h-4 w-4 text-gray-400 transition-transform" :class="{ 'rotate-180': expandedRuns.has(run.id) }" />
+          </div>
+          <div v-if="expandedRuns.has(run.id)" class="border-t border-gray-100 px-4 py-3 space-y-3 bg-gray-50">
+            <div v-if="run.error">
+              <p class="text-xs font-medium text-red-500 mb-1">Error</p>
+              <p class="text-sm text-red-600 font-mono">{{ run.error }}</p>
+            </div>
+            <div v-if="run.widget_errors && Object.keys(run.widget_errors).length">
+              <p class="text-xs font-medium text-gray-500 mb-1">Widget errors</p>
+              <div v-for="(errMsg, widgetId) in run.widget_errors" :key="widgetId" class="text-xs text-red-600 font-mono">
+                <span class="text-gray-500">{{ widgetId }}:</span> {{ errMsg }}
+              </div>
+            </div>
+            <div v-if="!run.error && (!run.widget_errors || !Object.keys(run.widget_errors).length)">
+              <p class="text-xs text-gray-400">All widgets refreshed successfully.</p>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="dashboardRunsTotalPages > 1" class="flex justify-center gap-2 pt-2">
+          <UiButton size="sm" variant="outline" :disabled="dashboardRunsPage === 0" @click="loadDashboardRuns(dashboardRunsPage - 1)">Previous</UiButton>
+          <UiButton size="sm" variant="outline" :disabled="dashboardRunsPage >= dashboardRunsTotalPages - 1" @click="loadDashboardRuns(dashboardRunsPage + 1)">Next</UiButton>
+        </div>
+      </div>
+
+      <template #footer>
+        <UiButton variant="outline" @click="showDashboardRunHistoryDialog = false">Close</UiButton>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Timer, Pencil, History, Play, Trash2, ChevronDown } from 'lucide-vue-next'
+import { Timer, Pencil, History, Play, Trash2, ChevronDown, LayoutDashboard } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { HeartbeatJob, HeartbeatJobRun, HeartbeatJobRunListResponse } from '~/types/heartbeat'
+import type { Dashboard, DashboardRefreshRun } from '~/types/dashboard'
 import { PRESET_OPTIONS } from '~/types/heartbeat'
+import { useDashboardStore } from '~/stores/dashboard'
 
 const api = useApi()
+const dashboardStore = useDashboardStore()
 
 // ── Data ──────────────────────────────────────────────────────────────────
 const jobs = ref<HeartbeatJob[]>([])
@@ -293,8 +456,37 @@ const showDeleteDialog = ref(false)
 const deletingJob = ref<HeartbeatJob | null>(null)
 const deleting = ref(false)
 
+// ── Dashboard pipeline state ───────────────────────────────────────────────
+const dashboardsLoading = ref(true)
+const scheduledDashboards = computed(() =>
+  dashboardStore.dashboards.filter(d => d.cron_expression)
+)
+
+// Dashboard run history
+const showDashboardRunHistoryDialog = ref(false)
+const dashboardHistoryItem = ref<Dashboard | null>(null)
+const dashboardRuns = ref<DashboardRefreshRun[]>([])
+const dashboardRunsLoading = ref(false)
+const dashboardRunsPage = ref(0)
+const dashboardRunsTotal = ref(0)
+const dashboardRunsPageSize = 10
+const dashboardRunsTotalPages = computed(() => Math.ceil(dashboardRunsTotal.value / dashboardRunsPageSize))
+
 // ── Lifecycle ──────────────────────────────────────────────────────────────
-onMounted(fetchJobs)
+onMounted(async () => {
+  await Promise.all([fetchJobs(), fetchDashboards()])
+})
+
+async function fetchDashboards() {
+  try {
+    dashboardsLoading.value = true
+    await dashboardStore.fetchDashboards()
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to load dashboards')
+  } finally {
+    dashboardsLoading.value = false
+  }
+}
 
 // ── Fetch ──────────────────────────────────────────────────────────────────
 async function fetchJobs() {
@@ -444,6 +636,61 @@ async function confirmDelete() {
     toast.error(err?.data?.detail || err?.message || 'Failed to delete job')
   } finally {
     deleting.value = false
+  }
+}
+
+// ── Dashboard pipeline actions ──────────────────────────────────────────────
+async function handleDashboardToggle(dashboard: Dashboard) {
+  try {
+    await dashboardStore.toggleSchedule(dashboard.id, !dashboard.schedule_active)
+    toast.success(dashboard.schedule_active ? `${dashboard.title} pipeline deactivated` : `${dashboard.title} pipeline activated`)
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to toggle pipeline')
+  }
+}
+
+async function handleDashboardTrigger(dashboard: Dashboard) {
+  try {
+    await api.dashboards.triggerRefresh(dashboard.id)
+    toast.success(`${dashboard.title} refresh triggered`)
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to trigger refresh')
+  }
+}
+
+async function handleDashboardRemoveSchedule(dashboard: Dashboard) {
+  try {
+    await dashboardStore.removeSchedule(dashboard.id)
+    toast.success(`${dashboard.title} schedule removed`)
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to remove schedule')
+  }
+}
+
+async function openDashboardRunHistory(dashboard: Dashboard) {
+  dashboardHistoryItem.value = dashboard
+  dashboardRunsPage.value = 0
+  expandedRuns.value = new Set()
+  showDashboardRunHistoryDialog.value = true
+  await loadDashboardRuns(0)
+}
+
+async function loadDashboardRuns(page: number) {
+  if (!dashboardHistoryItem.value) return
+  try {
+    dashboardRunsLoading.value = true
+    dashboardRunsPage.value = page
+    const result = await api.dashboards.listRefreshRuns(
+      dashboardHistoryItem.value.id,
+      dashboardRunsPageSize,
+      page * dashboardRunsPageSize
+    ) as { runs: DashboardRefreshRun[]; total: number }
+    dashboardRuns.value = result.runs
+    dashboardRunsTotal.value = result.total
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to load runs')
+  } finally {
+    dashboardRunsLoading.value = false
   }
 }
 

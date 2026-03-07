@@ -1,27 +1,31 @@
 <template>
   <div
-    class="flex cursor-pointer flex-col rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+    class="flex cursor-pointer flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
     @click="emit('click')"
   >
-    <div class="mb-3 flex items-start justify-between">
-      <div class="min-w-0 flex-1">
-        <h3 class="truncate text-sm font-medium text-gray-800">{{ dashboard.title }}</h3>
-        <p v-if="dashboard.description" class="mt-0.5 line-clamp-2 text-xs text-gray-400">
-          {{ dashboard.description }}
-        </p>
-      </div>
-      <span class="ml-3 flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
-        {{ dashboard.widgetCount }} {{ dashboard.widgetCount === 1 ? 'widget' : 'widgets' }}
-      </span>
-    </div>
+    <DashboardPreviewGrid :widgets="dashboard.widgets" />
 
-    <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
-      <component
-        :is="icon"
-        v-for="(icon, i) in widgetTypeIcons"
-        :key="i"
-        class="h-3.5 w-3.5 text-gray-300"
-      />
+    <div class="border-t border-gray-100 p-4">
+      <div class="mb-3 flex items-start justify-between">
+        <div class="min-w-0 flex-1">
+          <h3 class="truncate text-sm font-medium text-gray-800">{{ dashboard.title }}</h3>
+          <p v-if="dashboard.description" class="mt-0.5 line-clamp-2 text-xs text-gray-400">
+            {{ dashboard.description }}
+          </p>
+        </div>
+        <span class="ml-3 flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+          {{ dashboard.widgetCount }} {{ dashboard.widgetCount === 1 ? 'widget' : 'widgets' }}
+        </span>
+      </div>
+
+      <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
+        <component
+          :is="icon"
+          v-for="(icon, i) in widgetTypeIcons"
+          :key="i"
+          class="h-3.5 w-3.5 text-gray-300"
+        />
+      </div>
     </div>
   </div>
 </template>

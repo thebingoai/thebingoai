@@ -96,12 +96,9 @@
       />
     </div>
 
-    <!-- Loading overlay -->
-    <div
-      v-if="loading"
-      class="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-sm"
-    >
-      <RefreshCw class="h-5 w-5 animate-spin text-indigo-400" />
+    <!-- Loading skeleton -->
+    <div v-if="loading" class="absolute inset-0 z-20 bg-white">
+      <DashboardWidgetSkeleton :type="widget.widget.type" />
     </div>
 
     <!-- Error state -->
@@ -115,6 +112,13 @@
         @click="refresh()"
       >
         Retry
+      </button>
+      <button
+        v-if="hasDataSource"
+        class="flex-shrink-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
+        @click="emit('open-sql-editor', widget.id, error ?? undefined)"
+      >
+        Fix
       </button>
     </div>
   </div>
@@ -133,7 +137,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   remove: [id: string]
-  'open-sql-editor': [id: string]
+  'open-sql-editor': [id: string, error?: string]
   'edit-config': [id: string]
 }>()
 

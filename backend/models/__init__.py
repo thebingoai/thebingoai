@@ -26,6 +26,7 @@ from backend.models.custom_agent import CustomAgent
 
 # Dashboard Persistence
 from backend.models.dashboard import Dashboard
+from backend.models.dashboard_refresh_run import DashboardRefreshRun
 
 # Phase 5: User Skills & Memories
 from backend.models.user_memory import UserMemory

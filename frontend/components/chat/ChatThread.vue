@@ -26,7 +26,7 @@
     <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 pt-6 pb-36">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
         <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
-          <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to Bingo AI</h2>
+          <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to {{ chatStore.permanentConversation?.title || 'Bingo AI' }}</h2>
           <p class="text-gray-500 mb-4">I'm your personal assistant — you can give me a name, set my personality, and teach me how you like to work.</p>
           <p class="text-gray-400 text-sm">For one-off data queries, use <span class="font-medium text-gray-500">New Task</span>.</p>
         </div>
@@ -59,6 +59,7 @@
             v-else
             :message="message"
             :show-actions="shouldShowActions(message, index)"
+            :action-type="getActionType(message)"
             @send-action="emit('send-action', $event)"
           />
         </template>
@@ -81,11 +82,18 @@ const chat = useChat()
 const shouldShowActions = (message: Message, index: number): boolean => {
   if (message.role !== 'assistant') return false
   if (chatStore.isStreaming && index === chatStore.messages.length - 1) return false
-  const hasSoulProposal = message.agent_steps?.some(
-    step => step.tool_name === 'propose_soul_update'
+  const hasProposal = message.agent_steps?.some(
+    step => step.tool_name === 'propose_soul_update' || step.tool_name === 'propose_dashboard_plan' || step.tool_name === 'ask_dashboard_question'
   )
-  if (!hasSoulProposal) return false
+  if (!hasProposal) return false
   return !chatStore.messages.slice(index + 1).some(m => m.role === 'user')
+}
+
+const getActionType = (message: Message): 'soul' | 'dashboard' | 'dashboard_question' | null => {
+  if (message.agent_steps?.some(s => s.tool_name === 'ask_dashboard_question')) return 'dashboard_question'
+  if (message.agent_steps?.some(s => s.tool_name === 'propose_dashboard_plan')) return 'dashboard'
+  if (message.agent_steps?.some(s => s.tool_name === 'propose_soul_update')) return 'soul'
+  return null
 }
 
 const threadRef = ref<HTMLElement>()

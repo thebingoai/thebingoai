@@ -7,14 +7,14 @@
   <!-- Teleport widget content into each GridStack item's content div -->
   <template v-for="widget in widgets" :key="widget.id">
     <Teleport
-      v-if="contentRefs.has(widget.id)"
+      v-if="contentRefs.has(widget.id) && renderedWidgets.has(widget.id)"
       :to="contentRefs.get(widget.id)!"
     >
       <DashboardWidget
         :widget="widget"
         :edit-mode="editMode"
         @remove="onRemove"
-        @open-sql-editor="emit('open-sql-editor', $event)"
+        @open-sql-editor="(id, err) => emit('open-sql-editor', id, err)"
         @edit-config="emit('edit-config', $event)"
       />
     </Teleport>
@@ -32,7 +32,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'open-sql-editor': [id: string]
+  'open-sql-editor': [id: string, error?: string]
   'edit-config': [id: string]
 }>()
 
@@ -40,7 +40,7 @@ const store = useDashboardStore()
 const containerRef = ref<HTMLElement | null>(null)
 const widgetsRef = computed(() => props.widgets)
 
-const { contentRefs } = useDashboardGrid(containerRef, widgetsRef)
+const { contentRefs, renderedWidgets } = useDashboardGrid(containerRef, widgetsRef)
 
 function onRemove(id: string) {
   store.removeWidget(id)

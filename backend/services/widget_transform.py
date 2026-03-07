@@ -1,7 +1,18 @@
 """Widget Transform — Pure functions to convert QueryResult into widget config dicts."""
+from decimal import Decimal
+from datetime import date, datetime
 from typing import Any, Dict
 
 from backend.connectors.base import QueryResult
+
+
+def _to_json_safe(value: Any) -> Any:
+    """Convert database-native types to JSON-serializable equivalents."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
 
 
 def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,7 +41,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
             )
 
     label_idx = result.columns.index(label_col)
-    labels = [row[label_idx] for row in result.rows]
+    labels = [_to_json_safe(row[label_idx]) for row in result.rows]
 
     datasets = []
     for ds in dataset_cols:
@@ -38,7 +49,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         col_idx = result.columns.index(col)
         datasets.append({
             "label": ds.get("label", col),
-            "data": [row[col_idx] for row in result.rows],
+            "data": [_to_json_safe(row[col_idx]) for row in result.rows],
         })
 
     return {"data": {"labels": labels, "datasets": datasets}}
@@ -78,13 +89,13 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
 
     value_idx = result.columns.index(value_col)
     first_row = result.rows[0]
-    value = first_row[value_idx]
+    value = _to_json_safe(first_row[value_idx])
 
     config: Dict[str, Any] = {"value": value}
 
     if trend_col:
         trend_idx = result.columns.index(trend_col)
-        trend_val = first_row[trend_idx]
+        trend_val = _to_json_safe(first_row[trend_idx])
         if isinstance(trend_val, (int, float)) and trend_val > 0:
             direction = "up"
         elif isinstance(trend_val, (int, float)) and trend_val < 0:
@@ -95,7 +106,7 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
 
     if sparkline_col:
         spark_idx = result.columns.index(sparkline_col)
-        config["sparkline"] = [row[spark_idx] for row in result.rows]
+        config["sparkline"] = [_to_json_safe(row[spark_idx]) for row in result.rows]
 
     return config
 
@@ -136,7 +147,7 @@ def transform_table(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         for cc in col_config:
             col = cc["column"]
             col_idx = result.columns.index(col)
-            row_dict[col] = row[col_idx]
+            row_dict[col] = _to_json_safe(row[col_idx])
         rows.append(row_dict)
 
     return {"columns": columns, "rows": rows}
