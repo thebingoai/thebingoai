@@ -7,6 +7,7 @@ from datetime import datetime
 
 # Preset schedule -> cron expression mapping
 _PRESET_MAP = {
+    "5m": "*/5 * * * *",
     "15m": "*/15 * * * *",
     "30m": "*/30 * * * *",
     "1h": "0 * * * *",
@@ -15,6 +16,7 @@ _PRESET_MAP = {
     "12h": "0 */12 * * *",
     "daily": "0 9 * * *",
     "weekly": "0 9 * * 1",
+    "weekdays": "0 9 * * 1-5",
 }
 
 

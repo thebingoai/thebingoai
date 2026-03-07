@@ -44,6 +44,8 @@ export interface HeartbeatJobUpdateRequest {
 }
 
 export const PRESET_OPTIONS = [
+  { label: 'Every 5 minutes', value: '5m' },
+  { label: 'Every 15 minutes', value: '15m' },
   { label: 'Every 30 minutes', value: '30m' },
   { label: 'Every hour', value: '1h' },
   { label: 'Every 2 hours', value: '2h' },
@@ -51,4 +53,5 @@ export const PRESET_OPTIONS = [
   { label: 'Every 12 hours', value: '12h' },
   { label: 'Daily (9am UTC)', value: 'daily' },
   { label: 'Weekly (Monday 9am UTC)', value: 'weekly' },
+  { label: 'Weekdays (Mon-Fri 9am UTC)', value: 'weekdays' },
 ]

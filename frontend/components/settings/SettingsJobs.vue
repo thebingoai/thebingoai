@@ -1,16 +1,37 @@
 <template>
   <div class="p-6">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h2 class="text-2xl font-medium text-gray-900">Jobs</h2>
-        <p class="text-sm text-gray-500 mt-1">Scheduled tasks that periodically wake the AI agent to perform work autonomously.</p>
+    <div class="mb-4">
+      <h2 class="text-2xl font-medium text-gray-900">Jobs</h2>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="flex items-center justify-between mb-6 border-b border-gray-200">
+      <div class="flex gap-0">
+        <button
+          type="button"
+          @click="activeTab = 'jobs'"
+          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          :class="activeTab === 'jobs' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+        >
+          Jobs
+        </button>
+        <button
+          type="button"
+          @click="activeTab = 'pipelines'"
+          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          :class="activeTab === 'pipelines' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+        >
+          Dashboard Pipelines
+        </button>
       </div>
-      <UiButton size="sm" @click="openCreateDialog">
+      <UiButton v-if="activeTab === 'jobs'" size="sm" class="mb-1" @click="openCreateDialog">
         Create Job
       </UiButton>
     </div>
 
+    <!-- Jobs tab -->
+    <div v-if="activeTab === 'jobs'">
     <!-- Loading -->
     <div v-if="loading" class="space-y-3">
       <UiSkeleton class="h-16 w-full rounded-lg" />
@@ -31,73 +52,95 @@
       <div
         v-for="job in jobs"
         :key="job.id"
-        class="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3"
+        class="rounded-lg border transition-colors"
+        :class="expandedJobId === job.id ? 'border-blue-200 bg-white' : 'border-gray-200'"
       >
-        <!-- Active toggle -->
-        <button
-          type="button"
-          :title="job.is_active ? 'Deactivate job' : 'Activate job'"
-          @click="handleToggle(job)"
-          class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-          :class="job.is_active ? 'bg-blue-600' : 'bg-gray-200'"
-        >
-          <span
-            class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-            :class="job.is_active ? 'translate-x-4' : 'translate-x-0.5'"
-          />
-        </button>
+        <div class="flex items-center gap-3 px-4 py-3">
+          <!-- Active toggle -->
+          <button
+            type="button"
+            :title="job.is_active ? 'Deactivate job' : 'Activate job'"
+            @click="handleToggle(job)"
+            class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+            :class="job.is_active ? 'bg-blue-600' : 'bg-gray-200'"
+          >
+            <span
+              class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+              :class="job.is_active ? 'translate-x-4' : 'translate-x-0.5'"
+            />
+          </button>
 
-        <!-- Job info -->
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
-            <p class="text-sm font-medium text-gray-900 truncate">{{ job.name }}</p>
-            <span class="shrink-0 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-mono">
-              {{ job.cron_expression }}
-            </span>
+          <!-- Job info -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <p class="text-sm font-medium text-gray-900 truncate">{{ job.name }}</p>
+              <button
+                type="button"
+                :title="expandedJobId === job.id ? 'Close schedule editor' : 'Edit schedule'"
+                @click="toggleJobExpand(job.id)"
+                class="shrink-0 text-xs px-2 py-0.5 rounded-full font-mono transition-colors"
+                :class="expandedJobId === job.id
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600'"
+              >
+                {{ job.cron_expression }}
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-0.5">
+              <span v-if="job.last_run_at">Last run: {{ formatRelative(job.last_run_at) }} · </span>
+              <span v-if="job.next_run_at && job.is_active">Next: {{ formatRelative(job.next_run_at) }}</span>
+              <span v-else-if="!job.is_active" class="text-gray-300">Inactive</span>
+            </p>
           </div>
-          <p class="text-xs text-gray-400 mt-0.5">
-            <span v-if="job.last_run_at">Last run: {{ formatRelative(job.last_run_at) }} · </span>
-            <span v-if="job.next_run_at && job.is_active">Next: {{ formatRelative(job.next_run_at) }}</span>
-            <span v-else-if="!job.is_active" class="text-gray-300">Inactive</span>
-          </p>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              title="Edit name & prompt"
+              @click="openEditDialog(job)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            >
+              <component :is="Pencil" class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              title="View run history"
+              @click="openRunHistory(job)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            >
+              <component :is="History" class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              title="Trigger now"
+              @click="handleTrigger(job)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+            >
+              <component :is="Play" class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              title="Delete job"
+              @click="openDeleteDialog(job)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+            >
+              <component :is="Trash2" class="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
-        <!-- Actions -->
-        <div class="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            title="Edit job"
-            @click="openEditDialog(job)"
-            class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-          >
-            <component :is="Pencil" class="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            title="View run history"
-            @click="openRunHistory(job)"
-            class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-          >
-            <component :is="History" class="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            title="Trigger now"
-            @click="handleTrigger(job)"
-            class="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-          >
-            <component :is="Play" class="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            title="Delete job"
-            @click="openDeleteDialog(job)"
-            class="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-          >
-            <component :is="Trash2" class="h-4 w-4" />
-          </button>
-        </div>
+        <!-- Inline schedule editor -->
+        <ScheduleEditor
+          v-if="expandedJobId === job.id"
+          :schedule-type="job.schedule_type"
+          :schedule-value="job.schedule_value"
+          :saving="savingJobSchedule"
+          @save="(type, value) => handleJobScheduleSave(job, type, value)"
+          @cancel="expandedJobId = null"
+        />
       </div>
+    </div>
     </div>
 
     <!-- Create / Edit Dialog -->
@@ -117,7 +160,8 @@
           />
         </div>
 
-        <div>
+        <!-- Schedule only shown when creating (editing uses inline row expansion) -->
+        <div v-if="!editingJob">
           <label class="block text-sm font-medium text-gray-700 mb-1">Schedule</label>
           <select
             v-model="scheduleSelection"
@@ -252,10 +296,9 @@
     </UiDialog>
 
     <!-- ── Dashboard Pipelines ──────────────────────────────────────────── -->
-    <div class="mt-10">
+    <div v-if="activeTab === 'pipelines'">
       <div class="mb-4">
-        <h3 class="text-lg font-medium text-gray-900">Dashboard Pipelines</h3>
-        <p class="text-sm text-gray-500 mt-0.5">Scheduled refresh pipelines that keep dashboard widgets up-to-date automatically.</p>
+        <p class="text-sm text-gray-500">Scheduled refresh pipelines that keep dashboard widgets up-to-date automatically.</p>
       </div>
 
       <div v-if="dashboardsLoading" class="space-y-3">
@@ -274,65 +317,97 @@
         <div
           v-for="dashboard in scheduledDashboards"
           :key="dashboard.id"
-          class="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3"
+          class="rounded-lg border transition-colors"
+          :class="expandedDashboardId === dashboard.id ? 'border-violet-200 bg-white' : 'border-gray-200'"
         >
-          <!-- Active toggle -->
-          <button
-            type="button"
-            :title="dashboard.schedule_active ? 'Deactivate pipeline' : 'Activate pipeline'"
-            @click="handleDashboardToggle(dashboard)"
-            class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-            :class="dashboard.schedule_active ? 'bg-violet-500' : 'bg-gray-200'"
-          >
-            <span
-              class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-              :class="dashboard.schedule_active ? 'translate-x-4' : 'translate-x-0.5'"
-            />
-          </button>
+          <div class="flex items-center gap-3 px-4 py-3">
+            <!-- Active toggle -->
+            <button
+              type="button"
+              :title="dashboard.schedule_active ? 'Deactivate pipeline' : 'Activate pipeline'"
+              @click="handleDashboardToggle(dashboard)"
+              class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+              :class="dashboard.schedule_active ? 'bg-violet-500' : 'bg-gray-200'"
+            >
+              <span
+                class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                :class="dashboard.schedule_active ? 'translate-x-4' : 'translate-x-0.5'"
+              />
+            </button>
 
-          <!-- Dashboard info -->
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <p class="text-sm font-medium text-gray-900 truncate">{{ dashboard.title }}</p>
-              <span class="shrink-0 text-xs bg-violet-50 text-violet-600 px-2 py-0.5 rounded-full font-mono">
-                {{ dashboard.cron_expression }}
-              </span>
-              <span class="shrink-0 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Dashboard</span>
+            <!-- Dashboard info -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <p class="text-sm font-medium text-gray-900 truncate">{{ dashboard.title }}</p>
+                <button
+                  type="button"
+                  :title="expandedDashboardId === dashboard.id ? 'Close schedule editor' : 'Edit schedule'"
+                  @click="toggleDashboardExpand(dashboard.id)"
+                  class="shrink-0 text-xs px-2 py-0.5 rounded-full font-mono transition-colors"
+                  :class="expandedDashboardId === dashboard.id
+                    ? 'bg-violet-100 text-violet-700'
+                    : 'bg-violet-50 text-violet-600 hover:bg-violet-100'"
+                >
+                  {{ dashboard.cron_expression }}
+                </button>
+                <span class="shrink-0 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Dashboard</span>
+              </div>
+              <p class="text-xs text-gray-400 mt-0.5">
+                <span v-if="dashboard.last_run_at">Last: {{ formatRelative(dashboard.last_run_at) }} · </span>
+                <span v-if="dashboard.next_run_at && dashboard.schedule_active">Next: {{ formatRelative(dashboard.next_run_at) }}</span>
+                <span v-else-if="!dashboard.schedule_active" class="text-gray-300">Inactive</span>
+              </p>
             </div>
-            <p class="text-xs text-gray-400 mt-0.5">
-              <span v-if="dashboard.last_run_at">Last: {{ formatRelative(dashboard.last_run_at) }} · </span>
-              <span v-if="dashboard.next_run_at && dashboard.schedule_active">Next: {{ formatRelative(dashboard.next_run_at) }}</span>
-              <span v-else-if="!dashboard.schedule_active" class="text-gray-300">Inactive</span>
-            </p>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                title="Edit schedule"
+                @click="toggleDashboardExpand(dashboard.id)"
+                class="rounded-lg p-1.5 transition-colors"
+                :class="expandedDashboardId === dashboard.id
+                  ? 'text-violet-600 bg-violet-50'
+                  : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'"
+              >
+                <component :is="Pencil" class="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="View run history"
+                @click="openDashboardRunHistory(dashboard)"
+                class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              >
+                <component :is="History" class="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="Trigger now"
+                @click="handleDashboardTrigger(dashboard)"
+                class="rounded-lg p-1.5 text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition-colors"
+              >
+                <component :is="Play" class="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                title="Remove schedule"
+                @click="handleDashboardRemoveSchedule(dashboard)"
+                class="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+              >
+                <component :is="Trash2" class="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
-          <!-- Actions -->
-          <div class="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              title="View run history"
-              @click="openDashboardRunHistory(dashboard)"
-              class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-            >
-              <component :is="History" class="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              title="Trigger now"
-              @click="handleDashboardTrigger(dashboard)"
-              class="rounded-lg p-1.5 text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition-colors"
-            >
-              <component :is="Play" class="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              title="Remove schedule"
-              @click="handleDashboardRemoveSchedule(dashboard)"
-              class="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-            >
-              <component :is="Trash2" class="h-4 w-4" />
-            </button>
-          </div>
+          <!-- Inline schedule editor -->
+          <ScheduleEditor
+            v-if="expandedDashboardId === dashboard.id"
+            :schedule-type="(dashboard.schedule_type as 'preset' | 'cron') || 'cron'"
+            :schedule-value="dashboard.schedule_value || dashboard.cron_expression || ''"
+            :saving="savingDashboardSchedule"
+            @save="(type, value) => handleDashboardScheduleSave(dashboard, type, value)"
+            @cancel="expandedDashboardId = null"
+          />
         </div>
       </div>
     </div>
@@ -424,6 +499,9 @@ import { useDashboardStore } from '~/stores/dashboard'
 const api = useApi()
 const dashboardStore = useDashboardStore()
 
+// ── Tabs ───────────────────────────────────────────────────────────────────
+const activeTab = ref<'jobs' | 'pipelines'>('jobs')
+
 // ── Data ──────────────────────────────────────────────────────────────────
 const jobs = ref<HeartbeatJob[]>([])
 const loading = ref(true)
@@ -455,6 +533,12 @@ const runsTotalPages = computed(() => Math.ceil(runsTotal.value / runsPageSize))
 const showDeleteDialog = ref(false)
 const deletingJob = ref<HeartbeatJob | null>(null)
 const deleting = ref(false)
+
+// ── Inline expansion ───────────────────────────────────────────────────────
+const expandedJobId = ref<string | null>(null)
+const savingJobSchedule = ref(false)
+const expandedDashboardId = ref<number | null>(null)
+const savingDashboardSchedule = ref(false)
 
 // ── Dashboard pipeline state ───────────────────────────────────────────────
 const dashboardsLoading = ref(true)
@@ -636,6 +720,46 @@ async function confirmDelete() {
     toast.error(err?.data?.detail || err?.message || 'Failed to delete job')
   } finally {
     deleting.value = false
+  }
+}
+
+// ── Inline expansion helpers ───────────────────────────────────────────────
+function toggleJobExpand(jobId: string) {
+  expandedJobId.value = expandedJobId.value === jobId ? null : jobId
+}
+
+function toggleDashboardExpand(dashboardId: number) {
+  expandedDashboardId.value = expandedDashboardId.value === dashboardId ? null : dashboardId
+}
+
+async function handleJobScheduleSave(job: HeartbeatJob, scheduleType: string, scheduleValue: string) {
+  try {
+    savingJobSchedule.value = true
+    const updated = await api.heartbeatJobs.update(job.id, {
+      schedule_type: scheduleType as 'preset' | 'cron',
+      schedule_value: scheduleValue,
+    }) as HeartbeatJob
+    const idx = jobs.value.findIndex(j => j.id === job.id)
+    if (idx !== -1) jobs.value[idx] = updated
+    expandedJobId.value = null
+    toast.success('Schedule updated')
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to update schedule')
+  } finally {
+    savingJobSchedule.value = false
+  }
+}
+
+async function handleDashboardScheduleSave(dashboard: Dashboard, scheduleType: string, scheduleValue: string) {
+  try {
+    savingDashboardSchedule.value = true
+    await dashboardStore.setSchedule(dashboard.id, scheduleType, scheduleValue)
+    expandedDashboardId.value = null
+    toast.success('Schedule updated')
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to update schedule')
+  } finally {
+    savingDashboardSchedule.value = false
   }
 }
 
