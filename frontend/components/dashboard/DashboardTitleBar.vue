@@ -19,7 +19,7 @@
       />
     </div>
 
-    <!-- Right: refresh all + save + edit toggle -->
+    <!-- Right: refresh all + schedule + save + edit toggle -->
     <div class="flex items-center gap-2 flex-shrink-0">
       <!-- Refresh All button — visible in view mode -->
       <button
@@ -31,6 +31,9 @@
         <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
         {{ refreshing ? 'Refreshing...' : 'Refresh All' }}
       </button>
+
+      <!-- Schedule popover — visible in view mode -->
+      <DashboardSchedulePopover v-if="!editMode && dashboardId" :dashboard-id="dashboardId" />
 
       <!-- Save button — only visible in edit mode -->
       <button
@@ -69,6 +72,7 @@ defineProps<{
   dirty: boolean
   saving: boolean
   refreshing: boolean
+  dashboardId?: number
 }>()
 
 const emit = defineEmits<{

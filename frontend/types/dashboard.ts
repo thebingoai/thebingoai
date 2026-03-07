@@ -125,6 +125,28 @@ export interface Dashboard {
   widgets: DashboardWidget[]
   createdAt?: string
   updatedAt?: string
+  // Schedule fields
+  schedule_type?: 'preset' | 'cron' | null
+  schedule_value?: string | null
+  cron_expression?: string | null
+  schedule_active?: boolean
+  next_run_at?: string | null
+  last_run_at?: string | null
+}
+
+// Run history for a scheduled dashboard refresh
+export interface DashboardRefreshRun {
+  id: string
+  dashboard_id: number
+  status: 'running' | 'completed' | 'failed'
+  started_at: string
+  completed_at?: string | null
+  duration_ms?: number | null
+  widgets_total?: number | null
+  widgets_succeeded?: number | null
+  widgets_failed?: number | null
+  error?: string | null
+  widget_errors?: Record<string, string> | null
 }
 
 // Lightweight representation for the dashboard card list view

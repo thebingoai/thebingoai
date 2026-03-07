@@ -29,6 +29,7 @@
           :dirty="store.dirty"
           :saving="store.saving"
           :refreshing="store.refreshing"
+          :dashboard-id="store.currentDashboard.id"
           @back="store.closeDashboard()"
           @toggle-edit="store.toggleEditMode()"
           @save="store.saveDashboard()"

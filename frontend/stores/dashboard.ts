@@ -281,6 +281,43 @@ export const useDashboardStore = defineStore('dashboard', {
         this.refreshing = false
       }
     },
+
+    async setSchedule(dashboardId: number, scheduleType: string, scheduleValue: string) {
+      const api = useApi()
+      const data = await api.dashboards.setSchedule(dashboardId, { schedule_type: scheduleType, schedule_value: scheduleValue }) as any
+      const dashboard = this.dashboards.find(d => d.id === dashboardId)
+      if (dashboard) {
+        dashboard.schedule_type = data.schedule_type
+        dashboard.schedule_value = data.schedule_value
+        dashboard.cron_expression = data.cron_expression
+        dashboard.schedule_active = data.schedule_active
+        dashboard.next_run_at = data.next_run_at
+        dashboard.last_run_at = data.last_run_at
+      }
+    },
+
+    async toggleSchedule(dashboardId: number, active: boolean) {
+      const api = useApi()
+      const data = await api.dashboards.toggleSchedule(dashboardId, active) as any
+      const dashboard = this.dashboards.find(d => d.id === dashboardId)
+      if (dashboard) {
+        dashboard.schedule_active = data.schedule_active
+        dashboard.next_run_at = data.next_run_at
+      }
+    },
+
+    async removeSchedule(dashboardId: number) {
+      const api = useApi()
+      await api.dashboards.removeSchedule(dashboardId)
+      const dashboard = this.dashboards.find(d => d.id === dashboardId)
+      if (dashboard) {
+        dashboard.schedule_type = null
+        dashboard.schedule_value = null
+        dashboard.cron_expression = null
+        dashboard.schedule_active = false
+        dashboard.next_run_at = null
+      }
+    },
   },
 })
 
