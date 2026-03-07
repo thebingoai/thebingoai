@@ -458,6 +458,37 @@ export const useApi = () => {
           body: data,
         }) as Promise<{ suggested_sql: string; explanation: string }>
       },
+      async setSchedule(id: number, data: { schedule_type: string; schedule_value: string }) {
+        return $fetch(`/api/dashboards/${id}/schedule`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: data,
+        })
+      },
+      async toggleSchedule(id: number, active: boolean) {
+        return $fetch(`/api/dashboards/${id}/schedule`, {
+          method: 'PATCH',
+          headers: getHeaders(),
+          body: { schedule_active: active },
+        })
+      },
+      async removeSchedule(id: number) {
+        return $fetch(`/api/dashboards/${id}/schedule`, {
+          method: 'DELETE',
+          headers: getHeaders(),
+        })
+      },
+      async listRefreshRuns(id: number, limit = 20, offset = 0) {
+        return $fetch(`/api/dashboards/${id}/schedule/runs?limit=${limit}&offset=${offset}`, {
+          headers: getHeaders(),
+        })
+      },
+      async triggerRefresh(id: number) {
+        return $fetch(`/api/dashboards/${id}/schedule/run`, {
+          method: 'POST',
+          headers: getHeaders(),
+        })
+      },
     },
 
     // Heartbeat Jobs endpoints

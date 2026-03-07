@@ -29,6 +29,12 @@ class DashboardResponse(BaseModel):
     widgets: List[Any]
     created_at: str
     updated_at: str
+    schedule_type: Optional[str] = None
+    schedule_value: Optional[str] = None
+    cron_expression: Optional[str] = None
+    schedule_active: bool = False
+    next_run_at: Optional[str] = None
+    last_run_at: Optional[str] = None
 
 
 def _dashboard_to_response(dashboard: Dashboard) -> DashboardResponse:
@@ -39,6 +45,12 @@ def _dashboard_to_response(dashboard: Dashboard) -> DashboardResponse:
         widgets=dashboard.widgets or [],
         created_at=str(dashboard.created_at),
         updated_at=str(dashboard.updated_at),
+        schedule_type=dashboard.schedule_type,
+        schedule_value=dashboard.schedule_value,
+        cron_expression=dashboard.cron_expression,
+        schedule_active=dashboard.schedule_active or False,
+        next_run_at=str(dashboard.next_run_at) if dashboard.next_run_at else None,
+        last_run_at=str(dashboard.last_run_at) if dashboard.last_run_at else None,
     )
 
 
