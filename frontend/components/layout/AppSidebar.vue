@@ -4,7 +4,7 @@
     <div class="flex h-16 items-center border-b border-gray-200 px-6">
       <component :is="MessageSquare" class="h-6 w-6 text-gray-900" />
       <span class="ml-3 text-lg font-normal text-gray-900">
-        Bingo AI
+        {{ chatStore.permanentConversation?.title || 'Bingo AI' }}
       </span>
     </div>
 

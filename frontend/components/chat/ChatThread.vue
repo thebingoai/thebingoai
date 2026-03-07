@@ -26,7 +26,7 @@
     <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 pt-6 pb-36">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
         <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
-          <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to Bingo AI</h2>
+          <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to {{ chatStore.permanentConversation?.title || 'Bingo AI' }}</h2>
           <p class="text-gray-500 mb-4">I'm your personal assistant — you can give me a name, set my personality, and teach me how you like to work.</p>
           <p class="text-gray-400 text-sm">For one-off data queries, use <span class="font-medium text-gray-500">New Task</span>.</p>
         </div>

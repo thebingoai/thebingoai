@@ -851,12 +851,33 @@ def _build_soul_tools(
         db = db_session_factory()
         try:
             from backend.models.user import User as UserModel
+            from backend.models.conversation import Conversation
             user = db.query(UserModel).filter(UserModel.id == context.user_id).first()
             if not user:
                 return json.dumps({"success": False, "message": "User not found"})
             user.soul_prompt = proposed_soul
             user.soul_version = (user.soul_version or 0) + 1
             db.commit()
+            # Extract name from soul text and update permanent conversation title
+            for line in proposed_soul.splitlines():
+                stripped = line.strip()
+                if stripped.lower().startswith("name:"):
+                    extracted_name = stripped.split(":", 1)[1].strip()
+                    if extracted_name:
+                        perm_conv = db.query(Conversation).filter(
+                            Conversation.user_id == context.user_id,
+                            Conversation.type == "permanent",
+                        ).first()
+                        if perm_conv:
+                            perm_conv.title = extracted_name
+                            db.commit()
+                            from backend.services.ws_connection_manager import ConnectionManager
+                            ConnectionManager.publish_to_user_sync(context.user_id, {
+                                "type": "chat.title",
+                                "thread_id": perm_conv.thread_id,
+                                "content": extracted_name,
+                            })
+                    break
             return json.dumps({
                 "success": True,
                 "message": "Soul updated successfully.",
@@ -1057,19 +1078,30 @@ async def run_orchestrator(
         messages.append(HumanMessage(content=user_question))
 
         if not soul_prompt:
-            if not history:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is empty — this is your first conversation with this user. "
-                    "You have no name or personality yet. Introduce yourself as a new assistant that can be personalized. "
-                    "Invite the user to give you a name and describe how they'd like you to behave. "
-                    "If they skip it, proceed normally — don't push."
-                )))
-            else:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is still empty. If the user has provided a name, preferences, "
-                    "or personality instructions in this conversation, you MUST call propose_soul_update "
-                    "to capture them. Do NOT just acknowledge verbally — use the tool to persist it."
-                )))
+            soul_already_handled = any(
+                msg.role == "assistant" and (
+                    "propose_soul_update" in (msg.content or "")
+                    or "soul updated" in (msg.content or "").lower()
+                    or "personalized" in (msg.content or "").lower()
+                )
+                for msg in (history or [])
+            )
+
+            if not soul_already_handled:
+                if not history:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: This is your first conversation with this user. You have no personal customization yet. "
+                        "Answer their request first, then at the end of your response briefly mention (1-2 sentences) that "
+                        "you can be personalized — they can give you a name and behavior preferences. "
+                        "If they share preferences, use propose_soul_update to capture them."
+                    )))
+                else:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: You have no personal customization yet for this user. If they have provided a name, preferences, "
+                        "or personality instructions in this conversation, you MUST call propose_soul_update "
+                        "to capture them. Do NOT just acknowledge verbally — use the tool to persist it. "
+                        "Otherwise, at the end of your response include a brief 1-sentence reminder that you can be personalized."
+                    )))
 
         result = await orchestrator.ainvoke({"messages": messages})
 
@@ -1149,19 +1181,30 @@ async def stream_orchestrator(
         messages.append(HumanMessage(content=user_question))
 
         if not soul_prompt:
-            if not history:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is empty — this is your first conversation with this user. "
-                    "You have no name or personality yet. Introduce yourself as a new assistant that can be personalized. "
-                    "Invite the user to give you a name and describe how they'd like you to behave. "
-                    "If they skip it, proceed normally — don't push."
-                )))
-            else:
-                messages.insert(0, SystemMessage(content=(
-                    "IMPORTANT: Your soul is still empty. If the user has provided a name, preferences, "
-                    "or personality instructions in this conversation, you MUST call propose_soul_update "
-                    "to capture them. Do NOT just acknowledge verbally — use the tool to persist it."
-                )))
+            soul_already_handled = any(
+                msg.role == "assistant" and (
+                    "propose_soul_update" in (msg.content or "")
+                    or "soul updated" in (msg.content or "").lower()
+                    or "personalized" in (msg.content or "").lower()
+                )
+                for msg in (history or [])
+            )
+
+            if not soul_already_handled:
+                if not history:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: This is your first conversation with this user. You have no personal customization yet. "
+                        "Answer their request first, then at the end of your response briefly mention (1-2 sentences) that "
+                        "you can be personalized — they can give you a name and behavior preferences. "
+                        "If they share preferences, use propose_soul_update to capture them."
+                    )))
+                else:
+                    messages.insert(0, SystemMessage(content=(
+                        "IMPORTANT: You have no personal customization yet for this user. If they have provided a name, preferences, "
+                        "or personality instructions in this conversation, you MUST call propose_soul_update "
+                        "to capture them. Do NOT just acknowledge verbally — use the tool to persist it. "
+                        "Otherwise, at the end of your response include a brief 1-sentence reminder that you can be personalized."
+                    )))
 
         collected_steps = []
         step_number = 0
