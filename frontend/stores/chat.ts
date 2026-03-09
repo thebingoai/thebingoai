@@ -155,10 +155,12 @@ export const useChatStore = defineStore('chat', {
     },
 
     reset() {
+      this.conversations = []
       this.currentThreadId = null
       this.messages = []
       this.inputText = ''
       this.attachedFiles = []
+      this.isStreaming = false
       this.expandedThinking.clear()
       this.reasoningPanelOpen = false
       this.selectedMessageId = null

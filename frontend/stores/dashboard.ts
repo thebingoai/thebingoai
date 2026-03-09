@@ -306,6 +306,14 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
+    $resetAll() {
+      this.dashboards = []
+      this.currentDashboardId = null
+      this.editMode = false
+      this.dirty = false
+      this.filterValues = {}
+    },
+
     async removeSchedule(dashboardId: number) {
       const api = useApi()
       await api.dashboards.removeSchedule(dashboardId)

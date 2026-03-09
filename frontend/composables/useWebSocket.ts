@@ -151,11 +151,16 @@ export function useWebSocket() {
     return () => handlers.get(type)?.delete(handler)
   }
 
+  function clearHandlers() {
+    handlers.clear()
+  }
+
   return {
     connect,
     disconnect,
     send,
     on,
+    clearHandlers,
     isConnected: computed(() => state.isConnected),
     connectionState: computed(() => state.connectionState),
   }

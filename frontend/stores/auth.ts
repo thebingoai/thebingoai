@@ -127,6 +127,15 @@ export const useAuthStore = defineStore('auth', {
     },
 
     logout() {
+      const chatStore = useChatStore()
+      const dashboardStore = useDashboardStore()
+      const { disconnect, clearHandlers } = useWebSocket()
+
+      chatStore.reset()
+      dashboardStore.$resetAll()
+      disconnect()
+      clearHandlers()
+
       this.user = null
       this.token = null
       this.error = null
