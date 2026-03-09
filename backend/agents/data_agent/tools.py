@@ -5,6 +5,8 @@ from backend.connectors.factory import get_connector
 from backend.database.session import SessionLocal
 from backend.models.database_connection import DatabaseConnection
 from backend.agents.context import AgentContext
+from backend.services.query_result_store import store_query_result, publish_query_result
+import uuid
 import logging
 
 logger = logging.getLogger(__name__)
@@ -161,11 +163,29 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             ) as connector:
                 result = connector.execute_query(sql)
 
-                return {
+                # Build full result payload for frontend delivery
+                full_result = {
                     "columns": result.columns,
                     "rows": [list(row) for row in result.rows],
                     "row_count": result.row_count,
-                    "execution_time_ms": result.execution_time_ms
+                    "execution_time_ms": result.execution_time_ms,
+                    "truncated": result.truncated,
+                    "sql": sql,
+                    "connection_id": connection_id,
+                }
+
+                # Store and publish full data to frontend via side-channel
+                result_ref = str(uuid.uuid4())
+                store_query_result(result_ref, context.user_id, full_result)
+                publish_query_result(context.user_id, result_ref, full_result)
+
+                # Return only metadata to the LLM — no actual data values
+                return {
+                    "columns": result.columns,
+                    "row_count": result.row_count,
+                    "execution_time_ms": result.execution_time_ms,
+                    "result_ref": result_ref,
+                    "truncated": result.truncated,
                 }
 
         except Exception as e:

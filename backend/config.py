@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Query guardrails
+    max_query_rows: int = 5000
+    query_timeout_ms: int = 30000
+
     # Feature flags
     enable_governance: bool = True
 

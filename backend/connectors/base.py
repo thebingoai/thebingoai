@@ -19,6 +19,7 @@ class QueryResult:
     rows: List[tuple]
     row_count: int
     execution_time_ms: float
+    truncated: bool = False
 
 
 class BaseConnector(ABC):
@@ -464,6 +465,8 @@ class BaseConnector(ABC):
             ValueError: If query is not read-only (not SELECT)
             Exception: If query execution fails
         """
+        from backend.config import settings
+
         self._validate_readonly_query(query)
 
         conn = self._get_connection()
@@ -472,22 +475,32 @@ class BaseConnector(ABC):
         start_time = time.time()
 
         try:
+            # Defense-in-depth: enforce read-only transaction at DB level
+            cursor.execute("SET TRANSACTION READ ONLY")
+            # Enforce query execution timeout
+            cursor.execute(f"SET LOCAL statement_timeout = '{settings.query_timeout_ms}'")
+
             if params:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
 
             columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
+            max_rows = settings.max_query_rows
+            rows = cursor.fetchmany(max_rows + 1)
+            truncated = len(rows) > max_rows
+            if truncated:
+                rows = rows[:max_rows]
             execution_time_ms = (time.time() - start_time) * 1000
 
             cursor.close()
 
             return QueryResult(
                 columns=columns,
-                rows=rows,  # Already tuples from tuple cursor
+                rows=rows,
                 row_count=len(rows),
-                execution_time_ms=execution_time_ms
+                execution_time_ms=execution_time_ms,
+                truncated=truncated,
             )
         except Exception as e:
             cursor.close()
@@ -513,6 +526,10 @@ class BaseConnector(ABC):
         import re
         query_upper = query.strip().upper()
 
+        # Enforce query length limit
+        if len(query) > 10_000:
+            raise ValueError("Query exceeds maximum allowed length of 10,000 characters.")
+
         # Remove SQL comments (both -- and /* */ styles)
         # Strip line comments
         lines = [line.split('--')[0] for line in query_upper.split('\n')]
@@ -531,12 +548,24 @@ class BaseConnector(ABC):
             'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
             'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE',
             'COPY', 'LOAD', 'SET', 'CALL', 'RENAME',
+            'INTO', 'EXPLAIN', 'VACUUM', 'REINDEX', 'CLUSTER',
+            'COMMENT', 'NOTIFY', 'LISTEN', 'UNLISTEN', 'DO',
+            'PREPARE', 'DEALLOCATE',
         ]
 
         for keyword in dangerous_keywords:
             # Use word boundary regex to match whole words only
             if re.search(rf'\b{keyword}\b', query_clean):
                 raise ValueError(f"Query contains forbidden keyword: {keyword}. Only SELECT queries are allowed.")
+
+        # Block dangerous PostgreSQL functions
+        dangerous_pg_functions = [
+            r'\bpg_sleep\b', r'\bpg_read_file\b', r'\bpg_ls_dir\b',
+            r'\blo_import\b', r'\blo_export\b',
+        ]
+        for pattern in dangerous_pg_functions:
+            if re.search(pattern, query_clean):
+                raise ValueError("Query contains a forbidden database function.")
 
         # Ensure query starts with SELECT or WITH (for CTEs)
         if not re.match(r'^(SELECT|WITH)\b', query_clean):

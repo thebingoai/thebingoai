@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=50_000)
     connection_ids: List[int] = Field(default_factory=list)  # Connections available to orchestrator
     thread_id: Optional[str] = None  # For continuing conversations
 

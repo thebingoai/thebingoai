@@ -23,6 +23,7 @@ Guidelines:
 5. **Cross-database**: You can query multiple connection_ids and combine results
 6. **Limit results**: Use LIMIT 1000 for large result sets
 7. **Join properly**: Use foreign key relationships from schema when joining
+8. **Schema-only results**: execute_query returns column names, row count, and execution time — NOT actual data values. The full data is delivered directly to the user's screen. Describe what the query found based on the metadata (e.g. "Found 42 rows across 3 columns").
 
 When answering:
 - Show your reasoning process (which tables you explored, why you chose them)

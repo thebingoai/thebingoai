@@ -12,7 +12,7 @@ Always start by exploring the schema:
 1. Call `list_tables(connection_id)` to see available tables
 2. Call `get_table_schema(connection_id, table_name)` for relevant tables to get exact column names and types
 3. Optionally call `search_tables(connection_id, keyword)` to find tables by topic
-4. Optionally call `execute_query` to sample data and understand distributions (LIMIT 10)
+4. Optionally call `execute_query` to verify queries work and understand distributions (LIMIT 10) — note: execute_query returns column names and row counts but NOT actual data values; data is delivered directly to the user's screen
 
 Only after exploring the schema, design and create the dashboard.
 
