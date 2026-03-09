@@ -5,6 +5,7 @@ from backend.agents.orchestrator.prompts import build_orchestrator_prompt
 from backend.agents.orchestrator.skill_tools import build_skill_tools
 from backend.agents.orchestrator.soul_tools import build_soul_tools
 from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashboard_tools
+from backend.agents.orchestrator.memory_tools import build_memory_tools
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.context import AgentContext
@@ -59,10 +60,11 @@ def build_orchestrator_tools(
     skill_tools = build_skill_tools(context, db_session_factory)
     soul_tools = build_soul_tools(context, db_session_factory)
     dashboard_tools = build_dashboard_tools(context, db_session_factory)
+    memory_tools = build_memory_tools(context, db_session_factory)
 
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools
-    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + dashboard_tools
+        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools + memory_tools
+    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + dashboard_tools + memory_tools
 
 
 def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
