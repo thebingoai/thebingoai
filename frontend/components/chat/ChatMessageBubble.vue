@@ -88,6 +88,22 @@
         @submit="emit('send-action', $event)"
       />
 
+      <!-- View Dashboard button (dashboard_created) -->
+      <div v-else-if="showActions && actionType === 'dashboard_created'" class="mt-3">
+        <button
+          @click="viewDashboard"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+        >
+          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          View Dashboard
+          <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
       <!-- Proposal action buttons (soul / dashboard plan) -->
       <div v-else-if="showActions" class="mt-3 flex items-center gap-2">
         <UiButton size="sm" variant="primary" @click="emit('send-action', 'yes')">
@@ -103,11 +119,12 @@
 
 <script setup lang="ts">
 import type { Message } from '~/stores/chat'
+import { useDashboardStore } from '~/stores/dashboard'
 
 const props = defineProps<{
   message: Message
   showActions?: boolean
-  actionType?: 'soul' | 'dashboard' | 'dashboard_question' | null
+  actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | null
 }>()
 
 const emit = defineEmits<{
@@ -115,6 +132,7 @@ const emit = defineEmits<{
 }>()
 
 const chatStore = useChatStore()
+const dashboardStore = useDashboardStore()
 
 const hasSteps = computed(() =>
   props.message.role === 'assistant' &&
@@ -128,6 +146,21 @@ const stepCount = computed(() =>
 
 const openReasoning = () => {
   chatStore.openReasoningPanel(props.message.id)
+}
+
+const createdDashboardId = computed<number | null>(() => {
+  for (const step of props.message.agent_steps ?? []) {
+    if (step.tool_name !== 'create_dashboard') continue
+    try {
+      const result = typeof step.content?.result === 'string' ? JSON.parse(step.content.result) : step.content?.result
+      if (result?.success === true) return result.dashboard_id ?? null
+    } catch { continue }
+  }
+  return null
+})
+
+const viewDashboard = async () => {
+  await navigateTo(createdDashboardId.value ? `/dashboard?id=${createdDashboardId.value}` : '/dashboard')
 }
 
 const dashboardQuestion = computed(() => {
