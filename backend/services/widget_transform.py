@@ -43,14 +43,23 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     label_idx = result.columns.index(label_col)
     labels = [_to_json_safe(row[label_idx]) for row in result.rows]
 
+    _PASSTHROUGH_KEYS = {
+        "backgroundColor", "borderColor", "borderWidth", "fill",
+        "tension", "pointRadius",
+    }
+
     datasets = []
     for ds in dataset_cols:
         col = ds["column"]
         col_idx = result.columns.index(col)
-        datasets.append({
+        dataset: Dict[str, Any] = {
             "label": ds.get("label", col),
             "data": [_to_json_safe(row[col_idx]) for row in result.rows],
-        })
+        }
+        for key in _PASSTHROUGH_KEYS:
+            if key in ds:
+                dataset[key] = ds[key]
+        datasets.append(dataset)
 
     return {"data": {"labels": labels, "datasets": datasets}}
 

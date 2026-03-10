@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
 from typing import List, Dict, Any, Callable
+from decimal import Decimal
+from datetime import date, datetime
 from backend.services.schema_discovery import load_schema_file
 from backend.connectors.factory import get_connector
 from backend.database.session import SessionLocal
@@ -194,8 +196,223 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
         finally:
             db.close()
 
+    @tool
+    def profile_table(connection_id: int, table_name: str) -> Dict[str, Any]:
+        """
+        Profile a table's data distribution. Returns summary statistics for each column
+        to inform dashboard design decisions. Call this before designing KPIs, charts,
+        or filters — it reveals which columns have useful cardinality, numeric ranges,
+        and date spans so you can make data-informed visualization choices.
+
+        Args:
+            connection_id: Database connection ID
+            table_name: Name of the table to profile
+
+        Returns:
+            Dict with row_count and per-column statistics (min/max/avg for numeric,
+            min/max for date, distinct_count + top_values for categorical)
+        """
+        if not context.can_access_connection(connection_id):
+            return {"error": f"Connection {connection_id} not authorized or not available"}
+
+        def _safe(val: Any) -> Any:
+            if isinstance(val, Decimal):
+                return float(val)
+            if isinstance(val, (datetime, date)):
+                return val.isoformat()
+            return val
+
+        try:
+            schema_json = load_schema_file(connection_id)
+        except FileNotFoundError:
+            return {"error": f"Schema not cached for connection {connection_id}. Run schema discovery first."}
+
+        # Find the table across all schemas
+        found_schema = None
+        table_data = None
+        for schema_name, schema_data in schema_json.get("schemas", {}).items():
+            if table_name in schema_data.get("tables", {}):
+                found_schema = schema_name
+                table_data = schema_data["tables"][table_name]
+                break
+
+        if table_data is None:
+            return {"error": f"Table '{table_name}' not found in schema cache."}
+
+        row_count = table_data.get("row_count", 0)
+        all_columns = table_data.get("columns", [])[:30]  # cap at 30 columns
+
+        NUMERIC_TYPES = {
+            "integer", "bigint", "smallint", "numeric", "decimal", "real",
+            "double precision", "float", "int", "tinyint", "mediumint",
+            "float4", "float8", "int2", "int4", "int8", "serial", "bigserial",
+        }
+        DATE_TYPES = {
+            "date", "timestamp", "timestamp without time zone",
+            "timestamp with time zone", "datetime", "timestamptz",
+        }
+
+        numeric_cols, date_cols, text_cols = [], [], []
+        for col in all_columns:
+            col_type = col.get("type", "").split("(")[0].strip().lower()
+            if col_type in NUMERIC_TYPES:
+                numeric_cols.append(col["name"])
+            elif col_type in DATE_TYPES:
+                date_cols.append(col["name"])
+            else:
+                text_cols.append(col["name"])
+
+        db = SessionLocal()
+        try:
+            connection = db.query(DatabaseConnection).filter(
+                DatabaseConnection.id == connection_id,
+                DatabaseConnection.user_id == context.user_id,
+            ).first()
+
+            if not connection:
+                return {"error": "Connection not found"}
+
+            db_type = connection.db_type.lower()
+
+            def q(name: str) -> str:
+                return f"`{name}`" if db_type == "mysql" else f'"{name}"'
+
+            qualified_table = f"{q(found_schema)}.{q(table_name)}"
+            result_columns: Dict[str, Any] = {}
+
+            with get_connector(
+                db_type=connection.db_type,
+                host=connection.host,
+                port=connection.port,
+                database=connection.database,
+                username=connection.username,
+                password=connection.password,
+                ssl_enabled=connection.ssl_enabled,
+                ssl_ca_cert=connection.ssl_ca_cert,
+            ) as connector:
+
+                # Query A: Numeric stats (min/max/avg/null_count per column)
+                if numeric_cols:
+                    try:
+                        parts = []
+                        for col in numeric_cols:
+                            qc = q(col)
+                            parts += [
+                                f"MIN({qc})",
+                                f"MAX({qc})",
+                                f"AVG({qc})",
+                                f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END)",
+                            ]
+                        res = connector.execute_query(
+                            f"SELECT {', '.join(parts)} FROM {qualified_table}"
+                        )
+                        if res.rows:
+                            row = res.rows[0]
+                            for i, col in enumerate(numeric_cols):
+                                b = i * 4
+                                result_columns[col] = {
+                                    "type": "numeric",
+                                    "min": _safe(row[b]),
+                                    "max": _safe(row[b + 1]),
+                                    "avg": _safe(row[b + 2]),
+                                    "null_count": _safe(row[b + 3]),
+                                }
+                    except Exception as e:
+                        logger.warning(f"profile_table numeric stats failed for {table_name}: {e}")
+                        for col in numeric_cols:
+                            result_columns[col] = {"type": "numeric", "error": str(e)}
+
+                # Query B: Date stats (min/max/null_count per column)
+                if date_cols:
+                    try:
+                        parts = []
+                        for col in date_cols:
+                            qc = q(col)
+                            parts += [
+                                f"MIN({qc})",
+                                f"MAX({qc})",
+                                f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END)",
+                            ]
+                        res = connector.execute_query(
+                            f"SELECT {', '.join(parts)} FROM {qualified_table}"
+                        )
+                        if res.rows:
+                            row = res.rows[0]
+                            for i, col in enumerate(date_cols):
+                                b = i * 3
+                                result_columns[col] = {
+                                    "type": "date",
+                                    "min": _safe(row[b]),
+                                    "max": _safe(row[b + 1]),
+                                    "null_count": _safe(row[b + 2]),
+                                }
+                    except Exception as e:
+                        logger.warning(f"profile_table date stats failed for {table_name}: {e}")
+                        for col in date_cols:
+                            result_columns[col] = {"type": "date", "error": str(e)}
+
+                # Query C: Categorical distinct counts (run before D — D is conditional on this)
+                distinct_counts: Dict[str, int] = {}
+                if text_cols:
+                    try:
+                        parts = []
+                        for col in text_cols:
+                            qc = q(col)
+                            parts += [
+                                f"COUNT(DISTINCT {qc})",
+                                f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END)",
+                            ]
+                        res = connector.execute_query(
+                            f"SELECT {', '.join(parts)} FROM {qualified_table}"
+                        )
+                        if res.rows:
+                            row = res.rows[0]
+                            for i, col in enumerate(text_cols):
+                                b = i * 2
+                                d_count = int(row[b]) if row[b] is not None else 0
+                                distinct_counts[col] = d_count
+                                result_columns[col] = {
+                                    "type": "categorical",
+                                    "distinct_count": d_count,
+                                    "null_count": _safe(row[b + 1]),
+                                }
+                    except Exception as e:
+                        logger.warning(f"profile_table categorical stats failed for {table_name}: {e}")
+                        for col in text_cols:
+                            result_columns[col] = {"type": "categorical", "error": str(e)}
+
+                # Query D: Top 5 values per categorical column (only if distinct_count <= 100)
+                for col in text_cols:
+                    d_count = distinct_counts.get(col, 0)
+                    if d_count == 0 or d_count > 100:
+                        continue
+                    try:
+                        qc = q(col)
+                        res = connector.execute_query(
+                            f"SELECT {qc}, COUNT(*) FROM {qualified_table} "
+                            f"WHERE {qc} IS NOT NULL "
+                            f"GROUP BY {qc} ORDER BY 2 DESC LIMIT 5"
+                        )
+                        top_values = [_safe(row[0]) for row in res.rows]
+                        if col in result_columns:
+                            result_columns[col]["top_values"] = top_values
+                    except Exception as e:
+                        logger.warning(f"profile_table top values failed for {table_name}.{col}: {e}")
+
+            return {
+                "table_name": table_name,
+                "row_count": row_count,
+                "columns": result_columns,
+            }
+
+        except Exception as e:
+            logger.error(f"profile_table failed for {table_name}: {e}")
+            return {"error": str(e)}
+        finally:
+            db.close()
+
     # Return list of tools with captured context
-    return [list_tables, get_table_schema, search_tables, execute_query]
+    return [list_tables, get_table_schema, search_tables, execute_query, profile_table]
 
 
 # ---------------------------------------------------------------------------
@@ -225,3 +442,9 @@ def build_execute_query_tool(context: AgentContext) -> List:
     """Return [execute_query] tool bound to *context*."""
     tools = build_data_agent_tools(context)
     return [t for t in tools if t.name == "execute_query"]
+
+
+def build_profile_table_tool(context: AgentContext) -> List:
+    """Return [profile_table] tool bound to *context*."""
+    tools = build_data_agent_tools(context)
+    return [t for t in tools if t.name == "profile_table"]

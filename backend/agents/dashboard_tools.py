@@ -541,7 +541,9 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
 
                 Per-type config fields (non-data fields only — data is auto-populated from dataSource):
                 - kpi: label (string, required), prefix (optional), suffix (optional)
-                - chart: type ("bar"|"line"|"pie"|"doughnut"|"area"), title (optional)
+                - chart: type ("bar"|"line"|"pie"|"doughnut"|"area"|"scatter"), title (optional),
+                    options (optional): {stacked, indexAxis, showValues, showLegend, legendPosition,
+                    showGrid, sortBy, sortDirection}
                 - table: columns: [{key, label, sortable?}] (defines headers; rows are auto-populated)
                 - text: content (markdown string), alignment (optional)
                 - filter: controls: [{type, label, key, column (required), optionsSource: {connectionId, sql} for dropdown}]
