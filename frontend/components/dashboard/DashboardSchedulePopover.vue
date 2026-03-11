@@ -5,8 +5,8 @@
       class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors"
       :class="[
         hasSchedule
-          ? 'bg-violet-500/15 text-violet-400 hover:bg-violet-500/25'
-          : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80'
+          ? 'bg-violet-50 text-violet-600 hover:bg-violet-100'
+          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
       ]"
       :title="hasSchedule ? `Refreshes ${currentLabel}` : 'Set refresh schedule'"
     >
@@ -21,11 +21,11 @@
     <Transition name="popover">
       <div
         v-if="open"
-        class="absolute right-0 top-full mt-2 w-72 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl z-50 p-4 space-y-4"
+        class="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-4 space-y-4"
       >
         <div class="flex items-center justify-between">
-          <span class="text-sm font-medium text-white">Refresh Schedule</span>
-          <button @click="open = false" class="text-white/40 hover:text-white/70 transition-colors">
+          <span class="text-sm font-medium text-gray-900">Refresh Schedule</span>
+          <button @click="open = false" class="text-gray-400 hover:text-gray-600 transition-colors">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -33,27 +33,27 @@
         </div>
 
         <!-- Current status -->
-        <div v-if="hasSchedule" class="bg-white/5 rounded-lg p-3 space-y-1.5">
+        <div v-if="hasSchedule" class="bg-gray-50 rounded-lg p-3 space-y-1.5">
           <div class="flex items-center justify-between">
-            <span class="text-xs text-white/50">Schedule</span>
-            <span class="text-xs font-medium text-violet-400">{{ currentLabel }}</span>
+            <span class="text-xs text-gray-500">Schedule</span>
+            <span class="text-xs font-medium text-violet-600">{{ currentLabel }}</span>
           </div>
           <div v-if="dashboard?.next_run_at" class="flex items-center justify-between">
-            <span class="text-xs text-white/50">Next refresh</span>
-            <span class="text-xs text-white/70">{{ formatRelative(dashboard.next_run_at) }}</span>
+            <span class="text-xs text-gray-500">Next refresh</span>
+            <span class="text-xs text-gray-700">{{ formatRelative(dashboard.next_run_at) }}</span>
           </div>
           <div v-if="dashboard?.last_run_at" class="flex items-center justify-between">
-            <span class="text-xs text-white/50">Last refresh</span>
-            <span class="text-xs text-white/70">{{ formatRelative(dashboard.last_run_at) }}</span>
+            <span class="text-xs text-gray-500">Last refresh</span>
+            <span class="text-xs text-gray-700">{{ formatRelative(dashboard.last_run_at) }}</span>
           </div>
           <!-- Active toggle -->
           <div class="flex items-center justify-between pt-1">
-            <span class="text-xs text-white/50">Active</span>
+            <span class="text-xs text-gray-500">Active</span>
             <button
               @click="handleToggle"
               :disabled="toggling"
               class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none"
-              :class="dashboard?.schedule_active ? 'bg-violet-500' : 'bg-white/10'"
+              :class="dashboard?.schedule_active ? 'bg-violet-500' : 'bg-gray-200'"
             >
               <span
                 class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
@@ -65,7 +65,7 @@
 
         <!-- Preset selector -->
         <div class="space-y-2">
-          <label class="text-xs text-white/50">Refresh every</label>
+          <label class="text-xs text-gray-500">Refresh every</label>
           <div class="grid grid-cols-4 gap-1.5">
             <button
               v-for="preset in PRESETS"
@@ -75,7 +75,7 @@
               :class="[
                 selectedPreset === preset.value && scheduleMode === 'preset'
                   ? 'bg-violet-500 text-white'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               ]"
             >
               {{ preset.label }}
@@ -85,13 +85,13 @@
 
         <!-- Custom cron -->
         <div class="space-y-1.5">
-          <label class="text-xs text-white/50">Custom cron expression</label>
+          <label class="text-xs text-gray-500">Custom cron expression</label>
           <div class="flex gap-2">
             <input
               v-model="customCron"
               @focus="scheduleMode = 'cron'"
               placeholder="*/30 * * * *"
-              class="flex-1 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50"
+              class="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-violet-500"
             />
           </div>
           <p v-if="cronError" class="text-xs text-red-400">{{ cronError }}</p>
@@ -109,7 +109,7 @@
           <button
             @click="handleTrigger"
             :disabled="triggering"
-            class="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40 transition-colors"
+            class="px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 transition-colors"
             title="Run now"
           >
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -120,7 +120,7 @@
             v-if="hasSchedule"
             @click="handleRemove"
             :disabled="removing"
-            class="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-red-400/70 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40 transition-colors"
+            class="px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
             title="Remove schedule"
           >
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
