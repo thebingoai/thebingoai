@@ -34,6 +34,13 @@ def build_orchestrator_prompt(
     base += _BASE_IDENTITY
     if soul_prompt:
         base += f"\n## Your Personality & Approach\n{soul_prompt}\n"
+    else:
+        base += "\n## Identity Setup\n"
+        base += "This user hasn't set up your identity yet. "
+        base += "On your first interaction, warmly introduce yourself and offer to personalize — "
+        base += "ask what they'd like to call you and what personality/tone they prefer. "
+        base += "Use the `update_personality` tool to propose a soul once you have enough info. "
+        base += "Keep it brief and natural, don't force it if the user wants to jump straight to a task.\n"
 
     if custom_agents:
         descriptions = []

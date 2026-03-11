@@ -74,7 +74,7 @@
     </div>
 
     <!-- Right-side vertical tabs -->
-    <div class="flex w-14 flex-shrink-0 flex-col border-l border-gray-200 bg-white py-3">
+    <div v-if="!store.currentDashboard" class="flex w-14 flex-shrink-0 flex-col border-l border-gray-200 bg-white py-3">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -103,9 +103,15 @@ import type { DashboardWidget } from '~/types/dashboard'
 import DashboardWidgetEditor from '~/components/dashboard/editors/DashboardWidgetEditor.vue'
 
 const store = useDashboardStore()
+const route = useRoute()
 
-onMounted(() => {
-  store.fetchDashboards()
+onMounted(async () => {
+  await store.fetchDashboards()
+  const idParam = route.query.id
+  if (idParam) {
+    const id = Number(idParam)
+    if (!isNaN(id)) store.openDashboard(id)
+  }
 })
 
 const sqlEditorWidget = ref<DashboardWidget | null>(null)
