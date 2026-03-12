@@ -37,7 +37,32 @@
         </UiButton>
       </form>
 
-      <p class="mt-6 text-center text-sm text-gray-500">
+      <div class="relative my-6">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-gray-200"></div>
+        </div>
+        <div class="relative flex justify-center text-sm">
+          <span class="px-2 bg-white text-gray-500">or</span>
+        </div>
+      </div>
+
+      <UiButton
+        type="button"
+        variant="secondary"
+        :disabled="loading"
+        full-width
+        @click="handleGoogleLogin"
+      >
+        Continue with Google
+      </UiButton>
+
+      <div class="mt-4 text-center">
+        <NuxtLink to="/auth/forgot-password" class="text-sm text-gray-500 hover:underline">
+          Forgot password?
+        </NuxtLink>
+      </div>
+
+      <p class="mt-4 text-center text-sm text-gray-500">
         Don't have an account?
         <NuxtLink to="/register" class="text-gray-900 hover:underline font-light">Sign up</NuxtLink>
       </p>
@@ -51,25 +76,18 @@ const router = useRouter()
 
 const email = ref('')
 const password = ref('')
-const loading = ref(false)
-const error = ref('')
+const loading = computed(() => authStore.loading)
+const error = computed(() => authStore.error)
 
 async function handleLogin() {
-  loading.value = true
-  error.value = ''
-
-  const result = await authStore.login({
-    email: email.value,
-    password: password.value
-  })
-
+  const result = await authStore.login({ email: email.value, password: password.value })
   if (result.success) {
     router.push('/chat')
-  } else {
-    error.value = result.error || 'Login failed'
   }
+}
 
-  loading.value = false
+function handleGoogleLogin() {
+  authStore.loginWithGoogle()
 }
 
 definePageMeta({

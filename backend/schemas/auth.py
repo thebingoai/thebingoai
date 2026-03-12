@@ -1,14 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+from pydantic import BaseModel
 
 
 class TokenResponse(BaseModel):
@@ -17,5 +7,11 @@ class TokenResponse(BaseModel):
     expires_in: int  # Seconds until expiration
 
 
-class RefreshTokenRequest(BaseModel):
+class SSOLogoutRequest(BaseModel):
     refresh_token: str
+
+
+class SSOConfigResponse(BaseModel):
+    sso_base_url: str
+    publishable_key: str
+    google_oauth_url: str

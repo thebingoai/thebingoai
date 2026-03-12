@@ -2,6 +2,7 @@ import { useAuthStore } from '~/stores/auth'
 
 export const useApi = () => {
   const authStore = useAuthStore()
+  const router = useRouter()
 
   const getHeaders = () => {
     const headers: Record<string, string> = {
@@ -15,14 +16,47 @@ export const useApi = () => {
     return headers
   }
 
+  const fetchWithRefresh = async <T>(url: string, options: Parameters<typeof $fetch>[1] = {}): Promise<T> => {
+    try {
+      return await $fetch<T>(url, {
+        ...options,
+        headers: {
+          ...getHeaders(),
+          ...(options.headers as Record<string, string> || {}),
+        },
+      })
+    } catch (error: any) {
+      if (error?.statusCode === 401 || error?.status === 401) {
+        const refreshed = await authStore.refreshAccessToken()
+        if (refreshed) {
+          // Retry with new token
+          return await $fetch<T>(url, {
+            ...options,
+            headers: {
+              ...getHeaders(),
+              ...(options.headers as Record<string, string> || {}),
+            },
+          })
+        } else {
+          // Refresh failed - logout and redirect
+          await authStore.logout()
+          await router.push('/login')
+          throw error
+        }
+      }
+      throw error
+    }
+  }
+
   return {
+    fetchWithRefresh,
     // Auth endpoints
     auth: {
       async login(email: string, password: string) {
         return authStore.login({ email, password })
       },
       async register(email: string, password: string) {
-        return authStore.register({ email, password })
+        return authStore.register(email, password)
       },
       async logout() {
         authStore.logout()

@@ -19,8 +19,8 @@ def validate_config():
     if not settings.database_url:
         errors.append("DATABASE_URL not set")
 
-    if settings.jwt_secret_key == "your-secret-key-change-in-production":
-        warnings.append("JWT_SECRET_KEY still using default value (change for production!)")
+    if not settings.sso_secret_key:
+        warnings.append("SSO_SECRET_KEY not set (required for SSO authentication)")
 
     if not settings.openai_api_key:
         warnings.append("OPENAI_API_KEY not set (required for OpenAI features)")

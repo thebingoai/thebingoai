@@ -1,107 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database.session import get_db
-from backend.models.user import User
-from backend.models.team_membership import TeamMembership, MemberRole
-from backend.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
-from backend.schemas.user import UserResponse
-from backend.auth.password import hash_password, verify_password
-from backend.auth.jwt import create_access_token
 from backend.auth.dependencies import get_current_user
-from backend.auth.rate_limit import auth_rate_limit
+from backend.services import sso_client
+from backend.schemas.auth import SSOLogoutRequest, SSOConfigResponse
+from backend.schemas.user import UserResponse
+from backend.models.user import User
 from backend.config import settings
-
-DEFAULT_ORG_ID = 'org-default-00000000-0000-0000-0000'
-DEFAULT_TEAM_ID = 'team-default-00000000-0000-0000-0000'
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer()
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(
-    request: RegisterRequest,
-    db: Session = Depends(get_db),
-    _: None = Depends(auth_rate_limit)
-):
+@router.get("/sso/config", response_model=SSOConfigResponse)
+async def get_sso_config():
     """
-    Register a new user and return access token.
+    Get SSO configuration for the frontend.
 
-    - **email**: Valid email address (must be unique)
-    - **password**: Minimum 8 characters
+    Returns the SSO base URL, publishable key, and OAuth URLs.
+    Public endpoint - no authentication required.
     """
-    # Check if user already exists
-    existing_user = db.query(User).filter(User.email == request.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    # Create new user
-    hashed = hash_password(request.password)
-    user = User(email=request.email, hashed_password=hashed)
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    # Assign to default org and team (governance only)
-    if settings.enable_governance:
-        user.org_id = DEFAULT_ORG_ID
-        membership = TeamMembership(
-            user_id=user.id,
-            team_id=DEFAULT_TEAM_ID,
-            role=MemberRole.MEMBER,
-        )
-        db.add(membership)
-        db.commit()
-
-    # Create JWT token
-    access_token = create_access_token(data={"sub": user.id})
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=settings.jwt_expiration_minutes * 60
-    )
-
-
-@router.post("/login", response_model=TokenResponse)
-async def login(
-    request: LoginRequest,
-    db: Session = Depends(get_db),
-    _: None = Depends(auth_rate_limit)
-):
-    """
-    Login and receive JWT access token.
-
-    - **email**: Registered email address
-    - **password**: User password
-    """
-    # Find user
-    user = db.query(User).filter(User.email == request.email).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
-        )
-
-    # Verify password
-    if not verify_password(request.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
-        )
-
-    # Create JWT token
-    access_token = create_access_token(data={"sub": user.id})
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=settings.jwt_expiration_minutes * 60  # Convert to seconds
+    return SSOConfigResponse(
+        sso_base_url=settings.sso_base_url,
+        publishable_key=settings.sso_publishable_key,
+        google_oauth_url=f"{settings.sso_base_url}/api/v1/oauth/google",
     )
 
 
@@ -117,20 +40,22 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 @router.post("/logout")
 async def logout(
+    request: SSOLogoutRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Logout endpoint - revokes the current token.
+    Logout: blacklist the refresh token on SSO and invalidate local cache.
 
     Requires: Bearer token in Authorization header
-
-    The token is added to a Redis blacklist for the remainder of its lifetime.
-    Client should also discard the token.
+    Body: { "refresh_token": "..." }
     """
-    from backend.auth.token_revocation import revoke_token
+    access_token = credentials.credentials
 
-    token = credentials.credentials
-    revoke_token(token)
+    # Invalidate the SSO token cache
+    await sso_client.invalidate_token_cache(access_token)
 
-    return {"message": "Logged out successfully. Token has been revoked."}
+    # Tell SSO to blacklist the refresh token
+    await sso_client.logout(request.refresh_token)
+
+    return {"message": "Logged out successfully"}

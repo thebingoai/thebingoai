@@ -37,6 +37,25 @@
         </UiButton>
       </form>
 
+      <div class="relative my-6">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-gray-200"></div>
+        </div>
+        <div class="relative flex justify-center text-sm">
+          <span class="px-2 bg-white text-gray-500">or</span>
+        </div>
+      </div>
+
+      <UiButton
+        type="button"
+        variant="secondary"
+        :disabled="loading"
+        full-width
+        @click="handleGoogleSignup"
+      >
+        Continue with Google
+      </UiButton>
+
       <p class="mt-6 text-center text-sm text-gray-500">
         Already have an account?
         <NuxtLink to="/login" class="text-gray-900 hover:underline font-light">Sign in</NuxtLink>
@@ -51,25 +70,18 @@ const router = useRouter()
 
 const email = ref('')
 const password = ref('')
-const loading = ref(false)
-const error = ref('')
+const loading = computed(() => authStore.loading)
+const error = computed(() => authStore.error)
 
 async function handleRegister() {
-  loading.value = true
-  error.value = ''
-
-  const result = await authStore.register({
-    email: email.value,
-    password: password.value
-  })
-
+  const result = await authStore.register(email.value, password.value)
   if (result.success) {
-    router.push('/chat')
-  } else {
-    error.value = result.error || 'Registration failed'
+    router.push('/auth/verify')
   }
+}
 
-  loading.value = false
+function handleGoogleSignup() {
+  authStore.loginWithGoogle()
 }
 
 definePageMeta({

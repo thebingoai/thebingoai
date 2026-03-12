@@ -1,12 +1,10 @@
-from backend.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, RefreshTokenRequest
-from backend.schemas.user import UserBase, UserCreate, UserResponse
+from backend.schemas.auth import TokenResponse, SSOLogoutRequest, SSOConfigResponse
+from backend.schemas.user import UserBase, UserResponse
 
 __all__ = [
-    "RegisterRequest",
-    "LoginRequest",
     "TokenResponse",
-    "RefreshTokenRequest",
+    "SSOLogoutRequest",
+    "SSOConfigResponse",
     "UserBase",
-    "UserCreate",
     "UserResponse",
 ]

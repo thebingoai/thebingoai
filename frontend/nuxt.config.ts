@@ -34,7 +34,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
+      ssoBaseUrl: 'https://sso.thelead.io',  // overridable via NUXT_PUBLIC_SSO_BASE_URL at runtime
     }
   },
 
@@ -45,6 +46,11 @@ export default defineNuxtConfig({
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }
+      }
+    },
+    '/sso-api/**': {
+      proxy: {
+        to: 'https://sso.thelead.io/api/v1/**'
       }
     }
   },

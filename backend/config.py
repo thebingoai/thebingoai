@@ -60,12 +60,7 @@ class Settings(BaseSettings):
     # Schema storage
     schemas_dir: str = "data/schemas"
 
-    # JWT Authentication
-    jwt_secret_key: str = "your-secret-key-change-in-production"
-    jwt_algorithm: str = "HS256"
-    jwt_expiration_minutes: int = 1440  # 24 hours
-
-    # Database password encryption
+# Database password encryption
     # Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
     db_encryption_key: str = "REPLACE_WITH_FERNET_KEY_44_CHARS"
 
@@ -99,6 +94,14 @@ class Settings(BaseSettings):
     max_query_rows: int = 5000
     query_timeout_ms: int = 30000
 
+    # SSO Authentication
+    sso_base_url: str = "https://sso.thelead.io"
+    sso_publishable_key: str = ""      # pk_* key for frontend
+    sso_secret_key: str = ""           # sk_* key for backend
+    sso_token_cache_ttl: int = 300     # seconds (5 min)
+    sso_webhook_secret: str = ""       # webhook signature verification
+    sso_redis_url: str = "redis://localhost:6379/3"  # DB 3: SSO token cache
+
     # Feature flags
     enable_governance: bool = True
 
@@ -116,25 +119,6 @@ class Settings(BaseSettings):
             raise ValueError("provider must be openai, anthropic, or ollama")
         return v
 
-    @field_validator("jwt_secret_key")
-    @classmethod
-    def validate_jwt_secret(cls, v):
-        """Prevent use of insecure default JWT secret."""
-        insecure_defaults = [
-            "your-secret-key-change-in-production",
-            "secret",
-            "changeme",
-            "test",
-            "dev",
-            "default"
-        ]
-        if v.lower() in insecure_defaults or len(v) < 32:
-            raise ValueError(
-                "JWT_SECRET_KEY must be at least 32 characters and cannot be a common default. "
-                "Generate a secure secret with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-            )
-        return v
-
     @field_validator("db_encryption_key")
     @classmethod
     def validate_encryption_key(cls, v):
@@ -149,6 +133,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Ignore unknown env vars (e.g. JWT_SECRET_KEY from old .env files)
 
 # Singleton instance
 settings = Settings()

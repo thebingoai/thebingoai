@@ -1,7 +1,9 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
 
-  const publicRoutes = ['/login', '/register']
+  const publicRoutes = ['/login', '/register', '/auth/verify', '/auth/success', '/auth/error', '/auth/forgot-password', '/auth/reset-password']
+  // OAuth callback routes must not redirect authenticated users — tokens are being exchanged
+  const oauthCallbackRoutes = ['/auth/success', '/auth/error']
 
   // Load token and user from localStorage if not already loaded
   if (process.client) {
@@ -23,8 +25,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/login')
   }
 
-  // Redirect to chat if already authenticated
-  if (authStore.isAuthenticated && publicRoutes.includes(to.path)) {
+  // Redirect to chat if already authenticated (but not on OAuth callback routes)
+  if (authStore.isAuthenticated && publicRoutes.includes(to.path) && !oauthCallbackRoutes.includes(to.path)) {
     return navigateTo('/chat')
   }
 })

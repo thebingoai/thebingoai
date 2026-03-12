@@ -8,8 +8,6 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-from backend.auth.jwt import decode_access_token
-from backend.auth.token_revocation import is_token_revoked
 from backend.database.session import SessionLocal
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
@@ -48,19 +46,36 @@ async def _generate_title(user_message: str, assistant_response: str) -> str:
     return title or "Untitled"
 
 
-def _get_user_from_token(token: str) -> Optional[User]:
-    """Validate JWT and return User, or None on failure."""
-    if is_token_revoked(token):
+async def _get_user_from_token(token: str) -> Optional[User]:
+    """Validate SSO token and return User, or None on failure."""
+    from backend.services.sso_client import validate_token as sso_validate_token
+
+    sso_user = await sso_validate_token(token)
+    if sso_user is None or not sso_user.is_active or not sso_user.is_verified:
         return None
-    payload = decode_access_token(token)
-    if not payload:
-        return None
-    user_id = payload.get("sub")
-    if not user_id:
-        return None
+
+    from backend.auth.dependencies import _create_user
+    from fastapi import HTTPException
+
     db = SessionLocal()
     try:
-        return db.query(User).filter(User.id == user_id).first()
+        # Look up by sso_id first, then email
+        user = db.query(User).filter(User.sso_id == sso_user.id).first()
+        if user is None:
+            user = db.query(User).filter(User.email == sso_user.email).first()
+            if user is not None:
+                # Link existing user to SSO
+                user.sso_id = sso_user.id
+                user.auth_provider = "sso"
+                db.commit()
+                db.refresh(user)
+            else:
+                try:
+                    # Auto-create new user (same as REST API path)
+                    user = _create_user(db, sso_user)
+                except HTTPException:
+                    return None
+        return user
     finally:
         db.close()
 
@@ -223,7 +238,7 @@ async def websocket_endpoint(ws: WebSocket):
         await ws.close(code=4001, reason="Missing token")
         return
 
-    user = _get_user_from_token(token)
+    user = await _get_user_from_token(token)
     if not user:
         await ws.close(code=4003, reason="Unauthorized")
         return
