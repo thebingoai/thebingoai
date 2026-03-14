@@ -1,0 +1,185 @@
+name: llm-cli-production
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: llm-cli-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-llm_cli}
+      POSTGRES_USER: ${POSTGRES_USER:-llm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-llm_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: llm-md-redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - backend
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: llm-cli-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/tcp/localhost/6333' 2>/dev/null && exit 0 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
+
+  backend:
+    build:
+      context: ../../
+      dockerfile: docker/backend/Dockerfile
+    container_name: llm-md-backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-llm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-llm_cli}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_URL=redis://redis:6379/2
+      - SSO_REDIS_URL=redis://redis:6379/3
+      - QDRANT_URL=http://qdrant:6333
+    env_file:
+      - ../../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  celery-worker:
+    build:
+      context: ../../
+      dockerfile: docker/backend/Dockerfile
+    command: celery -A backend.tasks.upload_tasks worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-llm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-llm_cli}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_URL=redis://redis:6379/2
+      - QDRANT_URL=http://qdrant:6333
+    env_file:
+      - ../../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    restart: unless-stopped
+    networks:
+      - backend
+
+  celery-beat:
+    build:
+      context: ../../
+      dockerfile: docker/backend/Dockerfile
+    command: celery -A backend.tasks.upload_tasks beat --loglevel=info
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_URL=redis://redis:6379/2
+    env_file:
+      - ../../.env
+    depends_on:
+      - redis
+      - backend
+    restart: unless-stopped
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: ../../frontend
+      # dockerfile path is relative to the build context (../../frontend)
+      dockerfile: ../docker/frontend/Dockerfile.prod
+      args:
+        - NUXT_PUBLIC_API_BASE_URL=${NUXT_PUBLIC_API_BASE_URL:-/api}
+    volumes:
+      - frontend_static:/frontend_static
+    # This service exits after copying static files to the volume
+    restart: "no"
+    networks:
+      - frontend
+
+  nginx:
+    image: nginx:alpine
+    container_name: llm-md-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - frontend_static:/usr/share/nginx/html:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    # Renews certificates every 12 hours (certbot only acts when < 30 days remain)
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - frontend
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  frontend_static:
+  certbot_www:
+  certbot_certs:
+
+networks:
+  backend:
+  frontend:

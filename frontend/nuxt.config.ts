@@ -42,7 +42,9 @@ export default defineNuxtConfig({
   routeRules: {
     '/api/**': {
       proxy: {
-        to: 'http://localhost:8000/api/**',
+        // In Docker: BACKEND_INTERNAL_URL=http://backend:8000 (set in docker-compose)
+        // Native dev: falls back to http://localhost:8000
+        to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/**`,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }

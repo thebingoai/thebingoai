@@ -1,0 +1,8 @@
+FROM node:20-alpine
+WORKDIR /app
+
+EXPOSE 3000
+ENV NODE_ENV=development
+
+# Install dependencies at runtime to pick up package.json from volume mount
+CMD ["sh", "-c", "npm install && npm run dev"]

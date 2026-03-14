@@ -1,0 +1,20 @@
+# Stage 1: Build static SPA assets
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+COPY . .
+
+# API base URL in the browser — defaults to /api (nginx proxies it)
+ARG NUXT_PUBLIC_API_BASE_URL=/api
+ENV NUXT_PUBLIC_API_BASE_URL=$NUXT_PUBLIC_API_BASE_URL
+
+RUN npm run generate
+
+# Stage 2: Minimal image that copies static files to a shared volume at runtime
+FROM alpine:3.19
+COPY --from=builder /app/.output/public /static
+# Entrypoint copies static files to the volume mount (/frontend_static) then exits
+CMD ["sh", "-c", "cp -r /static/. /frontend_static/ && echo 'Frontend static files ready'"]

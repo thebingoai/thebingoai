@@ -1,3 +1,5 @@
+name: llm-cli-local
+
 services:
   postgres:
     image: postgres:15-alpine
@@ -47,8 +49,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: docker/backend/Dockerfile
     container_name: llm-md-backend
     ports:
       - "8000:8000"
@@ -60,7 +62,7 @@ services:
       - SSO_REDIS_URL=redis://redis:6379/3
       - QDRANT_URL=http://qdrant:6333
     env_file:
-      - .env
+      - ../../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,9 +71,9 @@ services:
       qdrant:
         condition: service_healthy
     volumes:
-      - ./backend:/app/backend
-      - ./alembic:/app/alembic
-      - ./data:/app/data
+      - ../../backend:/app/backend
+      - ../../alembic:/app/alembic
+      - ../../data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -81,8 +83,8 @@ services:
 
   celery-worker:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: docker/backend/Dockerfile
     container_name: llm-md-celery
     command: celery -A backend.tasks.upload_tasks worker --loglevel=info
     environment:
@@ -92,7 +94,7 @@ services:
       - CELERY_RESULT_URL=redis://redis:6379/2
       - QDRANT_URL=http://qdrant:6333
     env_file:
-      - .env
+      - ../../.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,28 +105,58 @@ services:
       backend:
         condition: service_started
     volumes:
-      - ./backend:/app/backend
-      - ./alembic:/app/alembic
-      - ./data:/app/data
+      - ../../backend:/app/backend
+      - ../../alembic:/app/alembic
+      - ../../data:/app/data
 
   celery-beat:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: docker/backend/Dockerfile
     container_name: llm-md-celery-beat
     command: celery -A backend.tasks.upload_tasks beat --loglevel=info
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_URL=redis://redis:6379/2
     env_file:
-      - .env
+      - ../../.env
     depends_on:
       - redis
       - backend
     volumes:
-      - ./backend:/app/backend
+      - ../../backend:/app/backend
+
+  frontend:
+    build:
+      context: ../../frontend
+      # dockerfile path is relative to the build context (../../frontend)
+      dockerfile: ../docker/frontend/Dockerfile.dev
+    container_name: llm-md-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Nuxt dev server listens on all interfaces inside the container
+      - NUXT_HOST=0.0.0.0
+      - NITRO_HOST=0.0.0.0
+      # Internal proxy target: Nuxt dev server proxies /api/** to the backend service
+      - BACKEND_INTERNAL_URL=http://backend:8000
+      # Public API URL: used by the browser (must be reachable from the host)
+      - NUXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      # Bind-mount source for hot-reload
+      - ../../frontend:/app
+      # Named volumes keep container-internal directories separate from the host bind-mount:
+      # - node_modules: avoids host/container OS/arch mismatch
+      # - .nuxt: avoids conflicts between host and container Nuxt build caches
+      - frontend_node_modules:/app/node_modules
+      - frontend_nuxt:/app/.nuxt
 
 volumes:
   postgres_data:
   redis_data:
   qdrant_data:
+  frontend_node_modules:
+  frontend_nuxt:
