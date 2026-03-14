@@ -7,7 +7,7 @@ from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.parser.markdown import chunk_markdown, count_tokens
 from backend.embedder.openai import embed_batch
-from backend.vectordb.pinecone import upsert_vectors
+from backend.vectordb.qdrant import upsert_vectors
 from backend.services.job_store import create_job
 from backend.tasks.upload_tasks import process_upload_async
 from backend.models.responses import UploadResponse

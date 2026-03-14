@@ -8,7 +8,7 @@ from typing import Optional
 from backend.config import settings
 from backend.parser.markdown import chunk_markdown, count_tokens
 from backend.embedder.openai import embed_batch_sync
-from backend.vectordb.pinecone import upsert_vectors_sync
+from backend.vectordb.qdrant import upsert_vectors_sync
 from backend.services.job_store import (
     start_job, update_progress, complete_job, fail_job
 )
@@ -114,8 +114,8 @@ def process_upload_async(
 
         update_progress(job_id, chunks_processed=total_chunks, progress=75)
 
-        # 4. Upsert to Pinecone
-        logger.info(f"Upserting {len(vectors)} vectors to Pinecone...")
+        # 4. Upsert to Qdrant
+        logger.info(f"Upserting {len(vectors)} vectors to Qdrant...")
         result = upsert_vectors_sync(vectors, namespace)
         upserted_count = result.get("upserted_count", len(vectors))
 

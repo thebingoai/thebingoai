@@ -1,17 +1,16 @@
 from backend.models.responses import StatusResponse, IndexStats
-from backend.vectordb.pinecone import get_index_stats
-from backend.vectordb.qdrant import health_check as qdrant_health_check
+from backend.vectordb.qdrant import get_collection_stats, health_check as qdrant_health_check
 from backend.config import settings
 import redis
 
 async def get_status() -> StatusResponse:
     """Get index statistics."""
-    stats = await get_index_stats()
+    stats = await get_collection_stats()
 
     return StatusResponse(
         status="healthy",
         index=IndexStats(
-            name=settings.pinecone_index_name,
+            name=settings.qdrant_documents_collection,
             total_vectors=stats.get("total_vector_count", 0),
             dimension=stats.get("dimension", settings.embedding_dimensions),
             namespaces=stats.get("namespaces", {})
@@ -21,7 +20,7 @@ async def get_status() -> StatusResponse:
 
 async def health_detailed() -> dict:
     """Detailed health check."""
-    checks = {"api": "healthy", "redis": "unknown", "pinecone": "unknown"}
+    checks = {"api": "healthy", "redis": "unknown", "qdrant": "unknown"}
 
     # Check Redis
     try:
@@ -32,16 +31,6 @@ async def health_detailed() -> dict:
         import logging
         logging.getLogger(__name__).error(f"Redis check failed: {e}", exc_info=True)
         checks["redis"] = "unhealthy"
-
-    # Check Pinecone
-    try:
-        stats = await get_index_stats()
-        checks["pinecone"] = "healthy"
-        checks["pinecone_vectors"] = stats.get("total_vector_count", 0)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Pinecone check failed: {e}", exc_info=True)
-        checks["pinecone"] = "unhealthy"
 
     # Check Qdrant
     try:

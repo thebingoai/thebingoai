@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from backend.vectordb.pinecone import init_pinecone
+from backend.vectordb.qdrant import ensure_collection
 from backend.api import routes
 from backend.api.websocket import router as ws_router
 from backend.logging_config import setup_logging
@@ -18,8 +18,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
     # Startup
     logger.info("Starting LLM-MD Backend...")
-    init_pinecone()
-    logger.info("Pinecone initialized")
+    try:
+        ensure_collection(settings.qdrant_documents_collection, settings.qdrant_vector_size)
+        ensure_collection(settings.qdrant_memories_collection, settings.qdrant_vector_size)
+        logger.info("Qdrant collections ready")
+    except Exception as e:
+        logger.warning(f"Qdrant initialization failed (continuing): {e}")
     yield
     # Shutdown
     logger.info("Shutting down...")

@@ -101,7 +101,7 @@ def _namespace_to_collection(namespace: str) -> tuple[str, str]:
 async def upsert_vectors(
     vectors: List[Dict[str, Any]],
     namespace: str = "default"
-) -> None:
+) -> Dict[str, Any]:
     """
     Upsert vectors to Qdrant.
 
@@ -111,7 +111,7 @@ async def upsert_vectors(
         namespace: Namespace (maps to collection + tenant_id)
     """
     if not vectors:
-        return
+        return {"upserted_count": 0}
 
     collection_name, tenant_id = _namespace_to_collection(namespace)
     ensure_collection(collection_name)
@@ -139,13 +139,16 @@ async def upsert_vectors(
     )
 
     logger.info(f"Upserted {len(points)} vectors to {collection_name} (tenant: {tenant_id})")
+    return {"upserted_count": len(points)}
 
 
 async def query_vectors(
-    query_vector: List[float],
+    query_vector: Optional[List[float]] = None,
     namespace: str = "default",
     top_k: int = 5,
-    score_threshold: float = 0.0
+    score_threshold: float = 0.0,
+    query_embedding: Optional[List[float]] = None,
+    filter: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Query vectors from Qdrant.
@@ -160,6 +163,9 @@ async def query_vectors(
         List of matches with format:
             [{"id": str, "score": float, "metadata": Dict}]
     """
+    # Support query_embedding as alias for query_vector
+    vec = query_embedding if query_embedding is not None else query_vector
+
     collection_name, tenant_id = _namespace_to_collection(namespace)
 
     client = get_client()
@@ -167,7 +173,7 @@ async def query_vectors(
     # Search with tenant filtering
     results = client.search(
         collection_name=collection_name,
-        query_vector=query_vector,
+        query_vector=vec,
         query_filter=Filter(
             must=[
                 FieldCondition(
@@ -285,6 +291,36 @@ def scroll_all_points(
 
     logger.info(f"Scrolled {len(results)} points from {collection} (tenant: {tenant_id})")
     return results
+
+
+def upsert_vectors_sync(
+    vectors: List[Dict[str, Any]],
+    namespace: str = "default"
+) -> Dict[str, Any]:
+    """Sync wrapper for upsert_vectors (used by Celery tasks)."""
+    import asyncio
+    return asyncio.run(upsert_vectors(vectors, namespace))
+
+
+async def get_collection_stats() -> Dict[str, Any]:
+    """
+    Get collection statistics (replaces Pinecone get_index_stats).
+
+    Returns:
+        Dict with total_vector_count, dimension, and namespaces keys
+    """
+    client = get_client()
+    try:
+        info = client.get_collection(settings.qdrant_documents_collection)
+        count = info.vectors_count or 0
+        return {
+            "total_vector_count": count,
+            "dimension": settings.qdrant_vector_size,
+            "namespaces": {}
+        }
+    except Exception as e:
+        logger.error(f"Failed to get collection stats: {e}")
+        return {"total_vector_count": 0, "dimension": settings.qdrant_vector_size, "namespaces": {}}
 
 
 def health_check() -> bool:

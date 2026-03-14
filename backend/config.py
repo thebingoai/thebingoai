@@ -5,7 +5,7 @@ from typing import Optional
 class Settings(BaseSettings):
     # Required API keys
     openai_api_key: str
-    pinecone_api_key: str
+    pinecone_api_key: Optional[str] = None
 
     # Pinecone settings
     pinecone_index_name: str = "llm-md-index"

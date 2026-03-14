@@ -5,7 +5,7 @@ from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.responses import QueryResponse, QueryResult
 from backend.embedder.openai import embed_text
-from backend.vectordb.pinecone import query_vectors
+from backend.vectordb.qdrant import query_vectors
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ async def query(
     # Embed the query
     query_embedding = await embed_text(request.query)
 
-    # Search Pinecone
+    # Search vectors
     results = await query_vectors(
         query_embedding=query_embedding,
         namespace=request.namespace,

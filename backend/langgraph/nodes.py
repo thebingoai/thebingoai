@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage, AIMessage
 from backend.embedder.openai import embed_text
-from backend.vectordb.pinecone import query_vectors
+from backend.vectordb.qdrant import query_vectors
 from backend.langgraph.state import ConversationState, ContextSource
 from backend.llm.factory import get_provider
 from backend.prompts import SYSTEM_PROMPT, NO_CONTEXT_PROMPT
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 async def retrieve_context(state: ConversationState) -> ConversationState:
     """
-    Retrieve relevant documents from Pinecone.
+    Retrieve relevant documents from Qdrant.
 
     Node: retrieve_context
     """
@@ -25,7 +25,7 @@ async def retrieve_context(state: ConversationState) -> ConversationState:
     # Embed the question
     query_embedding = await embed_text(question)
 
-    # Search Pinecone
+    # Search vectors
     results = await query_vectors(
         query_embedding=query_embedding,
         namespace=namespace,
