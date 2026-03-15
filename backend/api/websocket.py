@@ -87,6 +87,7 @@ async def _handle_chat_send(
     thread_id: Optional[str],
     message: str,
     connection_ids: list,
+    file_ids: list = None,
 ) -> None:
     """
     Handle a chat.send message over WebSocket.
@@ -94,6 +95,7 @@ async def _handle_chat_send(
     """
     from backend.agents import stream_orchestrator
     from backend.services.heartbeat_context import build_orchestrator_context
+    from backend.services import chat_file_service
 
     db: Session = SessionLocal()
 
@@ -117,6 +119,7 @@ async def _handle_chat_send(
 
         # Save user message
         ConversationService.add_message(db, conversation.id, "user", message)
+        # Attachment persistence not yet supported by message service (Step 14)
 
         # Validate connection access
         if connection_ids:
@@ -146,6 +149,14 @@ async def _handle_chat_send(
                 history = history[i + 1:]
                 break
 
+        # Resolve file_ids to file_contents
+        file_contents = []
+        if file_ids:
+            for fid in file_ids:
+                file_data = chat_file_service.get_file(fid)
+                if file_data is not None:
+                    file_contents.append(file_data)
+
         # Stream orchestrator
         from backend.database.session import SessionLocal as _SF
         final_message = ""
@@ -162,6 +173,7 @@ async def _handle_chat_send(
             user_memories_context=ctx.user_memories_context,
             skill_suggestions=ctx.skill_suggestions or None,
             soul_prompt=ctx.soul_prompt,
+            file_contents=file_contents or None,
         ):
             # Map SSE event type → WS event type
             event_type = event.get("type", "")
@@ -272,6 +284,7 @@ async def websocket_endpoint(ws: WebSocket):
                 thread_id = data.get("thread_id") or None
                 message = data.get("message", "").strip()
                 connection_ids = data.get("connection_ids", [])
+                file_ids = data.get("file_ids", [])
 
                 if not message:
                     await ws.send_text(json.dumps({
@@ -284,7 +297,8 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # Fire-and-forget so this loop stays responsive
                 asyncio.create_task(_handle_chat_send(
-                    ws, user, request_id, thread_id, message, connection_ids
+                    ws, user, request_id, thread_id, message, connection_ids,
+                    file_ids=file_ids,
                 ))
 
             elif msg_type == "conversation.switch":
