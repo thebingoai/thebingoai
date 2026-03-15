@@ -70,7 +70,7 @@
         <!-- Send button -->
         <button
           type="submit"
-          :disabled="!chatStore.inputText.trim() || chatStore.isStreaming"
+          :disabled="!chatStore.inputText.trim() || chatStore.isStreaming || (attachedFiles.length > 0 && !allFilesReady)"
           class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-white disabled:opacity-40 hover:bg-gray-700 transition-colors"
         >
           <ArrowUp class="h-4 w-4" />
@@ -102,7 +102,7 @@ const emit = defineEmits<{
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const { attachedFiles, addFiles, removeFile } = useChatFileUpload()
+const { attachedFiles, addFiles, removeFile, allFilesReady } = useChatFileUpload()
 
 interface FileRejection {
   name: string

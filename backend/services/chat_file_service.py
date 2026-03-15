@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 
 CHAT_FILE_PREFIX = "chat_file:"
-CHAT_FILE_TTL = 3600  # 1 hour
 
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 SUPPORTED_IMAGE_FORMATS = {"PNG", "JPEG", "GIF", "WEBP"}
@@ -32,18 +31,6 @@ MIME_TO_CONTENT_TYPE = {
     "application/pdf": "text",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "text",
 }
-
-
-def _get_csv_max_rows() -> int:
-    return getattr(settings, "chat_file_csv_max_rows", 100)
-
-
-def _get_pdf_max_pages() -> int:
-    return getattr(settings, "chat_file_pdf_max_pages", 10)
-
-
-def _get_text_max_chars() -> int:
-    return getattr(settings, "chat_file_text_max_chars", 50000)
 
 
 def _process_image(file_bytes: bytes, mime_type: str) -> dict:
@@ -86,7 +73,7 @@ def _process_image(file_bytes: bytes, mime_type: str) -> dict:
 
 def _process_csv(file_bytes: bytes) -> dict:
     """Extract CSV text with truncation to max rows."""
-    max_rows = _get_csv_max_rows()
+    max_rows = settings.chat_file_csv_max_rows
 
     # Parse full file for metadata (row count, headers)
     full_result = csv_parser.extract_text(file_bytes)
@@ -124,7 +111,7 @@ def _process_csv(file_bytes: bytes) -> dict:
 
 def _process_pdf(file_bytes: bytes) -> dict:
     """Extract PDF text; truncated version uses only first N pages."""
-    max_pages = _get_pdf_max_pages()
+    max_pages = settings.chat_file_pdf_max_pages
 
     # Full extraction
     full_result = pdf.extract_text(file_bytes)
@@ -157,7 +144,7 @@ def _process_pdf(file_bytes: bytes) -> dict:
 
 def _process_docx(file_bytes: bytes) -> dict:
     """Extract DOCX text; truncated version is limited to max chars."""
-    max_chars = _get_text_max_chars()
+    max_chars = settings.chat_file_text_max_chars
 
     result = docx_parser.extract_text(file_bytes)
     full_text = result["text"]
@@ -226,8 +213,8 @@ def store_file(file_data: dict) -> str:
     """
     file_id = file_data["file_id"]
     key = f"{CHAT_FILE_PREFIX}{file_id}"
-    redis_client.setex(key, CHAT_FILE_TTL, json.dumps(file_data))
-    logger.debug("Stored chat file %s (expires in %ds)", file_id, CHAT_FILE_TTL)
+    redis_client.setex(key, settings.chat_file_ttl_seconds, json.dumps(file_data))
+    logger.debug("Stored chat file %s (expires in %ds)", file_id, settings.chat_file_ttl_seconds)
     return file_id
 
 

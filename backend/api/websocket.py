@@ -117,10 +117,6 @@ async def _handle_chat_send(
         else:
             conversation = ConversationService.create_conversation(db, user.id, title="New Task")
 
-        # Save user message
-        ConversationService.add_message(db, conversation.id, "user", message)
-        # Attachment persistence not yet supported by message service (Step 14)
-
         # Validate connection access
         if connection_ids:
             accessible = db.query(DatabaseConnection.id).filter(
@@ -140,9 +136,8 @@ async def _handle_chat_send(
             thread_id=conversation.thread_id,
         )
 
-        # Conversation history (exclude just-saved user message)
+        # Conversation history (fetched before saving the current user message)
         history = ConversationService.get_conversation_history(db, conversation.thread_id, user.id)
-        history = history[:-1]
         # Truncate at last context reset boundary
         for i in range(len(history) - 1, -1, -1):
             if history[i].source == "context_reset":
@@ -156,6 +151,22 @@ async def _handle_chat_send(
                 file_data = chat_file_service.get_file(fid)
                 if file_data is not None:
                     file_contents.append(file_data)
+
+        # Save user message with attachment metadata
+        attachments = [
+            {
+                "file_id": f["file_id"],
+                "name": f["original_name"],
+                "type": f["mime_type"],
+                "size": f["size"],
+                "content_type": f["content_type"],
+            }
+            for f in (file_contents or [])
+        ]
+        ConversationService.add_message(
+            db, conversation.id, "user", message,
+            attachments=attachments if attachments else None,
+        )
 
         # Stream orchestrator
         from backend.database.session import SessionLocal as _SF

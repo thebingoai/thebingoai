@@ -1,5 +1,6 @@
 import { useChatStore } from '~/stores/chat'
 import type { Message, AgentStep } from '~/stores/chat'
+import { useChatFileUpload } from './useChatFileUpload'
 
 const synthesizeReasoning = (toolName: string, args: Record<string, any>): string => {
   const name = args?.skill_name || args?.name || ''
@@ -30,11 +31,24 @@ export const useChat = () => {
     chatStore.isStreaming = true
 
     // Add user message optimistically
+    const { attachedFiles } = useChatFileUpload()
+    const attachments = attachedFiles.value
+      .filter(f => f.status === 'ready' && f.file_id)
+      .map(f => ({
+        file_id: f.file_id!,
+        name: f.file.name,
+        type: f.file.type,
+        size: f.file.size,
+        preview_url: f.preview_url,
+        status: 'ready' as const,
+      }))
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: message,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      attachments: attachments.length > 0 ? attachments : undefined,
     }
     chatStore.addMessage(userMessage)
     chatStore.clearInput()
