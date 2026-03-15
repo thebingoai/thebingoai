@@ -1,6 +1,40 @@
 <template>
-  <div class="px-16 pb-4 ">
-    <form @submit.prevent="handleSubmit" class="shadow-lg rounded-xl border border-gray-300 flex flex-col focus-within:border-gray-400 transition-colors">
+  <div class="px-16 pb-4">
+    <form
+      @submit.prevent="handleSubmit"
+      @dragover.prevent
+      @drop.prevent="handleDrop"
+      class="shadow-lg rounded-xl border border-gray-300 flex flex-col focus-within:border-gray-400 transition-colors"
+    >
+      <!-- Attachment preview strip -->
+      <div
+        v-if="attachedFiles.length > 0"
+        class="flex flex-wrap gap-2 px-4 pt-3"
+      >
+        <div
+          v-for="(file, index) in attachedFiles"
+          :key="index"
+          class="group"
+        >
+          <ChatFilePreview
+            :file="file"
+            :index="index"
+            @remove="removeFile"
+          />
+        </div>
+      </div>
+
+      <!-- Inline error messages from file rejections -->
+      <div v-if="fileErrors.length > 0" class="px-4 pt-2">
+        <p
+          v-for="(err, i) in fileErrors"
+          :key="i"
+          class="text-xs text-red-500"
+        >
+          {{ err.name }}: {{ err.error }}
+        </p>
+      </div>
+
       <textarea
         ref="textareaRef"
         v-model="chatStore.inputText"
@@ -23,6 +57,16 @@
         >
           <Scissors class="h-4 w-4" />
         </button>
+        <!-- Paperclip button -->
+        <button
+          type="button"
+          :disabled="chatStore.isStreaming"
+          @click="fileInputRef?.click()"
+          title="Attach files"
+          class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors"
+        >
+          <Paperclip class="h-4 w-4" />
+        </button>
         <!-- Send button -->
         <button
           type="submit"
@@ -32,12 +76,22 @@
           <ArrowUp class="h-4 w-4" />
         </button>
       </div>
+
+      <!-- Hidden file input -->
+      <input
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/gif,image/webp,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ref="fileInputRef"
+        @change="handleFileChange"
+        style="display:none"
+      />
     </form>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Scissors, ArrowUp } from 'lucide-vue-next'
+import { Scissors, ArrowUp, Paperclip } from 'lucide-vue-next'
 
 const chatStore = useChatStore()
 const emit = defineEmits<{
@@ -46,6 +100,15 @@ const emit = defineEmits<{
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const { attachedFiles, addFiles, removeFile } = useChatFileUpload()
+
+interface FileRejection {
+  name: string
+  error: string
+}
+const fileErrors = ref<FileRejection[]>([])
 
 const isPermanentConversation = computed(() => chatStore.currentConversation?.type === 'permanent')
 
@@ -88,6 +151,27 @@ const handleKeydown = (event: KeyboardEvent) => {
 const handleSubmit = () => {
   if (chatStore.inputText.trim() && !chatStore.isStreaming) {
     emit('send')
+  }
+}
+
+const handleFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (!input.files) return
+  const rejections = await addFiles(Array.from(input.files))
+  fileErrors.value = rejections
+  // Reset input so the same file can be re-selected if removed
+  input.value = ''
+  if (rejections.length > 0) {
+    setTimeout(() => { fileErrors.value = [] }, 4000)
+  }
+}
+
+const handleDrop = async (event: DragEvent) => {
+  if (!event.dataTransfer?.files) return
+  const rejections = await addFiles(Array.from(event.dataTransfer.files))
+  fileErrors.value = rejections
+  if (rejections.length > 0) {
+    setTimeout(() => { fileErrors.value = [] }, 4000)
   }
 }
 
