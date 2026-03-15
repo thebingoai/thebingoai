@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     async_chunk_count_threshold: int = 20
     upload_max_file_size: int = 52428800  # 50MB
 
+    # Chat file upload settings
+    chat_file_max_size: int = 10_485_760  # 10MB
+    chat_file_max_count: int = 5
+    chat_file_ttl_seconds: int = 3600
+    chat_file_csv_max_rows: int = 100
+    chat_file_pdf_max_pages: int = 10
+    chat_file_text_max_chars: int = 50_000
+
     # Server settings
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
     app_version: str = "0.1.0"
