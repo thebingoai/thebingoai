@@ -5,6 +5,43 @@
       <div class="inline-block bg-gray-900 text-white rounded-2xl px-4 py-2.5 max-w-[80%] whitespace-pre-wrap">
         {{ message.content }}
       </div>
+
+      <!-- Attachments -->
+      <div v-if="message.attachments && message.attachments.length > 0" class="mt-2 flex flex-wrap gap-2 max-w-[80%]">
+        <template v-for="attachment in message.attachments" :key="attachment.file_id ?? attachment.name">
+          <!-- Image thumbnail -->
+          <div
+            v-if="isImageType(attachment.type)"
+            class="h-16 w-16 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 flex-shrink-0"
+          >
+            <img
+              v-if="attachment.preview_url"
+              :src="attachment.preview_url"
+              :alt="attachment.name"
+              class="h-full w-full object-cover"
+            />
+            <div v-else class="flex h-full w-full items-center justify-center">
+              <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+          </div>
+
+          <!-- Document pill -->
+          <div
+            v-else
+            class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 max-w-48"
+          >
+            <svg class="h-4 w-4 flex-shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-xs font-medium text-gray-700">{{ attachment.name }}</p>
+              <p class="text-xs text-gray-500">{{ formatAttachmentSize(attachment.size) }}</p>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
 
     <!-- Assistant message: left-aligned plain text -->
@@ -161,6 +198,16 @@ const createdDashboardId = computed<number | null>(() => {
 
 const viewDashboard = async () => {
   await navigateTo(createdDashboardId.value ? `/dashboard?id=${createdDashboardId.value}` : '/dashboard')
+}
+
+const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+
+const isImageType = (mimeType: string) => IMAGE_MIME_TYPES.has(mimeType)
+
+const formatAttachmentSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const dashboardQuestion = computed(() => {
