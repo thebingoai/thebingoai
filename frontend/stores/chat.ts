@@ -33,6 +33,9 @@ export interface FileAttachment {
   name: string
   size: number
   type: string
+  file_id: string | null
+  preview_url: string | null
+  status: 'uploading' | 'ready' | 'error'
 }
 
 export interface Conversation {

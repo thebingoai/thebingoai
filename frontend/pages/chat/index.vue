@@ -18,10 +18,13 @@
 <script setup lang="ts">
 const chatStore = useChatStore()
 const chat = useChat()
+const { getFileIds, clearFiles } = useChatFileUpload()
 
 const handleSend = () => {
   if (chatStore.inputText.trim()) {
-    chat.sendMessage(chatStore.inputText)
+    const fileIds = getFileIds()
+    chat.sendMessage(chatStore.inputText, fileIds)
+    clearFiles()
   }
 }
 

@@ -26,7 +26,7 @@ export const useChat = () => {
   const api = useApi()
   const ws = useWebSocket()
 
-  const sendMessage = async (message: string) => {
+  const sendMessage = async (message: string, fileIds: string[] = []) => {
     chatStore.isStreaming = true
 
     // Add user message optimistically
@@ -196,7 +196,8 @@ export const useChat = () => {
         request_id: requestId,
         thread_id: chatStore.currentThreadId || null,
         message,
-        connection_ids: []
+        connection_ids: [],
+        file_ids: fileIds
       })
     })
   }
