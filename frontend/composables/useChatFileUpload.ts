@@ -31,14 +31,15 @@ const IMAGE_TYPES = new Set([
   'image/webp',
 ])
 
+// Module-level singleton state (shared across all callers)
+const attachedFiles = ref<FileAttachment[]>([])
+
+const allFilesReady = computed<boolean>(() => {
+  return attachedFiles.value.length > 0 && attachedFiles.value.every(f => f.status === 'ready')
+})
+
 export const useChatFileUpload = () => {
   const api = useApi()
-
-  const attachedFiles = ref<FileAttachment[]>([])
-
-  const allFilesReady = computed<boolean>(() => {
-    return attachedFiles.value.length > 0 && attachedFiles.value.every(f => f.status === 'ready')
-  })
 
   const addFiles = async (files: File[]): Promise<FileRejection[]> => {
     const rejections: FileRejection[] = []
