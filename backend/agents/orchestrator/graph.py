@@ -50,6 +50,27 @@ def _friendly_error(e: Exception) -> str:
     return f"⚠️ Something went wrong: {msg}"
 
 
+def build_user_message(user_question: str, file_contents: list = None) -> HumanMessage:
+    """Build a LangChain HumanMessage with optional multi-modal file content blocks."""
+    if not file_contents:
+        return HumanMessage(content=user_question)
+
+    blocks = []
+    for item in file_contents:
+        if item.get("content_type") == "image":
+            blocks.append({
+                "type": "image_url",
+                "image_url": {"url": item["base64_data"]},
+            })
+        else:
+            blocks.append({
+                "type": "text",
+                "text": f"[File: {item['original_name']}]\n{item['truncated_text']}",
+            })
+    blocks.append({"type": "text", "text": user_question})
+    return HumanMessage(content=blocks)
+
+
 def build_orchestrator_tools(
     context: AgentContext,
     custom_agents: Optional[List["CustomAgent"]] = None,
@@ -209,6 +230,7 @@ async def run_orchestrator(
     user_memories_context: str = "",
     skill_suggestions: Optional[list] = None,
     soul_prompt: str = "",
+    file_contents: list = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -246,7 +268,7 @@ async def run_orchestrator(
                     messages.append(HumanMessage(content=msg.content))
                 elif msg.role == "assistant":
                     messages.append(AIMessage(content=msg.content))
-        messages.append(HumanMessage(content=user_question))
+        messages.append(build_user_message(user_question, file_contents))
 
         result = await orchestrator.ainvoke({"messages": messages})
 
@@ -284,6 +306,7 @@ async def stream_orchestrator(
     user_memories_context: str = "",
     skill_suggestions: Optional[list] = None,
     soul_prompt: str = "",
+    file_contents: list = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -323,7 +346,7 @@ async def stream_orchestrator(
                     messages.append(HumanMessage(content=msg.content))
                 elif msg.role == "assistant":
                     messages.append(AIMessage(content=msg.content))
-        messages.append(HumanMessage(content=user_question))
+        messages.append(build_user_message(user_question, file_contents))
 
         collected_steps = []
         step_number = 0
