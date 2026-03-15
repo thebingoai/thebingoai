@@ -69,12 +69,19 @@ class ConversationService:
         return ConversationService.create_conversation(db, user_id)
 
     @staticmethod
-    def add_message(db: Session, conversation_id: int, role: str, content: str) -> Message:
+    def add_message(
+        db: Session,
+        conversation_id: int,
+        role: str,
+        content: str,
+        attachments: Optional[list] = None,
+    ) -> Message:
         """Add a message to a conversation."""
         message = Message(
             conversation_id=conversation_id,
             role=role,
-            content=content
+            content=content,
+            attachments=attachments,
         )
 
         db.add(message)

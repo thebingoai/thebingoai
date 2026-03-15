@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from backend.database.base import Base
 from datetime import datetime
@@ -14,6 +14,7 @@ class Message(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
     source = Column(String(20), nullable=False, default="chat", server_default="chat")  # "chat" | "heartbeat" | "system" | "context_reset"
     heartbeat_job_id = Column(String, ForeignKey("heartbeat_jobs.id", ondelete="SET NULL"), nullable=True)
+    attachments = Column(JSON, nullable=True, default=None)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
