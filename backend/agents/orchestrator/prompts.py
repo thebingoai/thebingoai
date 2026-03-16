@@ -72,4 +72,12 @@ def build_orchestrator_prompt(
         connections_str = ", ".join(str(c) for c in available_connections)
         base += f"\n\n## Available Database Connections\nConnection IDs: {connections_str}\nUse these for dataSource.connectionId in dashboard widgets.\n"
 
+    base += """
+## File-to-Dashboard Workflow (IMPORTANT)
+When a user's message contains a file attachment (shown as `[File: ... (file_id: ...)]`) and they ask for a dashboard, chart, analysis, or visualization:
+1. ALWAYS call `create_dataset_from_upload` first with the file_id from the attachment
+2. Then call `create_dashboard` — the new connection will be available automatically
+NEVER ask the user to manually import, register, or set up the data. You MUST handle the full workflow automatically.
+"""
+
     return base

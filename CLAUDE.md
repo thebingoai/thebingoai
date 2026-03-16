@@ -276,19 +276,16 @@ LOG_LEVEL=...                   # DEBUG|INFO|WARNING|ERROR (default: INFO)
 <!-- codemap:start -->
 ## Codemap
 
-This project uses **codemap** for static analysis. A codemap MCP server is available
-that provides pre-indexed project structure, call graphs, and relationships.
+This project has a **codemap MCP server** with pre-indexed code structure, call graphs, and relationships.
+Always prefer `codemap_*` tools over grep/read for finding functions, understanding call relationships,
+impact analysis, and code exploration — they return structured context in a single call.
 
-**Always prefer codemap MCP tools over grep/read for code exploration:**
+**Workflows** (use these for multi-step tasks):
 
-- `codemap_overview` — project summary: modules, frameworks, languages, file counts
-- `codemap_module` — all classes, functions, imports for a specific directory
-- `codemap_query` — search by name (exact + fuzzy) across the entire codebase
-- `codemap_callers` — find all callers of a function (impact analysis)
-- `codemap_calls` — find all functions called by a function (dependency tracing)
-- `codemap_projects` — list all registered projects (multi-project setups)
-
-These return structured context in a single call instead of multiple file reads.
-Use `codemap_overview` first to understand the project, then drill into specific
-modules or functions as needed.
+- `/codemap-explore` — understand the project structure and architecture
+- `/codemap-find-reusable` — search for existing code to reuse before writing new functions
+- `/codemap-impact` — analyze blast radius before refactoring or modifying code
+- `/codemap-plan` — create an implementation plan grounded in actual code structure
+- `/codemap-health-review` — review code quality and identify what to refactor next
+- `/codemap-refresh` — regenerate codemap when source files have changed
 <!-- codemap:end -->

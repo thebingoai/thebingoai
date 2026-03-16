@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import logging
+import os
 import uuid
 from typing import Optional
 
@@ -22,6 +23,9 @@ CHAT_FILE_PREFIX = "chat_file:"
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 SUPPORTED_IMAGE_FORMATS = {"PNG", "JPEG", "GIF", "WEBP"}
 
+EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+DATASET_MIME_TYPES = {"text/csv", EXCEL_MIME_TYPE}
+
 MIME_TO_CONTENT_TYPE = {
     "image/png": "image",
     "image/jpeg": "image",
@@ -30,6 +34,7 @@ MIME_TO_CONTENT_TYPE = {
     "text/csv": "text",
     "application/pdf": "text",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "text",
+    EXCEL_MIME_TYPE: "text",
 }
 
 
@@ -142,6 +147,39 @@ def _process_pdf(file_bytes: bytes) -> dict:
     }
 
 
+def _process_excel(file_bytes: bytes) -> dict:
+    """Extract Excel text preview with truncation to max rows."""
+    import pandas as pd
+
+    max_rows = settings.chat_file_csv_max_rows
+
+    df = pd.read_excel(io.BytesIO(file_bytes))
+    row_count = len(df)
+    headers = list(df.columns)
+
+    lines = []
+    if headers:
+        lines.append(" | ".join(str(h) for h in headers))
+        lines.append("-" * (sum(len(str(h)) for h in headers) + 3 * (len(headers) - 1)))
+
+    truncated_rows = min(row_count, max_rows)
+    for _, row in df.head(max_rows).iterrows():
+        lines.append(" | ".join(str(row.get(h, "")) for h in headers))
+
+    truncated_text = "\n".join(lines).strip()
+    full_text = truncated_text  # Full preview same as truncated for Excel
+
+    return {
+        "extracted_text": full_text,
+        "truncated_text": truncated_text,
+        "metadata": {
+            "headers": headers,
+            "row_count": row_count,
+            "truncated_rows": truncated_rows,
+        },
+    }
+
+
 def _process_docx(file_bytes: bytes) -> dict:
     """Extract DOCX text; truncated version is limited to max chars."""
     max_chars = settings.chat_file_text_max_chars
@@ -191,6 +229,8 @@ def process_file(file_bytes: bytes, filename: str, mime_type: str) -> dict:
         # Text-based content
         if mime_type == "text/csv":
             text_result = _process_csv(file_bytes)
+        elif mime_type == EXCEL_MIME_TYPE:
+            text_result = _process_excel(file_bytes)
         elif mime_type == "application/pdf":
             text_result = _process_pdf(file_bytes)
         elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -251,3 +291,28 @@ def get_full_content(file_id: str) -> str:
     if file_data is None:
         raise KeyError(f"Chat file not found: {file_id}")
     return file_data.get("extracted_text", "")
+
+
+def save_raw_file(user_id: str, file_id: str, filename: str, file_bytes: bytes) -> str:
+    """Upload raw file to DO Spaces. Returns the storage key."""
+    from backend.services import object_storage
+    ext = os.path.splitext(filename)[1].lower()
+    key = f"{settings.do_spaces_base_path}/{user_id}/raw/{file_id}{ext}"
+    object_storage.upload_bytes(key, file_bytes)
+    logger.debug("Saved raw file %s to key %s", file_id, key)
+    return key
+
+
+def get_raw_file(user_id: str, file_id: str) -> Optional[tuple]:
+    """
+    Download raw file from DO Spaces.
+
+    Returns (file_bytes, ext) where ext is '.csv' or '.xlsx', or None if not found.
+    """
+    from backend.services import object_storage
+    for ext in (".csv", ".xlsx"):
+        key = f"{settings.do_spaces_base_path}/{user_id}/raw/{file_id}{ext}"
+        data = object_storage.download_bytes(key)
+        if data is not None:
+            return data, ext
+    return None

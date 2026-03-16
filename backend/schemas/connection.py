@@ -61,6 +61,8 @@ class ConnectionResponse(BaseModel):
     # schema_json_path removed to prevent filesystem path leakage
     schema_generated_at: Optional[datetime]
     table_count: Optional[int]
+    source_filename: Optional[str] = None
+    dataset_table_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -65,7 +65,7 @@ def build_user_message(user_question: str, file_contents: list = None) -> HumanM
         else:
             blocks.append({
                 "type": "text",
-                "text": f"[File: {item['original_name']}]\n{item['truncated_text']}",
+                "text": f"[File: {item['original_name']} (file_id: {item['file_id']})]\n{item['truncated_text']}",
             })
     blocks.append({"type": "text", "text": user_question})
     return HumanMessage(content=blocks)
@@ -140,7 +140,7 @@ def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Call
             return json.dumps({"success": True, "memories": [], "message": "No relevant memories found"})
         return json.dumps({"success": True, "memories": context_str})
 
-    return [data_agent, rag_agent, recall_memory] + build_dashboard_tools(context, db_session_factory)
+    return [data_agent, rag_agent, recall_memory]
 
 
 def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent"]) -> List:

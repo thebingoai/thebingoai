@@ -22,6 +22,8 @@ export interface DatabaseConnection {
   table_count: number | null
   created_at: string
   updated_at: string
+  source_filename: string | null
+  dataset_table_name: string | null
 }
 
 export interface SchemaColumn {
@@ -81,4 +83,18 @@ export interface SqlQueryResponse {
   row_count: number
   execution_time_ms: number
   truncated: boolean
+}
+
+export interface DatasetColumn {
+  name: string
+  type: string
+}
+
+export interface DatasetUploadResponse {
+  id: number
+  name: string
+  source_filename: string
+  table_name: string
+  row_count: number
+  columns: DatasetColumn[]
 }

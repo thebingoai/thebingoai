@@ -4,7 +4,7 @@ from typing import List
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
-from backend.models.database_connection import DatabaseConnection
+from backend.models.database_connection import DatabaseConnection, DatabaseType
 from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.schemas.connection import (
@@ -230,6 +230,11 @@ async def delete_connection(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
+    # Drop the underlying PostgreSQL table for dataset connections
+    if connection.db_type == DatabaseType.DATASET and connection.dataset_table_name:
+        from backend.services.dataset_service import drop_dataset_table
+        drop_dataset_table(connection.dataset_table_name)
+
     # Delete schema JSON file
     delete_schema_file(connection_id)
 
@@ -257,6 +262,9 @@ async def test_connection(
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    if connection.db_type == DatabaseType.DATASET:
+        return ConnectionTestResponse(success=True, message="Dataset connection — no external host to test")
 
     try:
         connector = get_connector(
@@ -296,6 +304,12 @@ async def refresh_connection_schema(
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    if connection.db_type == DatabaseType.DATASET:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Schema refresh is not supported for dataset connections.",
+        )
 
     try:
         with get_connector(

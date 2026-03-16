@@ -10,6 +10,7 @@ import enum
 class DatabaseType(str, enum.Enum):
     POSTGRES = "postgres"
     MYSQL = "mysql"
+    DATASET = "dataset"
 
 
 class DatabaseConnection(Base, TimestampMixin):
@@ -33,6 +34,10 @@ class DatabaseConnection(Base, TimestampMixin):
     schema_json_path = Column(String, nullable=True)
     schema_generated_at = Column(DateTime, nullable=True)
     table_count = Column(Integer, nullable=True)
+
+    # Dataset-specific fields (only set for db_type == DATASET)
+    source_filename = Column(String, nullable=True)
+    dataset_table_name = Column(String, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="database_connections")

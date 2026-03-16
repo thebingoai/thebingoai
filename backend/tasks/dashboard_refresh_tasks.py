@@ -68,7 +68,7 @@ def execute_dashboard_refresh(dashboard_id: int):
     """
     from sqlalchemy.orm.attributes import flag_modified
     from backend.models.database_connection import DatabaseConnection
-    from backend.connectors.factory import get_connector
+    from backend.connectors.factory import get_connector_for_connection
     from backend.services.widget_transform import transform_widget_data
 
     db = SessionLocal()
@@ -128,16 +128,7 @@ def execute_dashboard_refresh(dashboard_id: int):
                 updated_widgets.append(widget)
                 continue
 
-            connector = get_connector(
-                db_type=connection.db_type,
-                host=connection.host,
-                port=connection.port,
-                database=connection.database,
-                username=connection.username,
-                password=connection.password,
-                ssl_enabled=connection.ssl_enabled,
-                ssl_ca_cert=connection.ssl_ca_cert,
-            )
+            connector = get_connector_for_connection(connection)
 
             try:
                 result = connector.execute_query(sql)

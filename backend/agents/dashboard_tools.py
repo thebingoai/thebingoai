@@ -5,6 +5,7 @@ Kept as a standalone module to avoid circular imports between graph.py and tool_
 """
 from typing import List, Callable
 from backend.agents.context import AgentContext
+from backend.connectors.factory import get_connector_for_connection
 import json
 import logging
 
@@ -386,7 +387,6 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
     Errors are logged but not raised — the widget is left with whatever config was provided
     by the LLM if both attempts fail.
     """
-    from backend.connectors.factory import get_connector
     from backend.models.database_connection import DatabaseConnection
     from backend.services.widget_transform import transform_widget_data
 
@@ -410,16 +410,7 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
             logger.warning(f"Widget '{widget_id}': connection {connection_id} not found, skipping SQL execution")
             return
 
-        connector = get_connector(
-            db_type=connection.db_type,
-            host=connection.host,
-            port=connection.port,
-            database=connection.database,
-            username=connection.username,
-            password=connection.password,
-            ssl_enabled=connection.ssl_enabled,
-            ssl_ca_cert=connection.ssl_ca_cert,
-        )
+        connector = get_connector_for_connection(connection)
 
         try:
             result = connector.execute_query(sql)

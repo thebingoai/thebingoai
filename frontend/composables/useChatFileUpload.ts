@@ -22,6 +22,7 @@ const ACCEPTED_TYPES = new Set([
   'text/csv',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ])
 
 const IMAGE_TYPES = new Set([

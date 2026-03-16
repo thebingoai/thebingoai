@@ -18,6 +18,7 @@ ACCEPTED_MIME_TYPES = {
     "image/gif",
     "image/webp",
     "text/csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
@@ -76,6 +77,10 @@ async def upload_chat_files(
                 mime_type=mime_type,
             )
             chat_file_service.store_file(file_data)
+            if mime_type in chat_file_service.DATASET_MIME_TYPES:
+                chat_file_service.save_raw_file(
+                    current_user.id, file_data["file_id"], upload_file.filename or "", file_bytes
+                )
         except ValueError as exc:
             logger.warning("Failed to process chat file '%s': %s", upload_file.filename, exc)
             raise HTTPException(status_code=400, detail=str(exc))

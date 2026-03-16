@@ -3,9 +3,9 @@ from typing import List, Dict, Any, Callable
 from decimal import Decimal
 from datetime import date, datetime
 from backend.services.schema_discovery import load_schema_file
-from backend.connectors.factory import get_connector
+from backend.connectors.factory import get_connector_for_connection
 from backend.database.session import SessionLocal
-from backend.models.database_connection import DatabaseConnection
+from backend.models.database_connection import DatabaseConnection, DatabaseType
 from backend.agents.context import AgentContext
 from backend.services.query_result_store import store_query_result, publish_query_result
 import uuid
@@ -152,17 +152,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             if not connection:
                 return {"error": "Connection not found"}
 
-            # Execute query
-            with get_connector(
-                db_type=connection.db_type,
-                host=connection.host,
-                port=connection.port,
-                database=connection.database,
-                username=connection.username,
-                password=connection.password,
-                ssl_enabled=connection.ssl_enabled,
-                ssl_ca_cert=connection.ssl_ca_cert
-            ) as connector:
+            with get_connector_for_connection(connection) as connector:
                 result = connector.execute_query(sql)
 
                 # Build full result payload for frontend delivery
@@ -272,24 +262,16 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             if not connection:
                 return {"error": "Connection not found"}
 
-            db_type = connection.db_type.lower()
+            # For DATASET connections, use postgres quoting regardless of stored db_type
+            db_type_str = "mysql" if connection.db_type == DatabaseType.MYSQL else "postgres"
 
             def q(name: str) -> str:
-                return f"`{name}`" if db_type == "mysql" else f'"{name}"'
+                return f"`{name}`" if db_type_str == "mysql" else f'"{name}"'
 
             qualified_table = f"{q(found_schema)}.{q(table_name)}"
             result_columns: Dict[str, Any] = {}
 
-            with get_connector(
-                db_type=connection.db_type,
-                host=connection.host,
-                port=connection.port,
-                database=connection.database,
-                username=connection.username,
-                password=connection.password,
-                ssl_enabled=connection.ssl_enabled,
-                ssl_ca_cert=connection.ssl_ca_cert,
-            ) as connector:
+            with get_connector_for_connection(connection) as connector:
 
                 # Query A: Numeric stats (min/max/avg/null_count per column)
                 if numeric_cols:

@@ -34,18 +34,9 @@ async def execute_sql_query(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    from backend.connectors.factory import get_connector
+    from backend.connectors.factory import get_connector_for_connection
 
-    connector = get_connector(
-        db_type=connection.db_type,
-        host=connection.host,
-        port=connection.port,
-        database=connection.database,
-        username=connection.username,
-        password=connection.password,
-        ssl_enabled=connection.ssl_enabled,
-        ssl_ca_cert=connection.ssl_ca_cert
-    )
+    connector = get_connector_for_connection(connection)
 
     try:
         result = connector.execute_query(request.sql)

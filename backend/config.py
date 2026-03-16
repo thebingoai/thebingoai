@@ -89,6 +89,19 @@ class Settings(BaseSettings):
     chat_file_pdf_max_pages: int = 10
     chat_file_text_max_chars: int = 50_000
 
+    # Dataset upload settings
+    dataset_max_file_size: int = 52_428_800  # 50MB
+    dataset_max_rows: int = 500_000
+    dataset_schema: str = "datasets"
+
+    # DigitalOcean Spaces (S3-compatible object storage)
+    do_spaces_bucket: str = "ai365"
+    do_spaces_base_path: str = "bingo/dev"  # override per environment via DO_SPACES_BASE_PATH
+    do_spaces_endpoint: str = "https://sgp1.digitaloceanspaces.com"
+    do_spaces_region: str = "sgp1"
+    do_spaces_key_id: Optional[str] = None
+    do_spaces_secret_key: Optional[str] = None
+
     # Server settings
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
     app_version: str = "0.1.0"
