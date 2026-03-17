@@ -82,7 +82,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             parse_excel,
             sanitize_name,
             infer_column_types,
-            create_dataset_table,
+            create_dataset_sqlite,
             generate_dataset_schema,
         )
         from backend.models.database_connection import DatabaseConnection, DatabaseType
@@ -139,15 +139,22 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             db.commit()
             db.refresh(connection)
 
-            qualified_table = create_dataset_table(connection.id, sanitized, columns, df)
-            connection.dataset_table_name = qualified_table
+            from backend.services import object_storage as _object_storage
+            from backend.config import settings as _settings
+
+            sqlite_path = create_dataset_sqlite(connection.id, sanitized, columns, df)
+            do_spaces_key = f"{_settings.do_spaces_base_path}/datasets/sqlite/{connection.id}.sqlite"
+            with open(sqlite_path, 'rb') as f:
+                _object_storage.upload_bytes(do_spaces_key, f.read(), content_type="application/x-sqlite3")
+
+            connection.dataset_table_name = do_spaces_key
             db.commit()
 
             row_count = len(df)
             schema_json = generate_dataset_schema(
                 connection_id=connection.id,
                 name=name,
-                table_name=qualified_table,
+                table_name=do_spaces_key,
                 columns=columns,
                 row_count=row_count,
             )
@@ -177,14 +184,14 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             context.available_connections.append(connection.id)
 
             logger.info(
-                "Created dataset connection %s from chat upload file_id=%s, table=%s, rows=%d",
-                connection.id, file_id, qualified_table, row_count,
+                "Created dataset connection %s from chat upload file_id=%s, key=%s, rows=%d",
+                connection.id, file_id, do_spaces_key, row_count,
             )
 
             return json.dumps({
                 "success": True,
                 "connection_id": connection.id,
-                "table_name": qualified_table,
+                "table_name": do_spaces_key,
                 "columns": [{"name": c["name"], "type": c["pg_type"]} for c in columns],
                 "row_count": row_count,
             })

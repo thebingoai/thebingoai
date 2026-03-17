@@ -262,13 +262,17 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             if not connection:
                 return {"error": "Connection not found"}
 
-            # For DATASET connections, use postgres quoting regardless of stored db_type
+            # Determine quoting and table name based on connection type
+            is_dataset = str(connection.db_type).upper() == DatabaseType.DATASET.name
             db_type_str = "mysql" if connection.db_type == DatabaseType.MYSQL else "postgres"
 
             def q(name: str) -> str:
                 return f"`{name}`" if db_type_str == "mysql" else f'"{name}"'
 
-            qualified_table = f"{q(found_schema)}.{q(table_name)}"
+            if is_dataset:
+                qualified_table = '"data"'  # SQLite: always "data" table, no schema
+            else:
+                qualified_table = f"{q(found_schema)}.{q(table_name)}"
             result_columns: Dict[str, Any] = {}
 
             with get_connector_for_connection(connection) as connector:

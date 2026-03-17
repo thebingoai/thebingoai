@@ -222,6 +222,17 @@ Mapping types:
   }
 }
 ```
+
+## SQLite SQL Dialect (for DATASET connections from CSV/Excel uploads)
+
+When generating SQL for DATASET connections (CSV/Excel files), the table is always named `data` with no schema prefix:
+- **Table name**: always `data` (e.g., `SELECT * FROM data LIMIT 10`)
+- **No ILIKE**: use `LIKE LOWER()` pattern instead: `WHERE LOWER(col) LIKE LOWER('%value%')`
+- **No `::type` casting**: use `CAST(col AS type)` instead
+- **Date functions**: use `strftime('%Y-%m', date_col)` instead of `to_char(date_col, 'YYYY-MM')`
+- **Date truncation**: use `strftime('%Y-%m-01', date_col)` instead of `date_trunc('month', date_col)`
+- **No schema prefix**: write `FROM data` not `FROM datasets.ds_42_myfile`
+- **String concat**: use `||` operator instead of `CONCAT()`
 """
 
 

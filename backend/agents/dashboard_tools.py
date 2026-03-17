@@ -325,6 +325,12 @@ async def _attempt_sql_fix(
 
     title_context = f"\nWidget title: {widget_title}" if widget_title else ""
 
+    db_type_display = (
+        "SQLite (DATASET connection — table is always named 'data', use strftime() for dates, no ILIKE, no :: casting)"
+        if str(connection.db_type).upper() == "DATASET"
+        else str(connection.db_type)
+    )
+
     prompt = f"""You are a SQL expert. Fix the SQL query that produced an error.
 
 Original SQL:
@@ -337,7 +343,7 @@ Error:
 
 Widget type: {mapping_type}
 Expected output columns: {mapping_info}
-Database type: {connection.db_type}{title_context}
+Database type: {db_type_display}{title_context}
 IMPORTANT: Only use table and column names that exist in the schema below. Do NOT invent table or column names.
 """
 

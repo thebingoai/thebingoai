@@ -1,9 +1,8 @@
 import io
 import re
+import sqlite3
+import tempfile
 import pandas as pd
-import sqlalchemy as sa
-from sqlalchemy import text
-from backend.database.session import engine
 from backend.config import settings
 from backend.services.schema_discovery import generate_schema_json, save_schema_file
 import logging
@@ -23,7 +22,7 @@ def parse_excel(file_bytes: bytes) -> pd.DataFrame:
 
 def sanitize_name(name: str) -> str:
     """
-    Convert a filename stem to a safe PostgreSQL identifier:
+    Convert a filename stem to a safe identifier:
     lowercase, non-alphanumeric → underscore, collapse runs,
     strip leading/trailing underscores, truncate to 50 chars.
     """
@@ -130,71 +129,65 @@ def coerce_dataframe(df: pd.DataFrame, columns: list[dict]) -> pd.DataFrame:
     return df
 
 
-def create_dataset_table(
+def create_dataset_sqlite(
     connection_id: int,
     sanitized_name: str,
     columns: list[dict],
     df: pd.DataFrame,
 ) -> str:
     """
-    Create a PostgreSQL table in the datasets schema and bulk insert data.
+    Create a SQLite database file from the DataFrame.
 
-    Table name: ds_{connection_id}_{sanitized_name}
-    Returns: fully qualified name like "datasets.ds_42_myfile"
+    Creates a single table named 'data' with type mapping:
+    BIGINT→INTEGER, DOUBLE PRECISION→REAL, BOOLEAN→INTEGER (0/1),
+    TIMESTAMP→TEXT, TEXT→TEXT.
+
+    Returns: path to the temporary SQLite file.
     """
-    schema = settings.dataset_schema
-    table_name = f"ds_{connection_id}_{sanitized_name}"
-    qualified = f"{schema}.{table_name}"
-
-    _PG_TO_SA = {
-        "BIGINT": sa.BigInteger(),
-        "DOUBLE PRECISION": sa.Float(),
-        "BOOLEAN": sa.Boolean(),
-        "TIMESTAMP": sa.DateTime(),
-        "TEXT": sa.Text(),
+    _PG_TO_SQLITE = {
+        "BIGINT": "INTEGER",
+        "DOUBLE PRECISION": "REAL",
+        "BOOLEAN": "INTEGER",
+        "TIMESTAMP": "TEXT",
+        "TEXT": "TEXT",
     }
-    dtype_map = {c["name"]: _PG_TO_SA.get(c["pg_type"], sa.Text()) for c in columns}
 
+    # Coerce the dataframe first
     df = coerce_dataframe(df, columns)
 
-    try:
-        with engine.begin() as conn:
-            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-            df.to_sql(
-                table_name,
-                conn,
-                schema=schema,
-                if_exists="replace",
-                index=False,
-                dtype=dtype_map,
-            )
-    except Exception as e:
-        logger.warning(
-            "Typed insertion failed for %s (%s), retrying with all TEXT columns", qualified, e
-        )
-        # Reset all columns to TEXT in-place so downstream schema reflects actual types
-        for col in columns:
-            col["pg_type"] = "TEXT"
-        # Convert any coerced non-string columns back to string for TEXT insertion
-        for c in columns:
-            name = c["name"]
-            if name in df.columns and df[name].dtype.kind not in ("O", "U", "S"):
-                df[name] = df[name].astype(str).where(df[name].notna(), other=None)
-        text_dtype_map = {c["name"]: sa.Text() for c in columns}
-        with engine.begin() as conn:
-            conn.execute(text(f"DROP TABLE IF EXISTS {qualified}"))
-            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-            df.to_sql(
-                table_name,
-                conn,
-                schema=schema,
-                if_exists="replace",
-                index=False,
-                dtype=text_dtype_map,
-            )
+    # For TIMESTAMP columns, convert to string since SQLite stores dates as TEXT
+    for col in columns:
+        name = col["name"]
+        if col["pg_type"] == "TIMESTAMP" and name in df.columns:
+            df[name] = df[name].astype(str).where(df[name].notna(), other=None)
+        elif col["pg_type"] == "BOOLEAN" and name in df.columns:
+            # Convert bool to 0/1 integers
+            df[name] = df[name].map(lambda v: int(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else None)
 
-    logger.info("Created dataset table %s with %d rows", qualified, len(df))
-    return qualified
+    # Create temp file for the SQLite database
+    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+    tmp.close()
+    sqlite_path = tmp.name
+
+    conn = sqlite3.connect(sqlite_path)
+    try:
+        # Build CREATE TABLE statement
+        col_defs = []
+        for col in columns:
+            sqlite_type = _PG_TO_SQLITE.get(col["pg_type"], "TEXT")
+            col_defs.append(f'"{col["name"]}" {sqlite_type}')
+        create_sql = f'CREATE TABLE IF NOT EXISTS "data" ({", ".join(col_defs)})'
+        conn.execute(create_sql)
+        conn.commit()
+
+        # Write data using pandas
+        df.to_sql("data", conn, if_exists="replace", index=False)
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info("Created SQLite dataset for connection %s with %d rows", connection_id, len(df))
+    return sqlite_path
 
 
 def generate_dataset_schema(
@@ -206,9 +199,10 @@ def generate_dataset_schema(
 ) -> dict:
     """
     Generate schema JSON in the same format as schema_discovery.generate_schema_json.
+    Uses 'sqlite' as schema key and 'data' as the table name (SQLite table).
     """
-    schema = settings.dataset_schema
-    unqualified = table_name.split(".")[-1] if "." in table_name else table_name
+    schema_key = "sqlite"
+    unqualified = "data"
 
     col_list = [
         {
@@ -223,7 +217,7 @@ def generate_dataset_schema(
 
     schema_data = {
         "schemas": {
-            schema: {
+            schema_key: {
                 "tables": {
                     unqualified: {
                         "row_count": row_count,
@@ -239,18 +233,9 @@ def generate_dataset_schema(
     return generate_schema_json(connection_id, name, "dataset", schema_data)
 
 
-def drop_dataset_table(table_name: str) -> None:
+def delete_dataset_sqlite(do_spaces_key: str) -> None:
     """
-    Drop a dataset table. Accepts qualified ("datasets.ds_42_foo") or
-    unqualified name — always uses the configured datasets schema.
+    Delete a dataset SQLite file from DO Spaces.
     """
-    schema = settings.dataset_schema
-    unqualified = table_name.split(".")[-1] if "." in table_name else table_name
-    qualified = f"{schema}.{unqualified}"
-
-    try:
-        with engine.begin() as conn:
-            conn.execute(text(f"DROP TABLE IF EXISTS {qualified}"))
-        logger.info("Dropped dataset table %s", qualified)
-    except Exception as e:
-        logger.error("Failed to drop dataset table %s: %s", qualified, e)
+    from backend.services import object_storage
+    object_storage.delete_object(do_spaces_key)

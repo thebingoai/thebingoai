@@ -18,6 +18,7 @@ interface DashboardState {
   refreshing: boolean
   dirty: boolean
   filterValues: Record<string, any>  // control key → value (string | {from, to} | null)
+  connectionTypes: Record<number, string>  // connectionId → db_type
 }
 
 export const useDashboardStore = defineStore('dashboard', {
@@ -30,6 +31,7 @@ export const useDashboardStore = defineStore('dashboard', {
     refreshing: false,
     dirty: false,
     filterValues: {},
+    connectionTypes: {},
   }),
 
   getters: {
@@ -82,7 +84,11 @@ export const useDashboardStore = defineStore('dashboard', {
       const api = useApi()
       this.loading = true
       try {
-        const data = await api.dashboards.list() as Dashboard[]
+        const [data, connections] = await Promise.all([
+          api.dashboards.list() as Promise<Dashboard[]>,
+          api.connections.list() as Promise<any[]>,
+        ])
+        this.connectionTypes = Object.fromEntries(connections.map((c: any) => [c.id, c.db_type]))
         this.dashboards = data.map(d => ({
           ...d,
           widgets: (d.widgets ?? []).map(normalizeWidget),
@@ -98,7 +104,11 @@ export const useDashboardStore = defineStore('dashboard', {
       const api = useApi()
       this.loading = true
       try {
-        const data = await api.dashboards.get(id) as any
+        const [data, connections] = await Promise.all([
+          api.dashboards.get(id) as Promise<any>,
+          api.connections.list() as Promise<any[]>,
+        ])
+        this.connectionTypes = Object.fromEntries(connections.map((c: any) => [c.id, c.db_type]))
         const dashboard: Dashboard = {
           ...data,
           widgets: (data.widgets ?? []).map(normalizeWidget),
@@ -266,15 +276,50 @@ export const useDashboardStore = defineStore('dashboard', {
       if (!dashboard) return
       const api = useApi()
       this.refreshing = true
+
       try {
-        const response = await api.dashboards.refreshAll(dashboard.id) as { widgets: Record<string, any> }
-        for (const [widgetId, result] of Object.entries(response.widgets)) {
-          if ('error' in result) continue
-          const widget = dashboard.widgets.find(w => w.id === widgetId)
-          if (!widget) continue
-          Object.assign(widget.widget.config, result.config)
-          if (widget.dataSource) {
-            widget.dataSource.lastRefreshedAt = result.refreshed_at
+        // Separate dataset widgets from regular widgets
+        const datasetWidgets = dashboard.widgets.filter(w => w.dataSource && this.connectionTypes[w.dataSource.connectionId] === 'dataset')
+        const regularWidgets = dashboard.widgets.filter(w => w.dataSource && this.connectionTypes[w.dataSource.connectionId] !== 'dataset')
+
+        // Refresh regular widgets via backend
+        if (regularWidgets.length > 0 || dashboard.widgets.some(w => !w.dataSource)) {
+          const response = await api.dashboards.refreshAll(dashboard.id) as { widgets: Record<string, any> }
+          for (const [widgetId, result] of Object.entries(response.widgets)) {
+            if ('error' in result) continue
+            const widget = dashboard.widgets.find(w => w.id === widgetId)
+            if (!widget) continue
+            Object.assign(widget.widget.config, result.config)
+            if (widget.dataSource) {
+              widget.dataSource.lastRefreshedAt = result.refreshed_at
+            }
+          }
+        }
+
+        // Refresh dataset widgets client-side via sql.js
+        if (datasetWidgets.length > 0) {
+          const { useSqlite } = await import('~/composables/useSqlite')
+          const { transformWidgetData } = await import('~/utils/widgetTransform')
+          const { injectFiltersForSqlite } = await import('~/utils/filterInjection')
+          const sqlite = useSqlite()
+
+          for (const widget of datasetWidgets) {
+            if (!widget.dataSource) continue
+            try {
+              let sql = widget.dataSource.sql
+              let params: any[] | undefined
+              if (this.activeFilters.length > 0) {
+                const injected = injectFiltersForSqlite(sql, this.activeFilters)
+                sql = injected.sql
+                params = injected.params
+              }
+              const result = await sqlite.executeQuery(widget.dataSource.connectionId, sql, params)
+              const config = transformWidgetData(result, widget.dataSource.mapping as any)
+              Object.assign(widget.widget.config, config)
+              widget.dataSource.lastRefreshedAt = new Date().toISOString()
+            } catch (e) {
+              console.error(`Dataset widget ${widget.id} refresh failed:`, e)
+            }
           }
         }
       } finally {
@@ -312,6 +357,7 @@ export const useDashboardStore = defineStore('dashboard', {
       this.editMode = false
       this.dirty = false
       this.filterValues = {}
+      this.connectionTypes = {}
     },
 
     async removeSchedule(dashboardId: number) {

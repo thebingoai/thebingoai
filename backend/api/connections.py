@@ -230,10 +230,10 @@ async def delete_connection(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    # Drop the underlying PostgreSQL table for dataset connections
+    # Delete the SQLite file from DO Spaces for dataset connections
     if connection.db_type == DatabaseType.DATASET and connection.dataset_table_name:
-        from backend.services.dataset_service import drop_dataset_table
-        drop_dataset_table(connection.dataset_table_name)
+        from backend.services.dataset_service import delete_dataset_sqlite
+        delete_dataset_sqlite(connection.dataset_table_name)
 
     # Delete schema JSON file
     delete_schema_file(connection_id)

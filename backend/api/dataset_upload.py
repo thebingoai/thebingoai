@@ -13,8 +13,7 @@ from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.models.user import User
 from backend.services.dataset_service import (
-    create_dataset_table,
-    drop_dataset_table,
+    create_dataset_sqlite,
     generate_dataset_schema,
     infer_column_types,
     parse_csv,
@@ -112,23 +111,29 @@ async def upload_dataset(
     db.refresh(connection)
 
     sanitized = sanitize_name(base_name)
+
+    from backend.services import object_storage as _object_storage
+
+    sqlite_path = create_dataset_sqlite(connection.id, sanitized, columns, df)
+    do_spaces_key = f"{settings.do_spaces_base_path}/datasets/sqlite/{connection.id}.sqlite"
     try:
-        qualified_table = create_dataset_table(connection.id, sanitized, columns, df)
+        with open(sqlite_path, 'rb') as f:
+            _object_storage.upload_bytes(do_spaces_key, f.read(), content_type="application/x-sqlite3")
     except Exception as e:
         db.delete(connection)
         db.commit()
         logger.error(
-            "Dataset table creation failed for connection %s: %s",
+            "Dataset SQLite upload failed for connection %s: %s",
             connection.id,
             e,
             exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create dataset table: {e}",
+            detail=f"Failed to upload dataset file: {e}",
         )
 
-    connection.dataset_table_name = qualified_table
+    connection.dataset_table_name = do_spaces_key
     db.commit()
 
     row_count = len(df)
@@ -136,7 +141,7 @@ async def upload_dataset(
         schema_json = generate_dataset_schema(
             connection_id=connection.id,
             name=connection_name,
-            table_name=qualified_table,
+            table_name=do_spaces_key,
             columns=columns,
             row_count=row_count,
         )
@@ -173,9 +178,9 @@ async def upload_dataset(
             db.commit()
 
     logger.info(
-        "Dataset upload complete: connection_id=%s, table=%s, rows=%d",
+        "Dataset upload complete: connection_id=%s, key=%s, rows=%d",
         connection.id,
-        qualified_table,
+        do_spaces_key,
         row_count,
     )
 
@@ -183,7 +188,7 @@ async def upload_dataset(
         "id": connection.id,
         "name": connection.name,
         "source_filename": connection.source_filename,
-        "table_name": qualified_table,
+        "table_name": do_spaces_key,
         "row_count": row_count,
         "columns": [{"name": c["name"], "type": c["pg_type"]} for c in columns],
     }

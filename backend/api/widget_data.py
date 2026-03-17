@@ -205,6 +205,42 @@ async def refresh_dashboard_widgets(
 
 
 from backend.services.schema_utils import extract_table_names as _extract_table_names, build_schema_summary as _build_schema_summary
+from backend.models.database_connection import DatabaseType
+
+
+@router.get("/datasets/{connection_id}/sqlite-url")
+async def get_dataset_sqlite_url(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a presigned download URL for the SQLite file backing a DATASET connection.
+    Used by the frontend sql.js integration to download the SQLite file for client-side querying.
+    """
+    from backend.services import object_storage
+
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    if str(connection.db_type).upper() != DatabaseType.DATASET.name:
+        raise HTTPException(status_code=400, detail="Connection is not a dataset connection")
+
+    do_spaces_key = connection.dataset_table_name
+    if not do_spaces_key:
+        raise HTTPException(status_code=404, detail="Dataset SQLite file not found")
+
+    try:
+        url = object_storage.generate_presigned_url(do_spaces_key, expires_in=3600)
+        return {"url": url, "expires_in": 3600}
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL for connection {connection_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {e}")
 
 
 @router.post("/widgets/suggest-fix", response_model=WidgetSuggestFixResponse)

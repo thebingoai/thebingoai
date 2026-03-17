@@ -609,6 +609,11 @@ export const useApi = () => {
           headers: getHeaders(),
         })
       },
+      async getSqliteUrl(connectionId: number) {
+        return $fetch(`/api/dashboards/datasets/${connectionId}/sqlite-url`, {
+          headers: getHeaders(),
+        }) as Promise<{ url: string; expires_in: number }>
+      },
     },
 
     // Heartbeat Jobs endpoints

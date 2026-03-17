@@ -49,3 +49,15 @@ def delete_object(key: str) -> None:
         logger.debug("Deleted %s/%s", settings.do_spaces_bucket, key)
     except Exception as e:
         logger.error("Failed to delete %s/%s: %s", settings.do_spaces_bucket, key, e)
+
+
+def generate_presigned_url(key: str, expires_in: int = 3600) -> str:
+    """Generate a presigned download URL for a DO Spaces object."""
+    client = _client()
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.do_spaces_bucket, "Key": key},
+        ExpiresIn=expires_in,
+    )
+    logger.debug("Generated presigned URL for %s (expires in %ds)", key, expires_in)
+    return url
