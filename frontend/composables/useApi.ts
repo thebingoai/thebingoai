@@ -209,7 +209,7 @@ export const useApi = () => {
         })
       },
       async uploadChatFiles(files: File[]) {
-        return new Promise((resolve, reject) => {
+        const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest()
           const formData = new FormData()
 
@@ -225,9 +225,9 @@ export const useApi = () => {
             } else {
               try {
                 const error = JSON.parse(xhr.responseText)
-                reject(new Error(error.detail || 'Upload failed'))
+                reject(Object.assign(new Error(error.detail || 'Upload failed'), { status: xhr.status }))
               } catch (e) {
-                reject(new Error(`Upload failed with status ${xhr.status}`))
+                reject(Object.assign(new Error(`Upload failed with status ${xhr.status}`), { status: xhr.status }))
               }
             }
           })
@@ -237,11 +237,27 @@ export const useApi = () => {
           })
 
           xhr.open('POST', '/api/chat/files/upload')
-          if (authStore.token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
           }
           xhr.send(formData)
         })
+
+        try {
+          return await doUpload(authStore.token)
+        } catch (error: any) {
+          if (error?.status === 401) {
+            const refreshed = await authStore.refreshAccessToken()
+            if (refreshed) {
+              return await doUpload(authStore.token)
+            } else {
+              const router = useRouter()
+              await authStore.logout()
+              await router.push('/login')
+            }
+          }
+          throw error
+        }
       }
     },
 

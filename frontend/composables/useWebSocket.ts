@@ -28,6 +28,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null
 let reconnectDelay = 1000
 const MAX_RECONNECT_DELAY = 30_000
+let _connectFn: ((token?: string) => void) | null = null
 
 function _emit(type: string, data: any) {
   handlers.get(type)?.forEach(fn => fn(data))
@@ -55,7 +56,7 @@ function _scheduleReconnect(token: string) {
   if (reconnectTimer !== null) return
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
-    connect(token)
+    _connectFn?.(token)
   }, reconnectDelay)
   reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
 }
@@ -121,6 +122,8 @@ export function useWebSocket() {
       state.connectionState = 'error'
     }
   }
+
+  _connectFn = connect
 
   function disconnect() {
     if (reconnectTimer !== null) {

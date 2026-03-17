@@ -51,6 +51,7 @@ class BaseConnector(ABC):
         self.ssl_ca_cert = ssl_ca_cert  # decrypted PEM content
         self._connection = None
         self._temp_ca_file = None
+        self._search_path = None
 
     # ============================================================
     # Abstract Primitives (MUST implement in subclasses)
@@ -479,6 +480,8 @@ class BaseConnector(ABC):
             cursor.execute("SET TRANSACTION READ ONLY")
             # Enforce query execution timeout
             cursor.execute(f"SET LOCAL statement_timeout = '{settings.query_timeout_ms}'")
+            if self._search_path:
+                cursor.execute(f"SET LOCAL search_path = {self._search_path}")
 
             if params:
                 cursor.execute(query, params)

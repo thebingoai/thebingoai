@@ -84,9 +84,12 @@ def infer_column_types(df: pd.DataFrame) -> list[dict]:
             else:
                 # Two-stage datetime gate: regex pre-filter then parse threshold
                 _DATE_RE = re.compile(
-                    r'^\d{4}-\d{2}-\d{2}'           # 2024-01-15 (ISO)
-                    r'|^\d{1,2}/\d{1,2}/\d{2,4}'   # 01/15/2024
-                    r'|^[A-Za-z]+ \d{1,2},? \d{4}'  # January 15, 2024
+                    r'^\d{4}-\d{1,2}-\d{1,2}'                  # 2024-01-15 (ISO)
+                    r'|^\d{4}/\d{1,2}/\d{1,2}'                 # 2024/01/15
+                    r'|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}'        # 01/15/2024, 15-01-2024
+                    r'|^[A-Za-z]+ \d{1,2},? \d{4}'            # January 15, 2024
+                    r'|^\d{1,2}[- ][A-Za-z]{3,}[- ]\d{2,4}'  # 15 Jan 2024, 15-Jan-24
+                    r'|^\d{8}$'                                 # 20240115 (compact ISO)
                 )
                 str_vals_raw = series.dropna().astype(str).str.strip()
                 date_like = str_vals_raw.apply(lambda v: bool(_DATE_RE.match(v))).sum()
@@ -152,39 +155,43 @@ def create_dataset_table(
     }
     dtype_map = {c["name"]: _PG_TO_SA.get(c["pg_type"], sa.Text()) for c in columns}
 
-    with engine.begin() as conn:
-        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-
     df = coerce_dataframe(df, columns)
 
     try:
-        df.to_sql(
-            table_name,
-            engine,
-            schema=schema,
-            if_exists="replace",
-            index=False,
-            dtype=dtype_map,
-        )
+        with engine.begin() as conn:
+            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+            df.to_sql(
+                table_name,
+                conn,
+                schema=schema,
+                if_exists="replace",
+                index=False,
+                dtype=dtype_map,
+            )
     except Exception as e:
         logger.warning(
             "Typed insertion failed for %s (%s), retrying with all TEXT columns", qualified, e
         )
-        # Drop any partial table
-        with engine.begin() as conn:
-            conn.execute(text(f"DROP TABLE IF EXISTS {qualified}"))
         # Reset all columns to TEXT in-place so downstream schema reflects actual types
         for col in columns:
             col["pg_type"] = "TEXT"
+        # Convert any coerced non-string columns back to string for TEXT insertion
+        for c in columns:
+            name = c["name"]
+            if name in df.columns and df[name].dtype.kind not in ("O", "U", "S"):
+                df[name] = df[name].astype(str).where(df[name].notna(), other=None)
         text_dtype_map = {c["name"]: sa.Text() for c in columns}
-        df.to_sql(
-            table_name,
-            engine,
-            schema=schema,
-            if_exists="replace",
-            index=False,
-            dtype=text_dtype_map,
-        )
+        with engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {qualified}"))
+            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+            df.to_sql(
+                table_name,
+                conn,
+                schema=schema,
+                if_exists="replace",
+                index=False,
+                dtype=text_dtype_map,
+            )
 
     logger.info("Created dataset table %s with %d rows", qualified, len(df))
     return qualified

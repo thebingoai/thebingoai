@@ -44,10 +44,10 @@ def get_connector_for_connection(connection: DatabaseConnection) -> BaseConnecto
 
     All other types delegate to get_connector().
     """
-    if connection.db_type == DatabaseType.DATASET:
+    if str(connection.db_type).upper() == DatabaseType.DATASET.name:
         from backend.config import settings
         parsed = urlparse(settings.database_url)
-        return PostgresConnector(
+        connector = PostgresConnector(
             host=parsed.hostname,
             port=parsed.port or 5432,
             database=parsed.path.lstrip("/"),
@@ -56,6 +56,8 @@ def get_connector_for_connection(connection: DatabaseConnection) -> BaseConnecto
             ssl_enabled=False,
             ssl_ca_cert=None,
         )
+        connector._search_path = f"{settings.dataset_schema}, public"
+        return connector
     return get_connector(
         db_type=connection.db_type,
         host=connection.host,

@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import Optional
 
@@ -151,10 +151,11 @@ class Settings(BaseSettings):
             )
         return v
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore unknown env vars (e.g. JWT_SECRET_KEY from old .env files)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore unknown env vars (e.g. JWT_SECRET_KEY from old .env files)
+    )
 
 # Singleton instance
 settings = Settings()
