@@ -21,9 +21,17 @@ class SQLiteConnector:
         try:
             cursor = conn.cursor()
             if params:
-                # Convert dict params to positional (sql.js uses ? markers)
-                # Backend uses %(key)s style from PostgreSQL; convert to ?
-                cursor.execute(query, params) if isinstance(params, (list, tuple)) else cursor.execute(query, list(params.values()))
+                if isinstance(params, dict):
+                    # Rewrite PostgreSQL %(key)s placeholders to SQLite ? positional style
+                    ordered_keys = re.findall(r'%\((\w+)\)s', query)
+                    if ordered_keys:
+                        query = re.sub(r'%\(\w+\)s', '?', query)
+                        params = [params[k] for k in ordered_keys]
+                    else:
+                        params = list(params.values())
+                    # SQLite doesn't support ILIKE; LIKE is case-insensitive for ASCII
+                    query = re.sub(r'\bILIKE\b', 'LIKE', query, flags=re.IGNORECASE)
+                cursor.execute(query, params)
             else:
                 cursor.execute(query)
 

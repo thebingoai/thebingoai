@@ -393,7 +393,7 @@ function normalizeWidget(raw: any): DashboardWidget {
   if (w.type === 'chart') {
     const { chartType, labels, datasets, type: cfgType, data, ...rest } = config
     const resolvedType = cfgType ?? chartType
-    const resolvedData = data ?? (labels != null ? { labels, datasets: datasets ?? [] } : undefined)
+    const resolvedData = data ?? (labels != null ? { labels, datasets: datasets ?? [] } : { labels: [], datasets: [] })
     config = { ...rest, ...(resolvedType ? { type: resolvedType } : {}), ...(resolvedData ? { data: resolvedData } : {}) }
   }
 

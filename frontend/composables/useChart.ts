@@ -86,6 +86,7 @@ function applyDefaultColors(
 }
 
 function sortChartData(config: ChartConfig): { labels: string[]; datasets: ChartConfig['data']['datasets'] } {
+  if (!config.data) return { labels: [], datasets: [] }
   const { labels, datasets } = config.data
   const sortBy = config.options?.sortBy
   const sortDir = config.options?.sortDirection ?? 'asc'
@@ -176,6 +177,7 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
     if (!canvas) return
 
     const config = configRef.value
+    if (!config.data) return
     const enableAnimation = config.animation?.chartAnimation ?? true
     const chartJsType = resolveChartJsType(config.type)
     const sorted = sortChartData(config)

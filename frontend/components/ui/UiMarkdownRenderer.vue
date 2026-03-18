@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import MarkdownIt from 'markdown-it'
-import { getHighlighter } from 'shiki'
+import { useShikiHighlighter } from '~/composables/useShikiHighlighter'
 
 interface Props {
   content: string
@@ -23,10 +23,7 @@ const highlighter = ref<any>(null)
 
 onMounted(async () => {
   try {
-    highlighter.value = await getHighlighter({
-      themes: ['github-dark', 'github-light'],
-      langs: ['javascript', 'typescript', 'python', 'bash', 'json', 'markdown', 'html', 'css']
-    })
+    highlighter.value = await useShikiHighlighter()
 
     // Override code block rendering with syntax highlighting
     const defaultRender = md.renderer.rules.fence || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
