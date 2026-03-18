@@ -128,7 +128,7 @@ def execute_dashboard_refresh(dashboard_id: int):
                 updated_widgets.append(widget)
                 continue
 
-            if str(connection.db_type).upper() == DatabaseType.DATASET.name:
+            if connection.db_type == DatabaseType.DATASET:
                 # Dataset widgets are refreshed client-side via sql.js — skip server-side refresh
                 updated_widgets.append(widget)
                 widgets_total -= 1  # Don't count as a processable widget

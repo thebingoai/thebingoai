@@ -40,7 +40,7 @@ async def invoke_dashboard_agent(
 
     try:
         result = await agent.ainvoke(
-            {"messages": [HumanMessage(content=request)]}
+            {"messages": [HumanMessage(content=request)]},
         )
 
         messages = result.get("messages", [])

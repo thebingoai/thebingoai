@@ -46,6 +46,8 @@ def _friendly_error(e: Exception) -> str:
             "⚠️ The AI service API key is invalid or missing. "
             "Please check your configuration."
         )
+    if "recursion limit" in msg.lower():
+        return "⚠️ The request required too many steps. Try a simpler request."
     # Unknown error — keep message but strip raw dict noise
     return f"⚠️ Something went wrong: {msg}"
 

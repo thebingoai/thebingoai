@@ -263,7 +263,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 return {"error": "Connection not found"}
 
             # Determine quoting and table name based on connection type
-            is_dataset = str(connection.db_type).upper() == DatabaseType.DATASET.name
+            is_dataset = connection.db_type == DatabaseType.DATASET
             db_type_str = "mysql" if connection.db_type == DatabaseType.MYSQL else "postgres"
 
             def q(name: str) -> str:

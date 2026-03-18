@@ -42,7 +42,7 @@ async def invoke_data_agent(
     try:
         # Invoke agent (single turn, no thread persistence)
         result = await agent.ainvoke(
-            {"messages": [HumanMessage(content=question)]}
+            {"messages": [HumanMessage(content=question)]},
         )
 
         # Extract SQL queries, results, and all intermediate steps from messages

@@ -228,7 +228,7 @@ async def get_dataset_sqlite_url(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    if str(connection.db_type).upper() != DatabaseType.DATASET.name:
+    if connection.db_type != DatabaseType.DATASET:
         raise HTTPException(status_code=400, detail="Connection is not a dataset connection")
 
     do_spaces_key = connection.dataset_table_name

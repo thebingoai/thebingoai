@@ -57,6 +57,13 @@ export default defineNuxtConfig({
     }
   },
 
+  vite: {
+    optimizeDeps: {
+      include: ['sql.js'],
+      exclude: [],
+    },
+  },
+
   typescript: {
     strict: false,
     typeCheck: false

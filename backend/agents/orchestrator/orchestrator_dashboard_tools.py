@@ -21,6 +21,10 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         """
         Create a persistent, fully-featured dashboard from a natural language request.
 
+        IMPORTANT: If the user wants a dashboard from an uploaded file, you MUST call
+        create_dataset_from_upload FIRST and wait for its result (which contains the
+        connection_id), THEN call this tool. Do NOT call both tools simultaneously.
+
         This tool delegates to a specialized dashboard sub-agent that handles the entire
         dashboard creation workflow autonomously, end-to-end:
 
@@ -58,6 +62,20 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
                 - message (str): Human-readable summary of what was created
                 - steps (list): Ordered list of actions taken by the sub-agent
         """
+        # Refresh context.available_connections from DB so that any connections created
+        # by create_dataset_from_upload in the same turn are visible to the dashboard agent.
+        from backend.models.database_connection import DatabaseConnection
+        db = db_session_factory()
+        try:
+            fresh_ids = [
+                row.id for row in db.query(DatabaseConnection.id)
+                .filter(DatabaseConnection.user_id == context.user_id)
+                .all()
+            ]
+        finally:
+            db.close()
+        context.available_connections = fresh_ids
+
         result = await invoke_dashboard_agent(request, context, db_session_factory)
         return json.dumps(result)
 

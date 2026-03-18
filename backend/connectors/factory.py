@@ -86,7 +86,7 @@ def get_connector_for_connection(connection: DatabaseConnection) -> Any:
 
     All other types delegate to get_connector().
     """
-    if str(connection.db_type).upper() == DatabaseType.DATASET.name:
+    if connection.db_type == DatabaseType.DATASET:
         return _get_sqlite_connector_for_dataset(connection)
     return get_connector(
         db_type=connection.db_type,
