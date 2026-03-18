@@ -35,6 +35,16 @@
       <!-- Schedule popover — visible in view mode -->
       <DashboardSchedulePopover v-if="!editMode && dashboardId" :dashboard-id="dashboardId" />
 
+      <!-- Delete button — only visible in edit mode -->
+      <button
+        v-if="editMode"
+        class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600"
+        @click="emit('delete')"
+      >
+        <Trash2 class="h-3.5 w-3.5" />
+        Delete
+      </button>
+
       <!-- Save button — only visible in edit mode -->
       <button
         v-if="editMode"
@@ -64,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronLeft, Pencil, Eye, Save, RefreshCw } from 'lucide-vue-next'
+import { ChevronLeft, Pencil, Eye, Save, RefreshCw, Trash2 } from 'lucide-vue-next'
 
 defineProps<{
   title: string
@@ -80,5 +90,6 @@ const emit = defineEmits<{
   'toggle-edit': []
   save: []
   'refresh-all': []
+  delete: []
 }>()
 </script>

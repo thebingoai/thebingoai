@@ -12,11 +12,15 @@
     <div v-if="chatStore.permanentConversation" class="border-b border-gray-100">
       <button
         @click="handleSelectConversation(chatStore.permanentConversation!.id)"
-        class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-        :class="chatStore.currentThreadId === chatStore.permanentConversation.id ? 'bg-gray-100' : ''"
+        class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200"
+        :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'bg-gray-100' : ''"
       >
-        <span class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-900">
-          <Sparkles class="h-3.5 w-3.5 text-white" />
+        <span class="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full">
+          <span
+            class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
+            :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation!.id ? 'opacity-100' : 'opacity-0'"
+          />
+          <Sparkles class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
         <span class="flex-1 min-w-0 text-sm font-light text-gray-900 truncate">
           {{ chatStore.permanentConversation.title || 'Bingo AI' }}
@@ -35,11 +39,15 @@
     <div>
       <button
         @click="router.push('/dashboard')"
-        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100 transition-colors duration-200"
         :class="route.path === '/dashboard' ? 'bg-gray-100' : ''"
       >
-        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900">
-          <LayoutDashboard class="h-3.5 w-3.5 text-white" />
+        <span class="relative flex h-7 w-7 items-center justify-center rounded-full">
+          <span
+            class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
+            :class="route.path === '/dashboard' ? 'opacity-100' : 'opacity-0'"
+          />
+          <LayoutDashboard class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
         Dashboard
       </button>
@@ -49,10 +57,15 @@
     <div>
       <button
         @click="handleNewTask"
-        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100 transition-colors duration-200"
+        :class="route.path === '/chat' && !chatStore.currentThreadId ? 'bg-gray-100' : ''"
       >
-        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900">
-          <Plus class="h-3.5 w-3.5 text-white" />
+        <span class="relative flex h-7 w-7 items-center justify-center rounded-full">
+          <span
+            class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
+            :class="route.path === '/chat' && !chatStore.currentThreadId ? 'opacity-100' : 'opacity-0'"
+          />
+          <Plus class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
         New Task
       </button>

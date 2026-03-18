@@ -217,7 +217,7 @@ export const useChat = () => {
   }
 
   const newChat = () => {
-    chatStore.reset()
+    chatStore.startNewChat()
   }
 
   const loadConversations = async () => {

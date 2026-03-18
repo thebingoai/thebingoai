@@ -34,6 +34,7 @@
           @toggle-edit="store.toggleEditMode()"
           @save="store.saveDashboard()"
           @refresh-all="store.refreshAllWidgets()"
+          @delete="handleDeleteRequest"
         />
 
         <!-- Edit toolbar (visible only in edit mode) -->
@@ -62,6 +63,40 @@
           </Transition>
         </div>
       </template>
+
+      <!-- Delete dashboard confirmation dialog -->
+      <UiDialog
+        v-model:open="showDeleteDialog"
+        title="Delete Dashboard"
+        size="sm"
+      >
+        <div class="space-y-4">
+          <p class="text-sm text-gray-600">
+            This will permanently delete <span class="font-medium text-gray-900">{{ store.currentDashboard?.title }}</span> and all its widgets. This action cannot be undone.
+          </p>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">
+              Type <span class="font-semibold">{{ store.currentDashboard?.title }}</span> to confirm
+            </label>
+            <input
+              v-model="deleteConfirmText"
+              type="text"
+              placeholder="Dashboard name"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+            />
+          </div>
+        </div>
+        <template #footer>
+          <UiButton variant="outline" size="sm" @click="showDeleteDialog = false">Cancel</UiButton>
+          <UiButton
+            variant="danger"
+            size="sm"
+            :disabled="deleteConfirmText !== store.currentDashboard?.title"
+            :loading="deleting"
+            @click="confirmDelete"
+          >Delete</UiButton>
+        </template>
+      </UiDialog>
 
       <!-- SQL editor modal -->
       <DashboardSqlEditor
@@ -97,6 +132,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { LayoutGrid, Clock, Activity } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { useDashboardStore } from '~/stores/dashboard'
 import { toDashboardListItem } from '~/types/dashboard'
 import type { DashboardWidget } from '~/types/dashboard'
@@ -117,6 +153,30 @@ onMounted(async () => {
 const sqlEditorWidget = ref<DashboardWidget | null>(null)
 const sqlEditorError = ref<string | null>(null)
 const configEditorWidget = ref<DashboardWidget | null>(null)
+
+const showDeleteDialog = ref(false)
+const deleteConfirmText = ref('')
+const deleting = ref(false)
+
+function handleDeleteRequest() {
+  deleteConfirmText.value = ''
+  showDeleteDialog.value = true
+}
+
+async function confirmDelete() {
+  const id = store.currentDashboard?.id
+  if (!id) return
+  deleting.value = true
+  try {
+    await store.deleteDashboard(id)
+    showDeleteDialog.value = false
+    toast.success('Dashboard deleted')
+  } catch {
+    toast.error('Failed to delete dashboard')
+  } finally {
+    deleting.value = false
+  }
+}
 
 watch(() => store.editMode, (editing) => {
   if (!editing) configEditorWidget.value = null
