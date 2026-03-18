@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
-from backend.api import query_results, sso_webhooks, dataset_upload
+from backend.api import query_results, sso_webhooks, dataset_upload, agent_sessions
 
 router = APIRouter()
 
@@ -49,6 +49,9 @@ router.include_router(widget_data.router)
 
 # Dashboard Schedule Management
 router.include_router(dashboard_schedule.router)
+
+# Agent Sessions (Mesh)
+router.include_router(agent_sessions.router)
 
 # Query Result Fetch (schema-only side-channel)
 router.include_router(query_results.router)

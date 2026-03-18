@@ -278,50 +278,24 @@ export const useDashboardStore = defineStore('dashboard', {
       this.refreshing = true
 
       try {
-        // Separate dataset widgets from regular widgets
-        const datasetWidgets = dashboard.widgets.filter(w => w.dataSource && this.connectionTypes[w.dataSource.connectionId] === 'dataset')
-        const regularWidgets = dashboard.widgets.filter(w => w.dataSource && this.connectionTypes[w.dataSource.connectionId] !== 'dataset')
+        const filters = this.activeFilters.length > 0 ? this.activeFilters : undefined
+        const sqlWidgets = dashboard.widgets.filter(w => w.dataSource)
 
-        // Refresh regular widgets via backend
-        if (regularWidgets.length > 0 || dashboard.widgets.some(w => !w.dataSource)) {
-          const response = await api.dashboards.refreshAll(dashboard.id) as { widgets: Record<string, any> }
-          for (const [widgetId, result] of Object.entries(response.widgets)) {
-            if ('error' in result) continue
-            const widget = dashboard.widgets.find(w => w.id === widgetId)
-            if (!widget) continue
-            Object.assign(widget.widget.config, result.config)
-            if (widget.dataSource) {
-              widget.dataSource.lastRefreshedAt = result.refreshed_at
-            }
+        await Promise.all(sqlWidgets.map(async (widget) => {
+          if (!widget.dataSource) return
+          try {
+            const response = await api.dashboards.refreshWidget({
+              connection_id: widget.dataSource.connectionId,
+              sql: widget.dataSource.sql,
+              mapping: widget.dataSource.mapping as any,
+              filters,
+            }) as { config: Record<string, any>; refreshed_at: string }
+            Object.assign(widget.widget.config, response.config)
+            widget.dataSource.lastRefreshedAt = response.refreshed_at
+          } catch (e) {
+            console.error(`Widget ${widget.id} refresh failed:`, e)
           }
-        }
-
-        // Refresh dataset widgets client-side via sql.js
-        if (datasetWidgets.length > 0) {
-          const { useSqlite } = await import('~/composables/useSqlite')
-          const { transformWidgetData } = await import('~/utils/widgetTransform')
-          const { injectFiltersForSqlite } = await import('~/utils/filterInjection')
-          const sqlite = useSqlite()
-
-          for (const widget of datasetWidgets) {
-            if (!widget.dataSource) continue
-            try {
-              let sql = widget.dataSource.sql
-              let params: any[] | undefined
-              if (this.activeFilters.length > 0) {
-                const injected = injectFiltersForSqlite(sql, this.activeFilters)
-                sql = injected.sql
-                params = injected.params
-              }
-              const result = await sqlite.executeQuery(widget.dataSource.connectionId, sql, params)
-              const config = transformWidgetData(result, widget.dataSource.mapping as any)
-              Object.assign(widget.widget.config, config)
-              widget.dataSource.lastRefreshedAt = new Date().toISOString()
-            } catch (e) {
-              console.error(`Dataset widget ${widget.id} refresh failed:`, e)
-            }
-          }
-        }
+        }))
       } finally {
         this.refreshing = false
       }

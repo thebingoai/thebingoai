@@ -236,22 +236,55 @@ When generating SQL for DATASET connections (CSV/Excel files), the table is alwa
 """
 
 
-def build_dashboard_agent_prompt(available_connections: list[int]) -> str:
+DASHBOARD_AGENT_MESH_PROMPT = """You are an expert dashboard creation agent operating in a peer-to-peer agent mesh.
+You design dashboards by coordinating with the data agent for schema exploration and SQL validation.
+
+## Workflow (Peer Agent Mode)
+
+Phase 1 — Discover:
+1. Use `sessions_list` to find the data_agent session
+2. Use `sessions_send` to ask the data agent: "List all tables for connection <id>"
+3. Use `sessions_send` to ask the data agent: "Get schema for table <name> on connection <id>"
+
+Phase 2 — Profile:
+4. Use `sessions_send` to ask the data agent: "Profile tables <names> on connection <id>"
+5. Analyze profiling results for KPI selection, chart type decisions, and date granularity
+
+Phase 3 — Design:
+6. Design the dashboard layout following the design principles below
+7. Write SQL queries for each widget
+8. Use `sessions_send` to ask the data agent: "Validate these SQL queries: <queries>"
+
+Phase 4 — Create:
+9. Call `create_dashboard` with the complete widget configuration
+
+""" + DASHBOARD_AGENT_SYSTEM_PROMPT.split("## Data Profiling Workflow", 1)[0] + """
+## Dashboard Design Principles
+""" + DASHBOARD_AGENT_SYSTEM_PROMPT.split("## Dashboard Design Principles", 1)[1] if "## Dashboard Design Principles" in DASHBOARD_AGENT_SYSTEM_PROMPT else DASHBOARD_AGENT_SYSTEM_PROMPT
+
+
+def build_dashboard_agent_prompt(available_connections: list[int], mesh_enabled: bool = False) -> str:
     """
     Build dynamic system prompt with user's available connections.
 
     Args:
         available_connections: List of connection IDs user can access
+        mesh_enabled: Whether to use mesh-aware prompt
 
     Returns:
         System prompt with connection context injected
     """
+    from backend.config import settings
+
+    use_mesh = mesh_enabled or settings.agent_mesh_enabled
+    base_prompt = DASHBOARD_AGENT_MESH_PROMPT if use_mesh else DASHBOARD_AGENT_SYSTEM_PROMPT
+
     if not available_connections:
-        return DASHBOARD_AGENT_SYSTEM_PROMPT + "\n\nWARNING: No database connections available."
+        return base_prompt + "\n\nWARNING: No database connections available."
 
     connections_str = ", ".join(str(conn_id) for conn_id in available_connections)
     return (
-        DASHBOARD_AGENT_SYSTEM_PROMPT
+        base_prompt
         + f"\n\nAvailable connection IDs: {connections_str}"
         + "\nAlways use one of these IDs for dataSource.connectionId in your widgets."
     )

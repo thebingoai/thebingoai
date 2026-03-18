@@ -113,6 +113,26 @@ def _build_dashboard_agent_tool(context: AgentContext) -> List:
     return [dashboard_agent]
 
 
+def _build_communication_tools(context: AgentContext) -> List:
+    """Return communication tools for the agent mesh."""
+    from backend.agents.communication_tools import build_communication_tools
+    from backend.services.agent_registry import AgentRegistry
+    from backend.services.agent_message_bus import AgentMessageBus
+    from backend.database.session import SessionLocal
+
+    if not context.session_id:
+        return []
+    db = SessionLocal()
+    registry = AgentRegistry()
+    message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)
+    return build_communication_tools(
+        user_id=context.user_id,
+        session_id=context.session_id,
+        message_bus=message_bus,
+        registry=registry,
+    )
+
+
 TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "list_tables": build_list_tables_tool,
     "get_table_schema": build_get_table_schema_tool,
@@ -123,6 +143,10 @@ TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "summarize_text": _build_summarize_tool,
     "create_dashboard": build_create_dashboard_tool,
     "dashboard_agent": _build_dashboard_agent_tool,
+    "sessions_list": _build_communication_tools,
+    "sessions_send": _build_communication_tools,
+    "sessions_history": _build_communication_tools,
+    "sessions_broadcast": _build_communication_tools,
 }
 
 

@@ -18,7 +18,10 @@ async def invoke_dashboard_agent(
     db_session_factory: Callable,
 ) -> Dict[str, Any]:
     """
-    Invoke stateless Dashboard Agent for schema exploration and dashboard creation.
+    Invoke Dashboard Agent for schema exploration and dashboard creation.
+
+    When agent_mesh_enabled=True and context has a session_id, uses AgentRuntime
+    for session-based execution with communication tools.
 
     Args:
         request: User's dashboard creation request
@@ -29,6 +32,35 @@ async def invoke_dashboard_agent(
         Dict with success, message, dashboard_id, steps
     """
     tools = build_dashboard_agent_tools(context, db_session_factory)
+
+    # Use AgentRuntime when mesh is enabled for session-based execution
+    if settings.agent_mesh_enabled and context.session_id:
+        from backend.agents.runtime import AgentRuntime
+        from backend.services.agent_registry import AgentRegistry
+        from backend.services.agent_message_bus import AgentMessageBus
+
+        registry = AgentRegistry()
+        db = db_session_factory()
+        message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)
+
+        runtime = AgentRuntime(
+            session_id=context.session_id,
+            agent_type="dashboard_agent",
+            user_id=context.user_id,
+            context=context,
+            registry=registry,
+            message_bus=message_bus,
+        )
+
+        prompt = build_dashboard_agent_prompt(context.available_connections, mesh_enabled=True)
+        result = await runtime.execute(request, tools, prompt)
+
+        return {
+            "success": result.get("success", False),
+            "message": result.get("message", ""),
+            "dashboard_id": None,  # Extracted from tool results
+            "steps": [],
+        }
 
     provider = get_provider(settings.default_llm_provider)
 

@@ -15,6 +15,10 @@ export interface SSOConfig {
   google_oauth_url: string
 }
 
+// Deduplication: when multiple widgets get 401 simultaneously,
+// only the first call actually refreshes; others await the same promise.
+let _refreshPromise: Promise<boolean> | null = null
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null as User | null,
@@ -176,7 +180,16 @@ export const useAuthStore = defineStore('auth', {
 
     async refreshAccessToken() {
       if (!this.refreshToken) return false
+      if (_refreshPromise) return _refreshPromise
+      _refreshPromise = this._doRefreshToken()
+      try {
+        return await _refreshPromise
+      } finally {
+        _refreshPromise = null
+      }
+    },
 
+    async _doRefreshToken() {
       try {
         const data = await $fetch<{ access_token: string }>(
           '/sso-api/auth/token/refresh',

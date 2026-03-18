@@ -17,6 +17,10 @@ class CustomAgent(Base, TimestampMixin):
     connection_ids = Column(JSON, nullable=True)        # List[int] | None
     is_active = Column(Boolean, default=True, nullable=False)
 
+    # Agent mesh: autonomous execution
+    is_autonomous = Column(Boolean, default=False, nullable=False)
+    schedule = Column(String(100), nullable=True)  # cron expression, nullable
+
     # Relationships
     user = relationship("User")
     team = relationship("Team")

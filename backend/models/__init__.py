@@ -36,3 +36,7 @@ from backend.models.skill_suggestion import SkillSuggestion
 # Phase 6: Heartbeat Jobs
 from backend.models.heartbeat_job import HeartbeatJob
 from backend.models.heartbeat_job_run import HeartbeatJobRun
+
+# Agent Mesh
+from backend.models.agent_session import AgentSession
+from backend.models.agent_message import AgentMessage

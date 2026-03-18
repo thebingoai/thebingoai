@@ -18,6 +18,9 @@ class AgentContext:
     team_id: Optional[str] = None
     allowed_tool_keys: List[str] = field(default_factory=list)
 
+    # Agent mesh: session identity
+    session_id: Optional[str] = None
+
     def can_access_connection(self, connection_id: int) -> bool:
         """Check if user can access a connection."""
         return connection_id in self.available_connections

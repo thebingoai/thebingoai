@@ -125,6 +125,10 @@ class Settings(BaseSettings):
 
     # Feature flags
     enable_governance: bool = True
+    agent_mesh_enabled: bool = False
+
+    # Agent mesh settings (Redis DB 4)
+    agent_mesh_redis_url: str = "redis://localhost:6379/4"
 
     @field_validator("chunk_overlap")
     @classmethod

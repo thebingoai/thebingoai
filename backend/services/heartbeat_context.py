@@ -141,6 +141,16 @@ async def build_orchestrator_context(
         lines = "\n".join(f"- {m.content}" for m in user_memory_entries)
         user_memories_context = lines
 
+    # Auto-provision agent mesh sessions when enabled
+    from backend.config import settings as _settings
+
+    if _settings.agent_mesh_enabled:
+        try:
+            session_id = await _ensure_mesh_sessions(user.id, agent_context)
+            agent_context.session_id = session_id
+        except Exception as mesh_err:
+            logger.warning(f"Agent mesh session provisioning failed: {mesh_err}")
+
     fresh_user = db.query(User).filter(User.id == user.id).first()
     return OrchestratorInvocationContext(
         agent_context=agent_context,
@@ -151,3 +161,45 @@ async def build_orchestrator_context(
         skill_suggestions=skill_suggestions,
         soul_prompt=(fresh_user.soul_prompt if fresh_user else None) or "",
     )
+
+
+async def _ensure_mesh_sessions(user_id: str, context: AgentContext) -> str:
+    """
+    Ensure built-in agent sessions exist for the user.
+
+    Creates sessions for orchestrator, data_agent, dashboard_agent, rag_agent
+    if they don't already exist. Returns the orchestrator's session_id.
+    """
+    import uuid
+    from backend.services.agent_registry import AgentRegistry
+    from backend.services.agent_discovery import AgentDiscovery
+
+    registry = AgentRegistry()
+    discovery = AgentDiscovery(redis_client=registry.redis)
+
+    built_in_types = ["orchestrator", "data_agent", "dashboard_agent", "rag_agent"]
+    orchestrator_session_id = None
+
+    for agent_type in built_in_types:
+        existing = discovery.find_session_by_type(user_id, agent_type)
+        if existing:
+            if agent_type == "orchestrator":
+                orchestrator_session_id = existing["session_id"]
+            # Refresh heartbeat
+            registry.heartbeat(existing["session_id"])
+        else:
+            session_id = str(uuid.uuid4())
+            registry.register_session(
+                user_id=user_id,
+                session_id=session_id,
+                agent_type=agent_type,
+                capabilities={"built_in": True},
+            )
+            if agent_type == "orchestrator":
+                orchestrator_session_id = session_id
+            logger.info(
+                "Auto-provisioned %s session %s for user %s",
+                agent_type, session_id, user_id,
+            )
+
+    return orchestrator_session_id

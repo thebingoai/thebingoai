@@ -93,6 +93,9 @@ def build_orchestrator_tools(
 def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
     """Legacy static tools used when no custom agents are configured."""
 
+    if settings.agent_mesh_enabled and context.session_id:
+        return _build_mesh_tools(context, db_session_factory)
+
     @tool
     async def data_agent(question: str) -> str:
         """
@@ -143,6 +146,118 @@ def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Call
         return json.dumps({"success": True, "memories": context_str})
 
     return [data_agent, rag_agent, recall_memory]
+
+
+def _build_mesh_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
+    """
+    Build tools that dispatch via the agent message bus (mesh-enabled mode).
+
+    When agent_mesh_enabled=True, sub-agent tool calls dispatch via
+    send_and_wait instead of inline invocation.
+    """
+    from backend.services.agent_registry import AgentRegistry
+    from backend.services.agent_discovery import AgentDiscovery
+    from backend.services.agent_message_bus import AgentMessageBus
+    from backend.agents.communication_tools import build_communication_tools
+
+    registry = AgentRegistry()
+    discovery = AgentDiscovery(redis_client=registry.redis)
+
+    if db_session_factory:
+        db = db_session_factory()
+    else:
+        from backend.database.session import SessionLocal
+        db = SessionLocal()
+
+    message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)
+
+    @tool
+    async def data_agent(question: str) -> str:
+        """
+        Query databases using SQL. Use for data analysis questions.
+
+        Dispatches to the data agent running as a peer in the agent mesh.
+
+        Args:
+            question: Natural language question about data
+
+        Returns:
+            JSON string with SQL queries and results
+        """
+        data_session = discovery.find_session_by_type(context.user_id, "data_agent")
+        if not data_session:
+            # Fallback to inline if no mesh session
+            result = await invoke_data_agent(question, context)
+            return json.dumps(result)
+
+        response = message_bus.send_and_wait(
+            user_id=context.user_id,
+            from_session_id=context.session_id,
+            to_session_id=data_session["session_id"],
+            content={"text": question},
+            timeout=120,
+        )
+        if response is None:
+            return json.dumps({"success": False, "message": "Data agent did not respond in time"})
+        return json.dumps({"success": True, "response": response})
+
+    @tool
+    async def rag_agent(question: str, namespace: str = "default") -> str:
+        """
+        Search uploaded documents. Use for questions about documentation.
+
+        Args:
+            question: Question about documents
+            namespace: Vector namespace (default: "default")
+
+        Returns:
+            JSON string with answer and source context
+        """
+        rag_session = discovery.find_session_by_type(context.user_id, "rag_agent")
+        if not rag_session:
+            result = await invoke_rag_agent(question, context, namespace)
+            return json.dumps(result)
+
+        response = message_bus.send_and_wait(
+            user_id=context.user_id,
+            from_session_id=context.session_id,
+            to_session_id=rag_session["session_id"],
+            content={"text": question, "namespace": namespace},
+            timeout=120,
+        )
+        if response is None:
+            return json.dumps({"success": False, "message": "RAG agent did not respond in time"})
+        return json.dumps({"success": True, "response": response})
+
+    @tool
+    async def recall_memory(query: str) -> str:
+        """
+        Recall past conversation context and patterns.
+
+        Args:
+            query: What to recall — topics, tables, patterns, past questions
+
+        Returns:
+            JSON with relevant past interactions or empty if none found
+        """
+        from backend.memory.retriever import MemoryRetriever
+        retriever = MemoryRetriever()
+        context_str = await retriever.get_relevant_context(
+            user_id=context.user_id, query=query, top_k=5
+        )
+        if not context_str:
+            return json.dumps({"success": True, "memories": [], "message": "No relevant memories found"})
+        return json.dumps({"success": True, "memories": context_str})
+
+    # Add communication tools so orchestrator can observe inter-agent conversation
+    comm_tools = build_communication_tools(
+        user_id=context.user_id,
+        session_id=context.session_id,
+        message_bus=message_bus,
+        registry=registry,
+    )
+
+    return [data_agent, rag_agent, recall_memory] + comm_tools
 
 
 def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent"]) -> List:

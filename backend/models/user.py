@@ -30,3 +30,6 @@ class User(Base, TimestampMixin):
     dashboards = relationship(
         "Dashboard", back_populates="user", cascade="all, delete-orphan"
     )
+    agent_sessions = relationship(
+        "AgentSession", back_populates="user", cascade="all, delete-orphan"
+    )

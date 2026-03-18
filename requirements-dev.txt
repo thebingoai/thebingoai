@@ -7,3 +7,4 @@ httpx>=0.26.0
 # For mocking
 pytest-mock>=3.10.0
 respx>=0.20.0  # Mock httpx
+fakeredis>=2.21.0  # Fake Redis for agent mesh tests

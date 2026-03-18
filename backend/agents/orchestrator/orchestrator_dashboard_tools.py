@@ -65,6 +65,8 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         # Refresh context.available_connections from DB so that any connections created
         # by create_dataset_from_upload in the same turn are visible to the dashboard agent.
         from backend.models.database_connection import DatabaseConnection
+        from backend.config import settings as _settings
+
         db = db_session_factory()
         try:
             fresh_ids = [
@@ -75,6 +77,33 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         finally:
             db.close()
         context.available_connections = fresh_ids
+
+        # If mesh is enabled, dispatch via message bus to dashboard agent peer
+        if _settings.agent_mesh_enabled and context.session_id:
+            from backend.services.agent_registry import AgentRegistry
+            from backend.services.agent_discovery import AgentDiscovery
+            from backend.services.agent_message_bus import AgentMessageBus
+
+            registry = AgentRegistry()
+            discovery = AgentDiscovery(redis_client=registry.redis)
+            dash_session = discovery.find_session_by_type(context.user_id, "dashboard_agent")
+
+            if dash_session:
+                db2 = db_session_factory()
+                try:
+                    bus = AgentMessageBus(db_session=db2, redis_client=registry.redis)
+                    response = bus.send_and_wait(
+                        user_id=context.user_id,
+                        from_session_id=context.session_id,
+                        to_session_id=dash_session["session_id"],
+                        content={"text": request, "available_connections": fresh_ids},
+                        timeout=120,
+                    )
+                    if response:
+                        return json.dumps(response)
+                    return json.dumps({"success": False, "message": "Dashboard agent did not respond in time"})
+                finally:
+                    db2.close()
 
         result = await invoke_dashboard_agent(request, context, db_session_factory)
         return json.dumps(result)

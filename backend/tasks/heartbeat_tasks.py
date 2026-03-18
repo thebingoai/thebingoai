@@ -43,7 +43,11 @@ def dispatch_heartbeat_jobs():
 
         for job in due_jobs:
             try:
-                execute_heartbeat_job.delay(job.id)
+                # Route to agent-specific task if agent_type is set
+                if job.agent_type and job.agent_type != "orchestrator":
+                    execute_agent_heartbeat_job.delay(job.id)
+                else:
+                    execute_heartbeat_job.delay(job.id)
                 # Advance next_run_at
                 job.next_run_at = croniter(job.cron_expression, now).get_next(datetime)
                 job.last_run_at = now
@@ -211,3 +215,118 @@ async def _run_orchestrator_for_job(job: HeartbeatJob, user: User) -> str:
     )
 
     return result.get("message", "")
+
+
+@shared_task(name="execute_agent_heartbeat_job", time_limit=300)
+def execute_agent_heartbeat_job(job_id: str):
+    """
+    Execute a heartbeat job routed to a specific agent type (not the orchestrator).
+
+    Creates a session for the agent and runs it via AgentRuntime.
+    """
+    db = SessionLocal()
+    run = None
+    started_at = datetime.utcnow()
+
+    try:
+        job = db.query(HeartbeatJob).filter(HeartbeatJob.id == job_id).first()
+        if not job:
+            logger.warning(f"Heartbeat job {job_id} not found")
+            return
+
+        user = db.query(User).filter(User.id == job.user_id).first()
+        if not user:
+            logger.warning(f"User {job.user_id} not found for job {job_id}")
+            return
+
+        run = HeartbeatJobRun(
+            job_id=job_id,
+            status="running",
+            started_at=started_at,
+            prompt=job.prompt,
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+
+        logger.info(f"Executing agent heartbeat job {job_id} (type={job.agent_type}, run={run.id})")
+
+        response = asyncio.run(
+            _run_agent_for_job(job, user)
+        )
+
+        completed_at = datetime.utcnow()
+        duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+        run.status = "completed"
+        run.response = response
+        run.completed_at = completed_at
+        run.duration_ms = duration_ms
+        db.commit()
+
+        _deliver_heartbeat_result(db, job=job, run_id=run.id, user_id=job.user_id, response=response)
+
+    except Exception as e:
+        logger.error(f"Agent heartbeat job {job_id} failed: {e}")
+        if run is not None:
+            try:
+                completed_at = datetime.utcnow()
+                run.status = "failed"
+                run.error = str(e)
+                run.completed_at = completed_at
+                run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+                db.commit()
+            except Exception:
+                db.rollback()
+    finally:
+        db.close()
+
+
+async def _run_agent_for_job(job: HeartbeatJob, user: User) -> str:
+    """
+    Run a specific agent type for a heartbeat job via AgentRuntime.
+    """
+    import uuid
+    from backend.agents.context import AgentContext
+    from backend.agents.runtime import AgentRuntime
+    from backend.services.agent_registry import AgentRegistry
+    from backend.services.agent_message_bus import AgentMessageBus
+    from backend.models.database_connection import DatabaseConnection
+
+    db = SessionLocal()
+    try:
+        # Get user's connections
+        conn_ids = [
+            row.id for row in db.query(DatabaseConnection.id)
+            .filter(DatabaseConnection.user_id == user.id)
+            .all()
+        ]
+
+        session_id = str(uuid.uuid4())
+        context = AgentContext(
+            user_id=user.id,
+            available_connections=conn_ids,
+            thread_id=str(uuid.uuid4()),
+            session_id=session_id,
+        )
+
+        registry = AgentRegistry()
+        message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)
+
+        from backend.tasks.agent_tasks import _build_agent_config
+        tools, prompt = _build_agent_config(job.agent_type, context, db)
+
+        runtime = AgentRuntime(
+            session_id=session_id,
+            agent_type=job.agent_type,
+            user_id=user.id,
+            context=context,
+            registry=registry,
+            message_bus=message_bus,
+        )
+
+        result = await runtime.execute(job.prompt, tools, prompt)
+        return result.get("message", "")
+
+    finally:
+        db.close()

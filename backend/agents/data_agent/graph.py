@@ -17,7 +17,10 @@ async def invoke_data_agent(
     context: AgentContext
 ) -> Dict[str, Any]:
     """
-    Invoke stateless Data Agent for SQL query generation and execution.
+    Invoke Data Agent for SQL query generation and execution.
+
+    When agent_mesh_enabled=True and context has a session_id, uses AgentRuntime
+    for session-based execution with persistent schema knowledge across messages.
 
     Args:
         question: User's data question
@@ -28,6 +31,37 @@ async def invoke_data_agent(
     """
     # Build tools with captured context
     tools = build_data_agent_tools(context)
+
+    # Use AgentRuntime when mesh is enabled for session persistence
+    if settings.agent_mesh_enabled and context.session_id:
+        from backend.agents.runtime import AgentRuntime
+        from backend.services.agent_registry import AgentRegistry
+        from backend.services.agent_message_bus import AgentMessageBus
+        from backend.database.session import SessionLocal
+
+        registry = AgentRegistry()
+        db = SessionLocal()
+        message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)
+
+        runtime = AgentRuntime(
+            session_id=context.session_id,
+            agent_type="data_agent",
+            user_id=context.user_id,
+            context=context,
+            registry=registry,
+            message_bus=message_bus,
+        )
+
+        prompt = build_data_agent_prompt(context.available_connections)
+        result = await runtime.execute(question, tools, prompt)
+
+        return {
+            "success": result.get("success", False),
+            "message": result.get("message", ""),
+            "sql_queries": [],
+            "results": [],
+            "steps": [],
+        }
 
     # Get LLM provider
     provider = get_provider(settings.default_llm_provider)
