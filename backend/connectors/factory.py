@@ -2,94 +2,52 @@ from typing import Any, Type
 from backend.connectors.base import BaseConnector
 from backend.connectors.postgres import PostgresConnector
 from backend.connectors.mysql import MySQLConnector
-from backend.connectors.sqlite_connector import SQLiteConnector
 from backend.models.database_connection import DatabaseType, DatabaseConnection
+from backend.plugins.base import ConnectorRegistration
 
-_CONNECTORS: dict[DatabaseType, Type[BaseConnector]] = {
-    DatabaseType.POSTGRES: PostgresConnector,
-    DatabaseType.MYSQL: MySQLConnector,
-}
+_CONNECTORS: dict[str, ConnectorRegistration] = {}
+
+
+def register_connector(reg: ConnectorRegistration) -> None:
+    """Called by plugin loader (or core init) to register a connector type."""
+    _CONNECTORS[reg.type_id] = reg
+    DatabaseType.register(reg.type_id, reg.display_name)
+
+
+def get_connector_registration(type_id: str) -> ConnectorRegistration | None:
+    """Get registration for a type (used by connections.py for hook dispatch)."""
+    return _CONNECTORS.get(type_id)
 
 
 def get_available_types() -> list[dict]:
     """Return metadata for all registered connector types."""
-    types = [
+    return [
         {
-            "id": db_type.value,
-            "display_name": cls._db_type_name(),
-            "description": cls._description(),
-            "default_port": cls._default_port(),
-            "badge_variant": cls._badge_variant(),
+            "id": reg.type_id,
+            "display_name": reg.display_name,
+            "description": reg.description,
+            "default_port": reg.default_port,
+            "badge_variant": reg.badge_variant,
         }
-        for db_type, cls in _CONNECTORS.items()
+        for reg in _CONNECTORS.values()
     ]
-    # Dataset type uses the upload endpoint instead of a live connector
-    types.append({
-        "id": "dataset",
-        "display_name": "CSV / Excel",
-        "description": "Upload a CSV or Excel file as a queryable dataset",
-        "default_port": 0,
-        "badge_variant": "secondary",
-    })
-    return types
-
-
-def _get_sqlite_connector_for_dataset(connection: DatabaseConnection) -> SQLiteConnector:
-    """
-    Download (or use cached) SQLite file from DO Spaces and return a SQLiteConnector.
-
-    The DO Spaces key is stored in connection.dataset_table_name.
-    The file is cached locally at {settings.dataset_cache_dir}/{connection.id}.sqlite
-    for up to 1 hour.
-    """
-    import os
-    import time
-    from backend.services import object_storage
-    from backend.config import settings
-
-    do_spaces_key = connection.dataset_table_name
-    cache_dir = settings.dataset_cache_dir
-    cache_path = os.path.join(cache_dir, f"{connection.id}.sqlite")
-
-    # Check if cache is fresh (less than 1 hour old)
-    cache_valid = (
-        os.path.exists(cache_path)
-        and os.path.getmtime(cache_path) > time.time() - 3600
-    )
-
-    if not cache_valid:
-        # Download from DO Spaces
-        data = object_storage.download_bytes(do_spaces_key)
-        if data is None:
-            raise FileNotFoundError(
-                f"SQLite file not found in DO Spaces: {do_spaces_key}"
-            )
-
-        # Ensure cache directory exists
-        os.makedirs(cache_dir, exist_ok=True)
-
-        # Atomic write: write to .tmp then rename
-        tmp_path = cache_path + ".tmp"
-        with open(tmp_path, "wb") as f:
-            f.write(data)
-        os.rename(tmp_path, cache_path)
-
-    return SQLiteConnector(cache_path)
 
 
 def get_connector_for_connection(connection: DatabaseConnection) -> Any:
     """
     Return the appropriate connector for a DatabaseConnection model instance.
 
-    DATASET connections use SQLiteConnector backed by a SQLite file stored in DO Spaces.
-    The file is downloaded to a local cache and served from there.
-
-    All other types delegate to get_connector().
+    Uses from_connection() classmethod if available on the connector class,
+    otherwise falls back to standard host/port/database construction.
     """
-    if connection.db_type == DatabaseType.DATASET:
-        return _get_sqlite_connector_for_dataset(connection)
-    return get_connector(
-        db_type=connection.db_type,
+    reg = _CONNECTORS.get(connection.db_type)
+    if not reg:
+        raise ValueError(f"No connector registered for type: {connection.db_type}")
+
+    if hasattr(reg.connector_class, 'from_connection'):
+        return reg.connector_class.from_connection(connection)
+
+    return reg.connector_class(
         host=connection.host,
         port=connection.port,
         database=connection.database,
@@ -101,7 +59,7 @@ def get_connector_for_connection(connection: DatabaseConnection) -> Any:
 
 
 def get_connector(
-    db_type: DatabaseType,
+    db_type: str,
     host: str,
     port: int,
     database: str,
@@ -111,10 +69,10 @@ def get_connector(
     ssl_ca_cert: str = None
 ) -> BaseConnector:
     """
-    Factory function to create database connector.
+    Factory function to create database connector by type string.
 
     Args:
-        db_type: Type of database (postgres, mysql)
+        db_type: Type of database (e.g. "postgres", "mysql")
         host: Database host
         port: Database port
         database: Database name
@@ -129,12 +87,12 @@ def get_connector(
     Raises:
         ValueError: If database type not supported
     """
-    connector_class = _CONNECTORS.get(db_type)
+    reg = _CONNECTORS.get(db_type if isinstance(db_type, str) else db_type.value if hasattr(db_type, 'value') else str(db_type))
 
-    if connector_class is None:
+    if reg is None:
         raise ValueError(f"Unsupported database type: {db_type}")
 
-    return connector_class(
+    return reg.connector_class(
         host=host,
         port=port,
         database=database,
@@ -143,3 +101,23 @@ def get_connector(
         ssl_enabled=ssl_enabled,
         ssl_ca_cert=ssl_ca_cert
     )
+
+
+# Register core connector types
+register_connector(ConnectorRegistration(
+    type_id="postgres",
+    display_name="PostgreSQL",
+    description="Open-source relational database",
+    default_port=5432,
+    badge_variant="info",
+    connector_class=PostgresConnector,
+))
+
+register_connector(ConnectorRegistration(
+    type_id="mysql",
+    display_name="MySQL",
+    description="Popular open-source relational database",
+    default_port=3306,
+    badge_variant="warning",
+    connector_class=MySQLConnector,
+))

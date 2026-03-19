@@ -205,7 +205,6 @@ async def refresh_dashboard_widgets(
 
 
 from backend.services.schema_utils import extract_table_names as _extract_table_names, build_schema_summary as _build_schema_summary
-from backend.models.database_connection import DatabaseType
 
 
 @router.get("/datasets/{connection_id}/sqlite-url")
@@ -215,7 +214,7 @@ async def get_dataset_sqlite_url(
     db: Session = Depends(get_db),
 ):
     """
-    Generate a presigned download URL for the SQLite file backing a DATASET connection.
+    Generate a presigned download URL for the SQLite file backing a dataset connection.
     Used by the frontend sql.js integration to download the SQLite file for client-side querying.
     """
     from backend.services import object_storage
@@ -228,7 +227,7 @@ async def get_dataset_sqlite_url(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    if connection.db_type != DatabaseType.DATASET:
+    if connection.db_type != "dataset":
         raise HTTPException(status_code=400, detail="Connection is not a dataset connection")
 
     do_spaces_key = connection.dataset_table_name

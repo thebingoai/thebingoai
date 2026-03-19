@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bingo-csv-connector"
+version = "0.1.0"
+description = "CSV/Excel dataset connector plugin for Bingo"
+requires-python = ">=3.11"
+dependencies = ["pandas", "openpyxl"]
+
+[project.entry-points."bingo.plugins"]
+csv_connector = "bingo_csv_connector.plugin:BingoCsvPlugin"

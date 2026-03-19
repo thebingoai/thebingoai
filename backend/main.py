@@ -24,9 +24,17 @@ async def lifespan(app: FastAPI):
         logger.info("Qdrant collections ready")
     except Exception as e:
         logger.warning(f"Qdrant initialization failed (continuing): {e}")
+
+    # Plugin discovery and loading
+    from backend.plugins.loader import discover_and_load_plugins, get_plugin_routers, shutdown_plugins
+    discover_and_load_plugins()
+    for router, prefix in get_plugin_routers():
+        app.include_router(router, prefix=prefix)
+
     yield
     # Shutdown
     logger.info("Shutting down...")
+    shutdown_plugins()
 
 app = FastAPI(
     title="LLM-MD Backend",

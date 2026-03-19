@@ -4,7 +4,7 @@ from typing import List
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
-from backend.models.database_connection import DatabaseConnection, DatabaseType
+from backend.models.database_connection import DatabaseConnection
 from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.schemas.connection import (
@@ -12,7 +12,7 @@ from backend.schemas.connection import (
     ConnectionTestResponse, SchemaRefreshResponse, ConnectorTypeResponse,
     SchemaResponse
 )
-from backend.connectors.factory import get_connector, get_available_types
+from backend.connectors.factory import get_connector, get_available_types, get_connector_registration
 from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
     refresh_schema, delete_schema_file, load_schema_file
@@ -90,7 +90,7 @@ async def create_connection(
             schema_json = generate_schema_json(
                 connection.id,
                 connection.name,
-                connection.db_type.value,
+                connection.db_type,
                 schema_data
             )
             schema_path = save_schema_file(connection.id, schema_json)
@@ -230,10 +230,13 @@ async def delete_connection(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    # Delete the SQLite file from DO Spaces for dataset connections
-    if connection.db_type == DatabaseType.DATASET and connection.dataset_table_name:
-        from backend.services.dataset_service import delete_dataset_sqlite
-        delete_dataset_sqlite(connection.dataset_table_name)
+    # Run type-specific delete hook if registered (e.g., dataset cleanup)
+    reg = get_connector_registration(connection.db_type)
+    if reg and reg.on_delete:
+        try:
+            reg.on_delete(connection)
+        except Exception as e:
+            logger.warning("on_delete hook failed for connection %s: %s", connection.id, e)
 
     # Delete schema JSON file
     delete_schema_file(connection_id)
@@ -263,8 +266,13 @@ async def test_connection(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    if connection.db_type == DatabaseType.DATASET:
-        return ConnectionTestResponse(success=True, message="Dataset connection — no external host to test")
+    reg = get_connector_registration(connection.db_type)
+    if reg and reg.on_test:
+        try:
+            result = reg.on_test(connection)
+            return ConnectionTestResponse(**result)
+        except Exception as e:
+            return ConnectionTestResponse(success=False, message=str(e))
 
     try:
         connector = get_connector(
@@ -305,10 +313,11 @@ async def refresh_connection_schema(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    if connection.db_type == DatabaseType.DATASET:
+    reg = get_connector_registration(connection.db_type)
+    if reg and reg.skip_schema_refresh:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Schema refresh is not supported for dataset connections.",
+            detail=f"Schema refresh is not supported for {reg.display_name} connections.",
         )
 
     try:
@@ -326,7 +335,7 @@ async def refresh_connection_schema(
                 connection.id,
                 connector,
                 connection.name,
-                connection.db_type.value
+                connection.db_type
             )
 
             # Load refreshed schema to get table count

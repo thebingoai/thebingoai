@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 from backend.auth.dependencies import get_current_user
 from backend.config import settings
 from backend.database.session import get_db
-from backend.models.database_connection import DatabaseConnection, DatabaseType
+from backend.models.database_connection import DatabaseConnection
 from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.models.user import User
-from backend.services.dataset_service import (
+from bingo_csv_connector.service import (
     create_dataset_sqlite,
     generate_dataset_schema,
     infer_column_types,
@@ -24,7 +24,7 @@ from backend.services.schema_discovery import save_schema_file
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/connections", tags=["connections"])
+router = APIRouter(tags=["connections"])
 
 _ACCEPTED_EXTENSIONS = {".csv", ".xlsx"}
 
@@ -37,10 +37,10 @@ async def upload_dataset(
     db: Session = Depends(get_db),
 ):
     """
-    Upload a CSV or Excel file as a permanent PostgreSQL dataset.
+    Upload a CSV or Excel file as a queryable dataset.
 
-    Creates a table in the 'datasets' schema and registers a DatabaseConnection
-    of type DATASET, making it queryable by the dashboard agent.
+    Creates a SQLite file stored in DO Spaces and registers a DatabaseConnection
+    of type 'dataset', making it queryable by the dashboard agent.
     """
     filename = file.filename or ""
     if "." not in filename:
@@ -92,11 +92,10 @@ async def upload_dataset(
     base_name = filename.rsplit(".", 1)[0] if "." in filename else filename
     connection_name = name.strip() if name and name.strip() else base_name
 
-    # Create DatabaseConnection record with sentinel values for non-dataset fields
     connection = DatabaseConnection(
         user_id=current_user.id,
         name=connection_name,
-        db_type=DatabaseType.DATASET,
+        db_type="dataset",
         host="internal",
         port=0,
         database="dataset",
@@ -159,7 +158,6 @@ async def upload_dataset(
             exc_info=True,
         )
 
-    # Auto-enable for creator's teams (mirrors connections.py governance pattern)
     if settings.enable_governance:
         user_memberships = (
             db.query(TeamMembership)

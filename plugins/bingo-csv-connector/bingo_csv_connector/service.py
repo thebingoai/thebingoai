@@ -23,7 +23,7 @@ def parse_excel(file_bytes: bytes) -> pd.DataFrame:
 def sanitize_name(name: str) -> str:
     """
     Convert a filename stem to a safe identifier:
-    lowercase, non-alphanumeric → underscore, collapse runs,
+    lowercase, non-alphanumeric -> underscore, collapse runs,
     strip leading/trailing underscores, truncate to 50 chars.
     """
     name = re.sub(r'[^a-z0-9_]', '_', name.lower())
@@ -38,17 +38,15 @@ def infer_column_types(df: pd.DataFrame) -> list[dict]:
     Infer PostgreSQL column types from a DataFrame.
 
     Rules (applied in order per column):
-    1. If pandas already inferred integer → BIGINT
-    2. If pandas already inferred float → DOUBLE PRECISION
-    3. If pandas already inferred bool → BOOLEAN
-    4. If pandas already inferred datetime → TIMESTAMP
-    5. Try pd.to_numeric(errors='coerce') — if >90% non-null parse:
+    1. If pandas already inferred integer -> BIGINT
+    2. If pandas already inferred float -> DOUBLE PRECISION
+    3. If pandas already inferred bool -> BOOLEAN
+    4. If pandas already inferred datetime -> TIMESTAMP
+    5. Try pd.to_numeric(errors='coerce') -- if >90% non-null parse:
        INTEGER (no fraction) or DOUBLE PRECISION (has fraction)
-    6. Try pd.to_datetime(errors='coerce') — if >80% non-null parse → TIMESTAMP
-    7. Check boolean string patterns → BOOLEAN
-    8. Fallback → TEXT
-
-    Returns list of {"name", "pg_type", "pandas_dtype"}.
+    6. Try pd.to_datetime(errors='coerce') -- if >80% non-null parse -> TIMESTAMP
+    7. Check boolean string patterns -> BOOLEAN
+    8. Fallback -> TEXT
     """
     result = []
     total = len(df)
@@ -81,14 +79,13 @@ def infer_column_types(df: pd.DataFrame) -> list[dict]:
                 has_fraction = ((numeric_series.dropna() % 1) != 0).any()
                 pg_type = "DOUBLE PRECISION" if has_fraction else "BIGINT"
             else:
-                # Two-stage datetime gate: regex pre-filter then parse threshold
                 _DATE_RE = re.compile(
-                    r'^\d{4}-\d{1,2}-\d{1,2}'                  # 2024-01-15 (ISO)
-                    r'|^\d{4}/\d{1,2}/\d{1,2}'                 # 2024/01/15
-                    r'|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}'        # 01/15/2024, 15-01-2024
-                    r'|^[A-Za-z]+ \d{1,2},? \d{4}'            # January 15, 2024
-                    r'|^\d{1,2}[- ][A-Za-z]{3,}[- ]\d{2,4}'  # 15 Jan 2024, 15-Jan-24
-                    r'|^\d{8}$'                                 # 20240115 (compact ISO)
+                    r'^\d{4}-\d{1,2}-\d{1,2}'
+                    r'|^\d{4}/\d{1,2}/\d{1,2}'
+                    r'|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}'
+                    r'|^[A-Za-z]+ \d{1,2},? \d{4}'
+                    r'|^\d{1,2}[- ][A-Za-z]{3,}[- ]\d{2,4}'
+                    r'|^\d{8}$'
                 )
                 str_vals_raw = series.dropna().astype(str).str.strip()
                 date_like = str_vals_raw.apply(lambda v: bool(_DATE_RE.match(v))).sum()
@@ -139,8 +136,8 @@ def create_dataset_sqlite(
     Create a SQLite database file from the DataFrame.
 
     Creates a single table named 'data' with type mapping:
-    BIGINT→INTEGER, DOUBLE PRECISION→REAL, BOOLEAN→INTEGER (0/1),
-    TIMESTAMP→TEXT, TEXT→TEXT.
+    BIGINT->INTEGER, DOUBLE PRECISION->REAL, BOOLEAN->INTEGER (0/1),
+    TIMESTAMP->TEXT, TEXT->TEXT.
 
     Returns: path to the temporary SQLite file.
     """
@@ -152,26 +149,21 @@ def create_dataset_sqlite(
         "TEXT": "TEXT",
     }
 
-    # Coerce the dataframe first
     df = coerce_dataframe(df, columns)
 
-    # For TIMESTAMP columns, convert to string since SQLite stores dates as TEXT
     for col in columns:
         name = col["name"]
         if col["pg_type"] == "TIMESTAMP" and name in df.columns:
             df[name] = df[name].astype(str).where(df[name].notna(), other=None)
         elif col["pg_type"] == "BOOLEAN" and name in df.columns:
-            # Convert bool to 0/1 integers
             df[name] = df[name].map(lambda v: int(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else None)
 
-    # Create temp file for the SQLite database
     tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
     tmp.close()
     sqlite_path = tmp.name
 
     conn = sqlite3.connect(sqlite_path)
     try:
-        # Build CREATE TABLE statement
         col_defs = []
         for col in columns:
             sqlite_type = _PG_TO_SQLITE.get(col["pg_type"], "TEXT")
@@ -180,7 +172,6 @@ def create_dataset_sqlite(
         conn.execute(create_sql)
         conn.commit()
 
-        # Write data using pandas
         df.to_sql("data", conn, if_exists="replace", index=False)
         conn.commit()
     finally:
@@ -199,7 +190,6 @@ def generate_dataset_schema(
 ) -> dict:
     """
     Generate schema JSON in the same format as schema_discovery.generate_schema_json.
-    Uses 'sqlite' as schema key and 'data' as the table name (SQLite table).
     """
     schema_key = "sqlite"
     unqualified = "data"
@@ -234,8 +224,6 @@ def generate_dataset_schema(
 
 
 def delete_dataset_sqlite(do_spaces_key: str) -> None:
-    """
-    Delete a dataset SQLite file from DO Spaces.
-    """
+    """Delete a dataset SQLite file from DO Spaces."""
     from backend.services import object_storage
     object_storage.delete_object(do_spaces_key)

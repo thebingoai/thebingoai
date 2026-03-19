@@ -1,35 +1,70 @@
+import os
+import re
 import sqlite3
 import time
-import re
 import logging
+
 from backend.connectors.base import QueryResult
 
 logger = logging.getLogger(__name__)
 
 
-class SQLiteConnector:
+class DatasetSQLiteConnector:
+    """SQLite-based connector for CSV/Excel dataset queries."""
+
     def __init__(self, db_path: str):
         self.db_path = db_path
+
+    @classmethod
+    def from_connection(cls, connection) -> "DatasetSQLiteConnector":
+        """
+        Download (or use cached) SQLite file from DO Spaces and return a connector.
+
+        The DO Spaces key is stored in connection.dataset_table_name.
+        The file is cached locally for up to 1 hour.
+        """
+        from backend.services import object_storage
+        from backend.config import settings
+
+        do_spaces_key = connection.dataset_table_name
+        cache_dir = settings.dataset_cache_dir
+        cache_path = os.path.join(cache_dir, f"{connection.id}.sqlite")
+
+        cache_valid = (
+            os.path.exists(cache_path)
+            and os.path.getmtime(cache_path) > time.time() - 3600
+        )
+
+        if not cache_valid:
+            data = object_storage.download_bytes(do_spaces_key)
+            if data is None:
+                raise FileNotFoundError(
+                    f"SQLite file not found in DO Spaces: {do_spaces_key}"
+                )
+            os.makedirs(cache_dir, exist_ok=True)
+            tmp_path = cache_path + ".tmp"
+            with open(tmp_path, "wb") as f:
+                f.write(data)
+            os.rename(tmp_path, cache_path)
+
+        return cls(cache_path)
 
     def execute_query(self, query: str, params=None) -> QueryResult:
         self._validate_readonly_query(query)
 
         start_time = time.time()
-        # Open in read-only URI mode
         uri = f"file:{self.db_path}?mode=ro"
         conn = sqlite3.connect(uri, uri=True)
         try:
             cursor = conn.cursor()
             if params:
                 if isinstance(params, dict):
-                    # Rewrite PostgreSQL %(key)s placeholders to SQLite ? positional style
                     ordered_keys = re.findall(r'%\((\w+)\)s', query)
                     if ordered_keys:
                         query = re.sub(r'%\(\w+\)s', '?', query)
                         params = [params[k] for k in ordered_keys]
                     else:
                         params = list(params.values())
-                    # SQLite doesn't support ILIKE; LIKE is case-insensitive for ASCII
                     query = re.sub(r'\bILIKE\b', 'LIKE', query, flags=re.IGNORECASE)
                 cursor.execute(query, params)
             else:
@@ -55,7 +90,6 @@ class SQLiteConnector:
             conn.close()
 
     def _validate_readonly_query(self, query: str) -> None:
-        # Reuse the same validation logic as BaseConnector
         query_upper = query.strip().upper()
 
         if len(query) > 10_000:
@@ -81,7 +115,6 @@ class SQLiteConnector:
             if re.search(rf'\b{keyword}\b', query_clean):
                 raise ValueError(f"Query contains forbidden keyword: {keyword}. Only SELECT queries are allowed.")
 
-        # Block SQLite-specific dangerous functions
         dangerous_sqlite_functions = [
             r'\bload_extension\b', r'\breadfile\b', r'\bwritefile\b',
         ]
@@ -93,7 +126,7 @@ class SQLiteConnector:
             raise ValueError("Query must start with SELECT or WITH (for CTEs)")
 
     def close(self):
-        pass  # No persistent connection to close
+        pass
 
     def __enter__(self):
         return self

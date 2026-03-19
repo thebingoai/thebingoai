@@ -1,16 +1,30 @@
-from sqlalchemy import Column, String, Integer, Boolean, Enum, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from backend.database.base import Base, TimestampMixin
 from backend.security.encryption import encrypt_password, decrypt_password
-import enum
 
 
-
-class DatabaseType(str, enum.Enum):
+class DatabaseType:
+    """Registry of known database types. Plugins extend at runtime via register()."""
     POSTGRES = "postgres"
     MYSQL = "mysql"
-    DATASET = "dataset"
+
+    _all: dict[str, str] = {}
+
+    @classmethod
+    def register(cls, type_id: str, display_name: str):
+        cls._all[type_id] = display_name
+        setattr(cls, type_id.upper(), type_id)
+
+    @classmethod
+    def is_valid(cls, type_id: str) -> bool:
+        return type_id in cls._all
+
+
+# Register built-in types
+DatabaseType.register("postgres", "PostgreSQL")
+DatabaseType.register("mysql", "MySQL")
 
 
 class DatabaseConnection(Base, TimestampMixin):
@@ -20,7 +34,7 @@ class DatabaseConnection(Base, TimestampMixin):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     org_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     name = Column(String, nullable=False)  # User-friendly name
-    db_type = Column(Enum(DatabaseType), nullable=False)
+    db_type = Column(String(50), nullable=False)
     host = Column(String, nullable=False)
     port = Column(Integer, nullable=False)
     database = Column(String, nullable=False)
@@ -35,7 +49,7 @@ class DatabaseConnection(Base, TimestampMixin):
     schema_generated_at = Column(DateTime, nullable=True)
     table_count = Column(Integer, nullable=True)
 
-    # Dataset-specific fields (only set for db_type == DATASET)
+    # Plugin-specific fields (e.g., dataset connector sets these)
     source_filename = Column(String, nullable=True)
     dataset_table_name = Column(String, nullable=True)
 

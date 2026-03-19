@@ -5,7 +5,8 @@ from datetime import date, datetime
 from backend.services.schema_discovery import load_schema_file
 from backend.connectors.factory import get_connector_for_connection
 from backend.database.session import SessionLocal
-from backend.models.database_connection import DatabaseConnection, DatabaseType
+from backend.models.database_connection import DatabaseConnection
+from backend.connectors.factory import get_connector_registration
 from backend.agents.context import AgentContext
 from backend.services.query_result_store import store_query_result, publish_query_result
 import uuid
@@ -263,8 +264,9 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 return {"error": "Connection not found"}
 
             # Determine quoting and table name based on connection type
-            is_dataset = connection.db_type == DatabaseType.DATASET
-            db_type_str = "mysql" if connection.db_type == DatabaseType.MYSQL else "postgres"
+            reg = get_connector_registration(connection.db_type)
+            is_dataset = reg is not None and reg.sql_dialect_hint is not None and "SQLite" in reg.sql_dialect_hint
+            db_type_str = "mysql" if connection.db_type == "mysql" else "postgres"
 
             def q(name: str) -> str:
                 return f"`{name}`" if db_type_str == "mysql" else f'"{name}"'

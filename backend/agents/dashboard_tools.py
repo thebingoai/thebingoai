@@ -5,8 +5,7 @@ Kept as a standalone module to avoid circular imports between graph.py and tool_
 """
 from typing import List, Callable
 from backend.agents.context import AgentContext
-from backend.connectors.factory import get_connector_for_connection
-from backend.models.database_connection import DatabaseType
+from backend.connectors.factory import get_connector_for_connection, get_connector_registration
 import json
 import logging
 
@@ -326,11 +325,8 @@ async def _attempt_sql_fix(
 
     title_context = f"\nWidget title: {widget_title}" if widget_title else ""
 
-    db_type_display = (
-        "SQLite (DATASET connection — table is always named 'data', use strftime() for dates, no ILIKE, no :: casting)"
-        if connection.db_type == DatabaseType.DATASET
-        else str(connection.db_type)
-    )
+    reg = get_connector_registration(connection.db_type)
+    db_type_display = reg.sql_dialect_hint if reg and reg.sql_dialect_hint else str(connection.db_type)
 
     prompt = f"""You are a SQL expert. Fix the SQL query that produced an error.
 

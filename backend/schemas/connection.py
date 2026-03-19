@@ -6,7 +6,7 @@ from datetime import datetime
 
 class ConnectionCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    db_type: DatabaseType
+    db_type: str
     host: str
     port: int = Field(..., gt=0, lt=65536)
     database: str
@@ -14,6 +14,13 @@ class ConnectionCreate(BaseModel):
     password: str
     ssl_enabled: bool = False
     ssl_ca_cert: Optional[str] = None
+
+    @field_validator('db_type')
+    @classmethod
+    def validate_db_type(cls, v):
+        if not DatabaseType.is_valid(v):
+            raise ValueError(f"Unsupported database type: {v}")
+        return v
 
     @field_validator('ssl_ca_cert')
     @classmethod
@@ -50,7 +57,7 @@ class ConnectionResponse(BaseModel):
     id: int
     user_id: str
     name: str
-    db_type: DatabaseType
+    db_type: str
     host: str
     port: int
     database: str

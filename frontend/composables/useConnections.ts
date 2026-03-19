@@ -2,10 +2,9 @@
 const cache = ref<Record<number, { name: string; dbType: string }> | null>(null)
 let fetchPromise: Promise<void> | null = null
 
-const DB_TYPE_LABELS: Record<string, string> = {
-  postgres: 'PostgreSQL',
-  mysql: 'MySQL',
-}
+// Dynamic type labels populated from /api/connections/types
+const typeLabels = ref<Record<string, string>>({})
+let typesFetched = false
 
 export const useConnections = () => {
   const api = useApi()
@@ -14,11 +13,20 @@ export const useConnections = () => {
     if (cache.value !== null) return
     if (fetchPromise) return fetchPromise
 
-    fetchPromise = api.connections.list().then((data: any) => {
+    fetchPromise = Promise.all([
+      api.connections.list(),
+      !typesFetched ? api.connections.getTypes().catch(() => []) : Promise.resolve(null),
+    ]).then(([data, types]: [any, any]) => {
       const connections = Array.isArray(data) ? data : (data?.connections ?? [])
       cache.value = Object.fromEntries(
         connections.map((c: any) => [c.id, { name: c.name, dbType: c.db_type ?? '' }])
       )
+      if (types) {
+        typesFetched = true
+        for (const t of types) {
+          typeLabels.value[t.id] = t.display_name
+        }
+      }
     }).catch(() => {
       cache.value = {}
     }).finally(() => {
@@ -31,8 +39,8 @@ export const useConnections = () => {
   const getConnectionLabel = (id: number): string => {
     const entry = cache.value?.[id]
     if (!entry) return `Connection #${id}`
-    const typeLabel = DB_TYPE_LABELS[entry.dbType] ?? entry.dbType
-    return typeLabel ? `${typeLabel} : ${entry.name}` : entry.name
+    const label = typeLabels.value[entry.dbType] ?? entry.dbType
+    return label ? `${label} : ${entry.name}` : entry.name
   }
 
   return { ensureLoaded, getConnectionLabel }

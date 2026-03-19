@@ -67,8 +67,8 @@ def execute_dashboard_refresh(dashboard_id: int):
         dashboard_id: The ID of the Dashboard to refresh.
     """
     from sqlalchemy.orm.attributes import flag_modified
-    from backend.models.database_connection import DatabaseConnection, DatabaseType
-    from backend.connectors.factory import get_connector_for_connection
+    from backend.models.database_connection import DatabaseConnection
+    from backend.connectors.factory import get_connector_for_connection, get_connector_registration
     from backend.services.widget_transform import transform_widget_data
 
     db = SessionLocal()
@@ -128,8 +128,9 @@ def execute_dashboard_refresh(dashboard_id: int):
                 updated_widgets.append(widget)
                 continue
 
-            if connection.db_type == DatabaseType.DATASET:
-                # Dataset widgets are refreshed client-side via sql.js — skip server-side refresh
+            reg = get_connector_registration(connection.db_type)
+            if reg and reg.skip_schema_refresh:
+                # Connector type does not support server-side refresh (e.g., dataset/SQLite)
                 updated_widgets.append(widget)
                 widgets_total -= 1  # Don't count as a processable widget
                 continue

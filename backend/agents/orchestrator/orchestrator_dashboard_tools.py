@@ -124,7 +124,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             JSON with connection_id, table_name, column info, row_count, or error message
         """
         from backend.services import chat_file_service
-        from backend.services.dataset_service import (
+        from bingo_csv_connector.service import (
             parse_csv,
             parse_excel,
             sanitize_name,
@@ -132,7 +132,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             create_dataset_sqlite,
             generate_dataset_schema,
         )
-        from backend.models.database_connection import DatabaseConnection, DatabaseType
+        from backend.models.database_connection import DatabaseConnection
         from backend.models.team_membership import TeamMembership
         from backend.models.team_connection_policy import TeamConnectionPolicy
         from backend.services.schema_discovery import save_schema_file
@@ -173,7 +173,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             connection = DatabaseConnection(
                 user_id=context.user_id,
                 name=name,
-                db_type=DatabaseType.DATASET,
+                db_type="dataset",
                 host="internal",
                 port=0,
                 database="dataset",
@@ -312,7 +312,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
                 items.append({
                     "id": c.id,
                     "name": c.name,
-                    "db_type": c.db_type.value if c.db_type else None,
+                    "db_type": c.db_type if c.db_type else None,
                     "database": c.database,
                 })
             return json.dumps({"total": len(items), "connections": items})

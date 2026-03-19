@@ -53,6 +53,11 @@ class BaseConnector(ABC):
         self._temp_ca_file = None
         self._search_path = None
 
+    @classmethod
+    def from_connection(cls, connection: "DatabaseConnection") -> "BaseConnector":
+        """Override for connectors that need non-standard construction (e.g., file-based)."""
+        raise NotImplementedError
+
     # ============================================================
     # Abstract Primitives (MUST implement in subclasses)
     # ============================================================

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
-from backend.api import query_results, sso_webhooks, dataset_upload, agent_sessions
+from backend.api import query_results, sso_webhooks, agent_sessions
 
 router = APIRouter()
 
@@ -13,9 +13,6 @@ router.include_router(sso_webhooks.router)
 
 # Database Connections
 router.include_router(connections.router)
-
-# Dataset Upload (CSV / Excel → permanent PostgreSQL table as connection)
-router.include_router(dataset_upload.router)
 
 # Direct SQL Query Execution
 router.include_router(sql_query.router)

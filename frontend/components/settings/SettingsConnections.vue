@@ -91,7 +91,8 @@
           @click="selectConnectorType(type.id)"
           class="flex flex-col items-center justify-center gap-2 rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
         >
-          <div class="h-10 w-10" v-html="connectorIcons[type.id]" />
+          <div v-if="connectorIcons[type.id]" class="h-10 w-10" v-html="connectorIcons[type.id]" />
+          <component v-else :is="Database" class="h-10 w-10 text-gray-400" />
           <div class="text-center">
             <h3 class="text-xs font-normal text-gray-900">{{ type.display_name }}</h3>
             <p class="text-xs text-gray-600">{{ type.description }}</p>
