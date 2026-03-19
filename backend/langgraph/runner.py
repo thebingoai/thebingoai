@@ -11,34 +11,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Redis key prefix for conversation threads
-CONVERSATION_PREFIX = "conv:"
-
-# Module-level graph singleton for persistent conversation memory
-_graph = None
-
-
-def _get_graph():
-    """Get or create the RAG graph singleton."""
-    global _graph
-    if _graph is None:
-        from backend.langgraph.nodes import create_rag_graph
-        _graph = create_rag_graph()
-        logger.info("Initialized RAG graph with persistent memory")
-    return _graph
-
-
-def _get_thread_key(thread_id: str) -> str:
-    """
-    Get Redis key for conversation thread.
-
-    Args:
-        thread_id: Thread identifier
-
-    Returns:
-        Redis key string
-    """
-    return f"{CONVERSATION_PREFIX}{thread_id}"
+# Stateless compiled graph — safe to share across threads/workers since
+# there is no MemorySaver checkpointer accumulating per-thread state.
+_graph = create_rag_graph()
 
 
 def _create_thread_id() -> str:
@@ -178,16 +153,13 @@ async def _run_sync(
         Dict with answer, sources, thread_id, has_context
     """
     logger.debug(f"Running sync RAG query for thread {thread_id}")
-    graph = _get_graph()
 
     initial_state = _build_initial_state(
         question, namespace, provider, model, thread_id, temperature, top_k
     )
 
-    config = {"configurable": {"thread_id": thread_id}}
-
     try:
-        result = await graph.ainvoke(initial_state, config=config)
+        result = await _graph.ainvoke(initial_state)
 
         return {
             "answer": result.get("answer", ""),
@@ -226,17 +198,14 @@ async def _run_streaming(
         Dicts with 'type' key ('sources', 'thread_id', 'token', 'done', 'error')
     """
     logger.debug(f"Running streaming RAG query for thread {thread_id}")
-    graph = _get_graph()
 
     initial_state = _build_initial_state(
         question, namespace, provider, model, thread_id, temperature, top_k
     )
 
-    config = {"configurable": {"thread_id": thread_id}}
-
     try:
         # Run graph to retrieve context and generate messages
-        result = await graph.ainvoke(initial_state, config=config)
+        result = await _graph.ainvoke(initial_state)
 
         # Yield sources first
         yield {
@@ -322,31 +291,3 @@ def _extract_messages(result: dict, question: str) -> list[dict]:
         ]
 
     return message_dicts
-
-
-async def clear_conversation(thread_id: str) -> bool:
-    """
-    Clear conversation history for a thread.
-
-    Args:
-        thread_id: Thread ID
-
-    Returns:
-        True if cleared, False if not found
-
-    Note:
-        This is a simplified implementation. Full implementation would
-        clear the checkpoint from the checkpointer.
-    """
-    try:
-        from backend.services.job_store import redis_client
-
-        key = _get_thread_key(thread_id)
-        result = redis_client.delete(key)
-
-        logger.info(f"Cleared conversation {thread_id}")
-        return result > 0
-
-    except Exception as e:
-        logger.error(f"Failed to clear conversation: {e}")
-        return False

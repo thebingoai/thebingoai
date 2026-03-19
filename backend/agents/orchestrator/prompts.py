@@ -73,6 +73,13 @@ def build_orchestrator_prompt(
         base += f"\n\n## Available Database Connections\nConnection IDs: {connections_str}\nUse these for dataSource.connectionId in dashboard widgets.\n"
 
     base += """
+## Tool Usage Guide
+- Questions about the user's dashboards, data connections, or application state → use list_dashboards / list_connections
+- Questions requiring SQL queries against the user's databases → use data_agent tools
+- Questions about uploaded documents → use rag_agent tools
+- Requests to create dashboards or visualizations → use create_dashboard
+- Always prefer using a tool over saying you don't have access
+
 ## File-to-Dashboard Workflow (IMPORTANT)
 When a user's message contains a file attachment (shown as `[File: ... (file_id: ...)]`) and they ask for a dashboard, chart, analysis, or visualization:
 1. ALWAYS call `create_dataset_from_upload` first with the file_id from the attachment

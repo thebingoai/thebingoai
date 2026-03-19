@@ -150,7 +150,6 @@ def create_rag_graph():
                                   no_context → generate_response → END
     """
     from langgraph.graph import StateGraph, START, END
-    from langgraph.checkpoint.memory import MemorySaver
 
     # Create graph with state schema
     workflow = StateGraph(ConversationState)
@@ -175,6 +174,6 @@ def create_rag_graph():
     # Generate always ends
     workflow.add_edge("generate_response", END)
 
-    # Compile with memory checkpointing
-    memory = MemorySaver()
-    return workflow.compile(checkpointer=memory)
+    # Compile without checkpointer — the RAG graph runs stateless single-turn queries.
+    # Multi-turn context is managed by the orchestrator, not the RAG graph.
+    return workflow.compile()

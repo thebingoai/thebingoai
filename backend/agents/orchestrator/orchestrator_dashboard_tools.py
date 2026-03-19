@@ -250,4 +250,73 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         finally:
             db.close()
 
-    return [create_dashboard, create_dataset_from_upload]
+    @tool
+    def list_dashboards() -> str:
+        """
+        List all dashboards owned by the current user.
+
+        Use this tool when the user asks about their dashboards — for example
+        "how many dashboards do I have?", "show me my dashboards", or
+        "what dashboards exist?".
+
+        Returns:
+            JSON with total count and a list of dashboards (id, title,
+            description, created_at, widget_count).
+        """
+        from backend.models.dashboard import Dashboard
+
+        db = db_session_factory()
+        try:
+            dashboards = (
+                db.query(Dashboard)
+                .filter(Dashboard.user_id == context.user_id)
+                .all()
+            )
+            items = []
+            for d in dashboards:
+                items.append({
+                    "id": d.id,
+                    "title": d.title,
+                    "description": d.description,
+                    "created_at": str(d.created_at),
+                    "widget_count": len(d.widgets) if d.widgets else 0,
+                })
+            return json.dumps({"total": len(items), "dashboards": items})
+        finally:
+            db.close()
+
+    @tool
+    def list_connections() -> str:
+        """
+        List all database connections available to the current user.
+
+        Use this tool when the user asks about their data connections — for
+        example "what databases do I have connected?", "show my connections",
+        or "how many data sources are there?".
+
+        Returns:
+            JSON with total count and a list of connections (id, name,
+            db_type, database).
+        """
+        from backend.models.database_connection import DatabaseConnection
+
+        db = db_session_factory()
+        try:
+            connections = (
+                db.query(DatabaseConnection)
+                .filter(DatabaseConnection.user_id == context.user_id)
+                .all()
+            )
+            items = []
+            for c in connections:
+                items.append({
+                    "id": c.id,
+                    "name": c.name,
+                    "db_type": c.db_type.value if c.db_type else None,
+                    "database": c.database,
+                })
+            return json.dumps({"total": len(items), "connections": items})
+        finally:
+            db.close()
+
+    return [create_dashboard, create_dataset_from_upload, list_dashboards, list_connections]
