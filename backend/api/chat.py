@@ -181,6 +181,10 @@ async def chat_stream(
     from backend.agents.context import AgentContext
 
     async def event_generator():
+        import redis as sync_redis
+        redis_client = sync_redis.from_url(settings.redis_url, decode_responses=True)
+        active_thread_id = request.thread_id
+
         try:
             from backend.services.heartbeat_context import build_orchestrator_context
 
@@ -199,6 +203,8 @@ async def chat_stream(
                 conversation = ConversationService.create_conversation(
                     db, current_user.id, title="New Task"
                 )
+
+            active_thread_id = conversation.thread_id
 
             # Save user message
             ConversationService.add_message(db, conversation.id, "user", request.message)
@@ -230,6 +236,9 @@ async def chat_stream(
                 if history[i].source == "context_reset":
                     history = history[i + 1:]
                     break
+
+            # Set Redis streaming flag (TTL 5 min safety net)
+            redis_client.setex(f"streaming:{active_thread_id}", 300, "sse")
 
             # Stream orchestrator execution
             from backend.database.session import SessionLocal
@@ -276,7 +285,20 @@ async def chat_stream(
                 except Exception as title_err:
                     logger.warning(f"Title generation failed: {title_err}")
 
+            # Clear streaming flag on successful completion
+            if active_thread_id:
+                try:
+                    redis_client.delete(f"streaming:{active_thread_id}")
+                except Exception:
+                    pass
+
         except Exception as e:
+            # Clear streaming flag on error
+            if active_thread_id:
+                try:
+                    redis_client.delete(f"streaming:{active_thread_id}")
+                except Exception:
+                    pass
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -339,6 +361,23 @@ async def delete_conversation(
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")
+
+
+@router.get("/conversations/{thread_id}/streaming")
+async def get_streaming_status(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Check if a conversation is currently being streamed."""
+    conversation = ConversationService.get_conversation_by_thread(db, thread_id, current_user.id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    import redis as sync_redis
+    redis_client = sync_redis.from_url(settings.redis_url, decode_responses=True)
+    is_streaming = redis_client.exists(f"streaming:{thread_id}") > 0
+    return {"streaming": is_streaming}
 
 
 @router.get("/conversations/{thread_id}/messages/{message_id}/steps", response_model=MessageStepsResponse)

@@ -203,6 +203,11 @@ export const useApi = () => {
           body: { title }
         })
       },
+      async getStreamingStatus(threadId: string) {
+        return $fetch(`/api/chat/conversations/${threadId}/streaming`, {
+          headers: getHeaders()
+        }) as Promise<{ streaming: boolean }>
+      },
       async getMessageSteps(threadId: string, messageId: string) {
         return $fetch(`/api/chat/conversations/${threadId}/messages/${messageId}/steps`, {
           headers: getHeaders()

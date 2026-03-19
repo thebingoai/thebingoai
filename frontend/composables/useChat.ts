@@ -233,6 +233,15 @@ export const useChat = () => {
       }))
       chatStore.setConversations(conversations)
 
+      // If hydrated thread exists and matches a known conversation, restore it
+      if (chatStore.currentThreadId) {
+        const match = conversations.find((c: any) => c.id === chatStore.currentThreadId)
+        if (match) {
+          await loadMessages(match.id)
+          return
+        }
+      }
+
       // Auto-select permanent conversation if no active thread
       const permanent = conversations.find((c: any) => c.type === 'permanent')
       if (permanent && !chatStore.currentThreadId) {
@@ -283,8 +292,55 @@ export const useChat = () => {
           }
         }
       }
+
+      // Check if backend is still streaming for this thread via WebSocket
+      checkStreamingViaWs(threadId)
     } catch (error) {
       console.error('Failed to load messages:', error)
+    }
+  }
+
+  const checkStreamingViaWs = (threadId: string) => {
+    const sendCheck = () => {
+      // One-shot handler for the stream.status response
+      const unsubStatus = ws.on('stream.status', (data: any) => {
+        if (data.thread_id !== threadId) return
+        unsubStatus()
+
+        if (!data.streaming) return // Already done, messages already loaded
+
+        // Backend is still streaming — show indicator and wait for completion
+        chatStore.isStreaming = true
+
+        const unsubComplete = ws.on('chat.stream_complete', (evt: any) => {
+          if (evt.thread_id !== threadId) return
+          unsubComplete()
+          clearTimeout(safetyTimeout)
+          chatStore.isStreaming = false
+          // Guard against stale notification if user navigated away
+          if (chatStore.currentThreadId === threadId) {
+            loadMessages(threadId)
+          }
+        })
+
+        // Safety timeout — matches Redis TTL (5 min)
+        const safetyTimeout = setTimeout(() => {
+          unsubComplete()
+          chatStore.isStreaming = false
+        }, 5 * 60 * 1000)
+      })
+
+      ws.send({ type: 'stream.check', thread_id: threadId })
+    }
+
+    if (ws.isConnected.value) {
+      sendCheck()
+    } else {
+      // WS hasn't reconnected yet — wait for it
+      const unsubConnected = ws.on('connected', () => {
+        unsubConnected()
+        sendCheck()
+      })
     }
   }
 

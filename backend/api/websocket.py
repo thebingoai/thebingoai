@@ -97,7 +97,10 @@ async def _handle_chat_send(
     from backend.services.heartbeat_context import build_orchestrator_context
     from backend.services import chat_file_service
 
+    import redis as sync_redis
+    redis_client = sync_redis.from_url(settings.redis_url, decode_responses=True)
     db: Session = SessionLocal()
+    active_thread_id: Optional[str] = thread_id  # tracks actual thread_id for cleanup
 
     async def send(payload: dict) -> None:
         try:
@@ -116,6 +119,8 @@ async def _handle_chat_send(
                 return
         else:
             conversation = ConversationService.create_conversation(db, user.id, title="New Task")
+
+        active_thread_id = conversation.thread_id
 
         # Validate connection access
         if connection_ids:
@@ -167,6 +172,10 @@ async def _handle_chat_send(
             db, conversation.id, "user", message,
             attachments=attachments if attachments else None,
         )
+
+        # Set Redis streaming flag (TTL 5 min safety net)
+        streaming_key = f"streaming:{conversation.thread_id}"
+        redis_client.setex(streaming_key, 300, request_id)
 
         # Stream orchestrator
         from backend.database.session import SessionLocal as _SF
@@ -235,10 +244,22 @@ async def _handle_chat_send(
             except Exception as title_err:
                 logger.warning(f"Title generation failed: {title_err}")
 
+        # Notify all connected tabs that streaming finished (reaches reconnected WS)
+        await manager.send_to_user(user.id, {
+            "type": "chat.stream_complete",
+            "thread_id": active_thread_id,
+        })
+
     except Exception as e:
         logger.exception(f"chat.send error: {e}")
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:
+        # Clear streaming flag (may not exist if error occurred before streaming started)
+        if active_thread_id:
+            try:
+                redis_client.delete(f"streaming:{active_thread_id}")
+            except Exception:
+                pass
         db.close()
 
 
@@ -314,6 +335,21 @@ async def websocket_endpoint(ws: WebSocket):
 
             elif msg_type == "conversation.switch":
                 pass  # Frontend-only state change
+
+            elif msg_type == "stream.check":
+                check_thread_id = data.get("thread_id") or None
+                if check_thread_id:
+                    import redis as _sr
+                    _rc = _sr.from_url(settings.redis_url, decode_responses=True)
+                    try:
+                        is_streaming = _rc.exists(f"streaming:{check_thread_id}") > 0
+                    finally:
+                        _rc.close()
+                    await ws.send_text(json.dumps({
+                        "type": "stream.status",
+                        "thread_id": check_thread_id,
+                        "streaming": is_streaming,
+                    }))
 
             elif msg_type == "context.reset":
                 reset_thread_id = data.get("thread_id") or None

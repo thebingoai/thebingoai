@@ -79,6 +79,18 @@ export const useChatStore = defineStore('chat', {
   actions: {
     setCurrentThread(threadId: string | null) {
       this.currentThreadId = threadId
+      if (threadId) {
+        localStorage.setItem('chat_currentThreadId', threadId)
+      } else {
+        localStorage.removeItem('chat_currentThreadId')
+      }
+    },
+
+    hydrateFromStorage() {
+      const stored = localStorage.getItem('chat_currentThreadId')
+      if (stored) {
+        this.currentThreadId = stored
+      }
     },
 
     setMessages(messages: Message[]) {
@@ -166,6 +178,7 @@ export const useChatStore = defineStore('chat', {
       this.expandedThinking.clear()
       this.reasoningPanelOpen = false
       this.selectedMessageId = null
+      localStorage.removeItem('chat_currentThreadId')
     },
 
     reset() {
@@ -178,6 +191,7 @@ export const useChatStore = defineStore('chat', {
       this.expandedThinking.clear()
       this.reasoningPanelOpen = false
       this.selectedMessageId = null
+      localStorage.removeItem('chat_currentThreadId')
     }
   }
 })
