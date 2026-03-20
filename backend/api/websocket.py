@@ -67,7 +67,7 @@ async def _get_user_from_token(token: str) -> Optional[User]:
             if user is not None:
                 # Link existing user to SSO
                 user.sso_id = sso_user.id
-                user.auth_provider = "sso"
+                user.auth_provider = settings.auth_provider
                 db.commit()
                 db.refresh(user)
             else:

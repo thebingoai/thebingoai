@@ -42,6 +42,10 @@ class BingoPlugin(ABC):
     def connectors(self) -> list[ConnectorRegistration]:
         return []
 
+    def auth_providers(self) -> list[tuple[str, type]]:
+        """Return (provider_name, provider_class) tuples to register."""
+        return []
+
     def api_routers(self) -> list[tuple[APIRouter, str]]:
         """Return (router, url_prefix) tuples."""
         return []

@@ -7,5 +7,5 @@ class TokenResponse(BaseModel):
     expires_in: int  # Seconds until expiration
 
 
-class SSOLogoutRequest(BaseModel):
+class LogoutRequest(BaseModel):
     refresh_token: str

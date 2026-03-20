@@ -35,7 +35,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
-      ssoBaseUrl: 'https://sso.thelead.io',  // overridable via NUXT_PUBLIC_SSO_BASE_URL at runtime
+      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL || '',
+      supabaseAnonKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY || '',
     }
   },
 
@@ -50,9 +51,10 @@ export default defineNuxtConfig({
         }
       }
     },
+    // SSO proxy (used when AUTH_PROVIDER=sso in enterprise)
     '/sso-api/**': {
       proxy: {
-        to: 'https://sso.thelead.io/api/v1/**'
+        to: `${process.env.NUXT_PUBLIC_SSO_BASE_URL || 'https://sso.thelead.io'}/api/v1/**`
       }
     }
   },

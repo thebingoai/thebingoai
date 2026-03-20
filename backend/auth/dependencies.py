@@ -66,7 +66,7 @@ async def get_current_user(
         if user is not None:
             # Link existing user to SSO
             user.sso_id = sso_user.id
-            user.auth_provider = "sso"
+            user.auth_provider = settings.auth_provider
             db.commit()
             db.refresh(user)
         else:
@@ -82,7 +82,7 @@ def _create_user(db: Session, sso_user) -> User:
         user = User(
             email=sso_user.email,
             sso_id=sso_user.id,
-            auth_provider="sso",
+            auth_provider=settings.auth_provider,
             hashed_password=None,
         )
         db.add(user)

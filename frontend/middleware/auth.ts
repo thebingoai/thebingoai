@@ -5,7 +5,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // OAuth callback routes must not redirect authenticated users — tokens are being exchanged
   const oauthCallbackRoutes = ['/auth/success', '/auth/error']
 
-  // Load token and user from localStorage if not already loaded
+  // Load token from localStorage if not already loaded
   if (process.client) {
     if (!authStore.token) {
       const token = localStorage.getItem('auth_token')

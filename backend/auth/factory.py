@@ -19,6 +19,6 @@ def get_auth_provider() -> BaseAuthProvider:
     return cls()
 
 
-# Auto-register SSO provider
-from backend.auth.providers.sso_provider import SSOAuthProvider  # noqa: E402
-register_provider("sso", SSOAuthProvider)
+# Auto-register Supabase provider (community default)
+from backend.auth.providers.supabase_provider import SupabaseAuthProvider  # noqa: E402
+register_provider("supabase", SupabaseAuthProvider)

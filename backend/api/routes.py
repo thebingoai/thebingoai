@@ -1,15 +1,12 @@
 from fastapi import APIRouter
 from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
-from backend.api import query_results, sso_webhooks, agent_sessions
+from backend.api import query_results, agent_sessions
 
 router = APIRouter()
 
 # Authentication
 router.include_router(auth.router)
-
-# SSO Webhooks
-router.include_router(sso_webhooks.router)
 
 # Database Connections
 router.include_router(connections.router)

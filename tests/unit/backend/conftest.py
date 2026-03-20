@@ -29,7 +29,7 @@ def dashboard_db():
 
 @pytest.fixture
 def test_user(dashboard_db):
-    user = User(id="user-1", email="test@example.com", auth_provider="sso")
+    user = User(id="user-1", email="test@example.com", auth_provider="supabase")
     dashboard_db.add(user)
     dashboard_db.commit()
     return user

@@ -1,4 +1,5 @@
 import { useAuthStore } from '~/stores/auth'
+import { useSupabase } from '~/composables/useSupabase'
 
 export const useApi = () => {
   const authStore = useAuthStore()

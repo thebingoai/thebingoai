@@ -19,7 +19,9 @@ from backend.models import (
 )
 
 config = context.config
-config.set_main_option('sqlalchemy.url', settings.database_url)
+# Use direct connection URL if available (bypasses PgBouncer for migrations)
+db_url = getattr(settings, 'database_url_direct', None) or settings.database_url
+config.set_main_option('sqlalchemy.url', db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

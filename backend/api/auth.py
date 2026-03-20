@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.auth.factory import get_auth_provider
-from backend.schemas.auth import SSOLogoutRequest
+from backend.schemas.auth import LogoutRequest
 from backend.schemas.user import UserResponse
 from backend.models.user import User
 from backend.config import settings
@@ -25,14 +25,6 @@ async def get_auth_config():
     return provider.get_config()
 
 
-# Keep old endpoint as alias for backwards compatibility during frontend rollout
-@router.get("/sso/config")
-async def get_sso_config():
-    """Deprecated: use /auth/config instead."""
-    provider = get_auth_provider()
-    return provider.get_config()
-
-
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """
@@ -45,19 +37,18 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 @router.post("/logout")
 async def logout(
-    request: SSOLogoutRequest,
+    request: LogoutRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Logout: blacklist the refresh token on SSO and invalidate local cache.
+    Logout: invalidate tokens via the configured auth provider.
 
     Requires: Bearer token in Authorization header
     Body: { "refresh_token": "..." }
     """
     access_token = credentials.credentials
 
-    # Logout via auth provider (invalidate cache + blacklist refresh token)
     provider = get_auth_provider()
     await provider.logout(access_token, request.refresh_token)
 

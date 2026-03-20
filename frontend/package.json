@@ -12,6 +12,7 @@
     "type-check": "nuxt typecheck"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
     "@headlessui/vue": "^1.7.19",
     "@nuxtjs/color-mode": "^3.5.2",
     "@nuxtjs/google-fonts": "^3.2.0",

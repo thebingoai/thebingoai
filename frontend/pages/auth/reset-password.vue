@@ -5,7 +5,7 @@
         <h2 class="text-3xl font-medium text-center text-gray-900">New Password</h2>
       </div>
 
-      <div v-if="!token" class="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 text-center">
+      <div v-if="!hasToken && authStore.isSSO" class="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 text-center">
         Invalid reset link. Please request a new one.
       </div>
 
@@ -54,6 +54,7 @@ const authStore = useAuthStore()
 const route = useRoute()
 
 const token = computed(() => route.query.token as string)
+const hasToken = computed(() => authStore.isSupabase || !!token.value)
 const newPassword = ref('')
 const confirmPassword = ref('')
 const loading = ref(false)
@@ -67,7 +68,7 @@ async function handleSubmit() {
   }
   loading.value = true
   error.value = ''
-  const result = await authStore.resetPassword(token.value, newPassword.value)
+  const result = await authStore.resetPassword(token.value || '', newPassword.value)
   loading.value = false
   if (result.success) {
     success.value = true
