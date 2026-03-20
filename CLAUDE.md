@@ -11,7 +11,7 @@ A BI platform with AI-powered dashboards, real-time chat, and multi-database con
 ### Local Development (Recommended)
 
 ```bash
-# Start all services (Docker backend + native frontend)
+# Start all services — auto-detects database mode from DATABASE_URL in .env
 ./start.sh
 
 # Access points:
@@ -23,23 +23,40 @@ A BI platform with AI-powered dashboards, real-time chat, and multi-database con
 
 Requirements:
 - Docker and Docker Compose must be installed and running
-- Node.js must be installed (for the frontend)
-- `.env` configured with required API keys
+- `.env` configured with required API keys and database URL
 
-`start.sh` runs `docker-compose up -d` for all backend services (Postgres, Redis, Qdrant, backend, celery-worker), waits for the health check, then starts the Nuxt frontend natively with `npm run dev`. Ctrl+C stops everything.
+`start.sh` auto-detects the database mode from `DATABASE_URL` in `.env`:
+- **Supabase (default)**: External DB URL → skips Docker PostgreSQL
+- **Local PostgreSQL**: `localhost` or `postgres:` URL → includes Docker PostgreSQL via override compose file
+
+### Database Setup
+
+**Option 1: Supabase (recommended)**
+1. Create a Supabase project at https://supabase.com
+2. Go to Settings > Database > Connection string > URI
+3. Set `DATABASE_URL` in `.env` to the connection pooler URI (port 6543)
+4. Optionally set `DATABASE_URL_DIRECT` to the direct connection URI (port 5432) for migrations
+
+**Option 2: Local PostgreSQL**
+1. Set `DATABASE_URL=postgresql://llm_user:llm_password@localhost:5432/llm_cli` in `.env`
+2. `start.sh` will automatically include Docker PostgreSQL
+
+Migrations run automatically on startup via `alembic upgrade head` in the Dockerfile CMD. When using Supabase, set `DATABASE_URL_DIRECT` to bypass the connection pooler for migrations.
 
 ### Backend Only (Docker)
 
 ```bash
-# Start backend services without the frontend
-docker-compose up -d
+# Supabase mode (no local PostgreSQL)
+docker compose -f docker/local/docker-compose.yml up -d
+
+# Local PostgreSQL mode
+docker compose -f docker/local/docker-compose.yml -f docker/local/docker-compose.postgres.yml up -d
 
 # View logs
-docker-compose logs -f backend
-docker-compose logs -f celery-worker
+docker compose -f docker/local/docker-compose.yml logs -f backend
 
 # Rebuild after code changes
-docker-compose up --build -d
+docker compose -f docker/local/docker-compose.yml up --build -d
 ```
 
 ### Manual Setup (Advanced)

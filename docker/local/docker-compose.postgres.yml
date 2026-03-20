@@ -1,0 +1,45 @@
+# Local PostgreSQL override for developers who prefer a local database.
+# Usage: docker compose -f docker/local/docker-compose.yml -f docker/local/docker-compose.postgres.yml up -d
+# Or just run ./start.sh with DATABASE_URL pointing to localhost.
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: llm-cli-postgres
+    environment:
+      POSTGRES_DB: llm_cli
+      POSTGRES_USER: llm_user
+      POSTGRES_PASSWORD: llm_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llm_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    environment:
+      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  celery-worker:
+    environment:
+      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  agent-worker:
+    environment:
+      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

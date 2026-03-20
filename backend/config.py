@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
-    database_url_direct: Optional[str] = None  # Direct connection (bypasses PgBouncer) for migrations
+    database_url_direct: Optional[str] = None  # Direct connection for migrations (bypasses Supabase connection pooler)
 
     # Schema storage
     schemas_dir: str = "data/schemas"

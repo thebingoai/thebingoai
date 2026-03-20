@@ -1,23 +1,6 @@
 name: llm-cli-local
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: llm-cli-postgres
-    environment:
-      POSTGRES_DB: llm_cli
-      POSTGRES_USER: llm_user
-      POSTGRES_PASSWORD: llm_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U llm_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: llm-md-redis
@@ -55,7 +38,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_URL=redis://redis:6379/2
@@ -63,8 +45,6 @@ services:
     env_file:
       - ../../.env
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       qdrant:
@@ -87,7 +67,6 @@ services:
     container_name: llm-md-celery
     command: celery -A backend.tasks.upload_tasks worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_URL=redis://redis:6379/2
@@ -95,8 +74,6 @@ services:
     env_file:
       - ../../.env
     depends_on:
-      postgres:
-        condition: service_healthy
       qdrant:
         condition: service_healthy
       redis:
@@ -132,7 +109,6 @@ services:
     container_name: llm-md-agent-worker
     command: celery -A backend.tasks.upload_tasks worker --queues=agent.data,agent.dashboard,agent.rag,agent.custom --concurrency=2 --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_URL=redis://redis:6379/2
@@ -141,8 +117,6 @@ services:
     env_file:
       - ../../.env
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       backend:
@@ -181,7 +155,6 @@ services:
       - frontend_nuxt:/app/.nuxt
 
 volumes:
-  postgres_data:
   redis_data:
   qdrant_data:
   frontend_node_modules:
