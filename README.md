@@ -10,7 +10,7 @@ Bingo provides:
 - **Multi-provider LLM support** (OpenAI, Anthropic, Ollama)
 - **Database connectors** for PostgreSQL and MySQL
 - **AI agent system** with orchestrator, data, dashboard, RAG, and monitor agents
-- **SSO authentication** with provider abstraction
+- **Supabase authentication** with provider abstraction
 - **Background job processing** via Celery with scheduled tasks
 - **Memory system** for persistent conversation context
 
@@ -35,7 +35,7 @@ Bingo provides:
 **Services** (via Docker Compose):
 - **PostgreSQL 15** — primary relational database
 - **Qdrant** — self-hosted vector database for embeddings
-- **Redis** — cache (DB 0), Celery broker (DB 1), Celery results (DB 2), SSO sessions (DB 3), agent mesh (DB 4)
+- **Redis** — cache (DB 0), Celery broker (DB 1), Celery results (DB 2), agent mesh (DB 4)
 - **Celery Worker** — background task processing (uploads, jobs)
 - **Celery Beat** — scheduled task execution
 - **Agent Worker** — dedicated worker for AI agent tasks (data, dashboard, RAG, custom queues)
@@ -95,7 +95,7 @@ bingo/
 ├── backend/
 │   ├── agents/          # AI agent system (orchestrator, data, dashboard, RAG, monitor)
 │   ├── api/             # API route handlers
-│   ├── auth/            # Auth provider system (SSO, base, factory)
+│   ├── auth/            # Auth provider system (Supabase, base, factory)
 │   ├── connectors/      # Database connectors (PostgreSQL, MySQL)
 │   ├── database/        # SQLAlchemy models and database setup
 │   ├── embedder/        # Embedding generation (OpenAI)
@@ -128,8 +128,7 @@ bingo/
 ## API Endpoints
 
 ### Authentication
-- `POST /api/auth/...` — SSO authentication flows
-- `POST /api/sso-webhooks/...` — SSO webhook handlers
+- `POST /api/auth/...` — Supabase authentication flows (login, signup, verify, reset password)
 
 ### Database Connections
 - `/api/connections/...` — Manage database connections (PostgreSQL, MySQL)
@@ -182,13 +181,14 @@ Copy `.env.example` to `.env` and configure:
 | `OLLAMA_BASE_URL` | Ollama endpoint (default: `http://localhost:11434`) |
 | `DEFAULT_LLM_PROVIDER` | `openai` / `anthropic` / `ollama` (default: `openai`) |
 
-### Optional — SSO Authentication
+### Optional — Supabase Authentication
 | Variable | Description |
 |----------|-------------|
-| `AUTH_PROVIDER` | Auth provider type (default: `sso`) |
-| `SSO_BASE_URL` | SSO service base URL |
-| `SSO_PUBLISHABLE_KEY` | SSO publishable key |
-| `SSO_SECRET_KEY` | SSO secret key |
+| `AUTH_PROVIDER` | Auth provider type (default: `supabase`) |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon/public key |
+| `SUPABASE_JWT_SECRET` | JWT secret for token verification |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (optional, for admin operations) |
 
 ### Optional — Storage & Infrastructure
 | Variable | Description |
@@ -214,7 +214,7 @@ See `.env.example` for the full list of configuration options.
 - [x] Multi-provider LLM support (OpenAI, Anthropic, Ollama)
 - [x] Database connectors (PostgreSQL, MySQL)
 - [x] AI agent system (orchestrator, data, dashboard, RAG, monitor)
-- [x] SSO authentication
+- [x] Supabase authentication (SSO available via enterprise plugin)
 - [x] Background job processing with Celery
 - [x] Scheduled tasks with Celery Beat
 - [x] Memory system for persistent context

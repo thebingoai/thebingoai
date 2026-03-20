@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FastAPI backend for indexing and querying markdown files using LLMs, with Nuxt 4 frontend (in development). The backend provides RAG capabilities using LangGraph, supports multiple LLM providers (OpenAI, Anthropic, Ollama), and uses Celery + Redis for async background processing.
+A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), Supabase authentication, and Celery + Redis for async background processing. SSO authentication is available via the enterprise `bingo-sso-auth` plugin.
 
 ## Development Setup
 
@@ -111,36 +111,32 @@ All config in `backend/config.py` using Pydantic Settings:
 
 **Critical settings**:
 - `embedding_model`: "text-embedding-3-large" (default)
-- `embedding_dimensions`: **3072** (MUST match Pinecone index dimensions)
+- `embedding_dimensions`: **3072** (MUST match Qdrant collection vector size)
 - `chunk_size`: 512 tokens, `chunk_overlap`: 0.2 (20%)
-- `pinecone_index_name`: Namespace-based organization within single index
+- `auth_provider`: "supabase" (default for community; "sso" via enterprise plugin)
 
 **Validation**:
 - `chunk_overlap` validated to be 0.0-0.5
 - `default_llm_provider` validated against ("openai", "anthropic", "ollama")
 
-### Vector Storage (Pinecone)
+### Vector Storage (Qdrant)
 
-**Organization**: Single index with namespace-based separation
-- Upload: `POST /api/upload` with optional `namespace` param (default: "default")
-- Query: Specify `namespace` in search/query requests
+Self-hosted Qdrant instance with two collections:
+- `documents` — indexed document chunks for RAG
+- `memories` — persistent conversation memory vectors
 
-**Vector format**:
-```python
-{
-    "id": f"{file_name}#chunk-{index}",
-    "values": [3072-dim embedding],
-    "metadata": {
-        "source": file_name,
-        "chunk_index": i,
-        "text": chunk_text,
-        "tags": [...],
-        "created_at": ISO timestamp
-    }
-}
-```
+Vector size must be 3072 to match `text-embedding-3-large` embeddings.
 
-**Important**: Pinecone index must be serverless (not pod-based) with 3072 dimensions for text-embedding-3-large.
+### Authentication
+
+The auth system uses a **provider pattern** (`backend/auth/`):
+- `factory.py`: Provider registry (built-in + plugin-provided)
+- `dependencies.py`: FastAPI dependency for route protection
+- `providers/supabase_provider.py`: Community default (Supabase)
+
+**Plugin extensibility**: Auth providers can be registered by plugins via `BingoPlugin.auth_providers()`. The enterprise `bingo-sso-auth` plugin adds SSO support this way.
+
+**Key config**: `AUTH_PROVIDER` env var selects the active provider ("supabase" or "sso").
 
 ### API Structure
 
@@ -150,7 +146,7 @@ All routes in `backend/api/routes.py` mounted at `/api` prefix:
 **Query/Search**: `query.py` - vector search + RAG
 **Chat**: `chat.py` - LangGraph-powered RAG with conversation threads
 **Jobs**: `jobs.py` - background job status
-**Health**: `health.py` - system status (Pinecone, Redis, Celery)
+**Health**: `health.py` - system status (Qdrant, Redis, Celery)
 
 ### Frontend Integration
 
@@ -172,14 +168,15 @@ Frontend (`frontend/`) is a **separate Nuxt 4 application** (currently in develo
    - Uses OpenAI's `text-embedding-3-large` model
    - Returns 3072-dimensional vectors
 
-3. **Storage**: Upserted to Pinecone with metadata
+3. **Storage**: Upserted to Qdrant with metadata
 
 ### Redis Usage
 
-Redis serves **three purposes** (3 separate DBs):
+Redis serves **four purposes** (separate DBs):
 1. **DB 0**: Job status cache (`backend/services/job_store.py`)
 2. **DB 1**: Celery task broker (task queue)
 3. **DB 2**: Celery result backend (task results)
+4. **DB 4**: Agent mesh communication
 
 Connection strings in docker-compose.yml override `.env` when running in Docker.
 
@@ -223,7 +220,7 @@ The `ConversationState` in `state.py` uses LangGraph's `add_messages` reducer:
 
 ## Common Pitfalls
 
-1. **Embedding dimensions mismatch**: Pinecone index MUST be 3072 dims for text-embedding-3-large. Changing embedding model requires new index.
+1. **Embedding dimensions mismatch**: Qdrant collection vector size MUST be 3072 for text-embedding-3-large. Changing embedding model requires recreating collections.
 
 2. **Redis connection**: Three separate DBs. Don't reuse connections across purposes (cache vs broker vs results).
 
@@ -238,9 +235,17 @@ The `ConversationState` in `state.py` uses LangGraph's `add_messages` reducer:
 ### Required Environment Variables
 
 ```bash
-OPENAI_API_KEY=sk-...           # Required
-PINECONE_API_KEY=...            # Required
-PINECONE_INDEX_NAME=...         # Required (must exist, 3072 dims)
+OPENAI_API_KEY=sk-...           # Required (embeddings + LLM)
+DB_ENCRYPTION_KEY=...           # Required (Fernet key for DB password encryption)
+```
+
+### Auth Environment Variables
+
+```bash
+AUTH_PROVIDER=supabase          # Default for community (or "sso" with enterprise plugin)
+SUPABASE_URL=...                # Supabase project URL
+SUPABASE_ANON_KEY=...           # Supabase anon/public key
+SUPABASE_JWT_SECRET=...         # JWT secret for token verification
 ```
 
 ### Optional Environment Variables
@@ -258,7 +263,7 @@ LOG_LEVEL=...                   # DEBUG|INFO|WARNING|ERROR (default: INFO)
 
 ### Production Considerations
 
-1. **Pinecone**: Use serverless index for cost efficiency
+1. **Qdrant**: Self-hosted or Qdrant Cloud for production
 2. **Redis**: Consider Redis Cloud or AWS ElastiCache for production
 3. **Celery**: Run multiple workers for parallel processing
 4. **Monitoring**: Enable health check endpoints (`/health`, `/api/status`)
