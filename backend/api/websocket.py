@@ -47,10 +47,11 @@ async def _generate_title(user_message: str, assistant_response: str) -> str:
 
 
 async def _get_user_from_token(token: str) -> Optional[User]:
-    """Validate SSO token and return User, or None on failure."""
-    from backend.services.sso_client import validate_token as sso_validate_token
+    """Validate auth token and return User, or None on failure."""
+    from backend.auth.factory import get_auth_provider
 
-    sso_user = await sso_validate_token(token)
+    auth_provider = get_auth_provider()
+    sso_user = await auth_provider.validate_token(token)
     if sso_user is None or not sso_user.is_active or not sso_user.is_verified:
         return None
 

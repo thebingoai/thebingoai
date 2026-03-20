@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     max_query_rows: int = 5000
     query_timeout_ms: int = 30000
 
+    # Authentication
+    auth_provider: str = "sso"  # "sso" | "supabase" (future)
+
     # SSO Authentication
     sso_base_url: str = "https://sso.thelead.io"
     sso_publishable_key: str = ""      # pk_* key for frontend

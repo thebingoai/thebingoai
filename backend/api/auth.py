@@ -3,8 +3,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
-from backend.services import sso_client
-from backend.schemas.auth import SSOLogoutRequest, SSOConfigResponse
+from backend.auth.factory import get_auth_provider
+from backend.schemas.auth import SSOLogoutRequest
 from backend.schemas.user import UserResponse
 from backend.models.user import User
 from backend.config import settings
@@ -13,19 +13,24 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer()
 
 
-@router.get("/sso/config", response_model=SSOConfigResponse)
-async def get_sso_config():
+@router.get("/config")
+async def get_auth_config():
     """
-    Get SSO configuration for the frontend.
+    Get auth provider configuration for the frontend.
 
-    Returns the SSO base URL, publishable key, and OAuth URLs.
+    Returns provider-specific config (URLs, public keys, etc.).
     Public endpoint - no authentication required.
     """
-    return SSOConfigResponse(
-        sso_base_url=settings.sso_base_url,
-        publishable_key=settings.sso_publishable_key,
-        google_oauth_url=f"{settings.sso_base_url}/api/v1/oauth/google",
-    )
+    provider = get_auth_provider()
+    return provider.get_config()
+
+
+# Keep old endpoint as alias for backwards compatibility during frontend rollout
+@router.get("/sso/config")
+async def get_sso_config():
+    """Deprecated: use /auth/config instead."""
+    provider = get_auth_provider()
+    return provider.get_config()
 
 
 @router.get("/me", response_model=UserResponse)
@@ -52,10 +57,8 @@ async def logout(
     """
     access_token = credentials.credentials
 
-    # Invalidate the SSO token cache
-    await sso_client.invalidate_token_cache(access_token)
-
-    # Tell SSO to blacklist the refresh token
-    await sso_client.logout(request.refresh_token)
+    # Logout via auth provider (invalidate cache + blacklist refresh token)
+    provider = get_auth_provider()
+    await provider.logout(access_token, request.refresh_token)
 
     return {"message": "Logged out successfully"}

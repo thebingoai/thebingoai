@@ -62,6 +62,7 @@ router.get("/search", tags=["query"])(query.search)
 
 # Status
 router.get("/status", tags=["status"])(health.get_status)
+router.get("/info", tags=["status"])(health.app_info)
 
 # Jobs
 router.get("/jobs", tags=["jobs"])(jobs.list_all_jobs)

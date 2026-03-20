@@ -9,9 +9,3 @@ class TokenResponse(BaseModel):
 
 class SSOLogoutRequest(BaseModel):
     refresh_token: str
-
-
-class SSOConfigResponse(BaseModel):
-    sso_base_url: str
-    publishable_key: str
-    google_oauth_url: str

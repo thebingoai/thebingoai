@@ -149,7 +149,31 @@ def _process_pdf(file_bytes: bytes) -> dict:
 
 def _process_excel(file_bytes: bytes) -> dict:
     """Extract Excel text preview with truncation to max rows."""
-    import pandas as pd
+    try:
+        import pandas as pd
+    except ImportError:
+        # pandas not available (enterprise plugin not installed) — fall back to
+        # openpyxl directly, or return a minimal text extraction
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            wb.close()
+            if not rows:
+                return {"extracted_text": "", "truncated_text": "", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0}}
+            headers = [str(h) if h is not None else "" for h in rows[0]]
+            max_rows = settings.chat_file_csv_max_rows
+            data_rows = rows[1:]
+            lines = [" | ".join(headers)]
+            lines.append("-" * (sum(len(h) for h in headers) + 3 * (len(headers) - 1)))
+            truncated_rows = min(len(data_rows), max_rows)
+            for row in data_rows[:max_rows]:
+                lines.append(" | ".join(str(v) if v is not None else "" for v in row))
+            text = "\n".join(lines).strip()
+            return {"extracted_text": text, "truncated_text": text, "metadata": {"headers": headers, "row_count": len(data_rows), "truncated_rows": truncated_rows}}
+        except ImportError:
+            return {"extracted_text": "[Excel preview requires pandas or openpyxl]", "truncated_text": "[Excel preview requires pandas or openpyxl]", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0}}
 
     max_rows = settings.chat_file_csv_max_rows
 

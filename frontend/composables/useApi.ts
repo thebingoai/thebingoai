@@ -603,7 +603,7 @@ export const useApi = () => {
         })
       },
       async getSqliteUrl(connectionId: number) {
-        return fetchWithRefresh(`/api/dashboards/datasets/${connectionId}/sqlite-url`, {}) as Promise<{ url: string; expires_in: number }>
+        return fetchWithRefresh(`/api/connections/datasets/${connectionId}/sqlite-url`, {}) as Promise<{ url: string; expires_in: number }>
       },
     },
 

@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from backend.services.sso_client import validate_token
+from backend.auth.factory import get_auth_provider
 from backend.database.session import get_db
 from backend.models.user import User
 from backend.models.team_membership import TeamMembership, MemberRole
@@ -34,8 +34,9 @@ async def get_current_user(
     """
     token = credentials.credentials
 
-    # Validate with SSO
-    sso_user = await validate_token(token)
+    # Validate with auth provider
+    auth_provider = get_auth_provider()
+    sso_user = await auth_provider.validate_token(token)
     if sso_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

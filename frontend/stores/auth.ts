@@ -39,7 +39,7 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async loadSSOConfig() {
       try {
-        const data = await $fetch<SSOConfig>('/api/auth/sso/config')
+        const data = await $fetch<SSOConfig>('/api/auth/config')
         this.ssoConfig = data
       } catch (error) {
         console.error('Failed to load SSO config:', error)

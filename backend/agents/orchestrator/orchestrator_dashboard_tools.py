@@ -10,6 +10,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+try:
+    import bingo_csv_connector  # noqa: F401
+    _CSV_PLUGIN_AVAILABLE = True
+except ImportError:
+    _CSV_PLUGIN_AVAILABLE = False
+
 
 def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Callable] = None) -> List:
     """Return dashboard tools when db_session_factory is available."""
@@ -319,4 +325,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         finally:
             db.close()
 
-    return [create_dashboard, create_dataset_from_upload, list_dashboards, list_connections]
+    tools = [create_dashboard, list_dashboards, list_connections]
+    if _CSV_PLUGIN_AVAILABLE:
+        tools.append(create_dataset_from_upload)
+    return tools

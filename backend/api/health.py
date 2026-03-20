@@ -49,3 +49,16 @@ async def health_detailed() -> dict:
     ) else "degraded"
 
     return {"status": overall, "checks": checks}
+
+
+async def app_info() -> dict:
+    """Return application edition, version, and loaded plugins."""
+    from backend.plugins.loader import get_loaded_plugins
+
+    plugins = get_loaded_plugins()
+    edition = "Enterprise" if plugins else "Community"
+    return {
+        "edition": edition,
+        "version": "1.0.0",
+        "plugins": [{"name": p.name, "version": p.version} for p in plugins.values()],
+    }

@@ -10,7 +10,7 @@
     </button>
 
     <!-- Settings Navigation -->
-    <div class="w-56 border-r border-gray-200 p-4">
+    <div class="w-56 border-r border-gray-200 p-4 flex flex-col justify-between">
       <nav class="space-y-1">
         <button
           v-for="section in sections"
@@ -22,6 +22,11 @@
           {{ section.name }}
         </button>
       </nav>
+
+      <div class="pt-4 border-t border-gray-200 text-xs text-gray-400 space-y-1">
+        <p>{{ appInfo?.edition || 'Community' }} Edition</p>
+        <p>v{{ appInfo?.version || '1.0.0' }}</p>
+      </div>
     </div>
 
     <!-- Settings Content -->
@@ -43,6 +48,8 @@
 import { X } from 'lucide-vue-next'
 
 const router = useRouter()
+
+const { data: appInfo } = await useFetch('/api/info')
 
 const sections = [
   { id: 'connections', name: 'Connections' },
