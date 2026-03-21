@@ -22,7 +22,10 @@
           />
           <Sparkles class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
-        <span class="flex-1 min-w-0 text-sm font-light text-gray-900 truncate">
+        <span
+          class="flex-1 min-w-0 text-sm truncate"
+          :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'font-bold text-glow-orange' : 'font-light text-gray-900'"
+        >
           {{ chatStore.permanentConversation.title || 'Bingo AI' }}
         </span>
         <!-- Unread badge -->
@@ -49,7 +52,7 @@
           />
           <LayoutDashboard class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
-        Dashboard
+        <span :class="route.path === '/dashboard' ? 'font-bold text-glow-orange' : ''">Dashboard</span>
       </button>
     </div>
 
@@ -67,7 +70,7 @@
           />
           <Plus class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
-        New Task
+        <span :class="route.path === '/chat' && !chatStore.currentThreadId ? 'font-bold text-glow-orange' : ''">New Task</span>
       </button>
     </div>
 
@@ -89,15 +92,18 @@
           No tasks yet
         </div>
         <template v-for="group in groupedTasks" :key="group.label">
-          <div class="px-4 py-1.5 text-[11px] text-gray-400">{{ group.label }}</div>
+          <div class="px-4 pt-4 text-[11px] text-gray-800">{{ group.label }}</div>
           <button
             v-for="conv in group.conversations"
             :key="conv.id"
             @click="handleSelectConversation(conv.id)"
-            class="w-full rounded-lg px-4 py-0.5 text-left text-sm hover:bg-gray-50"
-            :class="chatStore.currentThreadId === conv.id ? 'bg-gray-100' : ''"
+            class="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+            :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50' : ''"
           >
-            <div class="font-extralight text-gray-500 truncate">{{ conv.title }}</div>
+            <div
+              class="truncate"
+              :class="chatStore.currentThreadId === conv.id ? 'font-bold text-glow-orange ' : 'font-extralight text-gray-500'"
+            >{{ conv.title }}</div>
           </button>
         </template>
       </div>
