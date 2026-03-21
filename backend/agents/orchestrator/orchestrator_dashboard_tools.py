@@ -197,7 +197,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             from backend.config import settings as _settings
 
             sqlite_path = create_dataset_sqlite(connection.id, sanitized, columns, df)
-            do_spaces_key = f"{_settings.do_spaces_base_path}/datasets/sqlite/{connection.id}.sqlite"
+            do_spaces_key = f"{_settings.do_spaces_base_path}/{context.user_id}/datasets/{connection.id}.sqlite"
             with open(sqlite_path, 'rb') as f:
                 _object_storage.upload_bytes(do_spaces_key, f.read(), content_type="application/x-sqlite3")
 
