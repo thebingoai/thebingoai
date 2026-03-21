@@ -16,7 +16,7 @@ def register_connector(reg: ConnectorRegistration) -> None:
 
 def get_connector_registration(type_id: str) -> ConnectorRegistration | None:
     """Get registration for a type (used by connections.py for hook dispatch)."""
-    return _CONNECTORS.get(type_id)
+    return _CONNECTORS.get(type_id.lower() if type_id else type_id)
 
 
 def get_available_types() -> list[dict]:
@@ -40,7 +40,8 @@ def get_connector_for_connection(connection: DatabaseConnection) -> Any:
     Uses from_connection() classmethod if available on the connector class,
     otherwise falls back to standard host/port/database construction.
     """
-    reg = _CONNECTORS.get(connection.db_type)
+    db_type_key = connection.db_type.lower() if isinstance(connection.db_type, str) else connection.db_type
+    reg = _CONNECTORS.get(db_type_key)
     if not reg:
         raise ValueError(f"No connector registered for type: {connection.db_type}")
 
@@ -87,7 +88,8 @@ def get_connector(
     Raises:
         ValueError: If database type not supported
     """
-    reg = _CONNECTORS.get(db_type if isinstance(db_type, str) else db_type.value if hasattr(db_type, 'value') else str(db_type))
+    key = db_type if isinstance(db_type, str) else db_type.value if hasattr(db_type, 'value') else str(db_type)
+    reg = _CONNECTORS.get(key.lower())
 
     if reg is None:
         raise ValueError(f"Unsupported database type: {db_type}")

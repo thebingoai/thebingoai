@@ -77,6 +77,7 @@ async def invoke_data_agent(
         # Invoke agent (single turn, no thread persistence)
         result = await agent.ainvoke(
             {"messages": [HumanMessage(content=question)]},
+            config={"recursion_limit": settings.agent_recursion_limit},
         )
 
         # Extract SQL queries, results, and all intermediate steps from messages

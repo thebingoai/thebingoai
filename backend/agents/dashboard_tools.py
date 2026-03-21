@@ -232,6 +232,10 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
         )
 
         # Extract bare identifiers, skipping aliases defined with AS
+        # Strip quoted identifiers (e.g. "Average points", [Unnamed: 0])
+        # so the regex below doesn't split them into spurious column references
+        clause_text = re.sub(r'"[^"]*"', '', clause_text)
+        clause_text = re.sub(r'\[[^\]]*\]', '', clause_text)
         # Remove AS <alias> to avoid alias names being treated as column refs
         clause_text = re.sub(r'\bAS\s+[a-zA-Z_][a-zA-Z0-9_]*', '', clause_text, flags=re.IGNORECASE)
 

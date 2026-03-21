@@ -23,13 +23,14 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         return []
 
     @tool
-    async def create_dashboard(request: str) -> str:
+    async def create_dashboard(request: str, target_connection_id: int | None = None) -> str:
         """
         Create a persistent, fully-featured dashboard from a natural language request.
 
         IMPORTANT: If the user wants a dashboard from an uploaded file, you MUST call
         create_dataset_from_upload FIRST and wait for its result (which contains the
-        connection_id), THEN call this tool. Do NOT call both tools simultaneously.
+        connection_id), THEN call this tool with target_connection_id set to that
+        connection_id. Do NOT call both tools simultaneously.
 
         This tool delegates to a specialized dashboard sub-agent that handles the entire
         dashboard creation workflow autonomously, end-to-end:
@@ -111,7 +112,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
                 finally:
                     db2.close()
 
-        result = await invoke_dashboard_agent(request, context, db_session_factory)
+        result = await invoke_dashboard_agent(request, context, db_session_factory, target_connection_id=target_connection_id)
         return json.dumps(result)
 
     @tool

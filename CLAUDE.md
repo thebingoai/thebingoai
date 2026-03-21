@@ -6,6 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), Supabase authentication, and Celery + Redis for async background processing. SSO authentication is available via the enterprise `bingo-sso-auth` plugin.
 
+## Project Structure
+This is a dual-repo setup: community edition and enterprise edition are SEPARATE REPOSITORIES, not separate branches. Enterprise extends community via plugins/overlays. Never assume enterprise features live on a branch.
+community edition : /Users/edmundhee/work/github/gruda/bingo
+enterprise edition : /Users/edmundhee/work/github/gruda/bingo-enterprise
+
+## Docker
+- Enterprise Docker compose uses overlay files. Always check for `docker-compose.enterprise.yml` or similar overlay patterns.
+- Use `docker compose` (v2), not `docker-compose` (v1).
+- Redis URLs inside Docker network use service names (e.g., `redis://redis:6379`), not `localhost`.
+- Always verify compose file paths before running commands.
+
+## Git Operations
+- SSH remote URL for this project: [fill in your SSH URL]
+- Always complete the full commit-and-push cycle in one go; don't stop after staging.
+- Check `git remote -v` before pushing if unsure of remote configuration.
+
+## Working Style section 
+
+### Planning vs Implementation
+When asked to implement something, proceed directly to implementation after a brief plan outline. Do not spend the entire session in planning mode unless explicitly asked for a plan only. Avoid over-engineering — prefer simple, pragmatic solutions.
+
+### File Reading
+Do not re-read files you have already read in this session. Track what you've explored and avoid redundant exploration. If you need to reference something you already read, use your memory of it.
+
 ## Development Setup
 
 ### Local Development (Recommended)
@@ -28,6 +52,8 @@ Requirements:
 `start.sh` auto-detects the database mode from `DATABASE_URL` in `.env`:
 - **Supabase (default)**: External DB URL → skips Docker PostgreSQL
 - **Local PostgreSQL**: `localhost` or `postgres:` URL → includes Docker PostgreSQL via override compose file
+
+
 
 ### Database Setup
 
@@ -311,3 +337,4 @@ impact analysis, and code exploration — they return structured context in a si
 - `/codemap-health-review` — review code quality and identify what to refactor next
 - `/codemap-refresh` — regenerate codemap when source files have changed
 <!-- codemap:end -->
+

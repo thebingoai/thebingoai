@@ -319,7 +319,10 @@ def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent
                 prompt=_system_prompt,
             )
             try:
-                result = await sub_agent.ainvoke({"messages": [HumanMessage(content=question)]})
+                result = await sub_agent.ainvoke(
+                    {"messages": [HumanMessage(content=question)]},
+                    config={"recursion_limit": settings.agent_recursion_limit},
+                )
                 messages = result.get("messages", [])
                 final_answer = None
                 for msg in reversed(messages):
@@ -382,12 +385,22 @@ async def run_orchestrator(
         if history:
             for msg in history:
                 if msg.role == "user":
-                    messages.append(HumanMessage(content=msg.content))
+                    content = msg.content
+                    if getattr(msg, "attachments", None):
+                        attachment_lines = [
+                            f"[File: {att['name']} (file_id: {att['file_id']})]"
+                            for att in msg.attachments
+                        ]
+                        content = "\n".join(attachment_lines) + "\n" + content
+                    messages.append(HumanMessage(content=content))
                 elif msg.role == "assistant":
                     messages.append(AIMessage(content=msg.content))
         messages.append(build_user_message(user_question, file_contents))
 
-        result = await orchestrator.ainvoke({"messages": messages})
+        result = await orchestrator.ainvoke(
+            {"messages": messages},
+            config={"recursion_limit": settings.agent_recursion_limit},
+        )
 
         messages = result.get("messages", [])
 
@@ -460,7 +473,14 @@ async def stream_orchestrator(
         if history:
             for msg in history:
                 if msg.role == "user":
-                    messages.append(HumanMessage(content=msg.content))
+                    content = msg.content
+                    if getattr(msg, "attachments", None):
+                        attachment_lines = [
+                            f"[File: {att['name']} (file_id: {att['file_id']})]"
+                            for att in msg.attachments
+                        ]
+                        content = "\n".join(attachment_lines) + "\n" + content
+                    messages.append(HumanMessage(content=content))
                 elif msg.role == "assistant":
                     messages.append(AIMessage(content=msg.content))
         messages.append(build_user_message(user_question, file_contents))
@@ -473,6 +493,7 @@ async def stream_orchestrator(
 
         async for event in orchestrator.astream_events(
             {"messages": messages},
+            config={"recursion_limit": settings.agent_recursion_limit},
             version="v2"
         ):
             kind = event.get("event")

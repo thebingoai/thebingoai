@@ -263,13 +263,18 @@ Phase 4 — Create:
 """ + DASHBOARD_AGENT_SYSTEM_PROMPT.split("## Dashboard Design Principles", 1)[1] if "## Dashboard Design Principles" in DASHBOARD_AGENT_SYSTEM_PROMPT else DASHBOARD_AGENT_SYSTEM_PROMPT
 
 
-def build_dashboard_agent_prompt(available_connections: list[int], mesh_enabled: bool = False) -> str:
+def build_dashboard_agent_prompt(
+    available_connections: list[int],
+    mesh_enabled: bool = False,
+    target_connection_id: int | None = None,
+) -> str:
     """
     Build dynamic system prompt with user's available connections.
 
     Args:
         available_connections: List of connection IDs user can access
         mesh_enabled: Whether to use mesh-aware prompt
+        target_connection_id: Pre-selected connection to focus on (e.g. from a CSV upload)
 
     Returns:
         System prompt with connection context injected
@@ -283,8 +288,17 @@ def build_dashboard_agent_prompt(available_connections: list[int], mesh_enabled:
         return base_prompt + "\n\nWARNING: No database connections available."
 
     connections_str = ", ".join(str(conn_id) for conn_id in available_connections)
-    return (
+    prompt = (
         base_prompt
         + f"\n\nAvailable connection IDs: {connections_str}"
         + "\nAlways use one of these IDs for dataSource.connectionId in your widgets."
     )
+
+    if target_connection_id is not None:
+        prompt += (
+            f"\n\nPrimary connection to use: {target_connection_id}"
+            "\nFocus your schema exploration on this connection. "
+            "Only explore other connections if the user explicitly asks."
+        )
+
+    return prompt

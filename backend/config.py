@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     rag_context_score_threshold: float = 0.5
     rag_conversation_history_messages: int = 6
 
+    # Agent settings
+    agent_recursion_limit: int = 100  # Max LangGraph ReAct loop steps per agent invocation
+
     # Database
     database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
     database_url_direct: Optional[str] = None  # Direct connection for migrations (bypasses Supabase connection pooler)

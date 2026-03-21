@@ -1,11 +1,12 @@
 from langgraph.prebuilt import create_react_agent
+from langgraph.errors import GraphRecursionError
 from langchain_core.messages import HumanMessage, ToolMessage
 from backend.agents.dashboard_agent.tools import build_dashboard_agent_tools
 from backend.agents.dashboard_agent.prompts import build_dashboard_agent_prompt
 from backend.agents.context import AgentContext
 from backend.llm.factory import get_provider
 from backend.config import settings
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List
 import logging
 import json
 
@@ -16,6 +17,7 @@ async def invoke_dashboard_agent(
     request: str,
     context: AgentContext,
     db_session_factory: Callable,
+    target_connection_id: int | None = None,
 ) -> Dict[str, Any]:
     """
     Invoke Dashboard Agent for schema exploration and dashboard creation.
@@ -27,6 +29,7 @@ async def invoke_dashboard_agent(
         request: User's dashboard creation request
         context: AgentContext with user_id and available_connections
         db_session_factory: Callable returning a SQLAlchemy DB session
+        target_connection_id: Pre-selected connection to focus on
 
     Returns:
         Dict with success, message, dashboard_id, steps
@@ -52,7 +55,7 @@ async def invoke_dashboard_agent(
             message_bus=message_bus,
         )
 
-        prompt = build_dashboard_agent_prompt(context.available_connections, mesh_enabled=True)
+        prompt = build_dashboard_agent_prompt(context.available_connections, mesh_enabled=True, target_connection_id=target_connection_id)
         result = await runtime.execute(request, tools, prompt)
 
         return {
@@ -67,61 +70,22 @@ async def invoke_dashboard_agent(
     agent = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        prompt=build_dashboard_agent_prompt(context.available_connections),
+        prompt=build_dashboard_agent_prompt(context.available_connections, target_connection_id=target_connection_id),
     )
 
     try:
         result = await agent.ainvoke(
             {"messages": [HumanMessage(content=request)]},
+            config={"recursion_limit": settings.agent_recursion_limit},
         )
 
         messages = result.get("messages", [])
-        dashboard_id = None
-        steps = []
+        dashboard_id, steps = _extract_results(messages)
 
-        tool_call_index: Dict[str, Dict] = {}
-
-        for msg in messages:
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                for tool_call in msg.tool_calls:
-                    tool_name = tool_call.get("name")
-                    args = tool_call.get("args", {})
-                    tool_call_id = tool_call.get("id", "")
-
-                    tool_call_index[tool_call_id] = {"name": tool_name, "args": args}
-
-                    steps.append({
-                        "agent_type": "dashboard_agent",
-                        "step_type": "tool_call",
-                        "tool_name": tool_name,
-                        "content": {"args": args},
-                    })
-
-            elif isinstance(msg, ToolMessage):
-                tool_call_id = getattr(msg, "tool_call_id", "")
-                call_info = tool_call_index.get(tool_call_id, {})
-                tool_name = call_info.get("name", "unknown")
-
-                result_data = None
-                if isinstance(msg.content, str):
-                    try:
-                        result_data = json.loads(msg.content)
-                    except (json.JSONDecodeError, TypeError):
-                        result_data = msg.content
-                else:
-                    result_data = msg.content
-
-                # Extract dashboard_id from create_dashboard result
-                if tool_name == "create_dashboard" and isinstance(result_data, dict):
-                    if result_data.get("success") and result_data.get("dashboard_id"):
-                        dashboard_id = result_data["dashboard_id"]
-
-                steps.append({
-                    "agent_type": "dashboard_agent",
-                    "step_type": "tool_result",
-                    "tool_name": tool_name,
-                    "content": {"result": result_data},
-                })
+        logger.info(
+            "Dashboard agent completed in %d messages (limit: %d)",
+            len(messages), settings.agent_recursion_limit,
+        )
 
         # Get final answer (last AI message without tool calls)
         final_answer = None
@@ -137,6 +101,28 @@ async def invoke_dashboard_agent(
             "steps": steps,
         }
 
+    except GraphRecursionError:
+        logger.warning(
+            "Dashboard agent hit recursion limit of %d",
+            settings.agent_recursion_limit,
+        )
+        # The agent ran out of steps. Check if a dashboard was already
+        # created during the partial run by querying the DB.
+        partial_dashboard_id = _find_latest_dashboard(context.user_id, db_session_factory)
+        if partial_dashboard_id:
+            return {
+                "success": True,
+                "message": "Dashboard was created successfully, though the agent needed more steps than expected to finish.",
+                "dashboard_id": partial_dashboard_id,
+                "steps": [],
+            }
+        return {
+            "success": False,
+            "message": "The dashboard creation required too many steps. Try a simpler request with fewer widgets.",
+            "dashboard_id": None,
+            "steps": [],
+        }
+
     except Exception as e:
         logger.error(f"Dashboard agent failed: {str(e)}")
         return {
@@ -145,3 +131,75 @@ async def invoke_dashboard_agent(
             "dashboard_id": None,
             "steps": [],
         }
+
+
+def _extract_results(messages: list) -> tuple:
+    """Parse agent messages to extract dashboard_id and step trace."""
+    dashboard_id = None
+    steps: List[Dict] = []
+    tool_call_index: Dict[str, Dict] = {}
+
+    for msg in messages:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                tool_name = tool_call.get("name")
+                args = tool_call.get("args", {})
+                tool_call_id = tool_call.get("id", "")
+
+                tool_call_index[tool_call_id] = {"name": tool_name, "args": args}
+
+                steps.append({
+                    "agent_type": "dashboard_agent",
+                    "step_type": "tool_call",
+                    "tool_name": tool_name,
+                    "content": {"args": args},
+                })
+
+        elif isinstance(msg, ToolMessage):
+            tool_call_id = getattr(msg, "tool_call_id", "")
+            call_info = tool_call_index.get(tool_call_id, {})
+            tool_name = call_info.get("name", "unknown")
+
+            result_data = None
+            if isinstance(msg.content, str):
+                try:
+                    result_data = json.loads(msg.content)
+                except (json.JSONDecodeError, TypeError):
+                    result_data = msg.content
+            else:
+                result_data = msg.content
+
+            # Extract dashboard_id from create_dashboard result
+            if tool_name == "create_dashboard" and isinstance(result_data, dict):
+                if result_data.get("success") and result_data.get("dashboard_id"):
+                    dashboard_id = result_data["dashboard_id"]
+
+            steps.append({
+                "agent_type": "dashboard_agent",
+                "step_type": "tool_result",
+                "tool_name": tool_name,
+                "content": {"result": result_data},
+            })
+
+    return dashboard_id, steps
+
+
+def _find_latest_dashboard(user_id: str, db_session_factory: Callable):
+    """Check if a dashboard was created in the last 5 minutes by this user."""
+    from datetime import datetime, timedelta, timezone
+    from backend.models.dashboard import Dashboard
+
+    db = db_session_factory()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+        dashboard = (
+            db.query(Dashboard)
+            .filter(Dashboard.user_id == user_id, Dashboard.created_at >= cutoff)
+            .order_by(Dashboard.created_at.desc())
+            .first()
+        )
+        return dashboard.id if dashboard else None
+    except Exception:
+        return None
+    finally:
+        db.close()
