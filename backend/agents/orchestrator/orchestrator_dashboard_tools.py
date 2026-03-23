@@ -292,6 +292,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
                 table_name=do_spaces_key,
                 columns=columns,
                 row_count=row_count,
+                sqlite_table_name=sanitized,
             )
             schema_path = save_schema_file(connection.id, schema_json)
             connection.schema_json_path = schema_path

@@ -272,7 +272,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 return f"`{name}`" if db_type_str == "mysql" else f'"{name}"'
 
             if is_dataset:
-                qualified_table = '"data"'  # SQLite: always "data" table, no schema
+                qualified_table = f'"{table_name}"'  # SQLite: use table name from schema
             else:
                 qualified_table = f"{q(found_schema)}.{q(table_name)}"
             result_columns: Dict[str, Any] = {}
