@@ -35,6 +35,7 @@
       <SettingsSkills v-else-if="currentSection === 'skills'" />
       <SettingsJobs v-else-if="currentSection === 'jobs'" />
       <SettingsMemory v-else-if="currentSection === 'memory'" />
+      <SettingsUsage v-else-if="currentSection === 'usage'" />
       <SettingsProfile v-else-if="currentSection === 'profile'" />
       <div v-else class="p-6">
         <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>

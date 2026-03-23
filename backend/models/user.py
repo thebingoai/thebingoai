@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, JSON, Text, Integer
+from sqlalchemy import Column, String, ForeignKey, JSON, Text, Integer, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from backend.database.base import Base, TimestampMixin
 import uuid
@@ -16,6 +16,11 @@ class User(Base, TimestampMixin):
     preferences = Column(JSON, nullable=True)  # {"name": "Ed", "role": "PM", "tone": "concise"}
     soul_prompt = Column(Text, nullable=True)
     soul_version = Column(Integer, nullable=False, default=0)
+
+    # Terms & Conditions (enterprise)
+    accepted_tos = Column(Boolean, nullable=True, default=False)
+    tos_accepted_at = Column(DateTime, nullable=True)
+    tos_version = Column(String(20), nullable=True)
 
     # Relationships
     database_connections = relationship(

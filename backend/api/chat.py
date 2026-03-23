@@ -10,6 +10,7 @@ from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
 from backend.config import settings
+from backend.llm.factory import get_provider
 import json
 import logging
 
@@ -106,6 +107,9 @@ async def chat(
             history = history[i + 1:]
             break
 
+    # Resolve user's preferred LLM provider
+    user_provider = get_provider(settings.default_llm_provider)
+
     # Run orchestrator
     from backend.database.session import SessionLocal
     result = await run_orchestrator(
@@ -120,6 +124,7 @@ async def chat(
         skill_suggestions=ctx.skill_suggestions or None,
         soul_prompt=ctx.soul_prompt,
         profile=ctx.profile,
+        llm_provider=user_provider,
     )
 
     # Save assistant message
@@ -241,12 +246,15 @@ async def chat_stream(
             # Set Redis streaming flag (TTL 5 min safety net)
             redis_client.setex(f"streaming:{active_thread_id}", 300, "sse")
 
+            # Resolve user's preferred LLM provider
+            user_provider = get_provider(settings.default_llm_provider)
+
             # Stream orchestrator execution
             from backend.database.session import SessionLocal
             logger.info("chat_stream: ctx.profile=%s (id=%s)", ctx.profile, getattr(ctx.profile, 'id', 'NONE'))
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt, profile=ctx.profile):
+            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt, profile=ctx.profile, llm_provider=user_provider):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

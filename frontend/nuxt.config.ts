@@ -73,7 +73,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'LLM-MD-CLI',
+      title: 'TheBingo.ai',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },

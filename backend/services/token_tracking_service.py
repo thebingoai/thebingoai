@@ -124,6 +124,8 @@ class TokenTrackingService:
 
         # Calculate totals
         total_tokens = sum(r.total_tokens for r in records)
+        total_input_tokens = sum(r.prompt_tokens for r in records)
+        total_output_tokens = sum(r.completion_tokens for r in records)
         total_cost = sum(r.cost for r in records)
         total_operations = len(records)
 
@@ -146,6 +148,8 @@ class TokenTrackingService:
             "totals": {
                 "operations": total_operations,
                 "tokens": total_tokens,
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
                 "cost": round(total_cost, 4)
             },
             "by_operation": by_operation

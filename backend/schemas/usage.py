@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 class UsageSummaryResponse(BaseModel):
     user_id: str
     period: Dict[str, str]  # {start, end}
-    totals: Dict[str, Any]  # {operations, tokens, cost}
+    totals: Dict[str, Any]  # {operations, tokens, input_tokens, output_tokens, cost}
     by_operation: Dict[str, Dict[str, Any]]  # {operation_name: {count, tokens, cost}}
 
 

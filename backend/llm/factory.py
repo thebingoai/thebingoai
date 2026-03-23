@@ -1,13 +1,14 @@
 """LLM Provider factory."""
 
+import logging
 from typing import Optional
 
 from backend.llm.base import BaseLLMProvider
 from backend.llm.openai_provider import OpenAIProvider
 from backend.llm.anthropic_provider import AnthropicProvider
 from backend.llm.ollama_provider import OllamaProvider
-from backend.config import settings
 
+logger = logging.getLogger(__name__)
 
 # Provider registry
 _PROVIDERS: dict[str, type[BaseLLMProvider]] = {

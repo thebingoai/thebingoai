@@ -59,7 +59,8 @@ export const useChatStore = defineStore('chat', {
     isStreaming: false,
     expandedThinking: new Set<string>(),
     reasoningPanelOpen: false,
-    selectedMessageId: null as string | null
+    selectedMessageId: null as string | null,
+    rateLimitRetryAfter: 0
   }),
 
   getters: {

@@ -13,6 +13,7 @@ from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
 from backend.llm.factory import get_provider
+from backend.llm.base import BaseLLMProvider
 from backend.config import settings
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 import json
@@ -80,6 +81,7 @@ def build_orchestrator_tools(
     custom_agents: Optional[List["CustomAgent"]] = None,
     db_session_factory: Optional[Callable] = None,
     user_skills: Optional[List["UserSkill"]] = None,
+    llm_provider: Optional[BaseLLMProvider] = None,
 ):
     """Build orchestrator tools from consolidated tool modules."""
     skill_tools = build_skill_tools(context, db_session_factory)
@@ -91,7 +93,7 @@ def build_orchestrator_tools(
     memory_tools = build_memory_tools(context, db_session_factory)
 
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents, db_session_factory) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
+        return _build_dynamic_tools(context, custom_agents, db_session_factory, llm_provider=llm_provider) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
     return _build_legacy_tools(context, db_session_factory) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
 
 
@@ -269,6 +271,7 @@ def _build_dynamic_tools(
     context: AgentContext,
     custom_agents: List["CustomAgent"],
     db_session_factory: Optional[Callable] = None,
+    llm_provider: Optional[BaseLLMProvider] = None,
 ) -> List:
     """
     Build one tool per custom agent definition.
@@ -280,7 +283,7 @@ def _build_dynamic_tools(
     If the custom agent has a linked AgentProfile (profile_id), its prompt is
     rendered from the profile. Otherwise falls back to system_prompt.
     """
-    provider = get_provider(settings.default_llm_provider)
+    provider = llm_provider or get_provider(settings.default_llm_provider)
     tools = []
 
     for agent_def in custom_agents:
@@ -387,6 +390,7 @@ async def run_orchestrator(
     soul_prompt: str = "",
     file_contents: list = None,
     profile: object = None,
+    llm_provider: Optional[BaseLLMProvider] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -406,7 +410,7 @@ async def run_orchestrator(
     Returns:
         Dict with success, message, metadata
     """
-    tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
+    tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills, llm_provider=llm_provider)
 
     # Profile-driven prompt rendering (new path) or legacy fallback
     # Load profile directly if not passed (workaround for pass-through issue)
@@ -438,7 +442,7 @@ async def run_orchestrator(
         logger.info("run_orchestrator: using LEGACY hardcoded prompt (no profile)")
         prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
 
-    provider = get_provider(settings.default_llm_provider)
+    provider = llm_provider or get_provider(settings.default_llm_provider)
 
     orchestrator = create_react_agent(
         model=provider.get_langchain_llm(),
@@ -504,6 +508,7 @@ async def stream_orchestrator(
     soul_prompt: str = "",
     file_contents: list = None,
     profile: object = None,
+    llm_provider: Optional[BaseLLMProvider] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -526,7 +531,7 @@ async def stream_orchestrator(
     try:
         yield {"type": "status", "content": "Starting orchestrator..."}
 
-        tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
+        tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills, llm_provider=llm_provider)
 
         # Profile-driven prompt rendering (new path) or legacy fallback
         # Load profile directly if not passed (workaround for pass-through issue)
@@ -559,7 +564,7 @@ async def stream_orchestrator(
             logger.info("stream_orchestrator: using LEGACY hardcoded prompt (no profile)")
             prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
 
-        provider = get_provider(settings.default_llm_provider)
+        provider = llm_provider or get_provider(settings.default_llm_provider)
 
         orchestrator = create_react_agent(
             model=provider.get_langchain_llm(),

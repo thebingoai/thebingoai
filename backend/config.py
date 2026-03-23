@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     # Optional LLM providers
     anthropic_api_key: Optional[str] = None
     ollama_base_url: str = "http://localhost:11434"
-
     # Default LLM settings
     default_llm_provider: str = "openai"
     default_llm_model: Optional[str] = None
@@ -26,7 +25,6 @@ class Settings(BaseSettings):
     anthropic_default_max_tokens: int = 4096
     ollama_default_model: str = "llama3.2"
     ollama_request_timeout: float = 120.0
-
     # Chunking settings
     chunk_size: int = 512
     chunk_overlap: float = 0.2
@@ -153,8 +151,9 @@ class Settings(BaseSettings):
     @field_validator("default_llm_provider")
     @classmethod
     def validate_provider(cls, v):
-        if v not in ("openai", "anthropic", "ollama"):
-            raise ValueError("provider must be openai, anthropic, or ollama")
+        valid = ("openai", "anthropic", "ollama")
+        if v not in valid:
+            raise ValueError(f"provider must be one of: {', '.join(valid)}")
         return v
 
     @field_validator("supabase_jwt_secret")

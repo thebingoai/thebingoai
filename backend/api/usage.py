@@ -18,11 +18,7 @@ async def get_usage_summary(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get token usage summary for current user.
-
-    - **days**: Number of days to include in summary (default: 30)
-    """
+    """Get token usage summary for current user."""
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
 
@@ -39,11 +35,7 @@ async def get_daily_usage(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get daily token usage breakdown.
-
-    - **days**: Number of days to retrieve (default: 30)
-    """
+    """Get daily token usage breakdown."""
     daily_usage = TokenTrackingService.get_daily_usage(db, current_user.id, days)
 
     return DailyUsageResponse(daily_usage=daily_usage)

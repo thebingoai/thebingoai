@@ -174,6 +174,11 @@ async def _handle_chat_send(
             attachments=attachments if attachments else None,
         )
 
+        # Resolve LLM provider from environment config
+        from backend.llm.factory import get_provider
+        from backend.config import settings
+        user_provider = get_provider(settings.default_llm_provider)
+
         # Set Redis streaming flag (TTL 5 min safety net)
         streaming_key = f"streaming:{conversation.thread_id}"
         redis_client.setex(streaming_key, 300, request_id)
@@ -195,6 +200,7 @@ async def _handle_chat_send(
             skill_suggestions=ctx.skill_suggestions or None,
             soul_prompt=ctx.soul_prompt,
             file_contents=file_contents or None,
+            llm_provider=user_provider,
         ):
             # Map SSE event type → WS event type
             event_type = event.get("type", "")

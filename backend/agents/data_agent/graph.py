@@ -5,8 +5,9 @@ from backend.agents.data_agent.prompts import DATA_AGENT_SYSTEM_PROMPT, build_da
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.context import AgentContext
 from backend.llm.factory import get_provider
+from backend.llm.base import BaseLLMProvider
 from backend.config import settings
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 import json
 
@@ -37,7 +38,8 @@ def _resolve_data_agent_prompt(context: AgentContext, db_session_factory=None) -
 
 async def invoke_data_agent(
     question: str,
-    context: AgentContext
+    context: AgentContext,
+    llm_provider: Optional[BaseLLMProvider] = None,
 ) -> Dict[str, Any]:
     """
     Invoke Data Agent for SQL query generation and execution.
@@ -87,7 +89,7 @@ async def invoke_data_agent(
         }
 
     # Get LLM provider
-    provider = get_provider(settings.default_llm_provider)
+    provider = llm_provider or get_provider(settings.default_llm_provider)
 
     # Create stateless ReAct agent (no checkpointer - single turn)
     agent = create_react_agent(

@@ -26,7 +26,7 @@
             >
               <li
                 :class="[
-                  'relative cursor-pointer select-none px-3 py-2 text-sm',
+                  'flex items-center justify-between cursor-pointer select-none px-3 pr-10 py-2 text-sm',
                   active ? 'bg-gray-100 text-gray-900' : 'text-gray-900'
                 ]"
               >
@@ -36,7 +36,7 @@
                 <component
                   v-if="selected"
                   :is="Check"
-                  class="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-900"
+                  class="h-5 w-5 shrink-0 text-gray-900"
                 />
               </li>
             </ListboxOption>

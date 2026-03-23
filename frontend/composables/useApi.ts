@@ -400,21 +400,12 @@ export const useApi = () => {
 
     // Usage endpoints
     usage: {
-      async getStats(period?: number) {
-        const params = period ? `?period=${period}` : ''
-        return $fetch(`/api/usage/stats${params}`, {
+      async getSummary(days?: number) {
+        const params = days ? `?days=${days}` : ''
+        return $fetch(`/api/usage/summary${params}`, {
           headers: getHeaders()
         })
       },
-      async getOperations(skip?: number, limit?: number) {
-        const params = new URLSearchParams()
-        if (skip) params.append('skip', skip.toString())
-        if (limit) params.append('limit', limit.toString())
-
-        return $fetch(`/api/usage/operations?${params.toString()}`, {
-          headers: getHeaders()
-        })
-      }
     },
 
     // Organization endpoints
@@ -607,6 +598,23 @@ export const useApi = () => {
         return fetchWithRefresh(`/api/connections/datasets/${connectionId}/sqlite-url`, {}) as Promise<{ url: string; expires_in: number }>
       },
     },
+
+    // Terms & Conditions endpoints (enterprise)
+    tos: {
+      async status() {
+        return fetchWithRefresh('/api/tos/status', {})
+      },
+      async accept(version?: string) {
+        return fetchWithRefresh('/api/tos/accept', {
+          method: 'POST',
+          body: { version: version || '1.0' },
+        })
+      },
+      async content() {
+        return fetchWithRefresh('/api/tos/content', {})
+      },
+    },
+
 
     // Heartbeat Jobs endpoints
     heartbeatJobs: {

@@ -204,6 +204,12 @@ export const useChat = () => {
         cleanup()
       })
 
+      onEvent('chat.rate_limited', (data) => {
+        chatStore.rateLimitRetryAfter = data.retry_after || 0
+        chatStore.updateLastMessage({ content: 'You\'ve reached your free tier limit. Please wait or add your own API key in Settings.' })
+        cleanup()
+      })
+
       // Send via WebSocket
       ws.send({
         type: 'chat.send',
