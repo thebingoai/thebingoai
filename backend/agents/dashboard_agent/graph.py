@@ -3,6 +3,7 @@ from langgraph.errors import GraphRecursionError
 from langchain_core.messages import HumanMessage, ToolMessage
 from backend.agents.dashboard_agent.tools import build_dashboard_agent_tools
 from backend.agents.dashboard_agent.prompts import build_dashboard_agent_prompt
+from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.context import AgentContext
 from backend.llm.factory import get_provider
 from backend.config import settings
@@ -11,6 +12,41 @@ import logging
 import json
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_dashboard_agent_prompt(
+    context: AgentContext,
+    db_session_factory: Callable = None,
+    target_connection_id: int | None = None,
+    mesh_enabled: bool = False,
+) -> str:
+    """Resolve dashboard_agent prompt from profile or fallback to legacy."""
+    if db_session_factory:
+        try:
+            db = db_session_factory()
+            from backend.models.agent_profile import AgentProfile
+            profile = db.query(AgentProfile).filter(
+                AgentProfile.user_id == context.user_id,
+                AgentProfile.agent_type == "dashboard_agent",
+                AgentProfile.is_active.is_(True),
+            ).first()
+            if profile:
+                rt_ctx = RuntimeContext(
+                    available_connections=context.available_connections,
+                    mesh_enabled=mesh_enabled or settings.agent_mesh_enabled,
+                    target_connection_id=target_connection_id,
+                )
+                prompt = ProfileRenderer.render(profile, rt_ctx)
+                db.close()
+                return prompt
+            db.close()
+        except Exception as exc:
+            logger.warning(f"Dashboard agent profile load failed, using legacy: {exc}")
+    return build_dashboard_agent_prompt(
+        context.available_connections,
+        mesh_enabled=mesh_enabled,
+        target_connection_id=target_connection_id,
+    )
 
 
 async def invoke_dashboard_agent(
@@ -55,7 +91,7 @@ async def invoke_dashboard_agent(
             message_bus=message_bus,
         )
 
-        prompt = build_dashboard_agent_prompt(context.available_connections, mesh_enabled=True, target_connection_id=target_connection_id)
+        prompt = _resolve_dashboard_agent_prompt(context, db_session_factory, target_connection_id, mesh_enabled=True)
         result = await runtime.execute(request, tools, prompt)
 
         return {
@@ -70,7 +106,7 @@ async def invoke_dashboard_agent(
     agent = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        prompt=build_dashboard_agent_prompt(context.available_connections, target_connection_id=target_connection_id),
+        prompt=_resolve_dashboard_agent_prompt(context, db_session_factory, target_connection_id),
     )
 
     try:

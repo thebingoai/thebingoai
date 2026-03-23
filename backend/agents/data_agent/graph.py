@@ -2,6 +2,7 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage, ToolMessage
 from backend.agents.data_agent.tools import build_data_agent_tools
 from backend.agents.data_agent.prompts import DATA_AGENT_SYSTEM_PROMPT, build_data_agent_prompt
+from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.context import AgentContext
 from backend.llm.factory import get_provider
 from backend.config import settings
@@ -10,6 +11,28 @@ import logging
 import json
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_data_agent_prompt(context: AgentContext, db_session_factory=None) -> str:
+    """Resolve data_agent prompt from profile or fallback to legacy."""
+    if db_session_factory:
+        try:
+            db = db_session_factory()
+            from backend.models.agent_profile import AgentProfile
+            profile = db.query(AgentProfile).filter(
+                AgentProfile.user_id == context.user_id,
+                AgentProfile.agent_type == "data_agent",
+                AgentProfile.is_active.is_(True),
+            ).first()
+            if profile:
+                rt_ctx = RuntimeContext(available_connections=context.available_connections)
+                prompt = ProfileRenderer.render(profile, rt_ctx)
+                db.close()
+                return prompt
+            db.close()
+        except Exception as exc:
+            logger.warning(f"Data agent profile load failed, using legacy: {exc}")
+    return build_data_agent_prompt(context.available_connections)
 
 
 async def invoke_data_agent(
@@ -52,7 +75,7 @@ async def invoke_data_agent(
             message_bus=message_bus,
         )
 
-        prompt = build_data_agent_prompt(context.available_connections)
+        prompt = _resolve_data_agent_prompt(context)
         result = await runtime.execute(question, tools, prompt)
 
         return {
@@ -70,7 +93,7 @@ async def invoke_data_agent(
     agent = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        prompt=build_data_agent_prompt(context.available_connections)
+        prompt=_resolve_data_agent_prompt(context)
     )
 
     try:

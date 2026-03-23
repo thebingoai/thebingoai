@@ -4,8 +4,10 @@ from langchain_core.tools import tool
 from backend.agents.orchestrator.prompts import build_orchestrator_prompt
 from backend.agents.orchestrator.skill_tools import build_skill_tools
 from backend.agents.orchestrator.soul_tools import build_soul_tools
+from backend.agents.orchestrator.profile_tools import build_profile_tools
 from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashboard_tools
 from backend.agents.orchestrator.memory_tools import build_memory_tools
+from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.context import AgentContext
@@ -81,13 +83,16 @@ def build_orchestrator_tools(
 ):
     """Build orchestrator tools from consolidated tool modules."""
     skill_tools = build_skill_tools(context, db_session_factory)
-    soul_tools = build_soul_tools(context, db_session_factory)
+    profile_tools_list = build_profile_tools(context, db_session_factory)
+    # Keep soul_tools as fallback if profile_tools fails to build
+    if not profile_tools_list:
+        profile_tools_list = build_soul_tools(context, db_session_factory)
     dashboard_tools = build_dashboard_tools(context, db_session_factory)
     memory_tools = build_memory_tools(context, db_session_factory)
 
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents) + skill_tools + soul_tools + dashboard_tools + memory_tools
-    return _build_legacy_tools(context, db_session_factory) + skill_tools + soul_tools + dashboard_tools + memory_tools
+        return _build_dynamic_tools(context, custom_agents, db_session_factory) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
+    return _build_legacy_tools(context, db_session_factory) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
 
 
 def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
@@ -260,13 +265,20 @@ def _build_mesh_tools(context: AgentContext, db_session_factory: Optional[Callab
     return [data_agent, rag_agent, recall_memory] + comm_tools
 
 
-def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent"]) -> List:
+def _build_dynamic_tools(
+    context: AgentContext,
+    custom_agents: List["CustomAgent"],
+    db_session_factory: Optional[Callable] = None,
+) -> List:
     """
     Build one tool per custom agent definition.
 
     Each custom agent is wrapped as a single callable tool. At build time the
     effective tool set is computed by intersecting the agent's stored tool_keys
     with the team's current allowed_tool_keys (runtime enforcement).
+
+    If the custom agent has a linked AgentProfile (profile_id), its prompt is
+    rendered from the profile. Otherwise falls back to system_prompt.
     """
     provider = get_provider(settings.default_llm_provider)
     tools = []
@@ -303,7 +315,30 @@ def _build_dynamic_tools(context: AgentContext, custom_agents: List["CustomAgent
         import re as _re
         tool_name = _re.sub(r'[^a-zA-Z0-9_-]', '_', agent_name)
         agent_description = agent_def.description or f"Custom agent: {agent_name}"
+
+        # Resolve prompt: prefer linked AgentProfile, fall back to system_prompt
         agent_system_prompt = agent_def.system_prompt
+        if getattr(agent_def, "profile_id", None) and getattr(agent_def, "profile", None):
+            try:
+                rt_ctx = RuntimeContext(available_connections=effective_connection_ids)
+                agent_system_prompt = ProfileRenderer.render(agent_def.profile, rt_ctx)
+            except Exception as exc:
+                logger.warning(f"Profile render failed for agent '{agent_name}', using system_prompt: {exc}")
+        elif getattr(agent_def, "profile_id", None) and db_session_factory:
+            # Profile not eagerly loaded — load it
+            try:
+                _db = db_session_factory()
+                from backend.models.agent_profile import AgentProfile
+                profile = _db.query(AgentProfile).filter(
+                    AgentProfile.id == agent_def.profile_id,
+                    AgentProfile.is_active.is_(True),
+                ).first()
+                if profile:
+                    rt_ctx = RuntimeContext(available_connections=effective_connection_ids)
+                    agent_system_prompt = ProfileRenderer.render(profile, rt_ctx)
+                _db.close()
+            except Exception as exc:
+                logger.warning(f"Profile load failed for agent '{agent_name}', using system_prompt: {exc}")
 
         @tool(tool_name, description=agent_description)
         async def invoke_custom_agent(
@@ -351,6 +386,7 @@ async def run_orchestrator(
     skill_suggestions: Optional[list] = None,
     soul_prompt: str = "",
     file_contents: list = None,
+    profile: object = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -365,12 +401,42 @@ async def run_orchestrator(
         user_memories_context: Optional user-directed memories to inject as instructions
         skill_suggestions: Optional list of pending skill suggestions to surface
         soul_prompt: Optional per-user soul text to inject into the orchestrator prompt
+        profile: Optional AgentProfile for profile-driven prompt rendering
 
     Returns:
         Dict with success, message, metadata
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-    prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
+
+    # Profile-driven prompt rendering (new path) or legacy fallback
+    # Load profile directly if not passed (workaround for pass-through issue)
+    if profile is None and db_session_factory:
+        try:
+            _db = db_session_factory()
+            from backend.models.agent_profile import AgentProfile as _AP
+            profile = _db.query(_AP).filter(
+                _AP.user_id == context.user_id,
+                _AP.agent_type == "orchestrator",
+                _AP.is_active.is_(True),
+            ).first()
+            _db.close()
+        except Exception as _exc:
+            logger.warning("run_orchestrator: profile self-load failed: %s", _exc)
+
+    if profile:
+        rt_ctx = RuntimeContext(
+            custom_agents=custom_agents or [],
+            user_skills=user_skills or [],
+            skill_suggestions=skill_suggestions or [],
+            user_memories_context=user_memories_context,
+            memory_context=memory_context,
+            available_connections=context.available_connections,
+            mesh_enabled=settings.agent_mesh_enabled,
+        )
+        prompt = ProfileRenderer.render(profile, rt_ctx)
+    else:
+        logger.info("run_orchestrator: using LEGACY hardcoded prompt (no profile)")
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
 
     provider = get_provider(settings.default_llm_provider)
 
@@ -437,6 +503,7 @@ async def stream_orchestrator(
     skill_suggestions: Optional[list] = None,
     soul_prompt: str = "",
     file_contents: list = None,
+    profile: object = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -451,6 +518,7 @@ async def stream_orchestrator(
         user_memories_context: Optional user-directed memories to inject as instructions
         skill_suggestions: Optional list of pending skill suggestions to surface
         soul_prompt: Optional per-user soul text to inject into the orchestrator prompt
+        profile: Optional AgentProfile for profile-driven prompt rendering
 
     Yields:
         SSE events: {"type": "status|token|done|error", "content": ...}
@@ -459,7 +527,37 @@ async def stream_orchestrator(
         yield {"type": "status", "content": "Starting orchestrator..."}
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills)
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
+
+        # Profile-driven prompt rendering (new path) or legacy fallback
+        # Load profile directly if not passed (workaround for pass-through issue)
+        if profile is None and db_session_factory:
+            try:
+                _db = db_session_factory()
+                from backend.models.agent_profile import AgentProfile as _AP
+                profile = _db.query(_AP).filter(
+                    _AP.user_id == context.user_id,
+                    _AP.agent_type == "orchestrator",
+                    _AP.is_active.is_(True),
+                ).first()
+                _db.close()
+            except Exception as _exc:
+                logger.warning("stream_orchestrator: profile self-load failed: %s", _exc)
+
+        logger.info("stream_orchestrator: profile = %s", "LOADED" if profile else "NONE")
+        if profile is not None:
+            rt_ctx = RuntimeContext(
+                custom_agents=custom_agents or [],
+                user_skills=user_skills or [],
+                skill_suggestions=skill_suggestions or [],
+                user_memories_context=user_memories_context,
+                memory_context=memory_context,
+                available_connections=context.available_connections,
+                mesh_enabled=settings.agent_mesh_enabled,
+            )
+            prompt = ProfileRenderer.render(profile, rt_ctx)
+        else:
+            logger.info("stream_orchestrator: using LEGACY hardcoded prompt (no profile)")
+            prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
 
         provider = get_provider(settings.default_llm_provider)
 

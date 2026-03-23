@@ -119,6 +119,7 @@ async def chat(
         user_memories_context=ctx.user_memories_context,
         skill_suggestions=ctx.skill_suggestions or None,
         soul_prompt=ctx.soul_prompt,
+        profile=ctx.profile,
     )
 
     # Save assistant message
@@ -242,9 +243,10 @@ async def chat_stream(
 
             # Stream orchestrator execution
             from backend.database.session import SessionLocal
+            logger.info("chat_stream: ctx.profile=%s (id=%s)", ctx.profile, getattr(ctx.profile, 'id', 'NONE'))
             final_message = ""
             collected_steps = []
-            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt):
+            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt, profile=ctx.profile):
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 

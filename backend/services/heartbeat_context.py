@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OrchestratorInvocationContext:
     agent_context: AgentContext
+    profile: object = None  # AgentProfile — loaded from DB or default
     custom_agents: list = field(default_factory=list)
     memory_context: str = ""
     user_skills: list = field(default_factory=list)
     user_memories_context: str = ""
     skill_suggestions: list = field(default_factory=list)
-    soul_prompt: str = ""
+    soul_prompt: str = ""  # Kept for backward compat, prefer profile.soul
 
 
 async def build_orchestrator_context(
@@ -151,16 +152,43 @@ async def build_orchestrator_context(
         except Exception as mesh_err:
             logger.warning(f"Agent mesh session provisioning failed: {mesh_err}")
 
+    # Load or lazy-seed the orchestrator's AgentProfile
+    from backend.models.agent_profile import AgentProfile
+    from backend.agents.profile_renderer import ProfileRenderer, seed_default_profile
+
+    profile = db.query(AgentProfile).filter(
+        AgentProfile.user_id == user.id,
+        AgentProfile.agent_type == "orchestrator",
+        AgentProfile.is_active.is_(True),
+    ).first()
+
+    logger.info("AgentProfile loaded: %s (version=%s)", profile.id if profile else "NONE", profile.version if profile else "-")
+
+    if not profile:
+        profile = seed_default_profile(
+            db, user.id, "orchestrator",
+            org_id=getattr(user, "org_id", None),
+            team_id=team_id,
+        )
+        db.commit()
+
     fresh_user = db.query(User).filter(User.id == user.id).first()
-    return OrchestratorInvocationContext(
+    # Sync soul_prompt: prefer profile.soul, fall back to User.soul_prompt for migration
+    soul = profile.soul if profile.soul else ((fresh_user.soul_prompt if fresh_user else None) or "")
+
+    logger.info("heartbeat_context returning: profile=%s, profile.id=%s", profile, getattr(profile, 'id', 'N/A'))
+    result = OrchestratorInvocationContext(
         agent_context=agent_context,
+        profile=profile,
         custom_agents=custom_agents,
         memory_context=memory_context,
         user_skills=user_skills,
         user_memories_context=user_memories_context,
         skill_suggestions=skill_suggestions,
-        soul_prompt=(fresh_user.soul_prompt if fresh_user else None) or "",
+        soul_prompt=soul,
     )
+    logger.info("heartbeat_context result.profile=%s", result.profile)
+    return result
 
 
 async def _ensure_mesh_sessions(user_id: str, context: AgentContext) -> str:

@@ -34,8 +34,15 @@ Do not re-read files you have already read in this session. Track what you've ex
 
 ### Local Development (Recommended)
 
+**Always use the enterprise edition by default.** Only start the community edition when explicitly mentioned.
+
 ```bash
-# Start all services — auto-detects database mode from DATABASE_URL in .env
+# Start enterprise (default) — run from the community repo root
+docker compose -f docker/local/docker-compose.yml \
+  -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
+  up --build -d
+
+# Start community only (when explicitly requested)
 ./start.sh
 
 # Access points:
@@ -48,8 +55,9 @@ Do not re-read files you have already read in this session. Track what you've ex
 Requirements:
 - Docker and Docker Compose must be installed and running
 - `.env` configured with required API keys and database URL
+- Enterprise repo cloned at `/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise`
 
-`start.sh` auto-detects the database mode from `DATABASE_URL` in `.env`:
+`start.sh` (community only) auto-detects the database mode from `DATABASE_URL` in `.env`:
 - **Supabase (default)**: External DB URL → skips Docker PostgreSQL
 - **Local PostgreSQL**: `localhost` or `postgres:` URL → includes Docker PostgreSQL via override compose file
 

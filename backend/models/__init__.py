@@ -29,6 +29,7 @@ from backend.models.dashboard import Dashboard
 from backend.models.dashboard_refresh_run import DashboardRefreshRun
 
 # Phase 5: User Skills & Memories
+from backend.models.user_skill import UserSkill
 from backend.models.user_memory import UserMemory
 from backend.models.skill_reference import SkillReference
 from backend.models.skill_suggestion import SkillSuggestion
@@ -40,3 +41,6 @@ from backend.models.heartbeat_job_run import HeartbeatJobRun
 # Agent Mesh
 from backend.models.agent_session import AgentSession
 from backend.models.agent_message import AgentMessage
+
+# Agent Profiles (cognitive architecture)
+from backend.models.agent_profile import AgentProfile
