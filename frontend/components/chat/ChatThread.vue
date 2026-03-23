@@ -82,9 +82,9 @@ const chat = useChat()
 const shouldShowActions = (message: Message, index: number): boolean => {
   if (message.role !== 'assistant') return false
   if (chatStore.isStreaming && index === chatStore.messages.length - 1) return false
-  // Dashboard created: always show (navigation link, not a one-time action)
+  // Dashboard created/updated: always show (navigation link, not a one-time action)
   const hasDashboardCreated = message.agent_steps?.some(step => {
-    if (step.tool_name !== 'create_dashboard') return false
+    if (step.tool_name !== 'create_dashboard' && step.tool_name !== 'update_dashboard') return false
     try {
       const result = typeof step.content?.result === 'string' ? JSON.parse(step.content.result) : step.content?.result
       return result?.success === true
@@ -103,7 +103,7 @@ const getActionType = (message: Message): 'soul' | 'dashboard' | 'dashboard_ques
   if (message.agent_steps?.some(s => s.tool_name === 'propose_dashboard_plan')) return 'dashboard'
   if (message.agent_steps?.some(s => s.tool_name === 'propose_soul_update')) return 'soul'
   const hasDashboardCreatedAction = message.agent_steps?.some(step => {
-    if (step.tool_name !== 'create_dashboard') return false
+    if (step.tool_name !== 'create_dashboard' && step.tool_name !== 'update_dashboard') return false
     try {
       const result = typeof step.content?.result === 'string' ? JSON.parse(step.content.result) : step.content?.result
       return result?.success === true

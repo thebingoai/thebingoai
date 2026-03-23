@@ -460,7 +460,7 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
 
 
 def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -> List:
-    """Return [create_dashboard] tool bound to context and db_session_factory."""
+    """Return [create_dashboard, update_dashboard] tools bound to context and db_session_factory."""
     if db_session_factory is None:
         return []
 
@@ -632,7 +632,123 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
         finally:
             db.close()
 
-    return [create_dashboard]
+    @tool
+    async def update_dashboard(dashboard_id: int, widgets: list, title: str = "", description: str = "") -> str:
+        """
+        Update an existing dashboard's widgets, title, and/or description.
+
+        Use this tool instead of create_dashboard when modifying an existing dashboard.
+        The widgets list must contain the COMPLETE updated widget array (not just changes).
+        For SQL-backed widgets, SQL is auto-executed just like create_dashboard.
+
+        Args:
+            dashboard_id: ID of the dashboard to update (get from list_dashboards)
+            widgets: List of widget objects. Same format as create_dashboard — every widget
+                needs id, position, widget.type, widget.config, and optionally dataSource
+                with connectionId, sql, and mapping.
+            title: New dashboard title (empty string keeps the existing title)
+            description: New dashboard description (empty string keeps the existing description)
+
+        Returns:
+            JSON with success, dashboard_id, and message
+        """
+        logger.info(f"update_dashboard called: dashboard_id={dashboard_id}, widget_count={len(widgets)}")
+
+        # Validate widget structure
+        error = _validate_widgets(widgets)
+        if error:
+            return json.dumps({"success": False, "message": f"Widget validation failed: {error}"})
+
+        # Verify connection access for any SQL-backed widgets
+        for w in widgets:
+            if "dataSource" in w:
+                cid = w["dataSource"]["connectionId"]
+                if not context.can_access_connection(cid):
+                    return json.dumps({
+                        "success": False,
+                        "message": f"Connection {cid} in dataSource is not accessible to you.",
+                    })
+
+        # Validate mapping columns against schema
+        schema_warnings = _validate_widget_sql_schema(widgets)
+        if schema_warnings:
+            return json.dumps({
+                "success": False,
+                "message": (
+                    "Widget SQL schema validation failed. Fix the SQL and retry.\n"
+                    + "\n".join(f"- {w}" for w in schema_warnings)
+                ),
+            })
+
+        # Load existing dashboard to compare SQL and carry over unchanged widget data
+        db = db_session_factory()
+        try:
+            dashboard = db.query(Dashboard).filter(
+                Dashboard.id == dashboard_id,
+                Dashboard.user_id == context.user_id,
+            ).first()
+            if not dashboard:
+                return json.dumps({"success": False, "message": f"Dashboard {dashboard_id} not found or not accessible."})
+
+            # Build map of existing widget SQL and config for comparison
+            existing_widgets_map = {}
+            for ew in (dashboard.widgets or []):
+                existing_widgets_map[ew.get("id")] = ew
+        finally:
+            db.close()
+
+        # Only execute SQL for widgets whose SQL changed or that are new
+        for w in widgets:
+            if "dataSource" not in w:
+                continue
+            new_sql = w["dataSource"].get("sql")
+            existing_w = existing_widgets_map.get(w.get("id"))
+            old_sql = existing_w.get("dataSource", {}).get("sql") if existing_w else None
+
+            if old_sql == new_sql and old_sql is not None:
+                # SQL unchanged — carry over existing computed data instead of re-executing
+                existing_config = existing_w.get("widget", {}).get("config", {})
+                w_config = w.get("widget", {}).get("config", {})
+                for key in ("data", "rows", "value"):
+                    if key in existing_config:
+                        w_config[key] = existing_config[key]
+                logger.info(f"Skipping SQL execution for unchanged widget '{w.get('id')}'")
+            else:
+                await _execute_widget_sql(w, db_session_factory)
+
+        db = db_session_factory()
+        try:
+            dashboard = db.query(Dashboard).filter(
+                Dashboard.id == dashboard_id,
+                Dashboard.user_id == context.user_id,
+            ).first()
+            if not dashboard:
+                return json.dumps({"success": False, "message": f"Dashboard {dashboard_id} not found or not accessible."})
+
+            from sqlalchemy.orm.attributes import flag_modified
+
+            if title:
+                dashboard.title = title
+            if description:
+                dashboard.description = description
+            dashboard.widgets = widgets
+            flag_modified(dashboard, "widgets")
+
+            db.commit()
+            db.refresh(dashboard)
+            return json.dumps({
+                "success": True,
+                "dashboard_id": dashboard.id,
+                "message": f"Dashboard '{dashboard.title}' updated with {len(widgets)} widget(s). Navigate to /dashboard to view it.",
+            })
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to update dashboard: {e}")
+            return json.dumps({"success": False, "message": f"Database error: {e}"})
+        finally:
+            db.close()
+
+    return [create_dashboard, update_dashboard]
 
 
 def build_create_dashboard_tool(context: AgentContext) -> List:

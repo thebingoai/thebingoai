@@ -253,7 +253,7 @@ _DASHBOARD_AGENT_IDENTITY = """You are an expert dashboard creation agent. Your 
 1. Explore the database schema to understand what data is available
 2. Design a meaningful, well-structured dashboard based on the user's request
 3. Generate valid SQL queries using only real columns from the schema
-4. Call create_dashboard with a complete, validated widget configuration"""
+4. Call create_dashboard OR update_dashboard depending on the request"""
 
 _DASHBOARD_AGENT_TOOLS = """## Data Profiling Workflow (REQUIRED — do this before designing anything)
 
@@ -279,7 +279,7 @@ Phase 3 — Design (informed by profiling):
    - Date spans months → daily/weekly aggregation
    - Numeric with time dimension → area chart + KPI with sparkline
 7. Design SQL queries using profiling insights
-8. Call `create_dashboard`
+8. Call `create_dashboard` (new dashboard) or `update_dashboard` (editing existing)
 
 ## Dashboard Design Principles
 
@@ -405,13 +405,27 @@ Profile the data before designing. Don't guess what chart type works — check t
 - Variety matters: mix chart types, use the full grid, pair related visuals side-by-side.
 - If the SQL doesn't match the widget title, something is wrong. Check before shipping."""
 
-_DASHBOARD_AGENT_GUARDRAILS = """## SQL Semantic Verification Checklist (before calling create_dashboard)
+_DASHBOARD_AGENT_GUARDRAILS = """## SQL Semantic Verification Checklist (before calling create_dashboard or update_dashboard)
 
 1. **Title-SQL alignment**: "Average Price" must query a price column, not floor_area or other
 2. **Column existence**: every column in SQL must exist in the schema you explored
 3. **Mapping columns in SELECT**: every column in mapping must appear in SQL SELECT output
 4. **No forbidden keywords**: no INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, GRANT, REVOKE, EXEC, EXECUTE, COPY, LOAD, SET, CALL, RENAME
-5. If `create_dashboard` returns a schema validation error, fix the SQL and retry"""
+5. If the tool returns a schema validation error, fix the SQL and retry
+
+## Updating Existing Dashboards
+
+When the request says "UPDATE existing dashboard" (contains a dashboard_id and current widgets):
+1. You receive the current widgets as context — modify them as needed
+2. Preserve widget IDs for unchanged widgets so the frontend can animate transitions
+3. Recalculate positions (x, y, w, h) if adding or removing widgets to avoid overlaps
+4. Call `update_dashboard` with the dashboard_id and the complete updated widgets array
+5. Do NOT call `create_dashboard` — that would create a duplicate dashboard
+
+Efficiency tips for updates:
+- Data fields (config.data, config.rows, config.value) are stripped from existing widgets — they are auto-populated from SQL at save time. Do NOT try to reproduce them.
+- If existing widgets already have dataSource with connectionId and SQL, reuse that connection — only explore schema if you need columns for NEW widget types.
+- For "add a chart" requests, check existing widgets' SQL patterns and reuse them as templates."""
 
 # ---------------------------------------------------------------------------
 # Monitor Agent defaults

@@ -77,41 +77,52 @@ def _process_image(file_bytes: bytes, mime_type: str) -> dict:
 
 
 def _process_csv(file_bytes: bytes) -> dict:
-    """Extract CSV text with truncation to max rows."""
-    max_rows = settings.chat_file_csv_max_rows
+    """Extract CSV text with statistical profiling."""
+    import pandas as pd
+    from backend.profiler.dataset_profiler import profile_dataframe
 
-    # Parse full file for metadata (row count, headers)
-    full_result = csv_parser.extract_text(file_bytes)
-    headers = full_result.get("headers", [])
-    row_count = full_result.get("row_count", 0)
+    try:
+        df = pd.read_csv(io.BytesIO(file_bytes))
+    except Exception:
+        # Fallback: try latin-1 encoding
+        df = pd.read_csv(io.BytesIO(file_bytes), encoding="latin-1")
 
-    # Build truncated version limited to max_rows
-    content = file_bytes.decode("utf-8", errors="replace")
-    reader = csv.DictReader(io.StringIO(content))
+    headers = list(df.columns)
+    row_count = len(df)
 
+    # Generate statistical profile
+    try:
+        profile = profile_dataframe(df)
+        profile_text = profile.to_prompt_text("")  # filename injected at message build time
+        profiled = True
+    except Exception as exc:
+        logger.warning("Dataset profiling failed, using truncated text: %s", exc)
+        profile_text = None
+        profiled = False
+
+    # Build sample text for truncated_text (backward compat + small sample)
+    sample_rows = min(settings.profile_sample_rows, row_count)
     lines = []
     if headers:
         lines.append(" | ".join(str(h) for h in headers))
         lines.append("-" * (sum(len(str(h)) for h in headers) + 3 * (len(headers) - 1)))
-
-    truncated_rows = 0
-    for i, row in enumerate(reader):
-        if i >= max_rows:
-            break
+    for _, row in df.head(sample_rows).iterrows():
         lines.append(" | ".join(str(row.get(h, "")) for h in headers))
-        truncated_rows += 1
-
     truncated_text = "\n".join(lines).strip()
 
-    return {
-        "extracted_text": full_result["text"],
+    result = {
+        "extracted_text": truncated_text,
         "truncated_text": truncated_text,
         "metadata": {
             "headers": headers,
             "row_count": row_count,
-            "truncated_rows": truncated_rows,
+            "truncated_rows": sample_rows,
+            "profiled": profiled,
         },
     }
+    if profile_text:
+        result["profile_text"] = profile_text
+    return result
 
 
 def _process_pdf(file_bytes: bytes) -> dict:
@@ -148,12 +159,11 @@ def _process_pdf(file_bytes: bytes) -> dict:
 
 
 def _process_excel(file_bytes: bytes) -> dict:
-    """Extract Excel text preview with truncation to max rows."""
+    """Extract Excel text preview with statistical profiling."""
     try:
         import pandas as pd
     except ImportError:
-        # pandas not available (enterprise plugin not installed) — fall back to
-        # openpyxl directly, or return a minimal text extraction
+        # pandas not available — fall back to openpyxl with no profiling
         try:
             import openpyxl
             wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
@@ -161,7 +171,7 @@ def _process_excel(file_bytes: bytes) -> dict:
             rows = list(ws.iter_rows(values_only=True))
             wb.close()
             if not rows:
-                return {"extracted_text": "", "truncated_text": "", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0}}
+                return {"extracted_text": "", "truncated_text": "", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0, "profiled": False}}
             headers = [str(h) if h is not None else "" for h in rows[0]]
             max_rows = settings.chat_file_csv_max_rows
             data_rows = rows[1:]
@@ -171,37 +181,49 @@ def _process_excel(file_bytes: bytes) -> dict:
             for row in data_rows[:max_rows]:
                 lines.append(" | ".join(str(v) if v is not None else "" for v in row))
             text = "\n".join(lines).strip()
-            return {"extracted_text": text, "truncated_text": text, "metadata": {"headers": headers, "row_count": len(data_rows), "truncated_rows": truncated_rows}}
+            return {"extracted_text": text, "truncated_text": text, "metadata": {"headers": headers, "row_count": len(data_rows), "truncated_rows": truncated_rows, "profiled": False}}
         except ImportError:
-            return {"extracted_text": "[Excel preview requires pandas or openpyxl]", "truncated_text": "[Excel preview requires pandas or openpyxl]", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0}}
+            return {"extracted_text": "[Excel preview requires pandas or openpyxl]", "truncated_text": "[Excel preview requires pandas or openpyxl]", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0, "profiled": False}}
 
-    max_rows = settings.chat_file_csv_max_rows
+    from backend.profiler.dataset_profiler import profile_dataframe
 
     df = pd.read_excel(io.BytesIO(file_bytes))
     row_count = len(df)
     headers = list(df.columns)
 
+    # Generate statistical profile
+    try:
+        profile = profile_dataframe(df)
+        profile_text = profile.to_prompt_text("")
+        profiled = True
+    except Exception as exc:
+        logger.warning("Excel profiling failed, using truncated text: %s", exc)
+        profile_text = None
+        profiled = False
+
+    # Build sample text
+    sample_rows = min(settings.profile_sample_rows, row_count)
     lines = []
     if headers:
         lines.append(" | ".join(str(h) for h in headers))
         lines.append("-" * (sum(len(str(h)) for h in headers) + 3 * (len(headers) - 1)))
-
-    truncated_rows = min(row_count, max_rows)
-    for _, row in df.head(max_rows).iterrows():
+    for _, row in df.head(sample_rows).iterrows():
         lines.append(" | ".join(str(row.get(h, "")) for h in headers))
-
     truncated_text = "\n".join(lines).strip()
-    full_text = truncated_text  # Full preview same as truncated for Excel
 
-    return {
-        "extracted_text": full_text,
+    result = {
+        "extracted_text": truncated_text,
         "truncated_text": truncated_text,
         "metadata": {
             "headers": headers,
             "row_count": row_count,
-            "truncated_rows": truncated_rows,
+            "truncated_rows": sample_rows,
+            "profiled": profiled,
         },
     }
+    if profile_text:
+        result["profile_text"] = profile_text
+    return result
 
 
 def _process_docx(file_bytes: bytes) -> dict:
@@ -265,6 +287,8 @@ def process_file(file_bytes: bytes, filename: str, mime_type: str) -> dict:
         file_data["extracted_text"] = text_result["extracted_text"]
         file_data["truncated_text"] = text_result["truncated_text"]
         file_data["metadata"] = text_result["metadata"]
+        if "profile_text" in text_result:
+            file_data["profile_text"] = text_result["profile_text"]
 
     return file_data
 

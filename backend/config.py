@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     chat_file_pdf_max_pages: int = 10
     chat_file_text_max_chars: int = 50_000
 
+    # Dataset profiling
+    profile_sample_rows: int = 5
+    profile_max_categories: int = 30
+    profile_correlation_threshold: float = 0.1
+    profile_max_correlation_columns: int = 20
+    profile_outlier_std: float = 3.0
+    profile_max_columns: int = 50
+
     # Dataset upload settings
     dataset_max_file_size: int = 52_428_800  # 50MB
     dataset_max_rows: int = 500_000

@@ -68,10 +68,18 @@ def build_user_message(user_question: str, file_contents: list = None) -> HumanM
                 "image_url": {"url": item["base64_data"]},
             })
         else:
-            blocks.append({
-                "type": "text",
-                "text": f"[File: {item['original_name']} (file_id: {item['file_id']})]\n{item['truncated_text']}",
-            })
+            file_label = f"[File: {item['original_name']} (file_id: {item['file_id']})]"
+            if item.get("profile_text"):
+                content = item["profile_text"].replace(
+                    "=== Dataset Profile:  ===",
+                    f"=== Dataset Profile: {item['original_name']} ==="
+                )
+                blocks.append({"type": "text", "text": f"{file_label}\n{content}"})
+            else:
+                blocks.append({
+                    "type": "text",
+                    "text": f"{file_label}\n{item['truncated_text']}",
+                })
     blocks.append({"type": "text", "text": user_question})
     return HumanMessage(content=blocks)
 

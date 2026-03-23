@@ -205,8 +205,8 @@ def _extract_results(messages: list) -> tuple:
             else:
                 result_data = msg.content
 
-            # Extract dashboard_id from create_dashboard result
-            if tool_name == "create_dashboard" and isinstance(result_data, dict):
+            # Extract dashboard_id from create_dashboard or update_dashboard result
+            if tool_name in ("create_dashboard", "update_dashboard") and isinstance(result_data, dict):
                 if result_data.get("success") and result_data.get("dashboard_id"):
                     dashboard_id = result_data["dashboard_id"]
 

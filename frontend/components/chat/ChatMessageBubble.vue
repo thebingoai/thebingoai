@@ -187,7 +187,7 @@ const openReasoning = () => {
 
 const createdDashboardId = computed<number | null>(() => {
   for (const step of props.message.agent_steps ?? []) {
-    if (step.tool_name !== 'create_dashboard') continue
+    if (step.tool_name !== 'create_dashboard' && step.tool_name !== 'update_dashboard') continue
     try {
       const result = typeof step.content?.result === 'string' ? JSON.parse(step.content.result) : step.content?.result
       if (result?.success === true) return result.dashboard_id ?? null

@@ -75,10 +75,16 @@ def build_orchestrator_prompt(
     base += """
 ## Tool Usage Guide
 - Questions about the user's dashboards, data connections, or application state → use list_dashboards / list_connections
+- Questions about what a specific dashboard shows, its current values, metrics, insights, or to check/inspect/verify a widget → use read_dashboard (call list_dashboards first to get dashboard_id if needed). When asking about a specific widget, pass widget_id if known.
 - Questions requiring SQL queries against the user's databases → use data_agent tools
 - Questions about uploaded documents → use rag_agent tools
 - Requests to create dashboards or visualizations → use create_dashboard
+- Requests to add, remove, change, edit, modify, or update an existing dashboard → use update_dashboard (call list_dashboards first to get dashboard_id if needed). Do NOT use update_dashboard for read-only questions.
 - Always prefer using a tool over saying you don't have access
+
+### Read vs Update Intent
+- read_dashboard: "check", "show me", "what does X show", "look at", "inspect", "verify", "how is X doing" → read-only, no changes
+- update_dashboard: "add", "remove", "change", "update", "modify", "edit", "fix", "replace" → writes changes to the dashboard
 
 ## File-to-Dashboard Workflow (IMPORTANT)
 When a user's message contains a file attachment (shown as `[File: ... (file_id: ...)]`) and they ask for a dashboard, chart, analysis, or visualization:

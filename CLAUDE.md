@@ -35,10 +35,12 @@ Do not re-read files you have already read in this session. Track what you've ex
 ### Local Development (Recommended)
 
 **Always use the enterprise edition by default.** Only start the community edition when explicitly mentioned.
+Uses local PostgreSQL (not Supabase) with SSO auth via the `bingo-sso-auth` enterprise plugin.
 
 ```bash
 # Start enterprise (default) — run from the community repo root
 docker compose -f docker/local/docker-compose.yml \
+  -f docker/local/docker-compose.postgres.yml \
   -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
   up --build -d
 
@@ -51,6 +53,19 @@ docker compose -f docker/local/docker-compose.yml \
 # - API Docs: http://localhost:8000/docs
 # - Health: http://localhost:8000/health
 ```
+
+**Important: Stale enterprise image pitfall.** The enterprise Dockerfile installs plugins (bingo-sso-auth, bingo-csv-connector) via `pip install` into the image. If plugins aren't loading (e.g., `Unknown auth provider 'sso'`), the image is stale. Fix with a no-cache rebuild:
+```bash
+docker compose -f docker/local/docker-compose.yml \
+  -f docker/local/docker-compose.postgres.yml \
+  -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
+  build --no-cache backend && \
+docker compose -f docker/local/docker-compose.yml \
+  -f docker/local/docker-compose.postgres.yml \
+  -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
+  up -d
+```
+Verify plugins loaded: check backend logs for `Registered auth provider 'sso'` and `Registered connector type 'dataset'`.
 
 Requirements:
 - Docker and Docker Compose must be installed and running

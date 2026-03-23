@@ -52,10 +52,10 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         4. **Dashboard assembly**: Arranges widgets into a coherent layout and persists the
            dashboard so the user can view and interact with it immediately.
 
-        Use this tool whenever the user asks to create, build, or make a dashboard — even if
-        they have not specified exact metrics, charts, or data sources. The sub-agent will
-        autonomously determine what data is available and what visualisations are appropriate.
-        There is no need to ask the user for detailed requirements upfront.
+        Use this tool ONLY for creating NEW dashboards from scratch. Do NOT use this tool if
+        the user wants to edit, modify, update, or add to an EXISTING dashboard — use
+        update_dashboard instead. The sub-agent will autonomously determine what data is
+        available and what visualisations are appropriate.
 
         Args:
             request: Natural language description of the dashboard to create. Can be as
@@ -113,6 +113,87 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
                     db2.close()
 
         result = await invoke_dashboard_agent(request, context, db_session_factory, target_connection_id=target_connection_id)
+        return json.dumps(result)
+
+    @tool
+    async def update_dashboard(request: str, dashboard_id: int) -> str:
+        """
+        Edit or modify an existing dashboard based on a natural language request.
+
+        Use this tool when the user wants to change, update, add to, or remove from
+        an existing dashboard. Call list_dashboards first to find the dashboard_id
+        if the user refers to a dashboard by name.
+
+        IMPORTANT: Do NOT use create_dashboard for edit requests — that creates a
+        duplicate. Always use this tool for modifications to existing dashboards.
+
+        Args:
+            request: Natural language description of what to change (e.g.,
+                     "add a total revenue KPI", "remove the table widget",
+                     "change the bar chart to a line chart")
+            dashboard_id: ID of the dashboard to update (from list_dashboards)
+
+        Returns:
+            JSON string with success, dashboard_id, message, and steps
+        """
+        from backend.models.database_connection import DatabaseConnection
+        from backend.models.dashboard import Dashboard
+        from backend.config import settings as _settings
+
+        # Refresh available connections and load existing dashboard in one session
+        db = db_session_factory()
+        try:
+            fresh_ids = [
+                row.id for row in db.query(DatabaseConnection.id)
+                .filter(DatabaseConnection.user_id == context.user_id)
+                .all()
+            ]
+            context.available_connections = fresh_ids
+
+            dashboard = db.query(Dashboard).filter(
+                Dashboard.id == dashboard_id,
+                Dashboard.user_id == context.user_id,
+            ).first()
+            if not dashboard:
+                return json.dumps({"success": False, "message": f"Dashboard {dashboard_id} not found or not accessible."})
+
+            current_title = dashboard.title
+            current_description = dashboard.description
+            current_widgets = dashboard.widgets or []
+        finally:
+            db.close()
+
+        # Extract target connection from existing widgets
+        target_connection_id = None
+        for w in current_widgets:
+            ds = w.get("dataSource")
+            if ds and ds.get("connectionId"):
+                target_connection_id = ds["connectionId"]
+                break
+
+        # Strip auto-populated data from widgets to keep the prompt compact.
+        # These fields are re-populated by _execute_widget_sql at save time.
+        import copy
+        stripped_widgets = copy.deepcopy(current_widgets)
+        for w in stripped_widgets:
+            config = w.get("widget", {}).get("config", {})
+            config.pop("data", None)     # chart data (labels + datasets)
+            config.pop("rows", None)     # table row data
+            config.pop("value", None)    # KPI computed value
+
+        # Build enriched request with existing dashboard context
+        enriched_request = (
+            f"UPDATE existing dashboard (id={dashboard_id}).\n"
+            f"Current title: {current_title}\n"
+            f"Current description: {current_description}\n"
+            f"Current widgets ({len(current_widgets)} total):\n"
+            f"{json.dumps(stripped_widgets, indent=2)}\n\n"
+            f"User's edit request: {request}\n\n"
+            f"IMPORTANT: Use the update_dashboard tool (NOT create_dashboard) to save changes. "
+            f"Pass dashboard_id={dashboard_id}."
+        )
+
+        result = await invoke_dashboard_agent(enriched_request, context, db_session_factory, target_connection_id=target_connection_id)
         return json.dumps(result)
 
     @tool
@@ -326,7 +407,117 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         finally:
             db.close()
 
-    tools = [create_dashboard, list_dashboards, list_connections]
+    @tool
+    async def read_dashboard(dashboard_id: int, widget_id: str = "") -> str:
+        """
+        Read a dashboard's content including live widget data.
+
+        Use this tool when the user asks about what a specific dashboard shows,
+        wants to know current values or metrics, or asks to check/inspect/verify
+        a widget (e.g. "what's the total revenue?", "check the line chart",
+        "what does my sales dashboard show?").
+
+        This is a READ-ONLY tool — it never modifies the dashboard.
+
+        Call list_dashboards first if you need to find the dashboard_id.
+
+        Args:
+            dashboard_id: ID of the dashboard to read (from list_dashboards)
+            widget_id: Optional widget ID to read only that specific widget.
+                       Leave empty to read all widgets. Use this when the user
+                       asks about a specific chart, KPI, or table by name.
+
+        Returns:
+            JSON with dashboard title, description, and widget data.
+        """
+        from backend.models.dashboard import Dashboard
+        from backend.agents.dashboard_tools import _execute_widget_sql
+        import copy
+
+        db = db_session_factory()
+        try:
+            dashboard = db.query(Dashboard).filter(
+                Dashboard.id == dashboard_id,
+                Dashboard.user_id == context.user_id,
+            ).first()
+            if not dashboard:
+                return json.dumps({"success": False, "message": f"Dashboard {dashboard_id} not found or not accessible."})
+
+            title = dashboard.title
+            description = dashboard.description
+            widgets = copy.deepcopy(dashboard.widgets or [])
+        finally:
+            db.close()
+
+        # Filter to specific widget if requested
+        if widget_id:
+            widgets = [w for w in widgets if w.get("id") == widget_id]
+            if not widgets:
+                # Try matching by title/label in config
+                all_widgets = copy.deepcopy(dashboard.widgets or []) if not widgets else widgets
+                db2 = db_session_factory()
+                try:
+                    dashboard2 = db2.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+                    all_widgets = copy.deepcopy(dashboard2.widgets or []) if dashboard2 else []
+                finally:
+                    db2.close()
+                for w in all_widgets:
+                    config = w.get("widget", {}).get("config", {})
+                    w_title = config.get("title", "") or config.get("label", "") or ""
+                    if widget_id.lower() in w_title.lower():
+                        widgets = [w]
+                        break
+                if not widgets:
+                    return json.dumps({"success": False, "message": f"Widget '{widget_id}' not found in dashboard {dashboard_id}."})
+
+        # Re-execute SQL only for the widgets we need
+        for w in widgets:
+            if "dataSource" in w:
+                await _execute_widget_sql(w, db_session_factory)
+
+        # Build a concise summary for the LLM
+        widget_summaries = []
+        for w in widgets:
+            wtype = w.get("widget", {}).get("type", "unknown")
+            config = w.get("widget", {}).get("config", {})
+            summary = {
+                "id": w.get("id"),
+                "type": wtype,
+                "position": w.get("position"),
+            }
+
+            if wtype == "kpi":
+                summary["label"] = config.get("label")
+                summary["value"] = config.get("value")
+                summary["prefix"] = config.get("prefix")
+                summary["suffix"] = config.get("suffix")
+                if config.get("trend"):
+                    summary["trend"] = config["trend"]
+            elif wtype == "chart":
+                summary["chart_type"] = config.get("type")
+                summary["title"] = config.get("title")
+                summary["data"] = config.get("data")
+            elif wtype == "table":
+                summary["title"] = config.get("title")
+                summary["columns"] = config.get("columns")
+                summary["rows"] = config.get("rows")
+            elif wtype == "text":
+                summary["content"] = config.get("content")
+            elif wtype == "filter":
+                summary["controls"] = config.get("controls")
+
+            widget_summaries.append(summary)
+
+        return json.dumps({
+            "success": True,
+            "dashboard_id": dashboard_id,
+            "title": title,
+            "description": description,
+            "widget_count": len(widget_summaries),
+            "widgets": widget_summaries,
+        })
+
+    tools = [create_dashboard, update_dashboard, read_dashboard, list_dashboards, list_connections]
     if _CSV_PLUGIN_AVAILABLE:
         tools.append(create_dataset_from_upload)
     return tools
