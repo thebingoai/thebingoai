@@ -22,7 +22,7 @@
     </div>
 
     <!-- Tree view -->
-    <div v-else class="flex-1 overflow-y-auto px-4 py-4 font-mono text-xs">
+    <div v-else ref="treeContainer" class="flex-1 overflow-y-auto px-4 py-4 font-mono text-xs">
       <!-- Root: Orchestrator -->
       <div class="flex items-center gap-1.5 py-0.5 mb-0.5">
         <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
@@ -49,13 +49,14 @@ interface TreeNode {
   type: 'agent' | 'action' | 'result' | 'reasoning'
   label: string
   detail?: string
-  status?: 'in-progress' | 'completed'
+  status?: 'in-progress' | 'completed' | 'streaming'
   duration?: string
   timestamp?: string
   children: TreeNode[]
 }
 
 const chatStore = useChatStore()
+const treeContainer = ref<HTMLElement | null>(null)
 
 // Determine which message's steps to show
 const selectedMessage = computed(() => {
@@ -69,6 +70,17 @@ const selectedMessage = computed(() => {
 })
 
 const steps = computed((): AgentStep[] => selectedMessage.value?.agent_steps || [])
+
+// Auto-scroll to bottom when tree content updates during streaming
+watch(
+  () => steps.value.length + (steps.value[steps.value.length - 1]?.content?.text?.length || 0),
+  () => {
+    if (!chatStore.isStreaming || !treeContainer.value) return
+    nextTick(() => {
+      treeContainer.value!.scrollTop = treeContainer.value!.scrollHeight
+    })
+  },
+)
 
 // --- Formatting helpers ---
 
@@ -132,7 +144,7 @@ const treeNodes = computed((): TreeNode => {
       root.children.push({
         type: 'reasoning',
         label: step.content?.text || 'Thinking...',
-        status: 'completed',
+        status: step.status === 'streaming' ? 'streaming' : 'completed',
         timestamp: formatTimestamp(step) || undefined,
         children: [],
       })

@@ -8,7 +8,15 @@ _ORCHESTRATOR_CHASSIS = """You are a helpful, direct assistant.
 
 You can query databases, create dashboards, manage reusable skills, search documents, and recall past conversations. Your personality can evolve as you learn about the user.
 
-Use your tools to fulfill requests. When a request is unclear, ask for clarification first."""
+Use your tools to fulfill requests. When a request is unclear, ask for clarification first.
+
+## Approach
+Before taking action, briefly think through your approach:
+- What the user is asking for
+- Which tools/agents you'll need and in what order
+- Any assumptions to verify
+
+Then execute your plan step by step. Be concise in your reasoning."""
 
 _BASE_IDENTITY = """## Who You Are
 

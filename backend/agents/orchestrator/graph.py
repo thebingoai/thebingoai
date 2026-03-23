@@ -600,6 +600,8 @@ async def stream_orchestrator(
         step_number = 0
         step_start_times: Dict[str, float] = {}
         token_buffer = []
+        reasoning_buffer = []
+        in_tool_execution = False
         active_stream_run_id = None
 
         async for event in orchestrator.astream_events(
@@ -610,6 +612,20 @@ async def stream_orchestrator(
             kind = event.get("event")
 
             if kind == "on_tool_start":
+                # Flush reasoning buffer as a completed reasoning step
+                if reasoning_buffer:
+                    reasoning_text = "".join(reasoning_buffer)
+                    step_number += 1
+                    collected_steps.append({
+                        "agent_type": "orchestrator",
+                        "step_type": "reasoning",
+                        "content": {"text": reasoning_text},
+                        "step_number": step_number,
+                    })
+                    yield {"type": "reasoning", "content": {"text": reasoning_text}}
+                    reasoning_buffer.clear()
+
+                in_tool_execution = True
                 token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
@@ -630,6 +646,7 @@ async def stream_orchestrator(
                 }
 
             elif kind == "on_tool_end":
+                in_tool_execution = False
                 token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
@@ -679,7 +696,22 @@ async def stream_orchestrator(
                 if chunk and hasattr(chunk, "content"):
                     content = chunk.content
                     if content:
-                        token_buffer.append(content)
+                        if not in_tool_execution:
+                            # Stream as reasoning tokens (may be intermediate reasoning or final answer)
+                            reasoning_buffer.append(content)
+                            yield {"type": "reasoning_token", "content": content}
+                        else:
+                            token_buffer.append(content)
+
+        # After the loop: if reasoning_buffer is non-empty, the last LLM turn
+        # had no tool call — this is the final answer, not reasoning.
+        # Re-yield as token events so it renders in the chat bubble.
+        if reasoning_buffer:
+            # Tell frontend to reclaim the streaming reasoning step as the final answer
+            yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
+            for token in reasoning_buffer:
+                yield {"type": "token", "content": token}
+            reasoning_buffer.clear()
 
         for token in token_buffer:
             yield {"type": "token", "content": token}

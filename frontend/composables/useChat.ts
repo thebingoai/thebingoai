@@ -2,26 +2,6 @@ import { useChatStore } from '~/stores/chat'
 import type { Message, AgentStep } from '~/stores/chat'
 import { useChatFileUpload } from './useChatFileUpload'
 
-const synthesizeReasoning = (toolName: string, args: Record<string, any>): string => {
-  const name = args?.skill_name || args?.name || ''
-  switch (toolName) {
-    case 'list_my_skills': return "I'll retrieve your skill catalog."
-    case 'activate_skill': return `I'll load the "${name}" skill.`
-    case 'use_skill': return `I'll execute the "${name}" skill.`
-    case 'create_skill': return `I'll create a new skill called "${name}".`
-    case 'update_skill': return `I'll update the "${name}" skill.`
-    case 'delete_skill': return `I'll delete the "${name}" skill.`
-    case 'read_skill_reference': return `I'll read the reference "${args?.title || 'document'}".`
-    case 'check_skill_suggestions': return "I'll check for any skill improvement suggestions."
-    case 'respond_to_skill_suggestion': return "I'll respond to the skill suggestion."
-    case 'ask_dashboard_question': return "I'm preparing a question about your dashboard requirements."
-    case 'data_agent': return "I'll query the database for this data."
-    case 'rag_agent': return "I'll search your documents for this."
-    case 'recall_memory': return "I'll search my memory for relevant past context."
-    default: return `I'll use ${toolName.replace(/_/g, ' ')} to handle this.`
-  }
-}
-
 export const useChat = () => {
   const chatStore = useChatStore()
   const api = useApi()
@@ -69,6 +49,7 @@ export const useChat = () => {
     let wordBuffer = ''
     const thinkingSteps: Array<{ step: string; description: string }> = []
     const agentSteps: AgentStep[] = []
+    let currentReasoningText = ''
 
     // Register one-time handlers scoped to this request_id
     const unsubs: Array<() => void> = []
@@ -100,20 +81,42 @@ export const useChat = () => {
         }
       })
 
+      onEvent('chat.reasoning_token', (data) => {
+        const content = data.content || ''
+        currentReasoningText += content
+
+        // Auto-open reasoning panel on first reasoning token
+        if (!chatStore.reasoningPanelOpen) {
+          const lastMsg = chatStore.messages[chatStore.messages.length - 1]
+          if (lastMsg) chatStore.openReasoningPanel(lastMsg.id)
+        }
+
+        // Update or create in-progress reasoning step
+        const lastStep = agentSteps[agentSteps.length - 1]
+        if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
+          lastStep.content.text = currentReasoningText
+        } else {
+          agentSteps.push({
+            agent_type: 'orchestrator',
+            step_type: 'reasoning',
+            content: { text: currentReasoningText },
+            status: 'streaming',
+            started_at: Date.now()
+          })
+        }
+        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+      })
+
       onEvent('chat.tool_call', (data) => {
         const toolName = data.content?.tool || data.tool || 'Tool'
         const args = data.content?.args || {}
 
+        // Finalize any streaming reasoning step
         const lastStep = agentSteps[agentSteps.length - 1]
-        if (!lastStep || lastStep.step_type !== 'reasoning') {
-          agentSteps.push({
-            agent_type: 'orchestrator',
-            step_type: 'reasoning',
-            content: { text: synthesizeReasoning(toolName, args) },
-            status: 'completed',
-            started_at: Date.now()
-          })
+        if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
+          lastStep.status = 'completed'
         }
+        currentReasoningText = ''
 
         agentSteps.push({
           agent_type: 'orchestrator',
@@ -131,13 +134,21 @@ export const useChat = () => {
       })
 
       onEvent('chat.reasoning', (data) => {
-        agentSteps.push({
-          agent_type: 'orchestrator',
-          step_type: 'reasoning',
-          content: { text: data.content?.text || '' },
-          status: 'completed',
-          started_at: Date.now()
-        })
+        // Finalize any streaming reasoning step
+        const lastStep = agentSteps[agentSteps.length - 1]
+        if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
+          lastStep.status = 'completed'
+          lastStep.content.text = data.content?.text || lastStep.content.text
+        } else {
+          agentSteps.push({
+            agent_type: 'orchestrator',
+            step_type: 'reasoning',
+            content: { text: data.content?.text || '' },
+            status: 'completed',
+            started_at: Date.now()
+          })
+        }
+        currentReasoningText = ''
         chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
       })
 
@@ -167,6 +178,19 @@ export const useChat = () => {
         })
       })
 
+      onEvent('chat.reasoning_end', (data) => {
+        // The last reasoning block turned out to be the final answer, not reasoning.
+        // Remove the streaming reasoning step so it doesn't appear in the panel.
+        if (data.content?.is_final_answer) {
+          const lastStep = agentSteps[agentSteps.length - 1]
+          if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
+            agentSteps.pop()
+          }
+          currentReasoningText = ''
+          chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+        }
+      })
+
       onEvent('chat.status', (data) => {
         console.log('[WS] status:', data.content)
       })
@@ -175,6 +199,13 @@ export const useChat = () => {
         if (wordBuffer) {
           chatStore.updateLastMessage({ content: accumulatedContent })
           wordBuffer = ''
+        }
+
+        // Finalize any leftover streaming reasoning step
+        const lastStep = agentSteps[agentSteps.length - 1]
+        if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
+          lastStep.status = 'completed'
+          chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
         }
 
         const threadId: string = data.thread_id
@@ -200,7 +231,12 @@ export const useChat = () => {
       })
 
       onEvent('chat.error', (data) => {
-        chatStore.updateLastMessage({ content: `Error: ${data.content}` })
+        // Finalize any streaming reasoning step on error
+        const lastStep = agentSteps[agentSteps.length - 1]
+        if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
+          lastStep.status = 'completed'
+        }
+        chatStore.updateLastMessage({ content: `Error: ${data.content}`, agent_steps: [...agentSteps] })
         cleanup()
       })
 

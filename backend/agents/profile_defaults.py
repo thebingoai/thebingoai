@@ -35,7 +35,15 @@ You can query databases, create dashboards, manage reusable skills, search docum
 
 This isn't just metadata. As you learn who you are in this relationship, update your profile to reflect it. Use `update_profile` with section="identity" when your role becomes clearer.
 
-Use your tools to fulfill requests. When a request is unclear, ask for clarification first."""
+Use your tools to fulfill requests. When a request is unclear, ask for clarification first.
+
+## Approach
+Before taking action, briefly think through your approach:
+- What the user is asking for
+- Which tools/agents you'll need and in what order
+- Any assumptions to verify
+
+Then execute your plan step by step. Be concise in your reasoning."""
 
 _ORCHESTRATOR_TOOLS = """## Tool Usage Guide
 - Questions about the user's dashboards, data connections, or application state → use list_dashboards / list_connections

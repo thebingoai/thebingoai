@@ -3,7 +3,7 @@ export interface TreeNode {
   type: 'agent' | 'action' | 'result' | 'reasoning'
   label: string
   detail?: string
-  status?: 'in-progress' | 'completed'
+  status?: 'in-progress' | 'completed' | 'streaming'
   duration?: string
   timestamp?: string
   children: TreeNode[]
@@ -63,10 +63,11 @@ const agentDotClass = computed(() => {
           v-else-if="node.type === 'result'"
           class="text-green-500 shrink-0 text-[10px] leading-none"
         >✓</span>
-        <!-- Reasoning: small muted dot -->
+        <!-- Reasoning: small dot (pulsing amber when streaming, gray when done) -->
         <span
           v-else-if="node.type === 'reasoning'"
-          class="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0"
+          :class="node.status === 'streaming' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'"
+          class="w-1.5 h-1.5 rounded-full shrink-0"
         />
         <!-- Completed action: gray arrow -->
         <span v-else class="text-gray-400 shrink-0 text-[10px] leading-none">›</span>
@@ -78,7 +79,7 @@ const agentDotClass = computed(() => {
             node.type === 'reasoning' ? 'italic text-gray-600 whitespace-normal break-words' :
             'truncate text-gray-600'
           ]"
-        >{{ node.label }}</span>
+        >{{ node.label }}<span v-if="node.status === 'streaming'" class="inline-block w-[5px] h-[10px] bg-amber-400 ml-0.5 animate-blink align-baseline" /></span>
 
         <!-- Duration (inline, after label) -->
         <span
@@ -120,6 +121,13 @@ const agentDotClass = computed(() => {
 </template>
 
 <style>
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
 .prose-detail .prose-chat {
   @apply text-[10px] text-gray-500 leading-tight;
 }
