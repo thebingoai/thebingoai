@@ -1,17 +1,18 @@
-# Stage 1: Build static SPA assets
+# Stage 1: Build SPA assets
 FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
 
 # API base URL in the browser — defaults to /api (nginx proxies it)
 ARG NUXT_PUBLIC_API_BASE_URL=/api
 ENV NUXT_PUBLIC_API_BASE_URL=$NUXT_PUBLIC_API_BASE_URL
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
-RUN npm run generate
+RUN npm run build
 
 # Stage 2: Minimal image that copies static files to a shared volume at runtime
 FROM alpine:3.19
