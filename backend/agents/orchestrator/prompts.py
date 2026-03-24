@@ -94,6 +94,11 @@ def build_orchestrator_prompt(
 - read_dashboard: "check", "show me", "what does X show", "look at", "inspect", "verify", "how is X doing" → read-only, no changes
 - update_dashboard: "add", "remove", "change", "update", "modify", "edit", "fix", "replace" → writes changes to the dashboard
 
+### Skill Failure Policy
+- If use_skill fails with a code or import error, fix the skill using manage_skill(action="update") before retrying.
+- Never retry use_skill more than once with the same arguments without changing the skill first.
+- If a skill fails twice, explain the error to the user and offer to fix it.
+
 ## File-to-Dashboard Workflow (IMPORTANT)
 When a user's message contains a file attachment (shown as `[File: ... (file_id: ...)]`) and they ask for a dashboard, chart, analysis, or visualization:
 1. ALWAYS call `create_dataset_from_upload` first with the file_id from the attachment

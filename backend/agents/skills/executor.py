@@ -5,7 +5,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_MODULES = {"httpx", "json", "datetime", "re", "math"}
+_ALLOWED_MODULES = {"httpx", "json", "datetime", "re", "math", "requests"}
 
 _BLOCKED_BUILTINS = {
     "__import__", "open", "exec", "eval", "compile",
@@ -83,8 +83,16 @@ async def execute_skill_code(code: str, params: dict, secrets: dict) -> Any:
     if not asyncio.iscoroutinefunction(run_fn):
         return {"error": "Skill 'run' function must be async (async def run())"}
 
+    import inspect
+    sig = inspect.signature(run_fn)
+
     try:
-        result = await asyncio.wait_for(run_fn(), timeout=30.0)
+        # Support both `async def run()` (params as globals) and
+        # `async def run(params)` (params as argument) for robustness.
+        if sig.parameters:
+            result = await asyncio.wait_for(run_fn(params), timeout=30.0)
+        else:
+            result = await asyncio.wait_for(run_fn(), timeout=30.0)
         return result
     except asyncio.TimeoutError:
         logger.warning("Skill code execution timed out after 30 seconds")

@@ -338,7 +338,19 @@ def build_skill_tools(
                     secrets=skill.secrets or {},
                 )
                 if isinstance(result, dict) and "error" in result:
-                    return json.dumps({"success": False, "message": result["error"]})
+                    error_msg = result["error"]
+                    if "not allowed" in error_msg or "Import" in error_msg:
+                        from backend.agents.skills.executor import _ALLOWED_MODULES
+                        return json.dumps({
+                            "success": False,
+                            "message": (
+                                f"{error_msg}. Fix the skill code using "
+                                f"manage_skill(action='update', skill_name='{skill_name}', code='...') "
+                                f"with allowed modules only. Allowed: {', '.join(sorted(_ALLOWED_MODULES))}. "
+                                f"Do NOT retry use_skill until the code is fixed."
+                            ),
+                        })
+                    return json.dumps({"success": False, "message": error_msg})
                 raw_output = result
 
             # Format using prompt_template via LLM if we have both
@@ -555,6 +567,35 @@ def build_skill_tools(
 # Internal helpers (not exposed as tools)
 # ---------------------------------------------------------------------------
 
+
+def _validate_skill_imports(code: str) -> "Optional[str]":
+    """Return an error message if *code* uses disallowed imports, else None."""
+    import ast
+    from backend.agents.skills.executor import _ALLOWED_MODULES
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None  # syntax errors are caught later at execution time
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top not in _ALLOWED_MODULES:
+                    return (
+                        f"Module '{alias.name}' is not allowed in skill code. "
+                        f"Allowed modules: {', '.join(sorted(_ALLOWED_MODULES))}"
+                    )
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top = node.module.split(".")[0]
+            if top not in _ALLOWED_MODULES:
+                return (
+                    f"Module '{node.module}' is not allowed in skill code. "
+                    f"Allowed modules: {', '.join(sorted(_ALLOWED_MODULES))}"
+                )
+    return None
+
 async def _create_skill(
     context: AgentContext,
     db_session_factory: Callable,
@@ -594,6 +635,12 @@ async def _create_skill(
                 "success": False,
                 "message": f"A skill named '{name}' already exists. Use a different name or delete the existing one first.",
             })
+
+        # Validate imports in code before saving
+        if code:
+            import_err = _validate_skill_imports(code)
+            if import_err:
+                return json.dumps({"success": False, "message": import_err})
 
         parsed_schema = None
         if parameters_schema:
@@ -708,6 +755,12 @@ async def _update_skill(
         ).first()
         if not skill:
             return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+        # Validate imports in new code before saving
+        if code:
+            import_err = _validate_skill_imports(code)
+            if import_err:
+                return json.dumps({"success": False, "message": import_err})
 
         if description:
             skill.description = description
