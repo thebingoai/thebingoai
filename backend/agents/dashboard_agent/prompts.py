@@ -287,6 +287,7 @@ def build_dashboard_agent_prompt(
     available_connections: list[int],
     mesh_enabled: bool = False,
     target_connection_id: int | None = None,
+    connection_metadata: list | None = None,
 ) -> str:
     """
     Build dynamic system prompt with user's available connections.
@@ -295,6 +296,7 @@ def build_dashboard_agent_prompt(
         available_connections: List of connection IDs user can access
         mesh_enabled: Whether to use mesh-aware prompt
         target_connection_id: Pre-selected connection to focus on (e.g. from a CSV upload)
+        connection_metadata: Optional list of ConnectionInfo with name/db_type/database
 
     Returns:
         System prompt with connection context injected
@@ -307,10 +309,17 @@ def build_dashboard_agent_prompt(
     if not available_connections:
         return base_prompt + "\n\nWARNING: No database connections available."
 
-    connections_str = ", ".join(str(conn_id) for conn_id in available_connections)
+    if connection_metadata:
+        lines = [
+            f'- ID {c.id}: "{c.name}" ({c.db_type}, database: {c.database})'
+            for c in connection_metadata
+        ]
+        connections_str = "\n".join(lines)
+    else:
+        connections_str = ", ".join(str(conn_id) for conn_id in available_connections)
     prompt = (
         base_prompt
-        + f"\n\nAvailable connection IDs: {connections_str}"
+        + f"\n\nAvailable database connections:\n{connections_str}"
         + "\nAlways use one of these IDs for dataSource.connectionId in your widgets."
     )
 

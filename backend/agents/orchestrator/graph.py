@@ -331,7 +331,7 @@ def _build_dynamic_tools(
         agent_system_prompt = agent_def.system_prompt
         if getattr(agent_def, "profile_id", None) and getattr(agent_def, "profile", None):
             try:
-                rt_ctx = RuntimeContext(available_connections=effective_connection_ids)
+                rt_ctx = RuntimeContext(available_connections=effective_connection_ids, connection_metadata=agent_context.connection_metadata)
                 agent_system_prompt = ProfileRenderer.render(agent_def.profile, rt_ctx)
             except Exception as exc:
                 logger.warning(f"Profile render failed for agent '{agent_name}', using system_prompt: {exc}")
@@ -345,7 +345,7 @@ def _build_dynamic_tools(
                     AgentProfile.is_active.is_(True),
                 ).first()
                 if profile:
-                    rt_ctx = RuntimeContext(available_connections=effective_connection_ids)
+                    rt_ctx = RuntimeContext(available_connections=effective_connection_ids, connection_metadata=agent_context.connection_metadata)
                     agent_system_prompt = ProfileRenderer.render(profile, rt_ctx)
                 _db.close()
             except Exception as exc:
@@ -443,12 +443,13 @@ async def run_orchestrator(
             user_memories_context=user_memories_context,
             memory_context=memory_context,
             available_connections=context.available_connections,
+            connection_metadata=context.connection_metadata,
             mesh_enabled=settings.agent_mesh_enabled,
         )
         prompt = ProfileRenderer.render(profile, rt_ctx)
     else:
         logger.info("run_orchestrator: using LEGACY hardcoded prompt (no profile)")
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
+        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections, connection_metadata=context.connection_metadata)
 
     provider = llm_provider or get_provider(settings.default_llm_provider)
 
@@ -565,12 +566,13 @@ async def stream_orchestrator(
                 user_memories_context=user_memories_context,
                 memory_context=memory_context,
                 available_connections=context.available_connections,
+                connection_metadata=context.connection_metadata,
                 mesh_enabled=settings.agent_mesh_enabled,
             )
             prompt = ProfileRenderer.render(profile, rt_ctx)
         else:
             logger.info("stream_orchestrator: using LEGACY hardcoded prompt (no profile)")
-            prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections)
+            prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections, connection_metadata=context.connection_metadata)
 
         provider = llm_provider or get_provider(settings.default_llm_provider)
 

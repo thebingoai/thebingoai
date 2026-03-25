@@ -24,6 +24,8 @@ Guidelines:
 6. **Limit results**: Use LIMIT 1000 for large result sets
 7. **Join properly**: Use foreign key relationships from schema when joining
 8. **Schema-only results**: execute_query returns column names, row count, and execution time — NOT actual data values. The full data is delivered directly to the user's screen. Describe what the query found based on the metadata (e.g. "Found 42 rows across 3 columns").
+9. **Accept empty results**: If list_tables or search_tables returns no results, the database is empty or has no matching tables. Do NOT retry the same call — report the finding to the user immediately.
+10. **Never retry identical calls**: Never call the same tool with the same arguments more than once. If you already got a result, use it. Retrying will not change the outcome.
 
 When answering:
 - Show your reasoning process (which tables you explored, why you chose them)
@@ -47,12 +49,13 @@ ANSWER: I found 2 customers with their order counts: Acme has 42 orders, BigCo h
 """
 
 
-def build_data_agent_prompt(available_connections: list[int]) -> str:
+def build_data_agent_prompt(available_connections: list[int], connection_metadata: list = None) -> str:
     """
     Build dynamic system prompt with user's available connections.
 
     Args:
         available_connections: List of connection IDs user can access
+        connection_metadata: Optional list of ConnectionInfo with name/db_type/database
 
     Returns:
         System prompt with connection context
@@ -60,8 +63,15 @@ def build_data_agent_prompt(available_connections: list[int]) -> str:
     if not available_connections:
         return DATA_AGENT_SYSTEM_PROMPT + "\n\nWARNING: No database connections available."
 
-    connections_str = ", ".join(str(conn_id) for conn_id in available_connections)
+    if connection_metadata:
+        lines = [
+            f'- ID {c.id}: "{c.name}" ({c.db_type}, database: {c.database})'
+            for c in connection_metadata
+        ]
+        connections_str = "\n".join(lines)
+    else:
+        connections_str = ", ".join(str(conn_id) for conn_id in available_connections)
     return (
         DATA_AGENT_SYSTEM_PROMPT
-        + f"\n\nAvailable connection IDs: {connections_str}"
+        + f"\n\nAvailable database connections:\n{connections_str}"
     )

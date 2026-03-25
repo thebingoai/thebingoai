@@ -56,6 +56,8 @@ interface TreeNode {
 }
 
 const chatStore = useChatStore()
+const { ensureLoaded: ensureConnectionsLoaded, getConnectionLabel } = useConnections()
+ensureConnectionsLoaded()
 const treeContainer = ref<HTMLElement | null>(null)
 
 // Determine which message's steps to show
@@ -116,6 +118,9 @@ const formatArgs = (args: Record<string, any> | undefined): string | undefined =
   if (entries.length === 0) return undefined
   return entries
     .map(([k, v]) => {
+      if (k === 'connection_id' && typeof v === 'number') {
+        return `**connection**: ${getConnectionLabel(v)}`
+      }
       const val = typeof v === 'string' ? v : JSON.stringify(v, null, 2)
       return `**${k}**: ${val}`
     })

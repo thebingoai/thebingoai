@@ -10,7 +10,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.agents.context import AgentContext
+from backend.agents.context import AgentContext, ConnectionInfo
 import logging
 
 logger = logging.getLogger(__name__)
@@ -48,18 +48,25 @@ async def build_orchestrator_context(
     Returns:
         OrchestratorInvocationContext with all assembled context.
     """
-    # Resolve accessible connections
+    # Resolve accessible connections (with metadata for agent prompts)
+    conn_columns = (
+        DatabaseConnection.id, DatabaseConnection.name,
+        DatabaseConnection.db_type, DatabaseConnection.database,
+    )
     if connection_ids:
-        accessible_connections = db.query(DatabaseConnection.id).filter(
+        accessible_connections = db.query(*conn_columns).filter(
             DatabaseConnection.id.in_(connection_ids),
             DatabaseConnection.user_id == user.id
         ).all()
-        accessible_ids = [conn.id for conn in accessible_connections]
     else:
-        accessible_connections = db.query(DatabaseConnection.id).filter(
+        accessible_connections = db.query(*conn_columns).filter(
             DatabaseConnection.user_id == user.id
         ).all()
-        accessible_ids = [conn.id for conn in accessible_connections]
+    accessible_ids = [c.id for c in accessible_connections]
+    connection_metadata = [
+        ConnectionInfo(id=c.id, name=c.name, db_type=c.db_type, database=c.database)
+        for c in accessible_connections
+    ]
 
     # Load team policies and custom agents
     from backend.services.policy_service import PolicyService
@@ -107,9 +114,12 @@ async def build_orchestrator_context(
     ]
 
     # Build AgentContext
+    # Filter metadata to match team-restricted connections
+    team_meta = [m for m in connection_metadata if m.id in team_connection_ids]
     agent_context = AgentContext(
         user_id=user.id,
         available_connections=team_connection_ids,
+        connection_metadata=team_meta,
         thread_id=thread_id,
         team_id=team_id,
         allowed_tool_keys=allowed_tool_keys,

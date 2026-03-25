@@ -31,6 +31,7 @@ class RuntimeContext:
     user_memories_context: str = ""
     memory_context: str = ""
     available_connections: Optional[List[int]] = None
+    connection_metadata: list = field(default_factory=list)
     mesh_enabled: bool = False
     target_connection_id: Optional[int] = None
 
@@ -188,8 +189,15 @@ class ProfileRenderer:
             sections.append(f"## Relevant Past Context\n{ctx.memory_context}")
 
         if ctx.available_connections:
-            connections_str = ", ".join(str(c) for c in ctx.available_connections)
-            section = f"## Available Database Connections\nConnection IDs: {connections_str}"
+            if ctx.connection_metadata:
+                lines = [
+                    f'- ID {c.id}: "{c.name}" ({c.db_type}, database: {c.database})'
+                    for c in ctx.connection_metadata
+                ]
+                connections_str = "\n".join(lines)
+            else:
+                connections_str = ", ".join(str(c) for c in ctx.available_connections)
+            section = f"## Available Database Connections\n{connections_str}"
             section += "\nUse these for dataSource.connectionId in dashboard widgets."
             if ctx.target_connection_id is not None:
                 section += (

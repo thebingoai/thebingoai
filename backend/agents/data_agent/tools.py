@@ -32,7 +32,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
     """
 
     @tool
-    def list_tables(connection_id: int) -> List[str]:
+    def list_tables(connection_id: int) -> str:
         """
         List all tables in a database connection.
 
@@ -40,17 +40,20 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             connection_id: Database connection ID
 
         Returns:
-            List of table names
+            Comma-separated table names, or a message if none found
         """
         if not context.can_access_connection(connection_id):
-            return [f"Error: Connection {connection_id} not authorized or not available"]
+            return f"Error: Connection {connection_id} not authorized or not available"
 
         try:
             schema_json = load_schema_file(connection_id)
-            return schema_json.get("table_names", [])
+            tables = schema_json.get("table_names", [])
+            if not tables:
+                return "No tables found in this connection. The database is empty or the schema has not been discovered yet."
+            return ", ".join(tables)
         except FileNotFoundError:
             logger.warning(f"Schema file not found for connection {connection_id}")
-            return []
+            return "No schema file found for this connection. Try refreshing the schema first."
 
     @tool
     def get_table_schema(connection_id: int, table_name: str) -> Dict[str, Any]:
@@ -82,13 +85,13 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                         "row_count": table_data.get("row_count", 0)
                     }
 
-            return {}
+            return {"error": f"Table '{table_name}' not found in this connection."}
         except FileNotFoundError:
             logger.warning(f"Schema file not found for connection {connection_id}")
-            return {}
+            return {"error": "No schema file found for this connection. Try refreshing the schema first."}
 
     @tool
-    def search_tables(connection_id: int, keyword: str) -> List[str]:
+    def search_tables(connection_id: int, keyword: str) -> str:
         """
         Search for tables/columns matching a keyword.
 
@@ -97,10 +100,10 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             keyword: Search keyword (case-insensitive)
 
         Returns:
-            List of matching table names
+            Comma-separated matching table names, or a message if none found
         """
         if not context.can_access_connection(connection_id):
-            return [f"Error: Connection {connection_id} not authorized or not available"]
+            return f"Error: Connection {connection_id} not authorized or not available"
 
         try:
             schema_json = load_schema_file(connection_id)
@@ -122,10 +125,13 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                                 matches.append(table_name)
                                 break
 
-            return list(set(matches))  # Remove duplicates
+            unique = list(set(matches))
+            if not unique:
+                return f"No tables or columns matching '{keyword}' found in this connection."
+            return ", ".join(unique)
         except FileNotFoundError:
             logger.warning(f"Schema file not found for connection {connection_id}")
-            return []
+            return "No schema file found for this connection. Try refreshing the schema first."
 
     @tool
     def execute_query(connection_id: int, sql: str) -> Dict[str, Any]:

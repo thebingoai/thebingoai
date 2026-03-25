@@ -14,6 +14,32 @@ import json
 logger = logging.getLogger(__name__)
 
 
+def _make_loop_detector(max_repeats: int = 2):
+    """pre_model_hook that detects repeated identical tool calls and injects a stop message."""
+    def detect_loop(state):
+        messages = state.get("messages", [])
+        # Collect recent tool calls (name + args) from AI messages
+        recent_calls = []
+        for msg in reversed(messages):
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    key = (tc.get("name"), json.dumps(tc.get("args", {}), sort_keys=True))
+                    recent_calls.append(key)
+            if len(recent_calls) >= max_repeats:
+                break
+        # If the last N tool calls are identical, inject a stop message
+        if len(recent_calls) >= max_repeats:
+            if len(set(recent_calls[:max_repeats])) == 1:
+                tool_name = recent_calls[0][0]
+                logger.warning(f"Loop detected: {tool_name} called {max_repeats} times with same args, injecting stop")
+                return {"messages": [HumanMessage(content=(
+                    f"STOP: You have called {tool_name} with the same arguments {max_repeats} times and got the same result. "
+                    "Accept the result as final and respond to the user. Do not call this tool again."
+                ))]}
+        return {}
+    return detect_loop
+
+
 def _resolve_data_agent_prompt(context: AgentContext, db_session_factory=None) -> str:
     """Resolve data_agent prompt from profile or fallback to legacy."""
     if db_session_factory:
@@ -26,14 +52,17 @@ def _resolve_data_agent_prompt(context: AgentContext, db_session_factory=None) -
                 AgentProfile.is_active.is_(True),
             ).first()
             if profile:
-                rt_ctx = RuntimeContext(available_connections=context.available_connections)
+                rt_ctx = RuntimeContext(
+                    available_connections=context.available_connections,
+                    connection_metadata=context.connection_metadata,
+                )
                 prompt = ProfileRenderer.render(profile, rt_ctx)
                 db.close()
                 return prompt
             db.close()
         except Exception as exc:
             logger.warning(f"Data agent profile load failed, using legacy: {exc}")
-    return build_data_agent_prompt(context.available_connections)
+    return build_data_agent_prompt(context.available_connections, context.connection_metadata)
 
 
 async def invoke_data_agent(
@@ -95,7 +124,8 @@ async def invoke_data_agent(
     agent = create_react_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
-        prompt=_resolve_data_agent_prompt(context)
+        prompt=_resolve_data_agent_prompt(context),
+        pre_model_hook=_make_loop_detector(max_repeats=2),
     )
 
     try:

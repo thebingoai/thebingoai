@@ -3,6 +3,15 @@ from typing import List, Optional
 
 
 @dataclass
+class ConnectionInfo:
+    """Lightweight metadata for a database connection."""
+    id: int
+    name: str
+    db_type: str
+    database: str
+
+
+@dataclass
 class AgentContext:
     """
     Thread-safe agent context passed via closures.
@@ -12,6 +21,7 @@ class AgentContext:
     """
     user_id: str
     available_connections: List[int]
+    connection_metadata: List[ConnectionInfo] = field(default_factory=list)
     thread_id: Optional[str] = None
 
     # Phase 4: team + policy awareness

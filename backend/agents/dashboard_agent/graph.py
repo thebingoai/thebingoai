@@ -33,6 +33,7 @@ def _resolve_dashboard_agent_prompt(
             if profile:
                 rt_ctx = RuntimeContext(
                     available_connections=context.available_connections,
+                    connection_metadata=context.connection_metadata,
                     mesh_enabled=mesh_enabled or settings.agent_mesh_enabled,
                     target_connection_id=target_connection_id,
                 )
@@ -46,6 +47,7 @@ def _resolve_dashboard_agent_prompt(
         context.available_connections,
         mesh_enabled=mesh_enabled,
         target_connection_id=target_connection_id,
+        connection_metadata=context.connection_metadata,
     )
 
 

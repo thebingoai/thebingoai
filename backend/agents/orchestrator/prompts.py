@@ -36,6 +36,7 @@ def build_orchestrator_prompt(
     skill_suggestions: Optional[list] = None,
     soul_prompt: str = "",
     available_connections: Optional[List[int]] = None,
+    connection_metadata: Optional[list] = None,
 ) -> str:
     """Build a dynamic orchestrator system prompt from the user's active custom agents and skills."""
     base = _ORCHESTRATOR_CHASSIS + "\n"
@@ -77,8 +78,15 @@ def build_orchestrator_prompt(
         base += f"\n\n## Relevant Past Context\n{memory_context}\n"
 
     if available_connections:
-        connections_str = ", ".join(str(c) for c in available_connections)
-        base += f"\n\n## Available Database Connections\nConnection IDs: {connections_str}\nUse these for dataSource.connectionId in dashboard widgets.\n"
+        if connection_metadata:
+            lines = [
+                f'- ID {c.id}: "{c.name}" ({c.db_type}, database: {c.database})'
+                for c in connection_metadata
+            ]
+            connections_str = "\n".join(lines)
+        else:
+            connections_str = ", ".join(str(c) for c in available_connections)
+        base += f"\n\n## Available Database Connections\n{connections_str}\nUse these for dataSource.connectionId in dashboard widgets.\n"
 
     base += """
 ## Tool Usage Guide
