@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), Supabase authentication, and Celery + Redis for async background processing. SSO authentication is available via the enterprise `bingo-sso-auth` plugin.
 
 ## Project Structure
-This is a dual-repo setup: community edition and enterprise edition are SEPARATE REPOSITORIES, not separate branches. Enterprise extends community via plugins/overlays. Never assume enterprise features live on a branch.
-community edition : /Users/edmundhee/work/github/gruda/bingo
-enterprise edition : /Users/edmundhee/work/github/gruda/bingo-enterprise
+This is the community edition. It can run standalone or as a git submodule inside the enterprise repo.
+Enterprise extends community via plugins/overlays. Never assume enterprise features live on a branch.
+When used as a submodule, this repo lives at `bingo-enterprise/bingo/`.
 
 ## Docker
 - Enterprise Docker compose uses overlay files. Always check for `docker-compose.enterprise.yml` or similar overlay patterns.
@@ -18,7 +18,7 @@ enterprise edition : /Users/edmundhee/work/github/gruda/bingo-enterprise
 - Always verify compose file paths before running commands.
 
 ## Git Operations
-- SSH remote URL for this project: [fill in your SSH URL]
+- SSH remote URL: `git@github.com:EdmundHee/TheBingo.git`
 - Always complete the full commit-and-push cycle in one go; don't stop after staging.
 - Check `git remote -v` before pushing if unsure of remote configuration.
 
@@ -34,17 +34,11 @@ Do not re-read files you have already read in this session. Track what you've ex
 
 ### Local Development (Recommended)
 
-**Always use the enterprise edition by default.** Only start the community edition when explicitly mentioned.
-Uses local PostgreSQL (not Supabase) with SSO auth via the `bingo-sso-auth` enterprise plugin.
+**For enterprise development, use the enterprise repo root as CWD.** See enterprise `CLAUDE.md` for docker commands.
 
+**Community standalone:**
 ```bash
-# Start enterprise (default) — run from the community repo root
-docker compose -f docker/local/docker-compose.yml \
-  -f docker/local/docker-compose.postgres.yml \
-  -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
-  up --build -d
-
-# Start community only (when explicitly requested)
+# Start community only
 ./start.sh
 
 # Access points:
@@ -54,23 +48,9 @@ docker compose -f docker/local/docker-compose.yml \
 # - Health: http://localhost:8000/health
 ```
 
-**Important: Stale enterprise image pitfall.** The enterprise Dockerfile installs plugins (bingo-sso-auth, bingo-csv-connector) via `pip install` into the image. If plugins aren't loading (e.g., `Unknown auth provider 'sso'`), the image is stale. Fix with a no-cache rebuild:
-```bash
-docker compose -f docker/local/docker-compose.yml \
-  -f docker/local/docker-compose.postgres.yml \
-  -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
-  build --no-cache backend && \
-docker compose -f docker/local/docker-compose.yml \
-  -f docker/local/docker-compose.postgres.yml \
-  -f /Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/docker-compose.enterprise.yml \
-  up -d
-```
-Verify plugins loaded: check backend logs for `Registered auth provider 'sso'` and `Registered connector type 'dataset'`.
-
 Requirements:
 - Docker and Docker Compose must be installed and running
 - `.env` configured with required API keys and database URL
-- Enterprise repo cloned at `/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise`
 
 `start.sh` (community only) auto-detects the database mode from `DATABASE_URL` in `.env`:
 - **Supabase (default)**: External DB URL → skips Docker PostgreSQL
