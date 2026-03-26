@@ -360,6 +360,8 @@ async function testQuery() {
       // Use raw SQL columns and rows so the user sees all available data
       previewColumns.value = response.source_columns ?? Object.keys(config)
       previewRows.value = response.source_rows ?? [Object.values(config)]
+      // Sync backend-computed config (sparkline, trend, value) into the widget store
+      store.updateWidgetConfig(props.widget.id, { type: 'kpi', config })
     } else if (ds.mapping.type === 'table' && config.columns) {
       previewColumns.value = config.columns.map((c: any) => c.label)
       previewRows.value = config.rows.slice(0, 10).map((row: any) =>

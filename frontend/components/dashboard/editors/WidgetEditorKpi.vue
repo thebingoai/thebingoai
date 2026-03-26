@@ -18,7 +18,7 @@
       </div>
 
       <!-- Value: split aggregation + column selector when data source exists -->
-      <div v-if="dataSource && sourceColumns?.length" class="space-y-1.5">
+      <div v-if="dataSource" class="space-y-1.5">
         <label class="text-xs text-gray-600">Value</label>
         <div class="flex">
           <select

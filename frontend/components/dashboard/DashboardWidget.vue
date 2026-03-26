@@ -22,14 +22,6 @@
         >
           <Code class="h-3 w-3" />
         </button>
-        <!-- Edit config button -->
-        <button
-          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
-          title="Edit widget config"
-          @click="emit('edit-config', widget.id)"
-        >
-          <Settings class="h-3 w-3" />
-        </button>
         <!-- Duplicate button -->
         <button
           class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
@@ -80,7 +72,7 @@
     <div
       class="min-h-0 flex-1 overflow-hidden"
       :class="editMode ? 'pt-7' : ''"
-      @dblclick="!editMode && emit('edit-config', widget.id)"
+      @click="emit('edit-config', widget.id)"
     >
       <DashboardWidgetKpi
         v-if="widget.widget.type === 'kpi'"
@@ -134,7 +126,7 @@
 
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
-import { GripVertical, X, RefreshCw, Code, Settings, Copy } from 'lucide-vue-next'
+import { GripVertical, X, RefreshCw, Code, Copy } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useWidgetData } from '~/composables/useWidgetData'
 
