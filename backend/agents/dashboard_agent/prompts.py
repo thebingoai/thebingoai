@@ -183,9 +183,10 @@ Add `dataSource` to every chart, KPI, and table. The `create_dashboard` tool aut
 
 Mapping types:
 - **chart**: `{ "type": "chart", "labelColumn": "<x-axis col>", "datasetColumns": [{"column": "<col>", "label": "<display name>"}] }`
-- **kpi**: `{ "type": "kpi", "valueColumn": "<main value col>", "trendValueColumn": "<numeric col>", "sparklineColumn": "<time-ordered col>" }`
+- **kpi**: `{ "type": "kpi", "valueColumn": "<main value col>", "trendValueColumn": "<numeric col>", "sparklineXColumn": "<time-ordered col>", "sparklineYColumn": "<numeric col>" }`
   - `trendValueColumn`: a numeric column (e.g. month-over-month change) — auto-renders colored up/down/neutral arrow
-  - `sparklineColumn`: a column with multiple time-ordered rows — renders a miniature sparkline chart
+  - `sparklineXColumn`: x-axis labels column (e.g. date/time for ordering) — used for sparkline chart labels
+  - `sparklineYColumn`: y-axis values column (numeric) — renders a miniature sparkline chart
   - **Always try to include trend and sparkline — a number alone lacks context**
   - For sparklines, SQL must return multiple rows ordered by time (not just a single aggregate)
 - **table**: `{ "type": "table", "columnConfig": [{"column": "<col>", "label": "<display name>", "sortable": true, "format": "currency"|"number"|"percent"|"date"}] }`
@@ -194,7 +195,7 @@ Mapping types:
 
 ### Visualization Best Practices
 
-- **KPIs**: always try to include `trendValueColumn` and `sparklineColumn` — a bare number gives no context
+- **KPIs**: always try to include `trendValueColumn` and `sparklineXColumn`/`sparklineYColumn` — a bare number gives no context
 - **Bar charts**: sort by value desc unless the x-axis is temporal
 - **Horizontal bars**: use `indexAxis: "y"` for long category labels or 8+ categories
 - **Table formatting**: always set `format` on monetary, percentage, and date columns

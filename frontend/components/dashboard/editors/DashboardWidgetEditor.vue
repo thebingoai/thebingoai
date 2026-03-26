@@ -281,14 +281,25 @@ function onConfigUpdate(newConfig: WidgetConfig) {
   store.updateWidgetConfig(props.widget.id, newConfig)
 }
 
-/** Patch the data source mapping (e.g. setting sparklineColumn from the KPI editor) */
+/** Patch the data source mapping (e.g. setting sparkline axes from the KPI editor) */
 function onMappingUpdate(patch: Record<string, any>) {
   const ds = props.widget.dataSource
   if (!ds) return
+  const newMapping = { ...ds.mapping, ...patch }
   store.setWidgetDataSource(props.widget.id, {
     ...ds,
-    mapping: { ...ds.mapping, ...patch },
+    mapping: newMapping,
   })
+  // Re-transform cached data so sparkline updates instantly (no server round-trip)
+  if (ds.mapping.type === 'kpi' && sourceColumns.value.length && previewRows.value.length) {
+    import('~/utils/widgetTransform').then(({ transformWidgetData }) => {
+      const config = transformWidgetData(
+        { columns: sourceColumns.value, rows: previewRows.value },
+        newMapping,
+      )
+      store.updateWidgetConfig(props.widget.id, { type: 'kpi', config })
+    })
+  }
 }
 
 function saveMeta() {

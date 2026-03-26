@@ -65,6 +65,14 @@
         >
           <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
         </button>
+        <button
+          v-if="isTable"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          title="Export CSV"
+          @click="tableRef?.exportCsv()"
+        >
+          <Download class="h-3 w-3" />
+        </button>
       </div>
     </div>
 
@@ -72,7 +80,7 @@
     <div
       class="min-h-0 flex-1 overflow-hidden"
       :class="editMode ? 'pt-7' : ''"
-      @click="emit('edit-config', widget.id)"
+      @click="editMode && emit('edit-config', widget.id)"
     >
       <DashboardWidgetKpi
         v-if="widget.widget.type === 'kpi'"
@@ -84,6 +92,7 @@
       />
       <DashboardWidgetTable
         v-else-if="widget.widget.type === 'table'"
+        ref="tableRef"
         :config="widget.widget.config"
       />
       <DashboardWidgetText
@@ -125,8 +134,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef } from 'vue'
-import { GripVertical, X, RefreshCw, Code, Copy } from 'lucide-vue-next'
+import { computed, ref, toRef } from 'vue'
+import { GripVertical, X, RefreshCw, Code, Copy, Download } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useWidgetData } from '~/composables/useWidgetData'
 
@@ -144,6 +153,9 @@ const emit = defineEmits<{
 
 const widgetRef = toRef(props, 'widget')
 const { loading, error, lastRefreshedAt, hasDataSource, refresh } = useWidgetData(widgetRef)
+
+const tableRef = ref<{ exportCsv: () => void } | null>(null)
+const isTable = computed(() => props.widget.widget.type === 'table')
 
 const WIDGET_TYPE_LABELS: Record<string, string> = {
   kpi: 'Score Chart',

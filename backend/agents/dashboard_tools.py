@@ -276,7 +276,7 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
         mapping_columns = []
         mapping_type = mapping.get("type")
         if mapping_type == "kpi":
-            for field in ("valueColumn", "trendValueColumn", "sparklineColumn"):
+            for field in ("valueColumn", "trendValueColumn", "sparklineXColumn", "sparklineYColumn", "sparklineSortColumn"):
                 if mapping.get(field):
                     mapping_columns.append(mapping[field])
         elif mapping_type == "chart":
@@ -563,7 +563,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
 
                 Mapping types:
                 - chart:  { type, labelColumn, datasetColumns: [{column, label}] }
-                - kpi:    { type, valueColumn, trendValueColumn? (optional), sparklineColumn? (optional) }
+                - kpi:    { type, valueColumn, trendValueColumn? (optional), sparklineXColumn? (optional), sparklineYColumn? (optional) }
                 - table:  { type, columnConfig: [{column, label, sortable?, format?}] }
 
         Returns:

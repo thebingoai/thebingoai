@@ -70,13 +70,15 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
     Mapping keys:
       - valueColumn: column for the main value (first row)
       - trendValueColumn: optional column for trend numeric value (first row)
-      - sparklineColumn: optional column for sparkline series (all rows)
+      - sparklineXColumn: optional column for sparkline x-axis labels (all rows)
+      - sparklineYColumn: optional column for sparkline y-axis values (all rows)
 
     Returns dict suitable for widget.config.
     """
     value_col = mapping.get("valueColumn")
     trend_col = mapping.get("trendValueColumn")
-    sparkline_col = mapping.get("sparklineColumn")
+    sparkline_x_col = mapping.get("sparklineXColumn")
+    sparkline_y_col = mapping.get("sparklineYColumn")
 
     if value_col not in result.columns:
         raise ValueError(
@@ -88,9 +90,14 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             f"Column '{trend_col}' not found in query results. "
             f"Available columns: {result.columns}"
         )
-    if sparkline_col and sparkline_col not in result.columns:
+    if sparkline_x_col and sparkline_x_col not in result.columns:
         raise ValueError(
-            f"Column '{sparkline_col}' not found in query results. "
+            f"Column '{sparkline_x_col}' not found in query results. "
+            f"Available columns: {result.columns}"
+        )
+    if sparkline_y_col and sparkline_y_col not in result.columns:
+        raise ValueError(
+            f"Column '{sparkline_y_col}' not found in query results. "
             f"Available columns: {result.columns}"
         )
     if not result.rows:
@@ -159,9 +166,18 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             direction = "neutral"
         config["trend"] = {"direction": direction, "value": trend_val}
 
-    if not mapping.get("autoTrend") and sparkline_col:
-        spark_idx = result.columns.index(sparkline_col)
-        config["sparkline"] = [_to_json_safe(row[spark_idx]) for row in result.rows]
+    if not mapping.get("autoTrend") and sparkline_y_col:
+        sort_col = mapping.get("sparklineSortColumn")
+        sort_dir = mapping.get("sparklineSortDirection", "asc")
+        rows = result.rows
+        if sort_col and sort_col in result.columns:
+            sort_idx = result.columns.index(sort_col)
+            rows = sorted(rows, key=lambda r: (r[sort_idx] is None, r[sort_idx]), reverse=(sort_dir == "desc"))
+        spark_y_idx = result.columns.index(sparkline_y_col)
+        config["sparkline"] = [_to_json_safe(row[spark_y_idx]) for row in rows]
+        if sparkline_x_col:
+            spark_x_idx = result.columns.index(sparkline_x_col)
+            config["sparklineLabels"] = [str(_to_json_safe(row[spark_x_idx])) for row in rows]
 
     return config
 

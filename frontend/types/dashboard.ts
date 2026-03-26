@@ -26,6 +26,7 @@ export interface KpiWidgetConfig {
     period?: string
   }
   sparkline?: number[]
+  sparklineLabels?: string[]
 }
 
 // Chart widget — alias for existing ChartConfig (zero migration cost)
@@ -89,7 +90,10 @@ export interface KpiDataSourceMapping {
   periodLabel?: string          // display label e.g. "vs last month"
   // Legacy: pre-computed trend (kept for backward compat)
   trendValueColumn?: string
-  sparklineColumn?: string
+  sparklineXColumn?: string
+  sparklineYColumn?: string
+  sparklineSortColumn?: string
+  sparklineSortDirection?: 'asc' | 'desc'
 }
 
 export interface TableDataSourceMapping {

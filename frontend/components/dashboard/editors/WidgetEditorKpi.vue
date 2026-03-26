@@ -211,52 +211,63 @@
           </p>
         </div>
 
-        <!-- Pre-computed suggestion (when data source with sparklineColumn) -->
-        <div v-else-if="dataSource && kpiMapping?.sparklineColumn" class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 space-y-1">
-          <div class="flex items-center justify-between">
-            <p class="text-[11px] text-indigo-600">
-              Using column <code class="bg-indigo-100 px-1 rounded text-[10px]">{{ kpiMapping.sparklineColumn }}</code>
-            </p>
-            <button
-              v-if="editMode"
-              class="text-[10px] text-indigo-400 hover:text-indigo-600 transition-colors"
-              @click="emit('update:mapping', { sparklineColumn: undefined })"
-            >Change</button>
+        <!-- X/Y axis column selectors (when data source exists and not autoTrend) -->
+        <template v-else-if="dataSource">
+          <div v-if="sourceColumns && sourceColumns.length > 0" class="space-y-2">
+            <div class="space-y-1">
+              <label class="text-xs text-gray-600">X Axis (labels)</label>
+              <select
+                :value="kpiMapping?.sparklineXColumn || ''"
+                :disabled="!editMode"
+                class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+                @change="editMode && emit('update:mapping', { sparklineXColumn: ($event.target as HTMLSelectElement).value || undefined })"
+              >
+                <option value="">None</option>
+                <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
+              </select>
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs text-gray-600">Y Axis (values)</label>
+              <select
+                :value="kpiMapping?.sparklineYColumn || ''"
+                :disabled="!editMode"
+                class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+                @change="editMode && emit('update:mapping', { sparklineYColumn: ($event.target as HTMLSelectElement).value || undefined })"
+              >
+                <option value="" disabled>Select column...</option>
+                <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
+              </select>
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs text-gray-600">Sort by</label>
+              <div class="flex">
+                <select
+                  :value="kpiMapping?.sparklineSortDirection ?? 'asc'"
+                  :disabled="!editMode"
+                  class="rounded-l-lg rounded-r-none border border-r-0 border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+                  @change="editMode && emit('update:mapping', { sparklineSortDirection: ($event.target as HTMLSelectElement).value })"
+                >
+                  <option value="asc">ASC</option>
+                  <option value="desc">DESC</option>
+                </select>
+                <select
+                  :value="kpiMapping?.sparklineSortColumn || ''"
+                  :disabled="!editMode"
+                  class="flex-1 min-w-0 rounded-r-lg rounded-l-none border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+                  @change="editMode && emit('update:mapping', { sparklineSortColumn: ($event.target as HTMLSelectElement).value || undefined })"
+                >
+                  <option value="">None (query order)</option>
+                  <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <template v-if="sourceColumns && sourceColumns.length > 1">
-            <div class="flex flex-wrap gap-1 mt-1">
-              <button
-                v-for="col in sourceColumns.filter(c => c !== kpiMapping?.sparklineColumn)"
-                :key="col"
-                :disabled="!editMode"
-                class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-mono hover:bg-indigo-200 hover:text-indigo-900 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
-                @click="editMode && setSparklineColumn(col)"
-              >{{ col }}</button>
-            </div>
-          </template>
-        </div>
-
-        <!-- Suggestion when data source exists but no sparkline column configured -->
-        <div v-else-if="dataSource" class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 space-y-1">
-          <p class="text-[11px] text-indigo-600">
-            No sparkline column configured yet.
-          </p>
-          <template v-if="sourceColumns && sourceColumns.length > 0">
-            <p class="text-[10px] text-indigo-500">Pick a column for sparkline data:</p>
-            <div class="flex flex-wrap gap-1 mt-1">
-              <button
-                v-for="col in sourceColumns"
-                :key="col"
-                :disabled="!editMode"
-                class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-mono hover:bg-indigo-200 hover:text-indigo-900 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
-                @click="editMode && setSparklineColumn(col)"
-              >{{ col }}</button>
-            </div>
-          </template>
-          <p v-else class="text-[10px] text-indigo-400">
-            Run a test query in the Data Source tab to discover available columns.
-          </p>
-        </div>
+          <div v-else class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2">
+            <p class="text-[10px] text-indigo-400">
+              Run a test query in the Data Source tab to discover available columns.
+            </p>
+          </div>
+        </template>
 
         <!-- Manual input (no data source — static KPI) -->
         <div v-if="!dataSource" class="space-y-1.5">
@@ -372,7 +383,7 @@ function buildConfig(): WidgetConfig {
   // Preserve backend-populated data when data source columns are configured
   const existingConfig = kpiConfig()
   const hasDataSourceTrend = isAutoTrend.value || !!kpiMapping.value?.trendValueColumn
-  const hasDataSourceSparkline = isAutoTrend.value || !!kpiMapping.value?.sparklineColumn
+  const hasDataSourceSparkline = isAutoTrend.value || !!kpiMapping.value?.sparklineYColumn
 
   const trend = hasTrend.value
     ? hasDataSourceTrend
@@ -419,9 +430,6 @@ function toggleSparkline() {
   hasSparkline.value = !hasSparkline.value
 }
 
-function setSparklineColumn(col: string) {
-  emit('update:mapping', { sparklineColumn: col })
-}
 
 function computeAggregatedValue(
   rows: any[][],

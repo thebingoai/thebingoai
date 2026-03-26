@@ -84,7 +84,7 @@ function renderSparkline() {
   sparklineInstance = new Chart(sparklineRef.value, {
     type: 'line',
     data: {
-      labels: props.config.sparkline.map(() => ''),
+      labels: props.config.sparklineLabels ?? props.config.sparkline.map(() => ''),
       datasets: [{
         data: props.config.sparkline,
         borderColor: color,

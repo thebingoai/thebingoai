@@ -1,16 +1,5 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <!-- Export bar -->
-    <div class="flex items-center justify-end flex-shrink-0 px-4 py-1 border-b border-gray-50">
-      <button
-        class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        @click="exportCsv()"
-      >
-        <Download class="h-3 w-3" />
-        Export CSV
-      </button>
-    </div>
-
     <div class="flex-1 overflow-auto">
       <table class="w-full text-sm">
         <thead class="sticky top-0 bg-white border-b border-gray-100">
@@ -92,7 +81,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Download } from 'lucide-vue-next'
 import type { TableWidgetConfig } from '~/types/dashboard'
 
 const props = defineProps<{
@@ -200,4 +188,6 @@ function escapeCsvField(str: string): string {
   }
   return str
 }
+
+defineExpose({ exportCsv })
 </script>

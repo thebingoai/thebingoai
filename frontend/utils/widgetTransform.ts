@@ -38,7 +38,8 @@ function transformChart(result: SqliteQueryResult, mapping: Record<string, any>)
 function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): Record<string, any> {
   const valueCol = mapping.valueColumn as string
   const trendCol = mapping.trendValueColumn as string | undefined
-  const sparklineCol = mapping.sparklineColumn as string | undefined
+  const sparklineXCol = mapping.sparklineXColumn as string | undefined
+  const sparklineYCol = mapping.sparklineYColumn as string | undefined
 
   const valueIdx = result.columns.indexOf(valueCol)
   if (valueIdx === -1) throw new Error(`Column '${valueCol}' not found in query results`)
@@ -83,10 +84,32 @@ function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): 
     }
   }
 
-  if (!autoTrend && sparklineCol) {
-    const sparkIdx = result.columns.indexOf(sparklineCol)
-    if (sparkIdx !== -1) {
-      config.sparkline = result.rows.map(row => toJsonSafe(row[sparkIdx]))
+  if (!autoTrend && sparklineYCol) {
+    const sortCol = mapping.sparklineSortColumn as string | undefined
+    const sortDir = (mapping.sparklineSortDirection as string) ?? 'asc'
+    let rows = result.rows
+    if (sortCol) {
+      const sortIdx = result.columns.indexOf(sortCol)
+      if (sortIdx !== -1) {
+        const mul = sortDir === 'desc' ? -1 : 1
+        rows = [...rows].sort((a, b) => {
+          const va = a[sortIdx], vb = b[sortIdx]
+          if (va == null && vb == null) return 0
+          if (va == null) return -mul
+          if (vb == null) return mul
+          return va < vb ? -mul : va > vb ? mul : 0
+        })
+      }
+    }
+    const sparkYIdx = result.columns.indexOf(sparklineYCol)
+    if (sparkYIdx !== -1) {
+      config.sparkline = rows.map(row => toJsonSafe(row[sparkYIdx]))
+    }
+    if (sparklineXCol) {
+      const sparkXIdx = result.columns.indexOf(sparklineXCol)
+      if (sparkXIdx !== -1) {
+        config.sparklineLabels = rows.map(row => String(toJsonSafe(row[sparkXIdx])))
+      }
     }
   }
 
