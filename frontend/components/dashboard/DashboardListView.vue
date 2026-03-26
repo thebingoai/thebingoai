@@ -6,6 +6,7 @@
         :key="item.id"
         :dashboard="item"
         @click="emit('open', item.id)"
+        @duplicate="emit('duplicate', item.id)"
       />
     </div>
     <div v-else class="flex flex-1 flex-col items-center justify-center min-h-[400px]">
@@ -25,6 +26,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  open: [id: string]
+  open: [id: number]
+  duplicate: [id: number]
 }>()
 </script>

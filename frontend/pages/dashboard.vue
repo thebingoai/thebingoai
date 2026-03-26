@@ -16,6 +16,7 @@
             v-else
             :items="dashboardListItems"
             @open="store.openDashboard"
+            @duplicate="handleDuplicate"
           />
         </div>
       </template>
@@ -191,9 +192,32 @@ function openConfigEditor(widgetId: string) {
   configEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null
 }
 
-const dashboardListItems = computed(() =>
-  store.dashboards.map(toDashboardListItem),
-)
+async function handleDuplicate(id: number) {
+  try {
+    await store.duplicateDashboard(id)
+    toast.success('Dashboard duplicated')
+  } catch {
+    toast.error('Failed to duplicate dashboard')
+  }
+}
+
+const dashboardListItems = computed(() => {
+  let filtered = store.dashboards
+
+  if (activeTab.value === 'recent') {
+    filtered = [...filtered]
+      .sort((a, b) => {
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+        return bTime - aTime
+      })
+      .slice(0, 10)
+  } else if (activeTab.value === 'live') {
+    filtered = filtered.filter(d => d.schedule_active === true)
+  }
+
+  return filtered.map(toDashboardListItem)
+})
 
 const tabs = [
   { id: 'all', label: 'All', icon: LayoutGrid },

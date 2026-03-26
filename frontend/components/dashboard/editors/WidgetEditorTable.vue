@@ -83,6 +83,24 @@
               </button>
             </div>
 
+            <div class="flex items-center gap-1.5 mt-4">
+              <span class="text-xs text-gray-600">Filterable</span>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="!!col.filterable"
+                :disabled="!editMode"
+                class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="col.filterable ? 'bg-indigo-600' : 'bg-gray-200'"
+                @click="editMode && (col.filterable = !col.filterable, emitUpdate())"
+              >
+                <span
+                  class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+                  :class="col.filterable ? 'translate-x-3 ml-0.5' : 'translate-x-0 ml-0.5'"
+                />
+              </button>
+            </div>
+
             <button
               v-if="editMode"
               class="mt-4 flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
@@ -120,6 +138,20 @@
           />
         </button>
       </div>
+      <div v-if="localPagination" class="flex items-center justify-between py-1">
+        <span class="text-sm text-gray-700">Rows per page</span>
+        <select
+          v-model.number="localRowsPerPage"
+          :disabled="!editMode"
+          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
+          @change="emitUpdate()"
+        >
+          <option :value="10">10</option>
+          <option :value="25">25</option>
+          <option :value="50">50</option>
+          <option :value="100">100</option>
+        </select>
+      </div>
     </div>
 
     <!-- Data note -->
@@ -130,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import type { WidgetConfig, TableWidgetConfig, TableColumn } from '~/types/dashboard'
 
@@ -149,6 +181,14 @@ const localColumns = ref<TableColumn[]>(
   JSON.parse(JSON.stringify(tableConfig.value.columns)),
 )
 const localPagination = ref(tableConfig.value.pagination ?? false)
+const localRowsPerPage = ref(tableConfig.value.rowsPerPage ?? 25)
+
+// Resync local state when the parent switches to a different widget
+watch(() => props.modelValue, () => {
+  localColumns.value = JSON.parse(JSON.stringify(tableConfig.value.columns))
+  localPagination.value = tableConfig.value.pagination ?? false
+  localRowsPerPage.value = tableConfig.value.rowsPerPage ?? 25
+})
 
 function emitUpdate() {
   emit('update:modelValue', {
@@ -157,6 +197,7 @@ function emitUpdate() {
       columns: localColumns.value,
       rows: tableConfig.value.rows,
       pagination: localPagination.value || undefined,
+      rowsPerPage: localPagination.value ? localRowsPerPage.value : undefined,
     },
   })
 }

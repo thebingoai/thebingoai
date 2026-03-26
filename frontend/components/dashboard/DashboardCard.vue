@@ -18,20 +18,29 @@
         </span>
       </div>
 
-      <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
-        <component
-          :is="icon"
-          v-for="(icon, i) in widgetTypeIcons"
-          :key="i"
-          class="h-3.5 w-3.5 text-gray-300"
-        />
+      <div class="flex items-center justify-between">
+        <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
+          <component
+            :is="icon"
+            v-for="(icon, i) in widgetTypeIcons"
+            :key="i"
+            class="h-3.5 w-3.5 text-gray-300"
+          />
+        </div>
+        <button
+          class="flex h-6 w-6 items-center justify-center rounded-lg text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
+          title="Duplicate dashboard"
+          @click.stop="emit('duplicate')"
+        >
+          <Copy class="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { BarChart3, LineChart, TrendingUp, Table2, FileText, SlidersHorizontal } from 'lucide-vue-next'
+import { BarChart3, LineChart, TrendingUp, Table2, FileText, SlidersHorizontal, Copy } from 'lucide-vue-next'
 import type { DashboardListItem, WidgetType } from '~/types/dashboard'
 
 const props = defineProps<{
@@ -40,6 +49,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   click: []
+  duplicate: []
 }>()
 
 const widgetIconMap: Record<WidgetType, any> = {

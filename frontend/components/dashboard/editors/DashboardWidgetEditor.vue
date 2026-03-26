@@ -194,6 +194,7 @@ const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> 
   kpi: defineAsyncComponent(() => import('./WidgetEditorKpi.vue')),
   table: defineAsyncComponent(() => import('./WidgetEditorTable.vue')),
   chart: defineAsyncComponent(() => import('./WidgetEditorChart.vue')),
+  filter: defineAsyncComponent(() => import('./WidgetEditorFilter.vue')),
 }
 </script>
 

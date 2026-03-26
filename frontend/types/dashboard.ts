@@ -36,6 +36,7 @@ export interface TableColumn {
   key: string
   label: string
   sortable?: boolean
+  filterable?: boolean
   format?: 'number' | 'currency' | 'percent' | 'date' | 'text'
 }
 
@@ -43,6 +44,7 @@ export interface TableWidgetConfig {
   columns: TableColumn[]
   rows: Record<string, any>[]
   pagination?: boolean
+  rowsPerPage?: number
 }
 
 // Text/markdown widget
@@ -62,6 +64,7 @@ export interface FilterControl {
   label: string
   key: string
   column?: string                    // real DB column name (used for SQL filtering)
+  multiple?: boolean                 // allow multi-select (dropdown only)
   options?: string[]                 // static fallback options
   optionsSource?: FilterOptionsSource // dynamic SQL-based options
 }

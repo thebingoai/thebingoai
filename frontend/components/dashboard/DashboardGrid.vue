@@ -14,6 +14,7 @@
         :widget="widget"
         :edit-mode="editMode"
         @remove="onRemove"
+        @duplicate="onDuplicate"
         @open-sql-editor="(id, err) => emit('open-sql-editor', id, err)"
         @edit-config="emit('edit-config', $event)"
       />
@@ -44,5 +45,9 @@ const { contentRefs, renderedWidgets } = useDashboardGrid(containerRef, widgetsR
 
 function onRemove(id: string) {
   store.removeWidget(id)
+}
+
+function onDuplicate(id: string) {
+  store.duplicateWidget(id)
 }
 </script>

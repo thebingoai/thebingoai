@@ -30,6 +30,14 @@
         >
           <Settings class="h-3 w-3" />
         </button>
+        <!-- Duplicate button -->
+        <button
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
+          title="Duplicate widget"
+          @click="emit('duplicate', widget.id)"
+        >
+          <Copy class="h-3 w-3" />
+        </button>
         <!-- Remove button -->
         <button
           class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
@@ -126,7 +134,7 @@
 
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
-import { GripVertical, X, RefreshCw, Code, Settings } from 'lucide-vue-next'
+import { GripVertical, X, RefreshCw, Code, Settings, Copy } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useWidgetData } from '~/composables/useWidgetData'
 
@@ -137,6 +145,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   remove: [id: string]
+  duplicate: [id: string]
   'open-sql-editor': [id: string, error?: string]
   'edit-config': [id: string]
 }>()

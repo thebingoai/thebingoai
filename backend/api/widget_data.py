@@ -47,11 +47,20 @@ def inject_filters(sql: str, filters: List[FilterParam]) -> Tuple[str, dict]:
     }
 
     for i, f in enumerate(filters):
-        param_key = f'_f{i}'
         col = f'"{f.column}"'
-        op = op_map[f.op]
-        conditions.append(f'{col} {op} %({param_key})s')
-        params[param_key] = f.value
+        if f.op == 'in':
+            values = f.value if isinstance(f.value, list) else [f.value]
+            placeholders = []
+            for j, v in enumerate(values):
+                pk = f'_f{i}_{j}'
+                placeholders.append(f'%({pk})s')
+                params[pk] = v
+            conditions.append(f'{col} IN ({", ".join(placeholders)})')
+        else:
+            param_key = f'_f{i}'
+            op = op_map[f.op]
+            conditions.append(f'{col} {op} %({param_key})s')
+            params[param_key] = f.value
 
     condition_clause = ' AND '.join(conditions)
 

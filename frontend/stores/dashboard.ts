@@ -5,7 +5,7 @@ import { useApi } from '~/composables/useApi'
 
 export interface ActiveFilter {
   column: string
-  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'ilike'
+  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'ilike' | 'in'
   value: any
 }
 
@@ -66,7 +66,11 @@ export const useDashboardStore = defineStore('dashboard', {
         if (!control.column) continue
 
         if (control.type === 'dropdown') {
-          result.push({ column: control.column, op: 'eq', value })
+          if (Array.isArray(value) && value.length > 0) {
+            result.push({ column: control.column, op: 'in', value })
+          } else if (typeof value === 'string' && value) {
+            result.push({ column: control.column, op: 'eq', value })
+          }
         } else if (control.type === 'search') {
           result.push({ column: control.column, op: 'ilike', value: `%${value}%` })
         } else if (control.type === 'date_range') {
@@ -156,6 +160,25 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
+    async duplicateDashboard(id: number) {
+      const source = this.dashboards.find(d => d.id === id)
+      if (!source) return
+      const api = useApi()
+      const data = await api.dashboards.create({
+        title: `${source.title} (Copy)`,
+        description: source.description,
+        widgets: JSON.parse(JSON.stringify(source.widgets)),
+      }) as any
+      const dashboard: Dashboard = {
+        ...data,
+        widgets: (data.widgets ?? []).map(normalizeWidget),
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      }
+      this.dashboards.push(dashboard)
+      return dashboard
+    },
+
     async deleteDashboard(id: number) {
       const api = useApi()
       await api.dashboards.delete(id)
@@ -167,19 +190,39 @@ export const useDashboardStore = defineStore('dashboard', {
       }
     },
 
-    openDashboard(id: number) {
+    async openDashboard(id: number) {
       this.currentDashboardId = id
       this.editMode = false
       this.dirty = false
-      this.filterValues = {}
+      // Restore persisted filters from localStorage
+      try {
+        const saved = localStorage.getItem(`bingo:dashboard:${id}:filters`)
+        this.filterValues = saved ? JSON.parse(saved) : {}
+      } catch {
+        this.filterValues = {}
+      }
+      // Ensure full dashboard data is loaded, then auto-refresh
+      await this.fetchDashboard(id)
+      this.refreshAllWidgets()
     },
 
     setFilterValue(key: string, value: any) {
       this.filterValues = { ...this.filterValues, [key]: value }
+      if (this.currentDashboardId) {
+        try {
+          localStorage.setItem(
+            `bingo:dashboard:${this.currentDashboardId}:filters`,
+            JSON.stringify(this.filterValues),
+          )
+        } catch { /* quota exceeded — ignore */ }
+      }
     },
 
     clearFilters() {
       this.filterValues = {}
+      if (this.currentDashboardId) {
+        localStorage.removeItem(`bingo:dashboard:${this.currentDashboardId}:filters`)
+      }
     },
 
     closeDashboard() {
@@ -222,6 +265,18 @@ export const useDashboardStore = defineStore('dashboard', {
       const dashboard = this.currentDashboard
       if (!dashboard) return
       dashboard.widgets = dashboard.widgets.filter(w => w.id !== widgetId)
+      this.dirty = true
+    },
+
+    duplicateWidget(widgetId: string) {
+      const dashboard = this.currentDashboard
+      if (!dashboard) return
+      const source = dashboard.widgets.find(w => w.id === widgetId)
+      if (!source) return
+      const clone: DashboardWidget = JSON.parse(JSON.stringify(source))
+      clone.id = `widget-${Date.now()}`
+      clone.position = { ...clone.position, y: clone.position.y + clone.position.h }
+      dashboard.widgets.push(clone)
       this.dirty = true
     },
 
