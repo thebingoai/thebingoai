@@ -118,29 +118,18 @@ async def refresh_widget(
 
         result = connector.execute_query(sql, params=params)
 
-        # Apply row limit
-        truncated = result.row_count > request.limit
-        if truncated:
-            from backend.connectors.base import QueryResult
-            result = QueryResult(
-                columns=result.columns,
-                rows=result.rows[:request.limit],
-                row_count=result.row_count,
-                execution_time_ms=result.execution_time_ms,
-            )
-
         config = transform_widget_data(result, request.mapping)
 
         return WidgetRefreshResponse(
             config=config,
             execution_time_ms=result.execution_time_ms,
             row_count=result.row_count,
-            truncated=truncated,
+            truncated=False,
             refreshed_at=datetime.now(timezone.utc).isoformat(),
             source_columns=result.columns,
             source_rows=[
                 [_to_json_safe(v) for v in row]
-                for row in result.rows[:10]
+                for row in result.rows
             ],
         )
 

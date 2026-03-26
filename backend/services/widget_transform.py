@@ -97,8 +97,30 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
         raise ValueError("Query returned no rows — cannot build KPI widget")
 
     value_idx = result.columns.index(value_col)
-    first_row = result.rows[0]
-    value = _to_json_safe(first_row[value_idx])
+
+    # Aggregate value across all rows
+    aggregation = mapping.get("aggregation", "first")
+    all_numeric = [
+        v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
+        if isinstance(v, (int, float))
+    ]
+
+    if not all_numeric:
+        value = _to_json_safe(result.rows[0][value_idx])
+    elif aggregation == "sum":
+        value = sum(all_numeric)
+    elif aggregation == "avg":
+        value = round(sum(all_numeric) / len(all_numeric), 2)
+    elif aggregation == "count":
+        value = len(all_numeric)
+    elif aggregation == "min":
+        value = min(all_numeric)
+    elif aggregation == "max":
+        value = max(all_numeric)
+    elif aggregation == "last":
+        value = all_numeric[-1]
+    else:  # "first" or unrecognized
+        value = all_numeric[0]
 
     config: Dict[str, Any] = {"value": value}
 

@@ -81,7 +81,7 @@
           v-if="editorComponent"
           :model-value="currentConfig"
           :edit-mode="editMode"
-          v-bind="props.widget.widget.type === 'kpi' ? { dataSource: props.widget.dataSource, sourceColumns: sourceColumns } : {}"
+          v-bind="props.widget.widget.type === 'kpi' ? { dataSource: props.widget.dataSource, sourceColumns, sourceRows: previewRows } : {}"
           class="h-full"
           @update:model-value="onConfigUpdate"
           @update:mapping="onMappingUpdate"
@@ -346,7 +346,6 @@ async function testQuery() {
       connection_id: ds.connectionId,
       sql: localSql.value,
       mapping: ds.mapping as any,
-      limit: 10,
     }) as { config: any; source_columns?: string[]; source_rows?: any[][] }
 
     sourceColumns.value = response.source_columns ?? []
@@ -420,9 +419,9 @@ onMounted(async () => {
           connection_id: ds.connectionId,
           sql: ds.sql,
           mapping: ds.mapping as any,
-          limit: 1,
-        }) as { source_columns?: string[] }
+        }) as { source_columns?: string[]; source_rows?: any[][] }
         sourceColumns.value = response.source_columns ?? []
+        previewRows.value = response.source_rows ?? []
       } catch {
         // silently ignore — columns will just be empty
       }

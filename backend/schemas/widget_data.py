@@ -12,7 +12,6 @@ class WidgetRefreshRequest(BaseModel):
     connection_id: int
     sql: str = Field(..., min_length=1, max_length=10000)
     mapping: Dict[str, Any]
-    limit: int = Field(default=100, ge=1, le=1000)
     filters: Optional[List[FilterParam]] = None
 
 

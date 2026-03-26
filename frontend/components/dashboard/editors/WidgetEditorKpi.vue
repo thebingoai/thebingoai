@@ -17,17 +17,51 @@
         />
       </div>
 
-      <div class="space-y-1.5">
+      <!-- Value: column + aggregation selectors when data source exists -->
+      <template v-if="dataSource && sourceColumns?.length">
+        <div class="space-y-1.5">
+          <label class="text-xs text-gray-600">Value Column</label>
+          <select
+            :value="kpiMapping?.valueColumn || ''"
+            :disabled="!editMode"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            @change="onValueColumnChange($event)"
+          >
+            <option value="" disabled>Select column...</option>
+            <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
+          </select>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs text-gray-600">Aggregation</label>
+          <select
+            :value="kpiMapping?.aggregation ?? 'first'"
+            :disabled="!editMode"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            @change="onAggregationChange($event)"
+          >
+            <option value="first">First Row</option>
+            <option value="last">Last Row</option>
+            <option value="sum">Sum</option>
+            <option value="avg">Average</option>
+            <option value="count">Count</option>
+            <option value="min">Minimum</option>
+            <option value="max">Maximum</option>
+          </select>
+        </div>
+      </template>
+
+      <!-- Value: manual input when no data source -->
+      <div v-else class="space-y-1.5">
         <label class="text-xs text-gray-600">Value</label>
         <input
           v-model="localValue"
           type="text"
           placeholder="e.g. 42000"
           class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
-          :readonly="!editMode || !!dataSource"
-          :class="(!editMode || !!dataSource) ? 'cursor-default bg-gray-50' : ''"
+          :readonly="!editMode"
+          :class="!editMode ? 'cursor-default bg-gray-50' : ''"
         />
-        <p v-if="dataSource" class="text-[10px] text-gray-400">Populated from data source</p>
       </div>
 
       <div class="flex gap-2">
@@ -254,6 +288,7 @@ const props = defineProps<{
   editMode: boolean
   dataSource?: WidgetDataSource
   sourceColumns?: string[]
+  sourceRows?: any[][]
 }>()
 
 const emit = defineEmits<{
@@ -298,6 +333,18 @@ const effectivePeriod = computed(() => {
 
 // Flag to prevent resync from reverting our own emits
 let selfEmit = false
+
+// Recompute aggregated value when source rows arrive or mapping changes
+watch(
+  [() => props.sourceRows, () => kpiMapping.value?.aggregation, () => kpiMapping.value?.valueColumn],
+  () => {
+    const agg = kpiMapping.value?.aggregation
+    const col = kpiMapping.value?.valueColumn
+    if (agg && agg !== 'first' && col && props.sourceRows?.length && props.sourceColumns?.length) {
+      recomputeValue(col, agg)
+    }
+  },
+)
 
 // Resync local state when the parent switches widget or data source changes
 watch([() => props.modelValue, () => props.dataSource], () => {
@@ -347,7 +394,9 @@ function buildConfig(): WidgetConfig {
     type: 'kpi',
     config: {
       label: localLabel.value,
-      value: dataSource ? existingConfig.value : parsedValue,
+      value: props.dataSource
+        ? (kpiMapping.value?.aggregation && kpiMapping.value.aggregation !== 'first' ? parsedValue : existingConfig.value)
+        : parsedValue,
       prefix: localPrefix.value || undefined,
       suffix: localSuffix.value || undefined,
       trend,
@@ -376,5 +425,48 @@ function toggleSparkline() {
 
 function setSparklineColumn(col: string) {
   emit('update:mapping', { sparklineColumn: col })
+}
+
+function computeAggregatedValue(
+  rows: any[][],
+  columns: string[],
+  valueColumn: string,
+  aggregation: string,
+): any {
+  const colIdx = columns.indexOf(valueColumn)
+  if (colIdx === -1 || !rows.length) return null
+
+  const nums = rows.map(r => r[colIdx]).filter((v): v is number => typeof v === 'number')
+  if (!nums.length) return rows[0]?.[colIdx] ?? null
+
+  switch (aggregation) {
+    case 'sum': return nums.reduce((a, b) => a + b, 0)
+    case 'avg': return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100
+    case 'count': return nums.length
+    case 'min': return Math.min(...nums)
+    case 'max': return Math.max(...nums)
+    case 'last': return nums[nums.length - 1]
+    default: return nums[0] // 'first'
+  }
+}
+
+function recomputeValue(valueColumn: string, aggregation: string) {
+  if (!props.sourceColumns?.length || !props.sourceRows?.length) return
+  const newValue = computeAggregatedValue(props.sourceRows, props.sourceColumns, valueColumn, aggregation)
+  if (newValue !== null) {
+    localValue.value = String(newValue)
+  }
+}
+
+function onValueColumnChange(event: Event) {
+  const col = (event.target as HTMLSelectElement).value
+  emit('update:mapping', { valueColumn: col })
+  recomputeValue(col, kpiMapping.value?.aggregation ?? 'first')
+}
+
+function onAggregationChange(event: Event) {
+  const agg = (event.target as HTMLSelectElement).value
+  emit('update:mapping', { aggregation: agg })
+  recomputeValue(kpiMapping.value?.valueColumn ?? '', agg)
 }
 </script>
