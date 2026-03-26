@@ -17,27 +17,14 @@
         />
       </div>
 
-      <!-- Value: column + aggregation selectors when data source exists -->
-      <template v-if="dataSource && sourceColumns?.length">
-        <div class="space-y-1.5">
-          <label class="text-xs text-gray-600">Value Column</label>
-          <select
-            :value="kpiMapping?.valueColumn || ''"
-            :disabled="!editMode"
-            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
-            @change="onValueColumnChange($event)"
-          >
-            <option value="" disabled>Select column...</option>
-            <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
-          </select>
-        </div>
-
-        <div class="space-y-1.5">
-          <label class="text-xs text-gray-600">Aggregation</label>
+      <!-- Value: split aggregation + column selector when data source exists -->
+      <div v-if="dataSource && sourceColumns?.length" class="space-y-1.5">
+        <label class="text-xs text-gray-600">Value</label>
+        <div class="flex">
           <select
             :value="kpiMapping?.aggregation ?? 'first'"
             :disabled="!editMode"
-            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            class="rounded-l-lg rounded-r-none border border-r-0 border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
             @change="onAggregationChange($event)"
           >
             <option value="first">First Row</option>
@@ -45,11 +32,20 @@
             <option value="sum">Sum</option>
             <option value="avg">Average</option>
             <option value="count">Count</option>
-            <option value="min">Minimum</option>
-            <option value="max">Maximum</option>
+            <option value="min">Min</option>
+            <option value="max">Max</option>
+          </select>
+          <select
+            :value="kpiMapping?.valueColumn || ''"
+            :disabled="!editMode"
+            class="flex-1 min-w-0 rounded-r-lg rounded-l-none border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            @change="onValueColumnChange($event)"
+          >
+            <option value="" disabled>Select column...</option>
+            <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
           </select>
         </div>
-      </template>
+      </div>
 
       <!-- Value: manual input when no data source -->
       <div v-else class="space-y-1.5">
