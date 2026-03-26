@@ -63,87 +63,68 @@ export const useApi = () => {
         authStore.logout()
       },
       async me() {
-        return $fetch('/api/auth/me', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/auth/me', {})
       }
     },
 
     // Connection endpoints
     connections: {
       async list() {
-        return $fetch('/api/connections', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/connections', {})
       },
       async get(id: string) {
-        return $fetch(`/api/connections/${id}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/connections/${id}`, {})
       },
       async create(data: any) {
-        return $fetch('/api/connections', {
+        return fetchWithRefresh('/api/connections', {
           method: 'POST',
-          headers: getHeaders(),
           body: data
         })
       },
       async update(id: string, data: any) {
-        return $fetch(`/api/connections/${id}`, {
+        return fetchWithRefresh(`/api/connections/${id}`, {
           method: 'PUT',
-          headers: getHeaders(),
           body: data
         })
       },
       async delete(id: string) {
-        return $fetch(`/api/connections/${id}`, {
+        return fetchWithRefresh(`/api/connections/${id}`, {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async test(id: string) {
-        return $fetch(`/api/connections/${id}/test`, {
+        return fetchWithRefresh(`/api/connections/${id}/test`, {
           method: 'POST',
-          headers: getHeaders()
         })
       },
       async refreshSchema(id: string) {
-        return $fetch(`/api/connections/${id}/refresh-schema`, {
+        return fetchWithRefresh(`/api/connections/${id}/refresh-schema`, {
           method: 'POST',
-          headers: getHeaders()
         })
       },
       async getTypes() {
-        return $fetch('/api/connections/types', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/connections/types', {})
       },
       async testUnsaved(data: any) {
-        return $fetch('/api/connections/test-connection', {
+        return fetchWithRefresh('/api/connections/test-connection', {
           method: 'POST',
-          headers: getHeaders(),
           body: data
         })
       },
       async getSchema(id: string) {
-        return $fetch(`/api/connections/${id}/schema`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/connections/${id}/schema`, {})
       },
       async listOrg() {
-        return $fetch('/api/connections/org', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/connections/org', {})
       },
       async executeQuery(connectionId: string, sql: string, limit?: number) {
-        return $fetch(`/api/connections/${connectionId}/query`, {
+        return fetchWithRefresh(`/api/connections/${connectionId}/query`, {
           method: 'POST',
-          headers: getHeaders(),
           body: { sql, limit: limit ?? 100 }
         })
       },
       async uploadDataset(file: File, name?: string) {
-        return new Promise((resolve, reject) => {
+        const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest()
           const formData = new FormData()
           formData.append('file', file)
@@ -159,9 +140,9 @@ export const useApi = () => {
             } else {
               try {
                 const error = JSON.parse(xhr.responseText)
-                reject(new Error(error.detail || 'Upload failed'))
+                reject(Object.assign(new Error(error.detail || 'Upload failed'), { status: xhr.status }))
               } catch (e) {
-                reject(new Error(`Upload failed with status ${xhr.status}`))
+                reject(Object.assign(new Error(`Upload failed with status ${xhr.status}`), { status: xhr.status }))
               }
             }
           })
@@ -171,48 +152,53 @@ export const useApi = () => {
           })
 
           xhr.open('POST', '/api/connections/upload-dataset')
-          if (authStore.token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
           }
           xhr.send(formData)
         })
+
+        try {
+          return await doUpload(authStore.token)
+        } catch (error: any) {
+          if (error?.status === 401) {
+            const refreshed = await authStore.refreshAccessToken()
+            if (refreshed) {
+              return await doUpload(authStore.token)
+            } else {
+              await authStore.logout()
+              await router.push('/login')
+            }
+          }
+          throw error
+        }
       }
     },
 
     // Chat endpoints
     chat: {
       async getConversations() {
-        return $fetch('/api/chat/conversations', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/chat/conversations', {})
       },
       async getMessages(threadId: string) {
-        return $fetch(`/api/chat/conversations/${threadId}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}`, {})
       },
       async deleteConversation(threadId: string) {
-        return $fetch(`/api/chat/conversations/${threadId}`, {
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}`, {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async updateTitle(threadId: string, title: string) {
-        return $fetch(`/api/chat/conversations/${threadId}/title`, {
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}/title`, {
           method: 'PATCH',
-          headers: getHeaders(),
           body: { title }
         })
       },
       async getStreamingStatus(threadId: string) {
-        return $fetch(`/api/chat/conversations/${threadId}/streaming`, {
-          headers: getHeaders()
-        }) as Promise<{ streaming: boolean }>
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}/streaming`, {}) as Promise<{ streaming: boolean }>
       },
       async getMessageSteps(threadId: string, messageId: string) {
-        return $fetch(`/api/chat/conversations/${threadId}/messages/${messageId}/steps`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}/messages/${messageId}/steps`, {})
       },
       async uploadChatFiles(files: File[]) {
         const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
@@ -270,7 +256,7 @@ export const useApi = () => {
     // Upload endpoints
     upload: {
       async uploadFiles(files: File[], namespace?: string, onProgress?: (percent: number) => void) {
-        return new Promise((resolve, reject) => {
+        const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest()
           const formData = new FormData()
 
@@ -295,9 +281,9 @@ export const useApi = () => {
             } else {
               try {
                 const error = JSON.parse(xhr.responseText)
-                reject(new Error(error.detail || 'Upload failed'))
+                reject(Object.assign(new Error(error.detail || 'Upload failed'), { status: xhr.status }))
               } catch (e) {
-                reject(new Error(`Upload failed with status ${xhr.status}`))
+                reject(Object.assign(new Error(`Upload failed with status ${xhr.status}`), { status: xhr.status }))
               }
             }
           })
@@ -307,34 +293,44 @@ export const useApi = () => {
           })
 
           xhr.open('POST', '/api/upload')
-          if (authStore.token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
           }
           xhr.send(formData)
         })
+
+        try {
+          return await doUpload(authStore.token)
+        } catch (error: any) {
+          if (error?.status === 401) {
+            const refreshed = await authStore.refreshAccessToken()
+            if (refreshed) {
+              return await doUpload(authStore.token)
+            } else {
+              await authStore.logout()
+              await router.push('/login')
+            }
+          }
+          throw error
+        }
       }
     },
 
     // Job endpoints
     jobs: {
       async list() {
-        return $fetch('/api/jobs', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/jobs', {})
       },
       async get(jobId: string) {
-        return $fetch(`/api/jobs/${jobId}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/jobs/${jobId}`, {})
       }
     },
 
     // Memory endpoints
     memory: {
       async search(query: string, limit?: number) {
-        return $fetch('/api/memory/search', {
+        return fetchWithRefresh('/api/memory/search', {
           method: 'POST',
-          headers: getHeaders(),
           body: { query, limit }
         })
       },
@@ -343,58 +339,47 @@ export const useApi = () => {
         if (skip) params.append('skip', skip.toString())
         if (limit) params.append('limit', limit.toString())
 
-        return $fetch(`/api/memory?${params.toString()}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/memory?${params.toString()}`, {})
       },
       async deleteAll() {
-        return $fetch('/api/memory', {
+        return fetchWithRefresh('/api/memory', {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async listEntries(skip?: number, limit?: number) {
         const params = new URLSearchParams()
         if (skip !== undefined) params.append('skip', skip.toString())
         if (limit !== undefined) params.append('limit', limit.toString())
-        return $fetch(`/api/memory/entries?${params.toString()}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/memory/entries?${params.toString()}`, {})
       },
       async createEntry(content: string, category?: string) {
-        return $fetch('/api/memory/entries', {
+        return fetchWithRefresh('/api/memory/entries', {
           method: 'POST',
-          headers: getHeaders(),
           body: { content, category }
         })
       },
       async updateEntry(id: string, data: { content?: string; category?: string | null; is_active?: boolean }) {
-        return $fetch(`/api/memory/entries/${id}`, {
+        return fetchWithRefresh(`/api/memory/entries/${id}`, {
           method: 'PUT',
-          headers: getHeaders(),
           body: data
         })
       },
       async deleteEntry(id: string) {
-        return $fetch(`/api/memory/entries/${id}`, {
+        return fetchWithRefresh(`/api/memory/entries/${id}`, {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async getSettings() {
-        return $fetch('/api/memory/settings', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/memory/settings', {})
       },
       async updateSettings(memory_enabled: boolean) {
-        return $fetch('/api/memory/settings', {
+        return fetchWithRefresh('/api/memory/settings', {
           method: 'PUT',
-          headers: getHeaders(),
           body: { memory_enabled }
         })
       },
       async heatmap() {
-        return $fetch('/api/memory/heatmap', { headers: getHeaders() })
+        return fetchWithRefresh('/api/memory/heatmap', {})
       }
     },
 
@@ -402,28 +387,21 @@ export const useApi = () => {
     usage: {
       async getSummary(days?: number) {
         const params = days ? `?days=${days}` : ''
-        return $fetch(`/api/usage/summary${params}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/usage/summary${params}`, {})
       },
     },
 
     // Organization endpoints
     orgs: {
       async get(orgId: string) {
-        return $fetch(`/api/orgs/${orgId}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/orgs/${orgId}`, {})
       },
       async getTeams(orgId: string) {
-        return $fetch(`/api/orgs/${orgId}/teams`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/orgs/${orgId}/teams`, {})
       },
       async createTeam(orgId: string, name: string) {
-        return $fetch(`/api/orgs/${orgId}/teams`, {
+        return fetchWithRefresh(`/api/orgs/${orgId}/teams`, {
           method: 'POST',
-          headers: getHeaders(),
           body: { name }
         })
       }
@@ -432,27 +410,22 @@ export const useApi = () => {
     // Team endpoints
     teams: {
       async getMembers(teamId: string) {
-        return $fetch(`/api/teams/${teamId}/members`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/teams/${teamId}/members`, {})
       },
       async addMember(teamId: string, userId: string, role: string) {
-        return $fetch(`/api/teams/${teamId}/members`, {
+        return fetchWithRefresh(`/api/teams/${teamId}/members`, {
           method: 'POST',
-          headers: getHeaders(),
           body: { user_id: userId, role }
         })
       },
       async removeMember(teamId: string, userId: string) {
-        return $fetch(`/api/teams/${teamId}/members/${userId}`, {
+        return fetchWithRefresh(`/api/teams/${teamId}/members/${userId}`, {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async updateMemberRole(teamId: string, userId: string, role: string) {
-        return $fetch(`/api/teams/${teamId}/members/${userId}`, {
+        return fetchWithRefresh(`/api/teams/${teamId}/members/${userId}`, {
           method: 'PATCH',
-          headers: getHeaders(),
           body: { role }
         })
       }
@@ -461,31 +434,23 @@ export const useApi = () => {
     // Policy endpoints
     policies: {
       async getToolCatalog() {
-        return $fetch('/api/tools/catalog', {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh('/api/tools/catalog', {})
       },
       async getToolPolicy(teamId: string) {
-        return $fetch(`/api/tools/teams/${teamId}/policies/tools`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/tools/teams/${teamId}/policies/tools`, {})
       },
       async setToolPolicy(teamId: string, toolKeys: string[]) {
-        return $fetch(`/api/tools/teams/${teamId}/policies/tools`, {
+        return fetchWithRefresh(`/api/tools/teams/${teamId}/policies/tools`, {
           method: 'PUT',
-          headers: getHeaders(),
           body: { tool_keys: toolKeys }
         })
       },
       async getConnectionPolicy(teamId: string) {
-        return $fetch(`/api/tools/teams/${teamId}/policies/connections`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/tools/teams/${teamId}/policies/connections`, {})
       },
       async setConnectionPolicy(teamId: string, connectionIds: number[]) {
-        return $fetch(`/api/tools/teams/${teamId}/policies/connections`, {
+        return fetchWithRefresh(`/api/tools/teams/${teamId}/policies/connections`, {
           method: 'PUT',
-          headers: getHeaders(),
           body: { connection_ids: connectionIds }
         })
       }
@@ -494,34 +459,31 @@ export const useApi = () => {
     // Skills endpoints
     skills: {
       async list() {
-        return $fetch('/api/skills', { headers: getHeaders() })
+        return fetchWithRefresh('/api/skills', {})
       },
       async get(id: string) {
-        return $fetch(`/api/skills/${id}`, { headers: getHeaders() })
+        return fetchWithRefresh(`/api/skills/${id}`, {})
       },
       async listReferences(skillId: string) {
-        return $fetch(`/api/skills/${skillId}/references`, { headers: getHeaders() })
+        return fetchWithRefresh(`/api/skills/${skillId}/references`, {})
       },
       async toggle(id: string, isActive: boolean) {
-        return $fetch(`/api/skills/${id}`, {
+        return fetchWithRefresh(`/api/skills/${id}`, {
           method: 'PATCH',
-          headers: getHeaders(),
           body: { is_active: isActive }
         })
       },
       async remove(id: string) {
-        return $fetch(`/api/skills/${id}`, {
+        return fetchWithRefresh(`/api/skills/${id}`, {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async listSuggestions() {
-        return $fetch('/api/skills/suggestions', { headers: getHeaders() })
+        return fetchWithRefresh('/api/skills/suggestions', {})
       },
       async respondToSuggestion(id: string, action: 'accept' | 'dismiss') {
-        return $fetch(`/api/skills/suggestions/${id}`, {
+        return fetchWithRefresh(`/api/skills/suggestions/${id}`, {
           method: 'PATCH',
-          headers: getHeaders(),
           body: { action }
         })
       }
@@ -619,47 +581,40 @@ export const useApi = () => {
     // Heartbeat Jobs endpoints
     heartbeatJobs: {
       async list() {
-        return $fetch('/api/heartbeat-jobs', { headers: getHeaders() })
+        return fetchWithRefresh('/api/heartbeat-jobs', {})
       },
       async create(data: any) {
-        return $fetch('/api/heartbeat-jobs', {
+        return fetchWithRefresh('/api/heartbeat-jobs', {
           method: 'POST',
-          headers: getHeaders(),
           body: data
         })
       },
       async get(id: string) {
-        return $fetch(`/api/heartbeat-jobs/${id}`, { headers: getHeaders() })
+        return fetchWithRefresh(`/api/heartbeat-jobs/${id}`, {})
       },
       async update(id: string, data: any) {
-        return $fetch(`/api/heartbeat-jobs/${id}`, {
+        return fetchWithRefresh(`/api/heartbeat-jobs/${id}`, {
           method: 'PUT',
-          headers: getHeaders(),
           body: data
         })
       },
       async toggle(id: string, isActive: boolean) {
-        return $fetch(`/api/heartbeat-jobs/${id}`, {
+        return fetchWithRefresh(`/api/heartbeat-jobs/${id}`, {
           method: 'PATCH',
-          headers: getHeaders(),
           body: { is_active: isActive }
         })
       },
       async remove(id: string) {
-        return $fetch(`/api/heartbeat-jobs/${id}`, {
+        return fetchWithRefresh(`/api/heartbeat-jobs/${id}`, {
           method: 'DELETE',
-          headers: getHeaders()
         })
       },
       async listRuns(id: string, limit = 20, offset = 0) {
-        return $fetch(`/api/heartbeat-jobs/${id}/runs?limit=${limit}&offset=${offset}`, {
-          headers: getHeaders()
-        })
+        return fetchWithRefresh(`/api/heartbeat-jobs/${id}/runs?limit=${limit}&offset=${offset}`, {})
       },
       async triggerRun(id: string) {
-        return $fetch(`/api/heartbeat-jobs/${id}/run`, {
+        return fetchWithRefresh(`/api/heartbeat-jobs/${id}/run`, {
           method: 'POST',
-          headers: getHeaders()
         })
       }
     }

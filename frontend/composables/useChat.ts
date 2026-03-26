@@ -63,6 +63,24 @@ export const useChat = () => {
       )
     }
 
+    // Ensure WebSocket is connected (refresh token + reconnect if needed)
+    if (!ws.isConnected.value) {
+      try {
+        const authStore = useAuthStore()
+        const ok = await authStore.refreshAccessToken()
+        if (!ok) throw new Error('Session expired')
+        ws.connect(authStore.token!)
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => { unsub(); reject(new Error('WebSocket reconnect timeout')) }, 10_000)
+          const unsub = ws.on('connected', () => { unsub(); clearTimeout(timeout); resolve() })
+        })
+      } catch (err: any) {
+        chatStore.updateLastMessage({ content: `Error: ${err.message}. Please log in again.` })
+        chatStore.isStreaming = false
+        return
+      }
+    }
+
     return new Promise<void>((resolve) => {
       const cleanup = () => {
         unsubs.forEach(fn => fn())

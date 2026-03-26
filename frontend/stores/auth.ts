@@ -337,6 +337,21 @@ export const useAuthStore = defineStore('auth', {
         this.user = data
       } catch (error: any) {
         if (error?.statusCode === 401 || error?.status === 401) {
+          // Try refreshing the token before giving up
+          const refreshed = await this.refreshAccessToken()
+          if (refreshed) {
+            try {
+              const data = await $fetch<User>('/api/auth/me', {
+                headers: {
+                  Authorization: `Bearer ${this.token}`,
+                },
+              })
+              this.user = data
+              return
+            } catch {
+              // Retry also failed — fall through to logout
+            }
+          }
           this.logout()
         }
       }

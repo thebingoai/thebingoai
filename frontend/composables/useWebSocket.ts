@@ -112,8 +112,19 @@ export function useWebSocket() {
       _stopKeepalive()
       _emit('disconnected', { code: event.code, reason: event.reason })
 
-      // Reconnect unless it was an auth failure
-      if (event.code !== 4001 && event.code !== 4003 && authStore.isAuthenticated) {
+      // Auth failure — try refreshing token before giving up
+      if (event.code === 4003) {
+        authStore.refreshAccessToken().then(ok => {
+          if (ok) _scheduleReconnect(authStore.token!)
+        })
+        return
+      }
+
+      // No token at all — cannot reconnect
+      if (event.code === 4001) return
+
+      // Normal disconnect — reconnect if still authenticated
+      if (authStore.isAuthenticated) {
         _scheduleReconnect(t)
       }
     }
