@@ -8,7 +8,7 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.models.dashboard import Dashboard
 from backend.schemas.widget_data import FilterParam, WidgetRefreshRequest, WidgetRefreshResponse, BulkRefreshResponse, WidgetSuggestFixRequest, WidgetSuggestFixResponse
-from backend.services.widget_transform import transform_widget_data
+from backend.services.widget_transform import transform_widget_data, _to_json_safe
 import logging
 from typing import List, Optional, Tuple
 
@@ -137,6 +137,11 @@ async def refresh_widget(
             row_count=result.row_count,
             truncated=truncated,
             refreshed_at=datetime.now(timezone.utc).isoformat(),
+            source_columns=result.columns,
+            source_rows=[
+                [_to_json_safe(v) for v in row]
+                for row in result.rows[:10]
+            ],
         )
 
     except ValueError as e:

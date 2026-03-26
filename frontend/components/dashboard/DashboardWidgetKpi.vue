@@ -1,31 +1,35 @@
 <template>
-  <div class="flex h-full flex-col justify-between p-4">
-    <!-- Label -->
-    <div class="text-xs font-medium text-gray-400 uppercase tracking-wide">{{ config.label }}</div>
-
-    <!-- Main value -->
-    <div class="flex items-baseline gap-1 mt-2">
-      <span v-if="config.prefix" class="text-sm font-medium text-gray-500">{{ config.prefix }}</span>
-      <span class="text-2xl font-semibold text-gray-900 tabular-nums">{{ formattedValue }}</span>
-      <span v-if="config.suffix" class="text-sm font-medium text-gray-500">{{ config.suffix }}</span>
-    </div>
-
-    <!-- Trend row -->
-    <div v-if="config.trend" class="flex items-center gap-1.5 mt-1">
-      <component
-        :is="trendIcon"
-        class="h-3.5 w-3.5 flex-shrink-0"
-        :class="trendColor"
-      />
-      <span class="text-xs font-medium tabular-nums" :class="trendColor">
-        {{ config.trend.value }}%
-      </span>
-      <span v-if="config.trend.period" class="text-xs text-gray-400">{{ config.trend.period }}</span>
-    </div>
-
-    <!-- Sparkline -->
-    <div v-if="config.sparkline && config.sparkline.length > 0" class="mt-3 h-8">
+  <div class="relative h-full overflow-hidden">
+    <!-- Sparkline background (behind content) -->
+    <div v-if="config.sparkline && config.sparkline.length > 0"
+         class="absolute inset-0 opacity-30 pointer-events-none">
       <canvas ref="sparklineRef" class="w-full h-full" />
+    </div>
+
+    <!-- Content overlay -->
+    <div class="relative flex h-full flex-col justify-between p-4 z-10">
+      <!-- Label -->
+      <div class="text-xs font-medium text-gray-400 uppercase tracking-wide">{{ config.label }}</div>
+
+      <!-- Main value -->
+      <div class="flex items-baseline gap-1 mt-2">
+        <span v-if="config.prefix" class="text-sm font-medium text-gray-500">{{ config.prefix }}</span>
+        <span class="text-2xl font-semibold text-gray-900 tabular-nums">{{ formattedValue }}</span>
+        <span v-if="config.suffix" class="text-sm font-medium text-gray-500">{{ config.suffix }}</span>
+      </div>
+
+      <!-- Trend row -->
+      <div v-if="config.trend" class="flex items-center gap-1.5 mt-1">
+        <component
+          :is="trendIcon"
+          class="h-3.5 w-3.5 flex-shrink-0"
+          :class="trendColor"
+        />
+        <span class="text-xs font-medium tabular-nums" :class="trendColor">
+          {{ config.trend.value }}%
+        </span>
+        <span v-if="config.trend.period" class="text-xs text-gray-400">{{ config.trend.period }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -69,7 +73,10 @@ const trendColor = computed(() => {
   }
 })
 
-onMounted(() => {
+function renderSparkline() {
+  sparklineInstance?.destroy()
+  sparklineInstance = null
+
   if (!sparklineRef.value || !props.config.sparkline?.length) return
 
   const color = props.config.trend?.direction === 'down' ? '#f43f5e' : '#6366f1'
@@ -81,7 +88,7 @@ onMounted(() => {
       datasets: [{
         data: props.config.sparkline,
         borderColor: color,
-        backgroundColor: `${color}22`,
+        backgroundColor: `${color}40`,
         borderWidth: 1.5,
         fill: true,
         tension: 0.4,
@@ -92,13 +99,20 @@ onMounted(() => {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false }, datalabels: { display: false } },
       scales: {
         x: { display: false },
         y: { display: false },
       },
     },
   })
+}
+
+onMounted(() => renderSparkline())
+
+// Re-render sparkline when data changes (e.g. after refresh)
+watch(() => props.config.sparkline, () => {
+  nextTick(() => renderSparkline())
 })
 
 onBeforeUnmount(() => {

@@ -102,7 +102,31 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
 
     config: Dict[str, Any] = {"value": value}
 
-    if trend_col:
+    # Auto-trend: derive trend + sparkline from multi-row time-series results
+    if mapping.get("autoTrend"):
+        all_values = [
+            v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
+            if isinstance(v, (int, float))
+        ]
+        if all_values:
+            config["sparkline"] = all_values
+            config["value"] = all_values[-1]
+
+        if len(all_values) >= 2:
+            current = all_values[-1]
+            previous = all_values[-2]
+            if previous != 0:
+                trend_pct = round(((current - previous) / abs(previous)) * 100, 2)
+                direction = "up" if trend_pct > 0 else "down" if trend_pct < 0 else "neutral"
+                config["trend"] = {
+                    "direction": direction,
+                    "value": trend_pct,
+                    "period": mapping.get("periodLabel", ""),
+                }
+            else:
+                config["trend"] = {"direction": "neutral", "value": 0, "period": mapping.get("periodLabel", "")}
+        # autoTrend with < 2 rows: no trend emitted
+    elif trend_col:
         trend_idx = result.columns.index(trend_col)
         trend_val = _to_json_safe(first_row[trend_idx])
         if isinstance(trend_val, (int, float)) and trend_val > 0:
@@ -113,7 +137,7 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             direction = "neutral"
         config["trend"] = {"direction": direction, "value": trend_val}
 
-    if sparkline_col:
+    if not mapping.get("autoTrend") and sparkline_col:
         spark_idx = result.columns.index(sparkline_col)
         config["sparkline"] = [_to_json_safe(row[spark_idx]) for row in result.rows]
 

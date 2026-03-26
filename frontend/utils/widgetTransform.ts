@@ -48,7 +48,33 @@ function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): 
   const value = toJsonSafe(firstRow[valueIdx])
   const config: Record<string, any> = { value }
 
-  if (trendCol) {
+  const autoTrend = mapping.autoTrend as boolean | undefined
+  const periodLabel = (mapping.periodLabel as string) ?? ''
+
+  // Auto-trend: derive trend + sparkline from multi-row time-series results
+  if (autoTrend) {
+    const allValues = result.rows
+      .map(row => toJsonSafe(row[valueIdx]))
+      .filter((v): v is number => typeof v === 'number')
+
+    if (allValues.length > 0) {
+      config.sparkline = allValues
+      config.value = allValues[allValues.length - 1]
+    }
+
+    if (allValues.length >= 2) {
+      const current = allValues[allValues.length - 1]
+      const previous = allValues[allValues.length - 2]
+      if (previous !== 0) {
+        const trendPct = Math.round(((current - previous) / Math.abs(previous)) * 10000) / 100
+        const direction = trendPct > 0 ? 'up' : trendPct < 0 ? 'down' : 'neutral'
+        config.trend = { direction, value: trendPct, period: periodLabel }
+      } else {
+        config.trend = { direction: 'neutral', value: 0, period: periodLabel }
+      }
+    }
+    // autoTrend with < 2 numeric values: no trend emitted
+  } else if (trendCol) {
     const trendIdx = result.columns.indexOf(trendCol)
     if (trendIdx !== -1) {
       const trendVal = toJsonSafe(firstRow[trendIdx])
@@ -57,7 +83,7 @@ function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): 
     }
   }
 
-  if (sparklineCol) {
+  if (!autoTrend && sparklineCol) {
     const sparkIdx = result.columns.indexOf(sparklineCol)
     if (sparkIdx !== -1) {
       config.sparkline = result.rows.map(row => toJsonSafe(row[sparkIdx]))

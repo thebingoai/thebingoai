@@ -22,6 +22,8 @@ class WidgetRefreshResponse(BaseModel):
     row_count: int
     truncated: bool = False
     refreshed_at: str
+    source_columns: List[str] = []
+    source_rows: List[List[Any]] = []
 
 
 class BulkRefreshResponse(BaseModel):

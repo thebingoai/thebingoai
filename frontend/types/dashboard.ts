@@ -83,6 +83,10 @@ export interface ChartDataSourceMapping {
 export interface KpiDataSourceMapping {
   type: 'kpi'
   valueColumn: string
+  // Auto-trend: derive trend + sparkline from multi-row time-series results
+  autoTrend?: boolean
+  periodLabel?: string          // display label e.g. "vs last month"
+  // Legacy: pre-computed trend (kept for backward compat)
   trendValueColumn?: string
   sparklineColumn?: string
 }

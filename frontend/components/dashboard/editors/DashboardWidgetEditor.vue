@@ -81,8 +81,10 @@
           v-if="editorComponent"
           :model-value="currentConfig"
           :edit-mode="editMode"
+          v-bind="props.widget.widget.type === 'kpi' ? { dataSource: props.widget.dataSource, sourceColumns: sourceColumns } : {}"
           class="h-full"
           @update:model-value="onConfigUpdate"
+          @update:mapping="onMappingUpdate"
         />
         <div v-else class="flex h-full items-center justify-center p-10 text-sm text-gray-400">
           Configuration editor not yet available for this widget type.
@@ -237,6 +239,7 @@ const previewRows = ref<any[][]>([])
 const previewError = ref<string | null>(null)
 const suggestLoading = ref(false)
 const suggestion = ref<{ suggested_sql: string; explanation: string } | null>(null)
+const sourceColumns = ref<string[]>([])
 
 const isDataWidget = computed(() => DATA_WIDGET_TYPES.has(props.widget.widget.type))
 
@@ -269,12 +272,23 @@ watch(() => props.widget.id, () => {
   previewRows.value = []
   previewError.value = null
   suggestion.value = null
+  sourceColumns.value = []
   activeTab.value = 'configure'
 })
 
 /** Live update: write directly to store so the widget on canvas reflects changes immediately */
 function onConfigUpdate(newConfig: WidgetConfig) {
   store.updateWidgetConfig(props.widget.id, newConfig)
+}
+
+/** Patch the data source mapping (e.g. setting sparklineColumn from the KPI editor) */
+function onMappingUpdate(patch: Record<string, any>) {
+  const ds = props.widget.dataSource
+  if (!ds) return
+  store.setWidgetDataSource(props.widget.id, {
+    ...ds,
+    mapping: { ...ds.mapping, ...patch },
+  })
 }
 
 function saveMeta() {
@@ -333,8 +347,9 @@ async function testQuery() {
       sql: localSql.value,
       mapping: ds.mapping as any,
       limit: 10,
-    }) as { config: any }
+    }) as { config: any; source_columns?: string[]; source_rows?: any[][] }
 
+    sourceColumns.value = response.source_columns ?? []
     const config = response.config
     if (ds.mapping.type === 'chart' && config.data) {
       previewColumns.value = ['Label', ...config.data.datasets.map((d: any) => d.label)]
@@ -343,8 +358,9 @@ async function testQuery() {
         ...config.data.datasets.map((d: any) => d.data[i]),
       ])
     } else if (ds.mapping.type === 'kpi') {
-      previewColumns.value = Object.keys(config)
-      previewRows.value = [Object.values(config)]
+      // Use raw SQL columns and rows so the user sees all available data
+      previewColumns.value = response.source_columns ?? Object.keys(config)
+      previewRows.value = response.source_rows ?? [Object.values(config)]
     } else if (ds.mapping.type === 'table' && config.columns) {
       previewColumns.value = config.columns.map((c: any) => c.label)
       previewRows.value = config.rows.slice(0, 10).map((row: any) =>
@@ -394,6 +410,22 @@ onMounted(async () => {
       connections.value = data
     } catch {
       // silently ignore — connections will just be empty
+    }
+
+    // Auto-fetch source columns if data source exists
+    const ds = props.widget.dataSource
+    if (ds?.sql) {
+      try {
+        const response = await api.dashboards.refreshWidget({
+          connection_id: ds.connectionId,
+          sql: ds.sql,
+          mapping: ds.mapping as any,
+          limit: 1,
+        }) as { source_columns?: string[] }
+        sourceColumns.value = response.source_columns ?? []
+      } catch {
+        // silently ignore — columns will just be empty
+      }
     }
   }
 })

@@ -24,9 +24,10 @@
           type="text"
           placeholder="e.g. 42000"
           class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
-          :readonly="!editMode"
-          :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+          :readonly="!editMode || !!dataSource"
+          :class="(!editMode || !!dataSource) ? 'cursor-default bg-gray-50' : ''"
         />
+        <p v-if="dataSource" class="text-[10px] text-gray-400">Populated from data source</p>
       </div>
 
       <div class="flex gap-2">
@@ -60,31 +61,52 @@
       <div class="flex items-center justify-between">
         <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Trend</h3>
         <button
-          class="text-xs font-medium transition-colors"
-          :class="hasTrend ? 'text-indigo-600 hover:text-indigo-800' : 'text-gray-400 hover:text-gray-600'"
+          type="button"
+          role="switch"
+          :aria-checked="hasTrend"
           :disabled="!editMode"
+          class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="hasTrend ? 'bg-indigo-600' : 'bg-gray-200'"
           @click="editMode && toggleTrend()"
         >
-          {{ hasTrend ? 'Enabled' : 'Disabled' }}
+          <span
+            class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+            :class="hasTrend ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+          />
         </button>
       </div>
 
       <template v-if="hasTrend">
-        <div class="space-y-1.5">
-          <label class="text-xs text-gray-600">Direction</label>
-          <select
-            v-model="localTrendDirection"
-            :disabled="!editMode"
-            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
-          >
-            <option value="up">Up</option>
-            <option value="down">Down</option>
-            <option value="neutral">Neutral</option>
-          </select>
+        <!-- Auto-calculated info (when data source with autoTrend) -->
+        <div v-if="isAutoTrend" class="rounded-lg bg-gray-100 px-3 py-2">
+          <p class="text-[11px] text-gray-500">
+            Trend is auto-calculated from your query results (comparing last two periods).
+          </p>
         </div>
 
-        <div class="flex gap-2">
-          <div class="flex-1 space-y-1.5">
+        <!-- Pre-computed info (when data source without autoTrend) -->
+        <div v-else-if="dataSource && kpiMapping?.trendValueColumn" class="rounded-lg bg-gray-100 px-3 py-2">
+          <p class="text-[11px] text-gray-500">
+            Trend value comes from the <code class="bg-gray-200 px-1 rounded text-[10px]">{{ kpiMapping.trendValueColumn }}</code> column in your query.
+          </p>
+        </div>
+
+        <!-- Manual fields (no data source — static KPI) -->
+        <template v-if="!dataSource">
+          <div class="space-y-1.5">
+            <label class="text-xs text-gray-600">Direction</label>
+            <select
+              v-model="localTrendDirection"
+              :disabled="!editMode"
+              class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            >
+              <option value="up">Up</option>
+              <option value="down">Down</option>
+              <option value="neutral">Neutral</option>
+            </select>
+          </div>
+
+          <div class="space-y-1.5">
             <label class="text-xs text-gray-600">Value (%)</label>
             <input
               v-model.number="localTrendValue"
@@ -95,17 +117,34 @@
               :class="!editMode ? 'cursor-default bg-gray-50' : ''"
             />
           </div>
-          <div class="flex-1 space-y-1.5">
-            <label class="text-xs text-gray-600">Period</label>
-            <input
-              v-model="localTrendPeriod"
-              type="text"
-              placeholder="e.g. vs last month"
-              class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
-              :readonly="!editMode"
-              :class="!editMode ? 'cursor-default bg-gray-50' : ''"
-            />
-          </div>
+        </template>
+
+        <!-- Period dropdown (always shown when trend is enabled) -->
+        <div class="space-y-1.5">
+          <label class="text-xs text-gray-600">Period</label>
+          <select
+            v-model="localTrendPeriod"
+            :disabled="!editMode"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+          >
+            <option value="">None</option>
+            <option value="vs last period">vs last period</option>
+            <option value="vs yesterday">vs yesterday</option>
+            <option value="vs last week">vs last week</option>
+            <option value="vs last month">vs last month</option>
+            <option value="vs last quarter">vs last quarter</option>
+            <option value="vs last year">vs last year</option>
+            <option value="__custom__">Custom...</option>
+          </select>
+          <input
+            v-if="localTrendPeriod === '__custom__'"
+            v-model="customTrendPeriod"
+            type="text"
+            placeholder="e.g. vs previous sprint"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+            :readonly="!editMode"
+            :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+          />
         </div>
       </template>
     </div>
@@ -115,17 +154,82 @@
       <div class="flex items-center justify-between">
         <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Sparkline</h3>
         <button
-          class="text-xs font-medium transition-colors"
-          :class="hasSparkline ? 'text-indigo-600 hover:text-indigo-800' : 'text-gray-400 hover:text-gray-600'"
+          type="button"
+          role="switch"
+          :aria-checked="hasSparkline"
           :disabled="!editMode"
+          class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="hasSparkline ? 'bg-indigo-600' : 'bg-gray-200'"
           @click="editMode && toggleSparkline()"
         >
-          {{ hasSparkline ? 'Enabled' : 'Disabled' }}
+          <span
+            class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+            :class="hasSparkline ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+          />
         </button>
       </div>
 
       <template v-if="hasSparkline">
-        <div class="space-y-1.5">
+        <!-- Auto-calculated suggestion (when data source with autoTrend) -->
+        <div v-if="isAutoTrend" class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 space-y-1">
+          <p class="text-[11px] text-indigo-600">
+            Sparkline is auto-populated from all rows using the
+            <code class="bg-indigo-100 px-1 rounded text-[10px]">{{ kpiMapping?.valueColumn }}</code> column.
+          </p>
+          <p class="text-[10px] text-indigo-400">
+            Ensure your query returns rows ordered by time period for an accurate chart.
+          </p>
+        </div>
+
+        <!-- Pre-computed suggestion (when data source with sparklineColumn) -->
+        <div v-else-if="dataSource && kpiMapping?.sparklineColumn" class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 space-y-1">
+          <div class="flex items-center justify-between">
+            <p class="text-[11px] text-indigo-600">
+              Using column <code class="bg-indigo-100 px-1 rounded text-[10px]">{{ kpiMapping.sparklineColumn }}</code>
+            </p>
+            <button
+              v-if="editMode"
+              class="text-[10px] text-indigo-400 hover:text-indigo-600 transition-colors"
+              @click="emit('update:mapping', { sparklineColumn: undefined })"
+            >Change</button>
+          </div>
+          <template v-if="sourceColumns && sourceColumns.length > 1">
+            <div class="flex flex-wrap gap-1 mt-1">
+              <button
+                v-for="col in sourceColumns.filter(c => c !== kpiMapping?.sparklineColumn)"
+                :key="col"
+                :disabled="!editMode"
+                class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-mono hover:bg-indigo-200 hover:text-indigo-900 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
+                @click="editMode && setSparklineColumn(col)"
+              >{{ col }}</button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Suggestion when data source exists but no sparkline column configured -->
+        <div v-else-if="dataSource" class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 space-y-1">
+          <p class="text-[11px] text-indigo-600">
+            No sparkline column configured yet.
+          </p>
+          <template v-if="sourceColumns && sourceColumns.length > 0">
+            <p class="text-[10px] text-indigo-500">Pick a column for sparkline data:</p>
+            <div class="flex flex-wrap gap-1 mt-1">
+              <button
+                v-for="col in sourceColumns"
+                :key="col"
+                :disabled="!editMode"
+                class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-mono hover:bg-indigo-200 hover:text-indigo-900 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
+                @click="editMode && setSparklineColumn(col)"
+              >{{ col }}</button>
+            </div>
+          </template>
+          <p v-else class="text-[10px] text-indigo-400">
+            Run a test query in the Data Source tab to discover available columns.
+          </p>
+        </div>
+
+        <!-- Manual input (no data source — static KPI) -->
+        <div v-if="!dataSource" class="space-y-1.5">
           <label class="text-xs text-gray-600">Data (comma-separated numbers)</label>
           <input
             v-model="sparklineInput"
@@ -142,19 +246,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { WidgetConfig, KpiWidgetConfig } from '~/types/dashboard'
+import { ref, computed, watch, nextTick } from 'vue'
+import type { WidgetConfig, KpiWidgetConfig, WidgetDataSource, KpiDataSourceMapping } from '~/types/dashboard'
 
 const props = defineProps<{
   modelValue: WidgetConfig
   editMode: boolean
+  dataSource?: WidgetDataSource
+  sourceColumns?: string[]
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: WidgetConfig]
+  'update:mapping': [patch: Record<string, any>]
 }>()
 
 const kpiConfig = () => props.modelValue.config as KpiWidgetConfig
+
+const kpiMapping = computed(() => {
+  if (props.dataSource?.mapping?.type === 'kpi') {
+    return props.dataSource.mapping as KpiDataSourceMapping
+  }
+  return null
+})
+
+const isAutoTrend = computed(() => !!kpiMapping.value?.autoTrend)
 
 // Local state mirroring config
 const localLabel = ref(kpiConfig().label)
@@ -164,9 +280,44 @@ const localSuffix = ref(kpiConfig().suffix ?? '')
 const hasTrend = ref(!!kpiConfig().trend)
 const localTrendDirection = ref<'up' | 'down' | 'neutral'>(kpiConfig().trend?.direction ?? 'up')
 const localTrendValue = ref(kpiConfig().trend?.value ?? 0)
-const localTrendPeriod = ref(kpiConfig().trend?.period ?? '')
 const hasSparkline = ref(!!(kpiConfig().sparkline?.length))
 const sparklineInput = ref((kpiConfig().sparkline ?? []).join(', '))
+
+// Period: check if current value matches a preset, otherwise use custom
+const PERIOD_PRESETS = ['', 'vs last period', 'vs yesterday', 'vs last week', 'vs last month', 'vs last quarter', 'vs last year']
+const initPeriod = kpiConfig().trend?.period ?? kpiMapping.value?.periodLabel ?? ''
+const isPreset = PERIOD_PRESETS.includes(initPeriod)
+const localTrendPeriod = ref(isPreset ? initPeriod : '__custom__')
+const customTrendPeriod = ref(isPreset ? '' : initPeriod)
+
+// Compute the effective period label
+const effectivePeriod = computed(() => {
+  if (localTrendPeriod.value === '__custom__') return customTrendPeriod.value
+  return localTrendPeriod.value
+})
+
+// Flag to prevent resync from reverting our own emits
+let selfEmit = false
+
+// Resync local state when the parent switches widget or data source changes
+watch([() => props.modelValue, () => props.dataSource], () => {
+  if (selfEmit) return
+  const cfg = kpiConfig()
+  localLabel.value = cfg.label
+  localValue.value = String(cfg.value)
+  localPrefix.value = cfg.prefix ?? ''
+  localSuffix.value = cfg.suffix ?? ''
+  hasTrend.value = !!cfg.trend
+  localTrendDirection.value = cfg.trend?.direction ?? 'up'
+  localTrendValue.value = cfg.trend?.value ?? 0
+  hasSparkline.value = !!(cfg.sparkline?.length)
+  sparklineInput.value = (cfg.sparkline ?? []).join(', ')
+
+  const period = cfg.trend?.period ?? kpiMapping.value?.periodLabel ?? ''
+  const preset = PERIOD_PRESETS.includes(period)
+  localTrendPeriod.value = preset ? period : '__custom__'
+  customTrendPeriod.value = preset ? '' : period
+})
 
 function buildConfig(): WidgetConfig {
   const parsedValue = isNaN(Number(localValue.value)) ? localValue.value : Number(localValue.value)
@@ -175,27 +326,44 @@ function buildConfig(): WidgetConfig {
     .map(s => parseFloat(s.trim()))
     .filter(n => !isNaN(n))
 
+  // Preserve backend-populated data when data source columns are configured
+  const existingConfig = kpiConfig()
+  const hasDataSourceTrend = isAutoTrend.value || !!kpiMapping.value?.trendValueColumn
+  const hasDataSourceSparkline = isAutoTrend.value || !!kpiMapping.value?.sparklineColumn
+
+  const trend = hasTrend.value
+    ? hasDataSourceTrend
+      ? existingConfig.trend // keep what the backend wrote
+      : { direction: localTrendDirection.value, value: localTrendValue.value, period: effectivePeriod.value || undefined }
+    : undefined
+
+  const sparkline = hasSparkline.value
+    ? hasDataSourceSparkline
+      ? existingConfig.sparkline // keep what the backend wrote
+      : sparklineNums.length > 0 ? sparklineNums : undefined
+    : undefined
+
   return {
     type: 'kpi',
     config: {
       label: localLabel.value,
-      value: parsedValue,
+      value: dataSource ? existingConfig.value : parsedValue,
       prefix: localPrefix.value || undefined,
       suffix: localSuffix.value || undefined,
-      trend: hasTrend.value ? {
-        direction: localTrendDirection.value,
-        value: localTrendValue.value,
-        period: localTrendPeriod.value || undefined,
-      } : undefined,
-      sparkline: hasSparkline.value && sparklineNums.length > 0 ? sparklineNums : undefined,
+      trend,
+      sparkline,
     },
   }
 }
 
-// Emit on any local field change
+// Emit on any local field change — set flag to skip resync from our own emit
 watch(
-  [localLabel, localValue, localPrefix, localSuffix, hasTrend, localTrendDirection, localTrendValue, localTrendPeriod, hasSparkline, sparklineInput],
-  () => emit('update:modelValue', buildConfig()),
+  [localLabel, localValue, localPrefix, localSuffix, hasTrend, localTrendDirection, localTrendValue, localTrendPeriod, customTrendPeriod, hasSparkline, sparklineInput],
+  () => {
+    selfEmit = true
+    emit('update:modelValue', buildConfig())
+    nextTick(() => { selfEmit = false })
+  },
 )
 
 function toggleTrend() {
@@ -204,5 +372,9 @@ function toggleTrend() {
 
 function toggleSparkline() {
   hasSparkline.value = !hasSparkline.value
+}
+
+function setSparklineColumn(col: string) {
+  emit('update:mapping', { sparklineColumn: col })
 }
 </script>
