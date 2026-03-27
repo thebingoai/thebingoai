@@ -31,16 +31,18 @@
 
     <!-- Settings Content -->
     <div class="flex-1 overflow-y-auto">
-      <SettingsConnections v-if="currentSection === 'connections'" />
-      <SettingsSkills v-else-if="currentSection === 'skills'" />
-      <SettingsJobs v-else-if="currentSection === 'jobs'" />
-      <SettingsMemory v-else-if="currentSection === 'memory'" />
-      <SettingsUsage v-else-if="currentSection === 'usage'" />
-      <SettingsProfile v-else-if="currentSection === 'profile'" />
-      <div v-else class="p-6">
-        <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
-        <p class="text-gray-500">This section is under construction.</p>
-      </div>
+      <Transition name="page-fade-slide" mode="out-in">
+        <SettingsConnections v-if="currentSection === 'connections'" key="connections" />
+        <SettingsSkills v-else-if="currentSection === 'skills'" key="skills" />
+        <SettingsJobs v-else-if="currentSection === 'jobs'" key="jobs" />
+        <SettingsMemory v-else-if="currentSection === 'memory'" key="memory" />
+        <SettingsUsage v-else-if="currentSection === 'usage'" key="usage" />
+        <SettingsProfile v-else-if="currentSection === 'profile'" key="profile" />
+        <div v-else key="default" class="p-6">
+          <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
+          <p class="text-gray-500">This section is under construction.</p>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>

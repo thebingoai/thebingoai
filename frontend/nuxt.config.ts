@@ -75,6 +75,7 @@ export default defineNuxtConfig({
   },
 
   app: {
+    pageTransition: { name: 'page-fade-slide', mode: 'out-in' },
     head: {
       title: 'TheBingo.ai',
       meta: [
