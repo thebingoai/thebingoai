@@ -39,7 +39,7 @@
         <template v-for="(message, index) in chatStore.messages" :key="message.id">
           <!-- Date header (shown when date changes between messages) -->
           <div
-            v-if="message.source !== 'context_reset' && getDateLabel(message, index)"
+            v-if="message.source !== 'context_reset' && !isQaAnswerMessage(message, index) && getDateLabel(message, index)"
             class="flex items-center gap-3 my-4 pr-32"
           >
             <div class="flex-1 border-t border-gray-100" />
@@ -54,13 +54,15 @@
             <div class="flex-1 border-t border-gray-200" />
           </div>
 
+          <!-- Skip Q&A answer user bubbles (shown as answered card instead) -->
           <!-- Regular message bubble -->
           <ChatMessageBubble
-            v-else
+            v-else-if="!isQaAnswerMessage(message, index)"
             :message="message"
             :show-actions="shouldShowActions(message, index)"
             :action-type="getActionType(message)"
-            @send-action="emit('send-action', $event)"
+            :following-user-content="getFollowingUserContent(index)"
+            @send-action="(text: string, source?: string) => emit('send-action', text, source as any)"
           />
         </template>
       </div>
@@ -73,7 +75,7 @@ import { formatDateLabel, isSameDay } from '~/utils/format'
 import type { Message } from '~/stores/chat'
 
 const emit = defineEmits<{
-  'send-action': [text: string]
+  'send-action': [text: string, source?: Message['source']]
 }>()
 
 const chatStore = useChatStore()
@@ -112,6 +114,32 @@ const getActionType = (message: Message): 'soul' | 'dashboard' | 'dashboard_ques
   })
   if (hasDashboardCreatedAction) return 'dashboard_created'
   return null
+}
+
+const getFollowingUserContent = (index: number): string | undefined => {
+  for (let i = index + 1; i < chatStore.messages.length; i++) {
+    const msg = chatStore.messages[i]
+    if (msg.role === 'user') return msg.content
+    if (msg.role === 'assistant') break
+  }
+  return undefined
+}
+
+const isQaAnswerMessage = (message: Message, index: number): boolean => {
+  if (message.role !== 'user') return false
+  if (message.source === 'qa_answer') return true
+  // Historical case: check if preceding assistant message had a question
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = chatStore.messages[i]
+    if (prev.source === 'context_reset') continue
+    if (prev.role === 'assistant') {
+      return prev.agent_steps?.some(s =>
+        s.tool_name === 'ask_user_question' || s.tool_name === 'ask_dashboard_question'
+      ) ?? false
+    }
+    break
+  }
+  return false
 }
 
 const threadRef = ref<HTMLElement>()

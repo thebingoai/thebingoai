@@ -28,9 +28,9 @@ const handleSend = () => {
   }
 }
 
-const handleAction = (text: string) => {
+const handleAction = (text: string, source?: string) => {
   if (!chatStore.isStreaming) {
-    chat.sendMessage(text)
+    chat.sendMessage(text, [], source ? { source: source as any } : undefined)
   }
 }
 

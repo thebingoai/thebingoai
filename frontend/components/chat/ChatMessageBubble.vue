@@ -117,19 +117,23 @@
         </button>
       </div>
 
-      <!-- User question: structured multi-question input -->
+      <!-- User question: structured multi-question input (active or answered) -->
       <ChatUserQuestion
-        v-if="showActions && actionType === 'user_question' && userQuestion"
+        v-if="(showActions || isQuestionAnswered) && actionType === 'user_question' && userQuestion"
         :questions="userQuestion"
-        @submit="emit('send-action', $event)"
+        :answered="isQuestionAnswered"
+        :answered-text="followingUserContent"
+        @submit="emit('send-action', $event, 'qa_answer')"
       />
 
-      <!-- Dashboard question: multi-select chips -->
+      <!-- Dashboard question: multi-select chips (active or answered) -->
       <ChatDashboardQuestion
-        v-else-if="showActions && actionType === 'dashboard_question' && dashboardQuestion"
+        v-else-if="(showActions || isQuestionAnswered) && actionType === 'dashboard_question' && dashboardQuestion"
         :options="dashboardQuestion.options"
         :allow-multiple="dashboardQuestion.allowMultiple"
-        @submit="emit('send-action', $event)"
+        :answered="isQuestionAnswered"
+        :answered-text="followingUserContent"
+        @submit="emit('send-action', $event, 'qa_answer')"
       />
 
       <!-- View Dashboard button (dashboard_created) -->
@@ -169,10 +173,11 @@ const props = defineProps<{
   message: Message
   showActions?: boolean
   actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | 'user_question' | null
+  followingUserContent?: string
 }>()
 
 const emit = defineEmits<{
-  'send-action': [text: string]
+  'send-action': [text: string, source?: Message['source']]
 }>()
 
 const chatStore = useChatStore()
@@ -191,6 +196,11 @@ const stepCount = computed(() =>
 const openReasoning = () => {
   chatStore.openReasoningPanel(props.message.id)
 }
+
+const isQuestionAnswered = computed(() => {
+  if (props.actionType !== 'user_question' && props.actionType !== 'dashboard_question') return false
+  return !props.showActions
+})
 
 const createdDashboardId = computed<number | null>(() => {
   for (const step of props.message.agent_steps ?? []) {

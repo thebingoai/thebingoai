@@ -21,7 +21,7 @@ export interface Message {
   agent_steps?: AgentStep[]
   created_at: string
   attachments?: FileAttachment[]
-  source?: 'chat' | 'heartbeat' | 'system' | 'context_reset'
+  source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer'
 }
 
 export interface ThinkingStep {
@@ -36,6 +36,7 @@ export interface FileAttachment {
   file_id: string | null
   preview_url: string | null
   status: 'uploading' | 'ready' | 'error'
+  storage_key?: string
 }
 
 export interface Conversation {

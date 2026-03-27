@@ -7,7 +7,7 @@ export const useChat = () => {
   const api = useApi()
   const ws = useWebSocket()
 
-  const sendMessage = async (message: string, fileIds: string[] = []) => {
+  const sendMessage = async (message: string, fileIds: string[] = [], options?: { source?: Message['source'] }) => {
     chatStore.isStreaming = true
 
     // Add user message optimistically
@@ -29,6 +29,7 @@ export const useChat = () => {
       content: message,
       created_at: new Date().toISOString(),
       attachments: attachments.length > 0 ? attachments : undefined,
+      source: options?.source,
     }
     chatStore.addMessage(userMessage)
     chatStore.clearInput()
@@ -241,13 +242,6 @@ export const useChat = () => {
         cleanup()
       })
 
-      onEvent('chat.title', (data) => {
-        const threadId = data.thread_id || chatStore.currentThreadId
-        if (threadId) {
-          chatStore.updateConversationTitle(threadId, data.content)
-        }
-      })
-
       onEvent('chat.error', (data) => {
         // Finalize any streaming reasoning step on error
         const lastStep = agentSteps[agentSteps.length - 1]
@@ -321,12 +315,48 @@ export const useChat = () => {
         content: msg.content,
         source: msg.source || 'chat',
         created_at: msg.timestamp,
+        attachments: msg.attachments?.map((a: any) => ({
+          file_id: a.file_id,
+          name: a.name,
+          type: a.type,
+          size: a.size,
+          preview_url: null,
+          status: 'ready' as const,
+          storage_key: a.storage_key,
+        })),
         agent_steps: [],
         thinking_steps: []
       }))
       messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       chatStore.setMessages(messages)
       chatStore.setCurrentThread(threadId)
+
+      // Resolve presigned URLs for image attachments
+      const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+      const imageRequests: Array<{ msgId: string; idx: number; fileId: string; storageKey?: string }> = []
+      for (const msg of messages) {
+        if (!msg.attachments) continue
+        msg.attachments.forEach((att, idx) => {
+          if (IMAGE_TYPES.has(att.type) && att.file_id && att.storage_key) {
+            imageRequests.push({ msgId: msg.id, idx, fileId: att.file_id, storageKey: att.storage_key })
+          }
+        })
+      }
+      if (imageRequests.length > 0) {
+        Promise.all(
+          imageRequests.map(async ({ msgId, idx, fileId, storageKey }) => {
+            try {
+              const res = await api.chat.getFileUrl(fileId, storageKey) as { url: string }
+              const msgInStore = chatStore.messages.find(m => m.id === msgId)
+              if (msgInStore?.attachments?.[idx]) {
+                msgInStore.attachments[idx].preview_url = res.url
+              }
+            } catch {
+              // Silently fail — fallback icon will show
+            }
+          })
+        )
+      }
 
       // Load agent steps for assistant messages from chat source
       for (const msg of messages) {
@@ -428,6 +458,16 @@ export const useChat = () => {
     chatStore.updateConversationTitle(threadId, title)
   }
 
+  // Handle incoming title updates from WebSocket (arrives after chat.done)
+  const registerTitleHandler = () => {
+    return ws.on('chat.title', (data: any) => {
+      const threadId = data.thread_id || chatStore.currentThreadId
+      if (threadId) {
+        chatStore.updateConversationTitle(threadId, data.content)
+      }
+    })
+  }
+
   // Handle incoming heartbeat messages from WebSocket
   const registerHeartbeatHandler = () => {
     return ws.on('heartbeat.message', (data: any) => {
@@ -462,6 +502,7 @@ export const useChat = () => {
     loadConversations,
     loadMessages,
     renameConversation,
+    registerTitleHandler,
     registerHeartbeatHandler,
     resetContext,
   }

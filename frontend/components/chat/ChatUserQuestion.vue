@@ -1,66 +1,155 @@
 <template>
-  <div class="mt-3 space-y-4">
-    <div v-for="(q, qIdx) in questions" :key="qIdx">
-      <!-- Question header chip + question text -->
-      <div class="mb-2">
-        <span
-          v-if="q.header"
-          class="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500 mr-2"
-        >
-          {{ q.header }}
-        </span>
-        <span class="text-sm font-medium text-gray-900">{{ q.question }}</span>
+  <!-- Answered state: green card summary -->
+  <div v-if="answered" class="mt-3 rounded-xl border border-green-200 bg-green-50/50 p-3">
+    <div class="mb-2 flex items-center gap-1.5">
+      <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-green-100">
+        <svg class="h-3 w-3 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+        </svg>
+      </span>
+      <span class="text-[10px] font-semibold uppercase tracking-wide text-green-700">Answered</span>
+    </div>
+    <div class="space-y-1">
+      <div
+        v-for="(pair, idx) in parsedAnswers"
+        :key="idx"
+        class="flex gap-2 text-sm"
+        :class="idx < parsedAnswers.length - 1 ? 'border-b border-green-100 pb-1.5' : ''"
+      >
+        <span class="shrink-0 text-[11px] uppercase tracking-wide text-gray-500 min-w-[80px] pt-0.5">{{ pair.label }}</span>
+        <span class="font-medium text-gray-900">{{ pair.value }}</span>
       </div>
+    </div>
+  </div>
 
-      <!-- Option chips -->
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-for="option in q.options"
-          :key="option.label"
-          @click="toggleOption(qIdx, option.label)"
-          :title="option.description"
-          :class="[
-            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
-            isSelected(qIdx, option.label)
-              ? 'border-gray-900 bg-gray-900 text-white'
-              : 'border-gray-300 bg-white text-gray-700 hover:border-gray-500 hover:text-gray-900'
-          ]"
-        >
-          <svg v-if="isSelected(qIdx, option.label)" class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-          </svg>
-          {{ option.label }}
-        </button>
+  <!-- Active state: indigo card with interactive options -->
+  <div v-else class="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+    <!-- Header badge -->
+    <div class="mb-3 flex items-center gap-1.5">
+      <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-indigo-100">
+        <svg class="h-3 w-3 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      </span>
+      <span class="text-[10px] font-semibold uppercase tracking-wide text-indigo-700">Questions</span>
+    </div>
 
-        <!-- Implicit "Other" option -->
-        <button
-          @click="toggleOption(qIdx, 'Other')"
-          :class="[
-            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
-            isSelected(qIdx, 'Other')
-              ? 'border-gray-900 bg-gray-900 text-white'
-              : 'border-gray-300 bg-white text-gray-700 hover:border-gray-500 hover:text-gray-900'
-          ]"
-        >
-          <svg v-if="isSelected(qIdx, 'Other')" class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-          </svg>
-          Other
-        </button>
-      </div>
+    <!-- Question list with dividers -->
+    <div class="divide-y divide-indigo-100">
+      <div v-for="(q, qIdx) in questions" :key="qIdx" class="py-3 first:pt-0 last:pb-0">
+        <!-- Header chip -->
+        <div class="mb-1.5">
+          <span
+            v-if="q.header"
+            class="inline-block rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 mr-2"
+          >
+            {{ q.header }}
+          </span>
+          <span class="text-sm font-medium text-gray-900">{{ q.question }}</span>
+        </div>
 
-      <!-- "Other" text input -->
-      <div v-if="isSelected(qIdx, 'Other')" class="mt-2">
-        <input
-          v-model="otherTexts[qIdx]"
-          type="text"
-          placeholder="Describe your preference..."
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-        />
+        <!-- Vertical option rows (when options have descriptions) -->
+        <div v-if="hasLongOptions(q)" class="space-y-1.5">
+          <button
+            v-for="option in q.options"
+            :key="option.label"
+            @click="toggleOption(qIdx, option.label)"
+            :class="[
+              'w-full text-left rounded-lg border px-3 py-2.5 transition-colors',
+              isSelected(qIdx, option.label)
+                ? 'border-gray-900 bg-gray-900 text-white'
+                : 'border-indigo-200 bg-white text-gray-700 hover:border-indigo-400'
+            ]"
+          >
+            <div class="flex items-center gap-2">
+              <svg v-if="isSelected(qIdx, option.label)" class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+              </svg>
+              <span class="text-sm font-medium">{{ option.label }}</span>
+            </div>
+            <p
+              v-if="option.description"
+              :class="[
+                'mt-0.5 text-xs',
+                isSelected(qIdx, option.label) ? 'text-gray-300' : 'text-gray-500'
+              ]"
+            >
+              {{ option.description }}
+            </p>
+          </button>
+
+          <!-- Other option (vertical) -->
+          <button
+            @click="toggleOption(qIdx, 'Other')"
+            :class="[
+              'w-full text-left rounded-lg border px-3 py-2.5 transition-colors',
+              isSelected(qIdx, 'Other')
+                ? 'border-gray-900 bg-gray-900 text-white'
+                : 'border-indigo-200 bg-white text-gray-700 hover:border-indigo-400'
+            ]"
+          >
+            <div class="flex items-center gap-2">
+              <svg v-if="isSelected(qIdx, 'Other')" class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+              </svg>
+              <span class="text-sm font-medium">Other</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Horizontal chips (when options are short / no descriptions) -->
+        <div v-else class="flex flex-wrap gap-2">
+          <button
+            v-for="option in q.options"
+            :key="option.label"
+            @click="toggleOption(qIdx, option.label)"
+            :title="option.description"
+            :class="[
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+              isSelected(qIdx, option.label)
+                ? 'border-gray-900 bg-gray-900 text-white'
+                : 'border-indigo-200 bg-white text-gray-700 hover:border-indigo-400'
+            ]"
+          >
+            <svg v-if="isSelected(qIdx, option.label)" class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+            </svg>
+            {{ option.label }}
+          </button>
+
+          <!-- Implicit "Other" chip -->
+          <button
+            @click="toggleOption(qIdx, 'Other')"
+            :class="[
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+              isSelected(qIdx, 'Other')
+                ? 'border-gray-900 bg-gray-900 text-white'
+                : 'border-indigo-200 bg-white text-gray-700 hover:border-indigo-400'
+            ]"
+          >
+            <svg v-if="isSelected(qIdx, 'Other')" class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+            </svg>
+            Other
+          </button>
+        </div>
+
+        <!-- "Other" text input -->
+        <div v-if="isSelected(qIdx, 'Other')" class="mt-2">
+          <input
+            v-model="otherTexts[qIdx]"
+            type="text"
+            placeholder="Describe your preference..."
+            class="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+          />
+        </div>
       </div>
     </div>
 
-    <div class="mt-3">
+    <!-- Confirm button -->
+    <div class="mt-3 border-t border-indigo-100 pt-3">
       <UiButton
         size="sm"
         variant="primary"
@@ -88,6 +177,8 @@ interface Question {
 
 const props = defineProps<{
   questions: Question[]
+  answered?: boolean
+  answeredText?: string
 }>()
 
 const emit = defineEmits<{
@@ -96,6 +187,8 @@ const emit = defineEmits<{
 
 const selections = ref<Record<number, string[]>>({})
 const otherTexts = ref<Record<number, string>>({})
+
+const hasLongOptions = (q: Question) => q.options.some(o => o.description?.trim())
 
 const isSelected = (qIdx: number, label: string) =>
   (selections.value[qIdx] || []).includes(label)
@@ -143,4 +236,16 @@ const confirm = () => {
   })
   emit('submit', parts.join('\n'))
 }
+
+const parsedAnswers = computed(() => {
+  if (!props.answeredText) return []
+  return props.answeredText.split('\n').map((line, idx) => {
+    const colonIdx = line.indexOf(':')
+    if (colonIdx === -1) return { label: 'Answer', value: line.trim() }
+    return {
+      label: props.questions[idx]?.header || line.slice(0, colonIdx).trim(),
+      value: line.slice(colonIdx + 1).trim()
+    }
+  })
+})
 </script>
