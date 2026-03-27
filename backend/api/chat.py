@@ -266,9 +266,10 @@ async def chat_stream(
                 if event.get("type") == "done" and "steps" in event:
                     collected_steps = event.get("steps", [])
 
-            # Save assistant message
-            if final_message:
-                assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message)
+            # Save assistant message (save even if empty — tool-only turns
+            # like ask_user_question still need steps persisted)
+            if final_message or collected_steps:
+                assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message or "")
 
                 # Save agent steps
                 if collected_steps:

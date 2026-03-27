@@ -166,6 +166,7 @@ async def _handle_chat_send(
                 "type": f["mime_type"],
                 "size": f["size"],
                 "content_type": f["content_type"],
+                "storage_key": f.get("storage_key"),
             }
             for f in (file_contents or [])
         ]
@@ -219,9 +220,10 @@ async def _handle_chat_send(
             if event_type == "done" and "steps" in event:
                 collected_steps = event.get("steps", [])
 
-        # Persist assistant message
-        if final_message:
-            assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message)
+        # Persist assistant message (save even if empty — tool-only turns
+        # like ask_user_question still need steps persisted)
+        if final_message or collected_steps:
+            assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message or "")
 
             if collected_steps:
                 from backend.models.agent_step import AgentStep

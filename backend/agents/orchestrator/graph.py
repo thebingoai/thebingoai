@@ -100,9 +100,66 @@ def build_orchestrator_tools(
     dashboard_tools = build_dashboard_tools(context, db_session_factory)
     memory_tools = build_memory_tools(context, db_session_factory)
 
+    @tool
+    async def ask_user_question(questions: str) -> str:
+        """
+        Ask the user 1-4 structured multiple-choice questions.
+
+        Use when you need user input to proceed — for example:
+        - Clarifying ambiguous requirements before planning
+        - Presenting plan options for user selection during the Review phase
+        - Confirming assumptions about scope, data sources, or priorities
+
+        After calling this tool, STOP and wait for the user's response.
+        Do NOT continue processing or call other tools in the same turn.
+
+        Args:
+            questions: A JSON string containing an array of question objects.
+                Each question has:
+                - "question" (str): The question text
+                - "header" (str): Short label displayed as a chip/tag (max 12 chars, e.g. "Time range", "Scope")
+                - "options" (array of {"label": str, "description": str}): 2-4 choices per question
+                - "select" (str): "single" or "multi" (default: "single")
+
+                Example:
+                [
+                    {
+                        "question": "What time range should the dashboard cover?",
+                        "header": "Time range",
+                        "options": [
+                            {"label": "Last 7 days", "description": "Recent activity focus"},
+                            {"label": "Last 30 days", "description": "Monthly trends"},
+                            {"label": "Year to date", "description": "Full YTD comparison"}
+                        ],
+                        "select": "single"
+                    }
+                ]
+
+        Returns:
+            The validated questions as JSON. The frontend renders them as interactive UI.
+            The user's selections will arrive as the next message in the conversation.
+        """
+        try:
+            parsed = json.loads(questions)
+        except (ValueError, TypeError):
+            return json.dumps({"error": "Invalid JSON in questions parameter"})
+
+        if not isinstance(parsed, list) or len(parsed) < 1 or len(parsed) > 4:
+            return json.dumps({"error": "Must provide 1-4 questions"})
+
+        for i, q in enumerate(parsed):
+            if not isinstance(q.get("question"), str) or not q["question"].strip():
+                return json.dumps({"error": f"Question {i}: 'question' field is required"})
+            if not isinstance(q.get("options"), list) or len(q["options"]) < 2 or len(q["options"]) > 4:
+                return json.dumps({"error": f"Question {i}: must have 2-4 options"})
+
+        return json.dumps({"questions": parsed})
+
+    shared_tools = skill_tools + profile_tools_list + dashboard_tools + memory_tools + [ask_user_question]
+
     if custom_agents:
-        return _build_dynamic_tools(context, custom_agents, db_session_factory, llm_provider=llm_provider) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
-    return _build_legacy_tools(context, db_session_factory) + skill_tools + profile_tools_list + dashboard_tools + memory_tools
+        return _build_dynamic_tools(context, custom_agents, db_session_factory, llm_provider=llm_provider) + shared_tools
+    return _build_legacy_tools(context, db_session_factory) + shared_tools
 
 
 def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
@@ -687,6 +744,17 @@ async def stream_orchestrator(
                     "type": "tool_result",
                     "content": {"tool": tool_name, "status": "completed", "result": parsed_output, "duration_ms": duration_ms}
                 }
+
+                # Force-stop: ask_user_question ends the turn immediately
+                # (like Claude Code's AskUserQuestion — the agent waits for user input)
+                if tool_name == "ask_user_question":
+                    yield {
+                        "type": "done",
+                        "content": "Waiting for user input",
+                        "thread_id": context.thread_id,
+                        "steps": collected_steps,
+                    }
+                    return
 
             elif kind == "on_chat_model_stream":
                 run_id = event.get("run_id")

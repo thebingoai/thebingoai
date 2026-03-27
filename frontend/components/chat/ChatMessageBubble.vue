@@ -117,9 +117,16 @@
         </button>
       </div>
 
+      <!-- User question: structured multi-question input -->
+      <ChatUserQuestion
+        v-if="showActions && actionType === 'user_question' && userQuestion"
+        :questions="userQuestion"
+        @submit="emit('send-action', $event)"
+      />
+
       <!-- Dashboard question: multi-select chips -->
       <ChatDashboardQuestion
-        v-if="showActions && actionType === 'dashboard_question' && dashboardQuestion"
+        v-else-if="showActions && actionType === 'dashboard_question' && dashboardQuestion"
         :options="dashboardQuestion.options"
         :allow-multiple="dashboardQuestion.allowMultiple"
         @submit="emit('send-action', $event)"
@@ -161,7 +168,7 @@ import { useDashboardStore } from '~/stores/dashboard'
 const props = defineProps<{
   message: Message
   showActions?: boolean
-  actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | null
+  actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | 'user_question' | null
 }>()
 
 const emit = defineEmits<{
@@ -226,6 +233,25 @@ const dashboardQuestion = computed(() => {
   try {
     const options = typeof args.options === 'string' ? JSON.parse(args.options) : args.options
     return { options, allowMultiple: args.allow_multiple !== false }
+  } catch {
+    return null
+  }
+})
+
+const userQuestion = computed(() => {
+  const step = props.message.agent_steps?.find(s => s.tool_name === 'ask_user_question')
+  if (!step) return null
+  const result = step.content?.result
+  if (result) {
+    try {
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result
+      if (parsed?.questions) return parsed.questions
+    } catch {}
+  }
+  const args = step.content?.args
+  if (!args?.questions) return null
+  try {
+    return typeof args.questions === 'string' ? JSON.parse(args.questions) : args.questions
   } catch {
     return null
   }
