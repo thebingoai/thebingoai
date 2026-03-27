@@ -157,7 +157,7 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
         # autoTrend with < 2 rows: no trend emitted
     elif trend_col:
         trend_idx = result.columns.index(trend_col)
-        trend_val = _to_json_safe(first_row[trend_idx])
+        trend_val = _to_json_safe(result.rows[0][trend_idx])
         if isinstance(trend_val, (int, float)) and trend_val > 0:
             direction = "up"
         elif isinstance(trend_val, (int, float)) and trend_val < 0:

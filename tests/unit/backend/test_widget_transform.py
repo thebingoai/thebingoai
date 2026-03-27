@@ -215,7 +215,7 @@ class TestTransformKpi:
 
     def test_sparkline_from_all_rows(self):
         result = _qr(["total", "spark"], [(100, 10), (200, 20), (300, 30)])
-        mapping = {"valueColumn": "total", "sparklineColumn": "spark"}
+        mapping = {"valueColumn": "total", "sparklineYColumn": "spark"}
         out = transform_kpi(result, mapping)
         assert out["sparkline"] == [10, 20, 30]
         # value should still come from first row only

@@ -1,9 +1,35 @@
 """Tool composition for the Dashboard Agent."""
 from typing import List, Callable
+from langchain_core.tools import tool
 from backend.agents.context import AgentContext
 from backend.agents.data_agent.tools import build_data_agent_tools
 from backend.agents.dashboard_tools import build_dashboard_tools
 from backend.config import settings
+
+
+@tool
+def get_widget_spec(widget_type: str) -> str:
+    """Get the complete configuration spec for a widget type.
+
+    Call this BEFORE configuring a widget to get the authoritative field definitions,
+    dataSource mapping structure, SQL patterns, and best practices.
+
+    Args:
+        widget_type: One of "kpi", "chart", "table", "filter", "text"
+
+    Returns:
+        Complete configuration spec for the widget type
+    """
+    from backend.agents.dashboard_agent.widget_specs import (
+        get_widget_spec as _get_spec,
+        get_available_types,
+    )
+
+    spec = _get_spec(widget_type)
+    if spec is None:
+        available = ", ".join(get_available_types())
+        return f"Unknown widget type '{widget_type}'. Valid types: {available}"
+    return spec
 
 
 def build_dashboard_agent_tools(
@@ -46,8 +72,8 @@ def build_dashboard_agent_tools(
             message_bus=message_bus,
             registry=registry,
         )
-        return dashboard_creation_tools + comm_tools
+        return dashboard_creation_tools + comm_tools + [get_widget_spec]
 
     # Default: inline data exploration tools
     db_tools = build_data_agent_tools(context)
-    return db_tools + dashboard_creation_tools
+    return db_tools + dashboard_creation_tools + [get_widget_spec]

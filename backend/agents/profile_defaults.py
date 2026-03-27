@@ -331,14 +331,6 @@ Rows 16+:   Detail tables — w=12, h=5
 - Target **9-13 widgets** total (min 7, max 14)
 - 3-4 KPIs + 1 filter bar + 1-2 text headers + 3-5 charts + 1-2 tables
 
-### Filter Widget Guide
-
-Filter widgets use type `filter` with **NO dataSource** — controls are statically defined.
-- Place at y=2, w=12, h=2
-- Include 2-4 controls for key slicing dimensions
-- **Every control MUST have a `column` field** — the real DB column name
-- **Dropdown controls MUST have an `optionsSource`** with connectionId and sql
-
 ### Chart Type Selection Guide
 
 | Data pattern                        | Best chart type  | config.options                           | Max width                   |
@@ -357,44 +349,15 @@ Rules:
 - Default to w=6 and pair charts side-by-side at the same y row
 - w=12 only for time-series line/area charts
 
-### Chart Options
+### Widget Configuration
 
-Set `widget.config.options` to control chart rendering:
-- `stacked`: true for stacked bar/area charts (composition view)
-- `indexAxis: "y"`: flips bar chart horizontal (use for 8+ categories or long labels)
-- `showValues`: show data labels on bar/pie/doughnut slices
-- `showLegend` / `legendPosition`: control legend visibility and placement
-- `showGrid`: show or hide grid lines
-- `sortBy` / `sortDirection`: sort bars by "value" desc/asc (skip for time-series)
+Before configuring widgets, call `get_widget_spec(widget_type)` to get the complete
+field definitions, mapping structure, SQL patterns, and best practices.
 
-### CRITICAL: Widget JSON Structure
+Available types: kpi, chart, table, filter, text.
 
-Every widget MUST have a nested `config` sub-object inside `widget`.
-
-**KPI** `config`: `label` (string, required — NOT "title"), prefix/suffix optional
-**Chart** `config`: `type` ("bar"|"line"|"pie"|"doughnut"|"area"|"scatter"), `title` optional, `options` optional
-**Table** `config`: `columns` [{key, label, sortable?}] — rows auto-populated
-**Text** `config`: `content` (markdown string)
-
-### SQL-Backed Widgets — dataSource Field
-
-Add `dataSource` to every chart, KPI, and table. The `create_dashboard` tool auto-executes SQL.
-
-Mapping types:
-- **chart**: `{ "type": "chart", "labelColumn": "<x-axis col>", "datasetColumns": [{"column": "<col>", "label": "<display name>"}] }`
-- **kpi**: `{ "type": "kpi", "valueColumn": "<main value col>", "trendValueColumn": "<numeric col>", "sparklineXColumn": "<time-ordered col>", "sparklineYColumn": "<numeric col>" }`
-  - Always try to include trend and sparkline — a number alone lacks context
-- **table**: `{ "type": "table", "columnConfig": [{"column": "<col>", "label": "<display name>", "sortable": true, "format": "currency"|"number"|"percent"|"date"}] }`
-
-### Visualization Best Practices
-
-- **KPIs**: always try to include `trendValueColumn` and `sparklineXColumn`/`sparklineYColumn`
-- **Bar charts**: sort by value desc unless the x-axis is temporal
-- **Horizontal bars**: use `indexAxis: "y"` for long category labels or 8+ categories
-- **Table formatting**: always set `format` on monetary, percentage, and date columns
-- **Legend**: hide legend (`showLegend: false`) on single-dataset charts
-- **Chart variety**: use at least 2-3 different chart types per dashboard
-- **Pie/doughnut**: always set `showValues: true`
+Every widget MUST have: `id`, `position` {x, y, w, h}, `widget.type`, `widget.config`.
+Data widgets (kpi, chart, table) also need: `dataSource` {connectionId, sql, mapping}.
 
 ## SQLite SQL Dialect (for DATASET connections from CSV/Excel uploads)
 
@@ -428,7 +391,7 @@ _DASHBOARD_AGENT_GUARDRAILS = """## SQL Semantic Verification Checklist (before 
 2. **Column existence**: every column in SQL must exist in the schema you explored
 3. **Mapping columns in SELECT**: every column in mapping must appear in SQL SELECT output
 4. **No forbidden keywords**: no INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, GRANT, REVOKE, EXEC, EXECUTE, COPY, LOAD, SET, CALL, RENAME
-5. If the tool returns a schema validation error, fix the SQL and retry
+5. If the tool returns with warnings, fix the affected widget SQL and call `update_dashboard` to update them
 
 ## Updating Existing Dashboards
 

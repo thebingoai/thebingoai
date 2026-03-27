@@ -1,0 +1,8 @@
+{
+  "widget_type": "text",
+  "config": {
+    "content":   { "type": "string", "required": true,  "description": "Markdown text content. Use ## for section headers" },
+    "alignment": { "type": "enum",   "required": false, "values": ["left", "center", "right"], "description": "Text alignment (default: left)" }
+  },
+  "position_defaults": { "w": 12, "h": 1, "minW": 2, "minH": 1 }
+}

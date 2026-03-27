@@ -1,0 +1,33 @@
+{
+  "widget_type": "table",
+  "config": {
+    "columns": {
+      "type": "array",
+      "required": true,
+      "description": "Column definitions for the table",
+      "items": {
+        "key":        { "type": "string",  "required": true,  "description": "Data column key (matches SQL output column name)" },
+        "label":      { "type": "string",  "required": true,  "description": "Display header text" },
+        "sortable":   { "type": "boolean", "required": false, "description": "Allow sorting by this column" },
+        "filterable": { "type": "boolean", "required": false, "description": "Allow filtering by this column" },
+        "format":     { "type": "enum",    "required": false, "values": ["number", "currency", "percent", "date", "text"], "description": "Display format (percent auto-colors red/green)" }
+      }
+    },
+    "pagination":  { "type": "boolean", "required": false, "description": "Enable pagination (default: true)" },
+    "rowsPerPage": { "type": "number",  "required": false, "description": "Rows per page: 10, 25, 50, or 100" }
+  },
+  "mapping": {
+    "columnConfig": {
+      "type": "array",
+      "required": true,
+      "description": "Maps SQL columns to table columns",
+      "items": {
+        "column":   { "type": "string",  "required": true,  "description": "SQL output column name" },
+        "label":    { "type": "string",  "required": true,  "description": "Display header text" },
+        "sortable": { "type": "boolean", "required": false, "description": "Allow sorting" },
+        "format":   { "type": "string",  "required": false, "description": "Display format: currency, percent, date, number" }
+      }
+    }
+  },
+  "position_defaults": { "w": 12, "h": 5, "minW": 4, "minH": 3 }
+}

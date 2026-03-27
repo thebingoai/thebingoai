@@ -593,16 +593,10 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
 
-        # Validate mapping columns against schema
+        # Validate mapping columns against schema (warnings only — don't block creation)
         schema_warnings = _validate_widget_sql_schema(widgets)
         if schema_warnings:
-            return json.dumps({
-                "success": False,
-                "message": (
-                    "Widget SQL schema validation failed. Fix the SQL and retry.\n"
-                    + "\n".join(f"- {w}" for w in schema_warnings)
-                ),
-            })
+            logger.warning("Schema validation warnings for '%s': %s", title, "; ".join(schema_warnings))
 
         # Auto-execute SQL for SQL-backed widgets and populate config
         for w in widgets:
@@ -620,11 +614,19 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
             db.add(dashboard)
             db.commit()
             db.refresh(dashboard)
-            return json.dumps({
+            response = {
                 "success": True,
                 "dashboard_id": dashboard.id,
                 "message": f"Dashboard '{title}' created with {len(widgets)} widget(s). Navigate to /dashboard to view it.",
-            })
+            }
+            if schema_warnings:
+                response["warnings"] = schema_warnings
+                response["message"] += (
+                    f"\n\nNote: {len(schema_warnings)} widget(s) had SQL column warnings — "
+                    "their data may be incomplete. Fix the SQL for these widgets and call "
+                    "update_dashboard to update them."
+                )
+            return json.dumps(response)
         except Exception as e:
             db.rollback()
             logger.error(f"Failed to create dashboard: {e}")
@@ -669,16 +671,10 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
 
-        # Validate mapping columns against schema
+        # Validate mapping columns against schema (warnings only — don't block update)
         schema_warnings = _validate_widget_sql_schema(widgets)
         if schema_warnings:
-            return json.dumps({
-                "success": False,
-                "message": (
-                    "Widget SQL schema validation failed. Fix the SQL and retry.\n"
-                    + "\n".join(f"- {w}" for w in schema_warnings)
-                ),
-            })
+            logger.warning("Schema validation warnings for dashboard %d: %s", dashboard_id, "; ".join(schema_warnings))
 
         # Load existing dashboard to compare SQL and carry over unchanged widget data
         db = db_session_factory()
@@ -736,11 +732,18 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
 
             db.commit()
             db.refresh(dashboard)
-            return json.dumps({
+            response = {
                 "success": True,
                 "dashboard_id": dashboard.id,
                 "message": f"Dashboard '{dashboard.title}' updated with {len(widgets)} widget(s). Navigate to /dashboard to view it.",
-            })
+            }
+            if schema_warnings:
+                response["warnings"] = schema_warnings
+                response["message"] += (
+                    f"\n\nNote: {len(schema_warnings)} widget(s) had SQL column warnings — "
+                    "their data may be incomplete."
+                )
+            return json.dumps(response)
         except Exception as e:
             db.rollback()
             logger.error(f"Failed to update dashboard: {e}")

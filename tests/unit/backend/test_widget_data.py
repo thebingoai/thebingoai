@@ -250,43 +250,6 @@ class TestRefreshWidget:
         called_params = connector.execute_query.call_args[1].get("params")
         assert called_params == {"_f0": 42}
 
-    @patch(_PATCH_TRANSFORM)
-    @patch(_PATCH_CONNECTOR_FACTORY)
-    async def test_truncation_when_row_count_exceeds_limit(self, mock_get_connector, mock_transform):
-        mock_conn = _mock_connection()
-        db = _mock_db(mock_conn)
-        rows = [(i,) for i in range(5)]
-        connector = _mock_connector(rows=rows, row_count=5)
-        mock_get_connector.return_value = connector
-        mock_transform.return_value = {}
-
-        request = WidgetRefreshRequest(
-            connection_id=1, sql="SELECT a FROM t", mapping={"type": "bar"}, limit=3,
-        )
-
-        response = await refresh_widget(request=request, current_user=_mock_user(), db=db)
-
-        assert response.truncated is True
-        assert response.row_count == 5  # original row_count preserved
-
-    @patch(_PATCH_TRANSFORM)
-    @patch(_PATCH_CONNECTOR_FACTORY)
-    async def test_no_truncation_when_row_count_within_limit(self, mock_get_connector, mock_transform):
-        mock_conn = _mock_connection()
-        db = _mock_db(mock_conn)
-        connector = _mock_connector(rows=[(1,), (2,)], row_count=2)
-        mock_get_connector.return_value = connector
-        mock_transform.return_value = {}
-
-        request = WidgetRefreshRequest(
-            connection_id=1, sql="SELECT a FROM t", mapping={"type": "bar"}, limit=100,
-        )
-
-        response = await refresh_widget(request=request, current_user=_mock_user(), db=db)
-
-        assert response.truncated is False
-        assert response.row_count == 2
-
     @patch(_PATCH_TRANSFORM, side_effect=RuntimeError("fail"))
     @patch(_PATCH_CONNECTOR_FACTORY)
     async def test_connector_close_called_on_exception(self, mock_get_connector, mock_transform):

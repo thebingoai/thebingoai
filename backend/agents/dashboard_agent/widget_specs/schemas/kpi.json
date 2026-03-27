@@ -1,0 +1,20 @@
+{
+  "widget_type": "kpi",
+  "config": {
+    "label":  { "type": "string",  "required": true,  "description": "Display label for the KPI card. Use 'label', NOT 'title'" },
+    "prefix": { "type": "string",  "required": false, "description": "Value prefix, e.g. '$', 'RM'" },
+    "suffix": { "type": "string",  "required": false, "description": "Value suffix, e.g. '%', 'units'" }
+  },
+  "mapping": {
+    "valueColumn":            { "type": "string",  "required": true,  "description": "Column name for the main KPI value" },
+    "aggregation":            { "type": "enum",    "required": false, "values": ["sum", "avg", "count", "min", "max", "first", "last"], "description": "How to aggregate multi-row results into a single value (default: 'first')" },
+    "autoTrend":              { "type": "boolean", "required": false, "description": "Auto-calculate trend % by comparing last 2 rows. Also auto-populates sparkline from all rows" },
+    "periodLabel":            { "type": "string",  "required": false, "description": "Trend display label, e.g. 'vs last month'" },
+    "trendValueColumn":       { "type": "string",  "required": false, "description": "LEGACY: Column with pre-computed trend number. Use autoTrend instead when possible" },
+    "sparklineXColumn":       { "type": "string",  "required": false, "description": "LEGACY: Column for sparkline x-axis labels (time-ordered)" },
+    "sparklineYColumn":       { "type": "string",  "required": false, "description": "LEGACY: Column for sparkline y-axis values (numeric)" },
+    "sparklineSortColumn":    { "type": "string",  "required": false, "description": "LEGACY: Column to sort sparkline rows by" },
+    "sparklineSortDirection": { "type": "enum",    "required": false, "values": ["asc", "desc"], "description": "LEGACY: Sort direction for sparkline rows" }
+  },
+  "position_defaults": { "w": 3, "h": 2, "minW": 2, "minH": 2 }
+}

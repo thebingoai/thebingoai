@@ -65,41 +65,6 @@ Rows 16+:   Detail tables — w=12, h=5
 - Target **9-13 widgets** total (min 7, max 14)
 - 3-4 KPIs + 1 filter bar + 1-2 text headers + 3-5 charts + 1-2 tables
 
-### Filter Widget Guide
-
-Filter widgets use type `filter` with **NO dataSource** — controls are statically defined.
-- Place at y=2, w=12, h=2
-- Include 2-4 controls for key slicing dimensions
-- **Every control MUST have a `column` field** — the real DB column name
-- **Dropdown controls MUST have an `optionsSource`** with connectionId and sql
-
-Example filter config:
-```
-{
-  "id": "filter_bar",
-  "position": {"x": 0, "y": 2, "w": 12, "h": 2},
-  "widget": {
-    "type": "filter",
-    "config": {
-      "controls": [
-        {
-          "type": "dropdown",
-          "label": "Property Type",
-          "key": "property_type",
-          "column": "property_type",
-          "optionsSource": {
-            "connectionId": <connection_id>,
-            "sql": "SELECT DISTINCT property_type AS option_value FROM listings ORDER BY 1 LIMIT 50"
-          }
-        },
-        {"type": "date_range", "label": "Transaction Date", "key": "date", "column": "transaction_date"},
-        {"type": "search", "label": "Search", "key": "search", "column": "property_name"}
-      ]
-    }
-  }
-}
-```
-
 ### Chart Type Selection Guide
 
 | Data pattern                        | Best chart type  | config.options                           | Max width                   |
@@ -118,90 +83,15 @@ Rules:
 - Default to w=6 and pair charts side-by-side at the same y row
 - w=12 only for time-series line/area charts
 
-### Chart Options
+### Widget Configuration
 
-Set `widget.config.options` to control chart rendering:
+Before configuring widgets, call `get_widget_spec(widget_type)` to get the complete
+field definitions, mapping structure, SQL patterns, and best practices.
 
-```json
-{
-  "type": "chart",
-  "config": {
-    "type": "bar",
-    "title": "Sales by Region",
-    "options": {
-      "stacked": true,
-      "indexAxis": "y",
-      "showValues": true,
-      "showLegend": false,
-      "legendPosition": "bottom",
-      "showGrid": true,
-      "sortBy": "value",
-      "sortDirection": "desc"
-    }
-  }
-}
-```
+Available types: kpi, chart, table, filter, text.
 
-- `stacked`: true for stacked bar/area charts (composition view)
-- `indexAxis: "y"`: flips bar chart horizontal (use for 8+ categories or long labels)
-- `showValues`: show data labels on bar/pie/doughnut slices
-- `showLegend` / `legendPosition`: control legend visibility and placement
-- `showGrid`: show or hide grid lines
-- `sortBy` / `sortDirection`: sort bars by "value" desc/asc (skip for time-series)
-
-### CRITICAL: Widget JSON Structure
-
-Every widget MUST have a nested `config` sub-object inside `widget`.
-
-```
-{
-  "id": "kpi_total",
-  "position": {"x": 0, "y": 0, "w": 3, "h": 2},
-  "widget": {
-    "type": "kpi",
-    "config": { "label": "Total Listings" }
-  }
-}
-```
-
-**KPI** `config`: `label` (string, required — NOT "title"), prefix/suffix optional
-**Chart** `config`: `type` ("bar"|"line"|"pie"|"doughnut"|"area"|"scatter"), `title` optional, `options` optional (see Chart Options above)
-**Table** `config`: `columns` [{key, label, sortable?}] — rows auto-populated
-**Text** `config`: `content` (markdown string)
-
-### SQL-Backed Widgets — dataSource Field
-
-Add `dataSource` to every chart, KPI, and table. The `create_dashboard` tool auto-executes SQL.
-
-```
-"dataSource": {
-  "connectionId": <connection_id>,
-  "sql": "SELECT ...",
-  "mapping": { ... }
-}
-```
-
-Mapping types:
-- **chart**: `{ "type": "chart", "labelColumn": "<x-axis col>", "datasetColumns": [{"column": "<col>", "label": "<display name>"}] }`
-- **kpi**: `{ "type": "kpi", "valueColumn": "<main value col>", "trendValueColumn": "<numeric col>", "sparklineXColumn": "<time-ordered col>", "sparklineYColumn": "<numeric col>" }`
-  - `trendValueColumn`: a numeric column (e.g. month-over-month change) — auto-renders colored up/down/neutral arrow
-  - `sparklineXColumn`: x-axis labels column (e.g. date/time for ordering) — used for sparkline chart labels
-  - `sparklineYColumn`: y-axis values column (numeric) — renders a miniature sparkline chart
-  - **Always try to include trend and sparkline — a number alone lacks context**
-  - For sparklines, SQL must return multiple rows ordered by time (not just a single aggregate)
-- **table**: `{ "type": "table", "columnConfig": [{"column": "<col>", "label": "<display name>", "sortable": true, "format": "currency"|"number"|"percent"|"date"}] }`
-  - `format`: always set on monetary columns ("currency"), rate columns ("percent"), or date columns ("date")
-  - percent format applies automatic red/green coloring based on positive/negative values
-
-### Visualization Best Practices
-
-- **KPIs**: always try to include `trendValueColumn` and `sparklineXColumn`/`sparklineYColumn` — a bare number gives no context
-- **Bar charts**: sort by value desc unless the x-axis is temporal
-- **Horizontal bars**: use `indexAxis: "y"` for long category labels or 8+ categories
-- **Table formatting**: always set `format` on monetary, percentage, and date columns
-- **Legend**: hide legend (`showLegend: false`) on single-dataset charts to reduce clutter
-- **Chart variety**: use at least 2-3 different chart types per dashboard (mix bar, line/area, pie/doughnut)
-- **Pie/doughnut**: always set `showValues: true` so slice values are visible
+Every widget MUST have: `id`, `position` {x, y, w, h}, `widget.type`, `widget.config`.
+Data widgets (kpi, chart, table) also need: `dataSource` {connectionId, sql, mapping}.
 
 ### SQL Semantic Verification Checklist (before calling create_dashboard)
 
@@ -209,7 +99,7 @@ Mapping types:
 2. **Column existence**: every column in SQL must exist in the schema you explored
 3. **Mapping columns in SELECT**: every column in mapping must appear in SQL SELECT output
 4. **No forbidden keywords**: no INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, GRANT, REVOKE, EXEC, EXECUTE, COPY, LOAD, SET, CALL, RENAME
-5. If `create_dashboard` returns a schema validation error, fix the SQL and retry
+5. If `create_dashboard` returns with warnings, fix the affected widget SQL and call `update_dashboard` to update them
 
 ## Updating Existing Dashboards
 

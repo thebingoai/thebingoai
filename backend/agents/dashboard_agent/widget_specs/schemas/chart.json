@@ -1,0 +1,40 @@
+{
+  "widget_type": "chart",
+  "config": {
+    "type":        { "type": "enum",   "required": true,  "values": ["bar", "line", "pie", "doughnut", "area", "scatter"], "description": "Chart visualization type" },
+    "title":       { "type": "string", "required": false, "description": "Chart title displayed above the visualization" },
+    "description": { "type": "string", "required": false, "description": "Optional narrative description" },
+    "options": {
+      "type": "object",
+      "required": false,
+      "description": "Chart rendering options",
+      "fields": {
+        "stacked":         { "type": "boolean", "description": "Stack bars/areas for composition view" },
+        "indexAxis":        { "type": "enum",    "values": ["x", "y"], "description": "Set to 'y' for horizontal bar charts (use for 8+ categories or long labels)" },
+        "showValues":       { "type": "boolean", "description": "Show data labels on bars/slices" },
+        "showLegend":       { "type": "boolean", "description": "Show chart legend (hide on single-dataset charts)" },
+        "legendPosition":   { "type": "enum",    "values": ["top", "bottom", "left", "right"], "description": "Legend placement" },
+        "showGrid":         { "type": "boolean", "description": "Show grid lines" },
+        "showTooltips":     { "type": "boolean", "description": "Show hover tooltips" },
+        "sortBy":           { "type": "enum",    "values": ["none", "label", "value"], "description": "Sort bars by label or value (skip for time-series)" },
+        "sortDirection":    { "type": "enum",    "values": ["asc", "desc"], "description": "Sort direction" }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "required": false,
+      "description": "Animation configuration",
+      "fields": {
+        "entrance":         { "type": "enum",    "values": ["fadeIn", "slideUp", "grow", "none"], "description": "Container entrance animation" },
+        "entranceDuration": { "type": "number",  "description": "Entrance animation duration in ms (default: 600)" },
+        "entranceDelay":    { "type": "number",  "description": "Entrance animation delay in ms (default: 0)" },
+        "chartAnimation":   { "type": "boolean", "description": "Enable Chart.js data animations (default: true)" }
+      }
+    }
+  },
+  "mapping": {
+    "labelColumn":    { "type": "string", "required": true,  "description": "Column for x-axis labels or pie slice names" },
+    "datasetColumns": { "type": "array",  "required": true,  "description": "Array of {column, label} objects — each becomes a dataset series", "items": { "column": "string", "label": "string" } }
+  },
+  "position_defaults": { "w": 6, "h": 5, "minW": 3, "minH": 3 }
+}

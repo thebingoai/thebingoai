@@ -1,0 +1,28 @@
+{
+  "widget_type": "filter",
+  "config": {
+    "controls": {
+      "type": "array",
+      "required": true,
+      "description": "Filter control definitions. NO dataSource on filter widgets — controls are statically defined",
+      "items": {
+        "type":          { "type": "enum",    "required": true,  "values": ["dropdown", "date_range", "search"], "description": "Control type" },
+        "label":         { "type": "string",  "required": true,  "description": "Display label" },
+        "key":           { "type": "string",  "required": true,  "description": "Unique identifier for this control" },
+        "column":        { "type": "string",  "required": true,  "description": "Real DB column name used for SQL filtering. EVERY control MUST have this" },
+        "multiple":      { "type": "boolean", "required": false, "description": "Allow multi-select (dropdown only)" },
+        "options":       { "type": "array",   "required": false, "description": "Static fallback options (string array)" },
+        "optionsSource": {
+          "type": "object",
+          "required": false,
+          "description": "Dynamic SQL-based options. REQUIRED for dropdown controls",
+          "fields": {
+            "connectionId": { "type": "number", "description": "Database connection ID" },
+            "sql":          { "type": "string", "description": "SQL query, e.g. SELECT DISTINCT col AS option_value FROM table ORDER BY 1 LIMIT 50" }
+          }
+        }
+      }
+    }
+  },
+  "position_defaults": { "w": 12, "h": 2, "minW": 4, "minH": 2 }
+}
