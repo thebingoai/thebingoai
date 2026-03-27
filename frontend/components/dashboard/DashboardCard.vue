@@ -19,13 +19,18 @@
       </div>
 
       <div class="flex items-center justify-between">
-        <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
-          <component
-            :is="icon"
-            v-for="(icon, i) in widgetTypeIcons"
-            :key="i"
-            class="h-3.5 w-3.5 text-gray-300"
-          />
+        <div class="flex items-center gap-3 min-w-0">
+          <div v-if="widgetTypeIcons.length > 0" class="flex items-center gap-1.5">
+            <component
+              :is="icon"
+              v-for="(icon, i) in widgetTypeIcons"
+              :key="i"
+              class="h-3.5 w-3.5 text-gray-300"
+            />
+          </div>
+          <span v-if="formattedDate" class="truncate text-[10px] text-gray-300">
+            {{ formattedDate }}
+          </span>
         </div>
         <button
           class="flex h-6 w-6 items-center justify-center rounded-lg text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
@@ -63,4 +68,17 @@ const widgetIconMap: Record<WidgetType, any> = {
 const widgetTypeIcons = computed(() =>
   props.dashboard.widgetTypes.slice(0, 5).map(t => widgetIconMap[t]),
 )
+
+const formattedDate = computed(() => {
+  if (!props.dashboard.createdAt) return ''
+  const date = new Date(props.dashboard.createdAt)
+  if (isNaN(date.getTime())) return ''
+  const now = new Date()
+  const sameYear = date.getFullYear() === now.getFullYear()
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  })
+})
 </script>

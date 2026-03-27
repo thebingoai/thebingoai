@@ -200,6 +200,10 @@ export const useApi = () => {
       async getMessageSteps(threadId: string, messageId: string) {
         return fetchWithRefresh(`/api/chat/conversations/${threadId}/messages/${messageId}/steps`, {})
       },
+      async getFileUrl(fileId: string, storageKey?: string) {
+        const params = storageKey ? `?storage_key=${encodeURIComponent(storageKey)}` : ''
+        return fetchWithRefresh(`/api/chat/files/${fileId}/url${params}`, {})
+      },
       async uploadChatFiles(files: File[]) {
         const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest()

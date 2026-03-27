@@ -166,6 +166,7 @@ export interface DashboardListItem {
   id: number
   title: string
   description?: string
+  createdAt?: string
   widgetCount: number
   widgetTypes: WidgetType[]
   widgets: { type: WidgetType; position: GridPosition; chartType?: ChartType }[]
@@ -187,6 +188,7 @@ export function toDashboardListItem(dashboard: Dashboard): DashboardListItem {
     id: dashboard.id,
     title: dashboard.title,
     description: dashboard.description,
+    createdAt: dashboard.createdAt,
     widgetCount: dashboard.widgets.length,
     widgetTypes: types,
     widgets: dashboard.widgets.map(w => ({

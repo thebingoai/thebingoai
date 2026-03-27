@@ -1,7 +1,8 @@
 import logging
-from typing import List
+import posixpath
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from backend.auth.dependencies import get_current_user
 from backend.config import settings
@@ -18,6 +19,8 @@ ACCEPTED_MIME_TYPES = {
     "image/gif",
     "image/webp",
     "text/csv",
+    "text/xlsx",
+    "text/xls",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -77,10 +80,10 @@ async def upload_chat_files(
                 mime_type=mime_type,
             )
             chat_file_service.store_file(file_data)
-            if mime_type in chat_file_service.DATASET_MIME_TYPES:
-                chat_file_service.save_raw_file(
-                    current_user.id, file_data["file_id"], upload_file.filename or "", file_bytes
-                )
+            storage_key = chat_file_service.save_raw_file(
+                current_user.id, file_data["file_id"], upload_file.filename or "", file_bytes, mime_type
+            )
+            chat_file_service.update_file_storage_key(file_data["file_id"], storage_key)
         except ValueError as exc:
             logger.warning("Failed to process chat file '%s': %s", upload_file.filename, exc)
             raise HTTPException(status_code=400, detail=str(exc))
@@ -104,3 +107,66 @@ async def upload_chat_files(
         )
 
     return {"files": results}
+
+
+@router.get("/files/{file_id}/url")
+async def get_chat_file_url(
+    file_id: str,
+    storage_key: Optional[str] = Query(default=None),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate a presigned download URL for a chat file stored in DO Spaces."""
+    from backend.services import object_storage
+
+    # Try Redis cache first
+    if not storage_key:
+        file_data = chat_file_service.get_file(file_id)
+        storage_key = file_data.get("storage_key") if file_data else None
+
+    # Fallback: look up storage_key from DB message attachments
+    if not storage_key:
+        storage_key = _lookup_storage_key_from_db(file_id, current_user.id)
+
+    if not storage_key:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    # Normalize path and reject traversal attempts
+    normalized = posixpath.normpath(storage_key)
+    if ".." in normalized:
+        raise HTTPException(status_code=400, detail="Invalid storage key")
+
+    expected_prefix = f"{settings.do_spaces_base_path}/{current_user.id}/"
+    if not normalized.startswith(expected_prefix):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    url = object_storage.generate_presigned_url(normalized, expires_in=3600)
+    return {"url": url, "expires_in": 3600}
+
+
+def _lookup_storage_key_from_db(file_id: str, user_id: str) -> Optional[str]:
+    """Look up a file's storage_key from message attachments in the database."""
+    from backend.database.session import SessionLocal
+    from backend.models.message import Message
+    from backend.models.conversation import Conversation
+    from sqlalchemy import cast, String
+
+    db = SessionLocal()
+    try:
+        messages = (
+            db.query(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .filter(
+                Conversation.user_id == user_id,
+                Message.attachments.isnot(None),
+            )
+            .all()
+        )
+        for msg in messages:
+            if not msg.attachments:
+                continue
+            for att in msg.attachments:
+                if att.get("file_id") == file_id and att.get("storage_key"):
+                    return att["storage_key"]
+        return None
+    finally:
+        db.close()

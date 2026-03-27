@@ -14,20 +14,31 @@ import json
 logger = logging.getLogger(__name__)
 
 
-def _make_loop_detector(max_repeats: int = 2):
-    """pre_model_hook that detects repeated identical tool calls and injects a stop message."""
+def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 5):
+    """pre_model_hook that detects repeated tool calls and injects a stop message.
+
+    Catches two patterns:
+    1. Identical consecutive calls (same tool + same args) — existing behaviour.
+    2. Same tool called many times with different args (e.g. varied SQL against
+       sqlite_master) — new, prevents the LLM from trying slight variations.
+    """
+    limit = max(max_repeats, max_same_tool)
+
     def detect_loop(state):
         messages = state.get("messages", [])
         # Collect recent tool calls (name + args) from AI messages
         recent_calls = []
+        recent_tool_names = []
         for msg in reversed(messages):
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
                     key = (tc.get("name"), json.dumps(tc.get("args", {}), sort_keys=True))
                     recent_calls.append(key)
-            if len(recent_calls) >= max_repeats:
+                    recent_tool_names.append(tc.get("name"))
+            if len(recent_calls) >= limit:
                 break
-        # If the last N tool calls are identical, inject a stop message
+
+        # Check 1: identical consecutive calls
         if len(recent_calls) >= max_repeats:
             if len(set(recent_calls[:max_repeats])) == 1:
                 tool_name = recent_calls[0][0]
@@ -35,6 +46,18 @@ def _make_loop_detector(max_repeats: int = 2):
                 return {"messages": [HumanMessage(content=(
                     f"STOP: You have called {tool_name} with the same arguments {max_repeats} times and got the same result. "
                     "Accept the result as final and respond to the user. Do not call this tool again."
+                ))]}
+
+        # Check 2: same tool called many times with different args
+        if len(recent_tool_names) >= max_same_tool:
+            last_n = recent_tool_names[:max_same_tool]
+            if len(set(last_n)) == 1:
+                tool_name = last_n[0]
+                logger.warning(f"Tool-family loop detected: {tool_name} called {max_same_tool} times with varying args, injecting stop")
+                return {"messages": [HumanMessage(content=(
+                    f"STOP: You have called {tool_name} {max_same_tool} times in a row with different arguments "
+                    "but no useful result. The information is not available through this approach. "
+                    "Report this to the user and move on. Do NOT try more variations."
                 ))]}
         return {}
     return detect_loop

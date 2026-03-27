@@ -165,6 +165,7 @@ const userInitial = computed(() => {
 onMounted(() => {
   chatStore.hydrateFromStorage()
   chat.loadConversations()
+  chat.registerTitleHandler()
   chat.registerHeartbeatHandler()
 })
 

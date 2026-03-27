@@ -341,14 +341,25 @@ def get_full_content(file_id: str) -> str:
     return file_data.get("extracted_text", "")
 
 
-def save_raw_file(user_id: str, file_id: str, filename: str, file_bytes: bytes) -> str:
+def save_raw_file(user_id: str, file_id: str, filename: str, file_bytes: bytes, content_type: str = "application/octet-stream") -> str:
     """Upload raw file to DO Spaces. Returns the storage key."""
     from backend.services import object_storage
     ext = os.path.splitext(filename)[1].lower()
     key = f"{settings.do_spaces_base_path}/{user_id}/raw/{file_id}{ext}"
-    object_storage.upload_bytes(key, file_bytes)
+    object_storage.upload_bytes(key, file_bytes, content_type)
     logger.debug("Saved raw file %s to key %s", file_id, key)
     return key
+
+
+def update_file_storage_key(file_id: str, storage_key: str) -> None:
+    """Update the Redis-cached file data with the DO Spaces storage key."""
+    key = f"{CHAT_FILE_PREFIX}{file_id}"
+    data = redis_client.get(key)
+    if data:
+        file_data = json.loads(data)
+        file_data["storage_key"] = storage_key
+        ttl = redis_client.ttl(key)
+        redis_client.setex(key, max(ttl, 60), json.dumps(file_data))
 
 
 def get_raw_file(user_id: str, file_id: str) -> Optional[tuple]:

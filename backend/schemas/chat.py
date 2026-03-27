@@ -9,12 +9,22 @@ class ChatRequest(BaseModel):
     thread_id: Optional[str] = None  # For continuing conversations
 
 
+class ChatAttachment(BaseModel):
+    file_id: str
+    name: str
+    type: str
+    size: int
+    content_type: Optional[str] = None
+    storage_key: Optional[str] = None
+
+
 class ChatMessage(BaseModel):
     id: int
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime
     source: str = "chat"
+    attachments: Optional[List[ChatAttachment]] = None
 
     class Config:
         from_attributes = True

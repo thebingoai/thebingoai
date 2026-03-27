@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
     # Startup
-    logger.info("Starting LLM-MD Backend...")
+    logger.info("Starting BINGO Backend...")
     try:
         ensure_collection(settings.qdrant_documents_collection, settings.qdrant_vector_size)
         ensure_collection(settings.qdrant_memories_collection, settings.qdrant_vector_size)
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     shutdown_plugins()
 
 app = FastAPI(
-    title="LLM-MD Backend",
+    title="BINGO Backend",
     description="Backend for indexing and querying markdown files with LLMs",
     version=settings.app_version,
     lifespan=lifespan
