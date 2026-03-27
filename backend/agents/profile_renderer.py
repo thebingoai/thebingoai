@@ -155,15 +155,18 @@ class ProfileRenderer:
         ctx = runtime_context or RuntimeContext()
         sections: List[str] = []
 
-        # 1. Identity (always present)
+        # 1. Bootstrap FIRST (if active) — so the LLM sees first-run instructions immediately
+        bootstrap_active = profile.bootstrap and (not profile.soul or "name:" not in profile.soul.lower())
+        if bootstrap_active:
+            sections.append(profile.bootstrap)
+
+        # 2. Identity (always present)
         if profile.identity:
             sections.append(profile.identity)
 
-        # 2. Soul or Bootstrap (mutually exclusive)
+        # 3. Soul
         if profile.soul:
-            sections.append(f"## Your Personality & Approach\n{profile.soul}")
-        elif profile.bootstrap:
-            sections.append(f"## Identity Setup\n{profile.bootstrap}")
+            sections.append(profile.soul)
 
         # 3. Guardrails (always, if set)
         if profile.guardrails:

@@ -32,155 +32,71 @@ def build_profile_tools(
     """
     Build profile self-evolution tools for the orchestrator.
 
-    Returns [update_profile, read_profile].
+    Returns [write_profile, read_profile].
     """
     if db_session_factory is None:
         return []
 
     @tool
-    async def update_profile(
-        section: str,
-        action: str,
-        proposed_content: str,
-        reason: str = "",
-    ) -> str:
+    async def write_profile(section: str, content: str) -> str:
         """
-        Propose or apply a change to a section of your agent profile.
+        Write to a section of your profile. This is your memory across conversations.
 
-        Your profile defines your cognitive architecture — who you are, how you
-        behave, and what you can do. Each section can evolve based on interactions.
+        Use this freely whenever you learn something worth keeping:
+        - soul: who you are (name, personality, vibe). Put "name: YourName" as the first line.
+        - user_context: what you know about this user (name, role, databases, preferences)
+        - identity: your role and approach
+        - tools: how you use your tools
+        - agents: your team and delegation rules
+        - heartbeat: what you check periodically
+        - bootstrap: your first-run behavior
 
-        **Sections you can update:**
-        - identity: Your role, expertise, and boundaries
-        - soul: Your personality, tone, and values (under 500 words)
-        - tools: How you use your available tools
-        - agents: Sub-agents you can delegate to
-        - bootstrap: Your first-run behavior with new users
-        - heartbeat: What you check periodically
-        - user_context: Notes about this specific user's preferences
-
-        **Sections you CANNOT update:**
-        - guardrails: Read-only constraints set by admins
-
-        **action = "propose"**
-        Stages a proposal for the user to review. Does NOT write to the database.
-        Present the proposal and ask for explicit confirmation before applying.
-
-        **action = "apply"**
-        Persists the change after user confirmation. Never call without prior approval.
+        Cannot write to: guardrails (read-only, set by admins)
 
         Args:
-            section: Which profile section to update.
-            action: "propose" to stage, "apply" to persist.
-            proposed_content: The full updated section content.
-            reason: Why you are proposing this change.
-
-        Returns:
-            JSON with success status and proposal/result details.
+            section: Which profile section to write.
+            content: The full section content to save.
         """
-        # Validate section
+        if section == "guardrails":
+            return json.dumps({"success": False, "message": "guardrails is read-only."})
         if section not in _EVOLVABLE_SECTIONS:
-            if section == "guardrails":
-                return json.dumps({
-                    "success": False,
-                    "message": "Cannot modify guardrails — this section is read-only and managed by admins.",
-                })
-            return json.dumps({
-                "success": False,
-                "message": f"Unknown section '{section}'. Valid: {', '.join(_EVOLVABLE_SECTIONS)}",
-            })
+            return json.dumps({"success": False, "message": f"Unknown section '{section}'."})
 
-        if action == "propose":
-            # Word count check for soul
+        if section == "soul" and len(content.split()) > 600:
+            return json.dumps({"success": False, "message": "Soul too long. Keep under 500 words."})
+
+        lock_status = _check_section_lock(db_session_factory, context.user_id, section)
+        if lock_status == "locked":
+            return json.dumps({"success": False, "message": f"'{section}' is locked by your org admin."})
+
+        db = db_session_factory()
+        try:
+            from backend.models.agent_profile import AgentProfile
+
+            profile = db.query(AgentProfile).filter(
+                AgentProfile.user_id == context.user_id,
+                AgentProfile.agent_type == "orchestrator",
+                AgentProfile.is_active.is_(True),
+            ).first()
+
+            if not profile:
+                from backend.agents.profile_renderer import seed_default_profile
+                profile = seed_default_profile(db, context.user_id, "orchestrator")
+
+            setattr(profile, section, content)
+            profile.version = (profile.version or 0) + 1
+            db.commit()
+
             if section == "soul":
-                word_count = len(proposed_content.split())
-                if word_count > 600:
-                    return json.dumps({
-                        "success": False,
-                        "message": f"Soul is too long ({word_count} words). Keep it under 500 words.",
-                    })
+                _handle_soul_side_effects(db, context, content)
 
-            # Check section locks
-            lock_status = _check_section_lock(db_session_factory, context.user_id, section)
-            if lock_status == "locked":
-                return json.dumps({
-                    "success": False,
-                    "message": f"Cannot update '{section}' — locked by your organization admin.",
-                })
-
-            impact = "high-impact" if section in _HIGH_IMPACT_SECTIONS else "low-friction"
-            proposal = (
-                f"I'd like to update my **{section}** profile section.\n\n"
-                f"**Why:** {reason}\n\n"
-                f"**Proposed {section}:**\n---\n{proposed_content}\n---\n\n"
-            )
-            if impact == "high-impact":
-                proposal += "This is a high-impact change. Would you like me to apply this?"
-            else:
-                proposal += "Would you like me to apply this?"
-
-            return json.dumps({
-                "success": True,
-                "proposal": proposal,
-                "section": section,
-                "proposed_content": proposed_content,
-            })
-
-        elif action == "apply":
-            db = db_session_factory()
-            try:
-                from backend.models.agent_profile import AgentProfile
-
-                profile = db.query(AgentProfile).filter(
-                    AgentProfile.user_id == context.user_id,
-                    AgentProfile.agent_type == "orchestrator",
-                    AgentProfile.is_active.is_(True),
-                ).first()
-
-                if not profile:
-                    # Lazy-seed if no profile exists
-                    from backend.agents.profile_renderer import seed_default_profile
-                    from backend.models.user import User as UserModel
-                    user = db.query(UserModel).filter(UserModel.id == context.user_id).first()
-                    profile = seed_default_profile(
-                        db, context.user_id, "orchestrator",
-                        org_id=getattr(user, "org_id", None),
-                    )
-
-                # Check lock
-                locks = profile.section_locks or {}
-                if locks.get(section) == "locked":
-                    return json.dumps({
-                        "success": False,
-                        "message": f"Cannot update '{section}' — locked by your organization admin.",
-                    })
-
-                # Apply the change
-                setattr(profile, section, proposed_content)
-                profile.version = (profile.version or 0) + 1
-                db.commit()
-
-                # Special handling for soul: extract name and update conversation title
-                if section == "soul":
-                    _handle_soul_side_effects(db, context, proposed_content)
-
-                return json.dumps({
-                    "success": True,
-                    "message": f"Profile section '{section}' updated successfully.",
-                    "version": profile.version,
-                })
-            except Exception as exc:
-                db.rollback()
-                logger.error(f"update_profile(apply, {section}) failed: {exc}")
-                return json.dumps({"success": False, "message": str(exc)})
-            finally:
-                db.close()
-
-        else:
-            return json.dumps({
-                "success": False,
-                "message": f"Unknown action '{action}'. Must be 'propose' or 'apply'.",
-            })
+            return json.dumps({"success": True, "message": f"Saved {section}.", "version": profile.version})
+        except Exception as exc:
+            db.rollback()
+            logger.error(f"write_profile({section}) failed: {exc}")
+            return json.dumps({"success": False, "message": str(exc)})
+        finally:
+            db.close()
 
     @tool
     async def read_profile(section: str = "") -> str:
@@ -251,7 +167,7 @@ def build_profile_tools(
         finally:
             db.close()
 
-    return [update_profile, read_profile]
+    return [write_profile, read_profile]
 
 
 def _check_section_lock(

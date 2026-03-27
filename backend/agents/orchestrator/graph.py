@@ -481,10 +481,10 @@ async def run_orchestrator(
             config={"recursion_limit": settings.agent_recursion_limit},
         )
 
-        messages = result.get("messages", [])
+        result_messages = result.get("messages", [])
 
         final_answer = None
-        for msg in reversed(messages):
+        for msg in reversed(result_messages):
             if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
                 final_answer = msg.content
                 break
