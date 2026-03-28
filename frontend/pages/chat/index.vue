@@ -8,9 +8,9 @@
     <!-- Conversation info panel (slides in from the right) -->
     <div
       class="shrink-0 overflow-hidden transition-all duration-300 ease-in-out"
-      :class="chatStore.infoPanelOpen ? 'w-80 border-l border-gray-200' : 'w-0'"
+      :class="chatStore.infoPanelOpen ? 'w-[440px] border-l border-gray-200' : 'w-0'"
     >
-      <ConversationInfoPanel v-if="chatStore.infoPanelOpen" class="w-80" />
+      <ConversationInfoPanel v-if="chatStore.infoPanelOpen" class="w-[440px]" />
     </div>
   </div>
 </template>

@@ -210,6 +210,11 @@ export const useApi = () => {
       async getConversationSummary(threadId: string) {
         return fetchWithRefresh(`/api/chat/conversations/${threadId}/summary`, {})
       },
+      async generateConversationSummary(threadId: string) {
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}/summary/generate`, {
+          method: 'POST'
+        })
+      },
       async getFileUrl(fileId: string, storageKey?: string) {
         const params = storageKey ? `?storage_key=${encodeURIComponent(storageKey)}` : ''
         return fetchWithRefresh(`/api/chat/files/${fileId}/url${params}`, {})

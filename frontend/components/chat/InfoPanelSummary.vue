@@ -1,24 +1,39 @@
 <template>
   <div class="border-b border-gray-100">
     <!-- Header -->
-    <button
-      @click="chatStore.toggleInfoSection('summary')"
-      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-    >
-      <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Summary</span>
-      <div class="flex items-center gap-2">
-        <span v-if="chatStore.conversationSummary?.updated_at" class="text-[10px] text-gray-300">
-          {{ timeAgo }}
-        </span>
-        <svg
-          class="w-3 h-3 text-gray-300 transition-transform duration-200"
-          :class="{ 'rotate-180': chatStore.infoPanelSections.summary }"
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+    <div class="flex items-center justify-between px-4 py-3">
+      <button
+        @click="chatStore.toggleInfoSection('summary')"
+        class="flex-1 flex items-center justify-between hover:opacity-70 transition-opacity"
+      >
+        <span class="text-[12px] uppercase tracking-wider text-gray-400 font-semibold">Summary</span>
+        <div class="flex items-center gap-2">
+          <span v-if="chatStore.conversationSummary?.updated_at" class="text-[10px] text-gray-300">
+            {{ timeAgo }}
+          </span>
+          <svg
+            class="w-3 h-3 text-gray-300 transition-transform duration-200"
+            :class="{ 'rotate-180': chatStore.infoPanelSections.summary }"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+      <!-- Generate button -->
+      <button
+        v-if="chatStore.infoPanelSections.summary && chatStore.currentThreadId"
+        @click.stop="handleGenerate"
+        :disabled="generating"
+        class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-300 hover:text-gray-500"
+        :class="{ 'animate-spin': generating }"
+        title="Generate summary"
+      >
+        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
-      </div>
-    </button>
+      </button>
+    </div>
 
     <!-- Content -->
     <div
@@ -26,10 +41,10 @@
       class="px-4 pb-3"
     >
       <!-- Summary text -->
-      <p v-if="chatStore.conversationSummary?.text" class="text-xs text-gray-500 leading-relaxed mb-3">
+      <p v-if="chatStore.conversationSummary?.text" class="text-sm text-gray-500 leading-relaxed mb-3">
         {{ chatStore.conversationSummary.text }}
       </p>
-      <p v-else class="text-xs text-gray-300 italic mb-3">
+      <p v-else class="text-sm text-gray-300 italic mb-3">
         Start a conversation to see a summary here.
       </p>
 
@@ -52,6 +67,18 @@
 
 <script setup lang="ts">
 const chatStore = useChatStore()
+const chat = useChat()
+
+const generating = ref(false)
+
+const handleGenerate = async () => {
+  generating.value = true
+  try {
+    await chat.generateSummary()
+  } finally {
+    generating.value = false
+  }
+}
 
 const tokenCount = computed(() => chatStore.conversationSummary?.token_count ?? 0)
 const tokenLimit = computed(() => chatStore.conversationSummary?.token_limit ?? 128000)

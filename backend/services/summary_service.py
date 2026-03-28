@@ -66,6 +66,54 @@ class SummaryService:
         return existing
 
     @staticmethod
+    async def generate_full_summary(db: Session, conversation_id: int) -> ConversationSummary:
+        """Generate a summary from the full conversation history (for manual trigger)."""
+        from backend.llm.factory import get_provider
+        from backend.models.message import Message
+
+        messages = db.query(Message).filter_by(conversation_id=conversation_id).order_by(Message.id).all()
+        if not messages:
+            raise ValueError("No messages in conversation")
+
+        # Build condensed transcript, truncated to ~2000 chars
+        transcript_parts = []
+        total_len = 0
+        for m in messages:
+            role = "User" if m.role == "user" else "Assistant"
+            text = (m.content or "")[:300]
+            line = f"{role}: {text}"
+            if total_len + len(line) > 2000:
+                transcript_parts.append("... (earlier messages truncated)")
+                break
+            transcript_parts.append(line)
+            total_len += len(line)
+
+        prompt = "\n\n".join(transcript_parts) + "\n\nWrite a 1-3 sentence summary of what this conversation is about. Return ONLY the summary text."
+
+        provider_name = settings.default_llm_provider or "openai"
+        model = _SUMMARY_MODELS.get(provider_name)
+        provider = get_provider(provider_name, model=model)
+
+        llm_messages = [{"role": "user", "content": prompt}]
+        raw = await provider.chat(llm_messages, temperature=0.3, max_tokens=150)
+        summary_text = raw.strip()[:500] or "Conversation in progress."
+
+        existing = db.query(ConversationSummary).filter_by(conversation_id=conversation_id).first()
+        if existing:
+            existing.summary_text = summary_text
+            existing.updated_at = datetime.utcnow()
+        else:
+            existing = ConversationSummary(
+                conversation_id=conversation_id,
+                summary_text=summary_text,
+            )
+            db.add(existing)
+
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    @staticmethod
     def get_summary(db: Session, conversation_id: int):
         return db.query(ConversationSummary).filter_by(conversation_id=conversation_id).first()
 

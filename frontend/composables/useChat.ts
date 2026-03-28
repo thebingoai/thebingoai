@@ -393,6 +393,24 @@ export const useChat = () => {
     }
   }
 
+  const generateSummary = async () => {
+    const threadId = chatStore.currentThreadId
+    if (!threadId) return
+    try {
+      const summary = await api.chat.generateConversationSummary(threadId) as any
+      if (summary && chatStore.currentThreadId === threadId) {
+        chatStore.setConversationSummary({
+          text: summary.text || '',
+          updated_at: summary.updated_at || new Date().toISOString(),
+          token_count: summary.token_count || 0,
+          token_limit: summary.token_limit || 128000,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to generate summary:', error)
+    }
+  }
+
   const loadConversationSummary = async (threadId: string) => {
     try {
       const summary = await api.chat.getConversationSummary(threadId) as any
@@ -587,5 +605,6 @@ export const useChat = () => {
     archiveConversation,
     unarchiveConversation,
     loadArchivedConversations,
+    generateSummary,
   }
 }

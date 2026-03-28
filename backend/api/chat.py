@@ -418,6 +418,31 @@ async def get_conversation_summary(
     }
 
 
+@router.post("/conversations/{thread_id}/summary/generate", response_model=ConversationSummaryResponse)
+async def generate_conversation_summary(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Force-generate a summary from the full conversation history."""
+    from backend.services.summary_service import SummaryService
+
+    conversation = ConversationService.get_conversation_by_thread(db, thread_id, current_user.id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    summary = await SummaryService.generate_full_summary(db, conversation.id)
+    token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+    token_limit = SummaryService.get_token_limit()
+
+    return {
+        "text": summary.summary_text,
+        "updated_at": summary.updated_at.isoformat(),
+        "token_count": token_count,
+        "token_limit": token_limit,
+    }
+
+
 @router.delete("/conversations/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
     thread_id: str,
