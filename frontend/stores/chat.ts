@@ -43,6 +43,7 @@ export interface Conversation {
   id: string
   title: string
   type: 'task' | 'permanent'
+  is_archived?: boolean
   created_at: string
   updated_at: string
   message_count: number
@@ -52,6 +53,7 @@ export interface Conversation {
 export const useChatStore = defineStore('chat', {
   state: () => ({
     conversations: [] as Conversation[],
+    archivedConversations: [] as Conversation[],
     currentThreadId: null as string | null,
     messages: [] as Message[],
     inputText: '',
@@ -122,6 +124,26 @@ export const useChatStore = defineStore('chat', {
       this.conversations = this.conversations.filter(c => c.id !== threadId)
     },
 
+    setArchivedConversations(conversations: Conversation[]) {
+      this.archivedConversations = conversations
+    },
+
+    moveToArchived(threadId: string) {
+      const conv = this.conversations.find(c => c.id === threadId)
+      if (conv) {
+        this.conversations = this.conversations.filter(c => c.id !== threadId)
+        this.archivedConversations.unshift(conv)
+      }
+    },
+
+    moveFromArchived(threadId: string) {
+      const conv = this.archivedConversations.find(c => c.id === threadId)
+      if (conv) {
+        this.archivedConversations = this.archivedConversations.filter(c => c.id !== threadId)
+        this.conversations.unshift(conv)
+      }
+    },
+
     updateConversationTitle(threadId: string, title: string) {
       const conversation = this.conversations.find(c => c.id === threadId)
       if (conversation) {
@@ -185,6 +207,7 @@ export const useChatStore = defineStore('chat', {
 
     reset() {
       this.conversations = []
+      this.archivedConversations = []
       this.currentThreadId = null
       this.messages = []
       this.inputText = ''

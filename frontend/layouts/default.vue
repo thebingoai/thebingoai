@@ -18,6 +18,16 @@
         <PanelLeftClose v-else class="h-6 w-6 text-gray-600" />
       </button>
 
+      <!-- Archive button inside main, top-right -->
+      <button
+        v-if="canArchive"
+        @click="handleArchive"
+        class="absolute right-3 top-1.5 z-30 rounded-lg p-2 pt-4 mr-1 transition-colors hover:bg-gray-100"
+        aria-label="Archive conversation"
+      >
+        <Archive class="h-5 w-5 text-gray-500 hover:text-gray-700" />
+      </button>
+
       <div class="flex flex-1 flex-col overflow-hidden pt-12">
         <slot />
       </div>
@@ -26,10 +36,26 @@
 </template>
 
 <script setup lang="ts">
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
+import { PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 const layoutStore = useLayoutStore()
+const chatStore = useChatStore()
+const chat = useChat()
+const route = useRoute()
+
+const canArchive = computed(() => {
+  if (route.path !== '/chat') return false
+  if (chatStore.isStreaming) return false
+  const current = chatStore.currentConversation
+  return current && current.type === 'task'
+})
+
+const handleArchive = () => {
+  if (chatStore.currentThreadId) {
+    chat.archiveConversation(chatStore.currentThreadId)
+  }
+}
 
 // Load user on mount
 onMounted(() => {

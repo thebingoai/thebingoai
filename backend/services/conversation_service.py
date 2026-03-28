@@ -103,11 +103,25 @@ class ConversationService:
         ).order_by(Message.timestamp).all()
 
     @staticmethod
-    def list_conversations(db: Session, user_id: str, limit: int = 50) -> List[Conversation]:
-        """List all conversations for a user."""
+    def list_conversations(db: Session, user_id: str, limit: int = 50, archived: bool = False) -> List[Conversation]:
+        """List conversations for a user, filtered by archive status."""
         return db.query(Conversation).filter(
-            Conversation.user_id == user_id
+            Conversation.user_id == user_id,
+            Conversation.is_archived == archived,
         ).order_by(Conversation.updated_at.desc()).limit(limit).all()
+
+    @staticmethod
+    def archive_conversation(db: Session, thread_id: str, user_id: str, archived: bool = True) -> Conversation:
+        """Archive or unarchive a conversation. Raises ValueError for permanent conversations."""
+        conversation = ConversationService.get_conversation_by_thread(db, thread_id, user_id)
+        if not conversation:
+            raise LookupError("Conversation not found")
+        if conversation.type == "permanent":
+            raise ValueError("Cannot archive the permanent conversation")
+        conversation.is_archived = archived
+        db.commit()
+        db.refresh(conversation)
+        return conversation
 
     @staticmethod
     def update_title(db: Session, conversation_id: int, title: str) -> None:

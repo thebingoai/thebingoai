@@ -23,10 +23,11 @@
           <Sparkles class="relative h-3.5 w-3.5 text-gray-900" />
         </span>
         <span
-          class="flex-1 min-w-0 text-sm truncate"
+          class="sidebar-title flex-1 min-w-0 text-sm"
           :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'font-bold text-glow-orange' : 'font-light text-gray-900'"
+
         >
-          {{ chatStore.permanentConversation.title || 'Bingo AI' }}
+          <span class="marquee-inner"><span>{{ chatStore.permanentConversation.title || 'Bingo AI' }}</span><span class="marquee-spacer">&nbsp;&mdash;&nbsp;</span><span>{{ chatStore.permanentConversation.title || 'Bingo AI' }}</span></span>
         </span>
         <!-- Unread badge -->
         <span
@@ -101,11 +102,56 @@
             :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50' : ''"
           >
             <div
-              class="truncate"
+              class="sidebar-title"
               :class="chatStore.currentThreadId === conv.id ? 'font-bold text-glow-orange ' : 'font-extralight text-gray-500'"
-            >{{ conv.title }}</div>
+
+            ><span class="marquee-inner"><span>{{ conv.title }}</span><span class="marquee-spacer">&nbsp;&mdash;&nbsp;</span><span>{{ conv.title }}</span></span></div>
           </button>
         </template>
+      </div>
+
+    </div>
+
+    <!-- Archived section (pinned above user button) -->
+    <div class="border-t border-gray-100">
+      <button
+        @click="handleToggleArchived"
+        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 hover:text-gray-600"
+      >
+        <ChevronDown v-if="isArchivedExpanded" class="h-3.5 w-3.5" />
+        <ChevronRight v-else class="h-3.5 w-3.5" />
+        <ArchiveIcon class="h-3 w-3" />
+        Archived
+      </button>
+
+      <div v-show="isArchivedExpanded" class="max-h-48 overflow-y-auto">
+        <div v-if="chatStore.archivedConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
+          No archived tasks
+        </div>
+        <div
+          v-for="conv in chatStore.archivedConversations"
+          :key="conv.id"
+          class="group flex w-full items-center px-4 py-2 text-left text-sm hover:bg-gray-50"
+          :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50' : ''"
+        >
+          <button
+            @click="handleSelectConversation(conv.id)"
+            class="flex-1 min-w-0"
+          >
+            <div
+              class="sidebar-title"
+              :class="chatStore.currentThreadId === conv.id ? 'font-bold text-glow-orange' : 'font-extralight text-gray-500'"
+
+            ><span class="marquee-inner"><span>{{ conv.title }}</span><span class="marquee-spacer">&nbsp;&mdash;&nbsp;</span><span>{{ conv.title }}</span></span></div>
+          </button>
+          <button
+            @click.stop="handleUnarchive(conv.id)"
+            class="ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-200"
+            aria-label="Unarchive conversation"
+          >
+            <ArchiveRestore class="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -129,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard } from 'lucide-vue-next'
+import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard, Archive as ArchiveIcon, ArchiveRestore } from 'lucide-vue-next'
 import { formatDateLabel } from '~/utils/format'
 import type { Conversation } from '~/stores/chat'
 
@@ -155,6 +201,8 @@ const groupedTasks = computed(() => {
 })
 
 const isRecentExpanded = ref(true)
+const isArchivedExpanded = ref(false)
+const archivedLoaded = ref(false)
 
 const userInitial = computed(() => {
   const email = authStore.user?.email || ''
@@ -176,6 +224,19 @@ const handleNewTask = () => {
   }
 }
 
+const handleToggleArchived = () => {
+  isArchivedExpanded.value = !isArchivedExpanded.value
+  // Lazy load archived conversations on first expand
+  if (isArchivedExpanded.value && !archivedLoaded.value) {
+    chat.loadArchivedConversations()
+    archivedLoaded.value = true
+  }
+}
+
+const handleUnarchive = (threadId: string) => {
+  chat.unarchiveConversation(threadId)
+}
+
 const handleSelectConversation = (id: string) => {
   // Clear unread when opening the conversation
   chatStore.clearUnread(id)
@@ -185,3 +246,56 @@ const handleSelectConversation = (id: string) => {
   }
 }
 </script>
+
+<style scoped>
+.sidebar-title {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marquee-inner {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Hide the duplicate text + spacer by default */
+.marquee-spacer,
+.marquee-inner > span:last-child {
+  display: none;
+}
+
+/* On hover: show duplicate and animate */
+.sidebar-title:hover .marquee-spacer,
+.sidebar-title:hover .marquee-inner > span:last-child {
+  display: inline;
+}
+
+.sidebar-title:hover .marquee-inner {
+  animation: marquee-scroll 8s linear infinite;
+}
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+</style>
+
+<style>
+/* Active+hover: move gradient from parent to marquee-inner so it translates with text */
+.sidebar-title.text-glow-orange:hover {
+  background: none !important;
+  -webkit-text-fill-color: unset !important;
+}
+
+.sidebar-title.text-glow-orange:hover .marquee-inner {
+  background: linear-gradient(90deg, #f97316, #fb923c, #fdba74, #fb923c, #f97316);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+</style>

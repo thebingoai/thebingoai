@@ -177,8 +177,9 @@ export const useApi = () => {
 
     // Chat endpoints
     chat: {
-      async getConversations() {
-        return fetchWithRefresh('/api/chat/conversations', {})
+      async getConversations(archived = false) {
+        const params = archived ? '?archived=true' : ''
+        return fetchWithRefresh(`/api/chat/conversations${params}`, {})
       },
       async getMessages(threadId: string) {
         return fetchWithRefresh(`/api/chat/conversations/${threadId}`, {})
@@ -192,6 +193,12 @@ export const useApi = () => {
         return fetchWithRefresh(`/api/chat/conversations/${threadId}/title`, {
           method: 'PATCH',
           body: { title }
+        })
+      },
+      async archiveConversation(threadId: string, archived: boolean) {
+        return fetchWithRefresh(`/api/chat/conversations/${threadId}/archive`, {
+          method: 'PATCH',
+          body: { archived }
         })
       },
       async getStreamingStatus(threadId: string) {

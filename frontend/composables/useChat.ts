@@ -458,6 +458,50 @@ export const useChat = () => {
     chatStore.updateConversationTitle(threadId, title)
   }
 
+  const archiveConversation = async (threadId: string) => {
+    try {
+      await api.chat.archiveConversation(threadId, true)
+      chatStore.moveToArchived(threadId)
+      // If we just archived the active conversation, navigate away
+      if (chatStore.currentThreadId === threadId) {
+        const permanent = chatStore.permanentConversation
+        if (permanent) {
+          await loadMessages(permanent.id)
+        } else {
+          chatStore.startNewChat()
+        }
+      }
+    } catch (error) {
+      console.error('Failed to archive conversation:', error)
+    }
+  }
+
+  const unarchiveConversation = async (threadId: string) => {
+    try {
+      await api.chat.archiveConversation(threadId, false)
+      chatStore.moveFromArchived(threadId)
+    } catch (error) {
+      console.error('Failed to unarchive conversation:', error)
+    }
+  }
+
+  const loadArchivedConversations = async () => {
+    try {
+      const response = await api.chat.getConversations(true) as any
+      const conversations = (response.conversations || []).map((conv: any) => ({
+        id: conv.thread_id,
+        title: conv.title || 'Untitled',
+        type: conv.type || 'task',
+        created_at: conv.created_at,
+        updated_at: conv.updated_at,
+        message_count: conv.messages?.length || 0
+      }))
+      chatStore.setArchivedConversations(conversations)
+    } catch (error) {
+      console.error('Failed to load archived conversations:', error)
+    }
+  }
+
   // Handle incoming title updates from WebSocket (arrives after chat.done)
   const registerTitleHandler = () => {
     return ws.on('chat.title', (data: any) => {
@@ -505,5 +549,8 @@ export const useChat = () => {
     registerTitleHandler,
     registerHeartbeatHandler,
     resetContext,
+    archiveConversation,
+    unarchiveConversation,
+    loadArchivedConversations,
   }
 }

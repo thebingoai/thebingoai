@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse, UpdateTitleRequest
+from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse, UpdateTitleRequest, ArchiveRequest
 from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
@@ -317,12 +317,14 @@ async def chat_stream(
 
 @router.get("/conversations", response_model=ConversationListResponse)
 async def list_conversations(
+    archived: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all conversations for the current user."""
-    ConversationService.get_or_create_permanent_conversation(db, current_user.id)
-    conversations = ConversationService.list_conversations(db, current_user.id)
+    """List conversations for the current user, optionally filtered by archive status."""
+    if not archived:
+        ConversationService.get_or_create_permanent_conversation(db, current_user.id)
+    conversations = ConversationService.list_conversations(db, current_user.id, archived=archived)
     return ConversationListResponse(conversations=conversations)
 
 
@@ -356,6 +358,26 @@ async def update_conversation_title(
         raise HTTPException(status_code=404, detail="Conversation not found")
     ConversationService.update_title(db, conversation.id, request.title)
     return {"title": request.title}
+
+
+@router.patch("/conversations/{thread_id}/archive")
+async def archive_conversation(
+    thread_id: str,
+    request: ArchiveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Archive or unarchive a conversation."""
+    try:
+        conversation = ConversationService.archive_conversation(
+            db, thread_id, current_user.id, archived=request.archived
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    return {"thread_id": conversation.thread_id, "is_archived": conversation.is_archived}
 
 
 @router.delete("/conversations/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

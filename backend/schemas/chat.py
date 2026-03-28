@@ -44,6 +44,7 @@ class ConversationResponse(BaseModel):
     user_id: str
     title: Optional[str]
     type: str = "task"
+    is_archived: bool = False
     created_at: datetime
     updated_at: datetime
     messages: List[ChatMessage] = []
@@ -78,3 +79,7 @@ class MessageStepsResponse(BaseModel):
 
 class UpdateTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
+
+
+class ArchiveRequest(BaseModel):
+    archived: bool

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Index, text
+from sqlalchemy import Boolean, Column, String, Integer, ForeignKey, Index, text
 from sqlalchemy.orm import relationship
 from backend.database.base import Base, TimestampMixin
 
@@ -11,6 +11,7 @@ class Conversation(Base, TimestampMixin):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=True)  # Auto-generated from first message
     type = Column(String(20), nullable=False, default="task", server_default="task")
+    is_archived = Column(Boolean, default=False, server_default="false", nullable=False)
 
     __table_args__ = (
         Index(
@@ -18,6 +19,11 @@ class Conversation(Base, TimestampMixin):
             "user_id",
             unique=True,
             postgresql_where=text("type = 'permanent'"),
+        ),
+        Index(
+            "ix_conversations_user_archived",
+            "user_id",
+            "is_archived",
         ),
     )
 
