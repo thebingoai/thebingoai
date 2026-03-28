@@ -175,12 +175,18 @@ async def build_orchestrator_context(
     logger.info("AgentProfile loaded: %s (version=%s)", profile.id if profile else "NONE", profile.version if profile else "-")
 
     # Auto-migrate old default soul with "name: (not set" placeholder
+    from backend.agents.profile_defaults import get_default_section
     OLD_SOUL_MARKER = "name: (not set"
     if profile and profile.soul and OLD_SOUL_MARKER in profile.soul:
-        from backend.agents.profile_defaults import get_default_section
         profile.soul = get_default_section("orchestrator", "soul")
         db.commit()
         logger.info("Migrated old default soul for user %s", user.id)
+
+    # Auto-populate NULL/empty soul with default (covers pre-profile-system accounts)
+    if profile and not profile.soul:
+        profile.soul = get_default_section("orchestrator", "soul")
+        db.commit()
+        logger.info("Seeded default soul for user %s", user.id)
 
     if not profile:
         profile = seed_default_profile(
