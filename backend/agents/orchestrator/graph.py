@@ -8,6 +8,7 @@ from backend.agents.orchestrator.profile_tools import build_profile_tools
 from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashboard_tools
 from backend.agents.orchestrator.memory_tools import build_memory_tools
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
+from backend.agents.orchestrator.pre_steps import run_pre_steps, PreStepContext
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.context import AgentContext
@@ -493,6 +494,16 @@ async def run_orchestrator(
             logger.warning("run_orchestrator: profile self-load failed: %s", _exc)
 
     if profile:
+        # Run deterministic pre-steps before prompt rendering
+        pre_ctx = PreStepContext(
+            user_id=context.user_id,
+            query=user_question,
+            profile=profile,
+            user_memories_context=user_memories_context,
+            db_session_factory=db_session_factory,
+        )
+        await run_pre_steps(pre_ctx)
+
         rt_ctx = RuntimeContext(
             custom_agents=custom_agents or [],
             user_skills=user_skills or [],
@@ -616,6 +627,16 @@ async def stream_orchestrator(
 
         logger.info("stream_orchestrator: profile = %s", "LOADED" if profile else "NONE")
         if profile is not None:
+            # Run deterministic pre-steps before prompt rendering
+            pre_ctx = PreStepContext(
+                user_id=context.user_id,
+                query=user_question,
+                profile=profile,
+                user_memories_context=user_memories_context,
+                db_session_factory=db_session_factory,
+            )
+            await run_pre_steps(pre_ctx)
+
             rt_ctx = RuntimeContext(
                 custom_agents=custom_agents or [],
                 user_skills=user_skills or [],

@@ -157,7 +157,12 @@ class ProfileRenderer:
         sections: List[str] = []
 
         # 1. Bootstrap FIRST (if active) — so the LLM sees first-run instructions immediately
-        bootstrap_active = profile.bootstrap and (not profile.soul or "name:" not in profile.soul.lower())
+        # Pre-steps may set _skip_bootstrap to gate this (e.g. when user_memories exist)
+        bootstrap_active = (
+            profile.bootstrap
+            and not getattr(profile, "_skip_bootstrap", False)
+            and (not profile.soul or "name:" not in profile.soul.lower())
+        )
         if bootstrap_active:
             sections.append(profile.bootstrap)
 
