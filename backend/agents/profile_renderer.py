@@ -146,11 +146,12 @@ class ProfileRenderer:
         Section order:
           1. identity (always)
           2. soul or bootstrap (mutually exclusive)
-          3. guardrails (always, if set)
-          4. agents (static + dynamic custom_agents)
-          5. runtime injections (skills, memories, connections)
-          6. tools (static guidelines)
-          7. heartbeat (static rules)
+          3. user_context (what agent knows about the user)
+          4. guardrails (always, if set)
+          5. agents (static + dynamic custom_agents)
+          6. runtime injections (skills, memories, connections)
+          7. tools (static guidelines)
+          8. heartbeat (static rules)
         """
         ctx = runtime_context or RuntimeContext()
         sections: List[str] = []
@@ -168,7 +169,11 @@ class ProfileRenderer:
         if profile.soul:
             sections.append(profile.soul)
 
-        # 3. Guardrails (always, if set)
+        # 3b. User context (what the agent knows about this user)
+        if profile.user_context:
+            sections.append(profile.user_context)
+
+        # 4. Guardrails (always, if set)
         if profile.guardrails:
             sections.append(profile.guardrails)
 
