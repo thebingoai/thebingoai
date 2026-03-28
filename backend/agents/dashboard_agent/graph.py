@@ -162,10 +162,10 @@ async def invoke_dashboard_agent(
         }
 
     except Exception as e:
-        logger.error(f"Dashboard agent failed: {str(e)}")
+        logger.exception("Dashboard agent failed")
         return {
             "success": False,
-            "message": f"Dashboard agent failed: {str(e)}",
+            "message": f"Dashboard agent failed: {type(e).__name__}: {e}" or "Dashboard agent failed: Unknown error",
             "dashboard_id": None,
             "steps": [],
         }

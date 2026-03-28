@@ -173,10 +173,24 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
         if not schema_json:
             continue
 
-        # Extract table names referenced in SQL (FROM / JOIN)
-        table_matches = re.findall(r'\b(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_.]*)', sql, re.IGNORECASE)
-        if not table_matches:
+        # Extract table names and optional aliases referenced in SQL (FROM / JOIN)
+        _table_alias_re = re.compile(
+            r'\b(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_.]*)'
+            r'(?:\s+(?:AS\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?',
+            re.IGNORECASE,
+        )
+        _table_alias_matches = _table_alias_re.findall(sql)
+        if not _table_alias_matches:
             continue
+        # _table_alias_matches is list of (table_name, alias_or_empty)
+        _JOIN_KEYWORDS = {"on", "where", "group", "order", "having", "limit", "left",
+                          "right", "inner", "outer", "full", "cross", "natural", "join",
+                          "set", "returning", "using", "and", "or"}
+        table_matches = [m[0] for m in _table_alias_matches]
+        table_aliases: set[str] = {
+            m[1].lower() for m in _table_alias_matches
+            if m[1] and m[1].lower() not in _JOIN_KEYWORDS
+        }
 
         all_schema_tables = _get_all_tables(schema_json)
         referenced_table = table_matches[0].split(".")[-1]  # Handle schema.table notation
@@ -238,6 +252,10 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
         clause_text = re.sub(r'\[[^\]]*\]', '', clause_text)
         # Remove AS <alias> to avoid alias names being treated as column refs
         clause_text = re.sub(r'\bAS\s+[a-zA-Z_][a-zA-Z0-9_]*', '', clause_text, flags=re.IGNORECASE)
+        # Strip table alias dot-prefixes (e.g. "f.id" → "id") so aliases
+        # aren't mistaken for column references
+        for _alias in table_aliases:
+            clause_text = re.sub(rf'\b{re.escape(_alias)}\.', '', clause_text)
 
         raw_identifiers = re.findall(r'\b([a-z_][a-z0-9_]*)\b', clause_text.lower())
         candidate_columns = {
@@ -245,12 +263,12 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
             if tok not in _SQL_KEYWORDS
             and tok not in _SQL_FUNCTIONS
             and not tok.isdigit()
-            # Skip table alias references (e.g. "t1" followed by ".col" is handled by extracting the col part)
         }
 
-        # Also exclude table names themselves (they appear in JOINs/subqueries)
+        # Also exclude table names and aliases (they appear in JOINs/subqueries)
         candidate_columns -= {t.lower() for t in all_joined_tables}
         candidate_columns -= all_schema_tables  # table names used as schema-qualified refs
+        candidate_columns -= table_aliases
 
         bad_sql_columns = [c for c in sorted(candidate_columns) if c not in merged_columns]
         if bad_sql_columns:

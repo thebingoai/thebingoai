@@ -400,8 +400,8 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             }
 
         except Exception as e:
-            logger.error(f"profile_table failed for {table_name}: {e}")
-            return {"error": str(e)}
+            logger.exception(f"profile_table failed for {table_name}")
+            return {"error": f"{type(e).__name__}: {e}" or "Unknown error"}
         finally:
             db.close()
 
