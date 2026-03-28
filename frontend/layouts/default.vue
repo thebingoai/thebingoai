@@ -1,12 +1,19 @@
 <template>
   <div class="relative flex h-screen bg-white">
+    <!-- Mobile backdrop overlay (shown when sidebar visible on mobile) -->
+    <div
+      v-if="isMobile && !layoutStore.isMainExpanded"
+      class="fixed inset-0 z-30 bg-black/30"
+      @click="layoutStore.setMainExpanded(true)"
+    />
+
     <!-- Sidebar -->
     <AppSidebar />
 
     <!-- Main content panel - expands leftward over sidebar -->
     <main
       class="absolute inset-y-0 right-0 z-20 flex flex-col overflow-hidden bg-white shadow-2xl transition-[width] duration-300 ease-in-out"
-      :class="layoutStore.isMainExpanded ? 'w-full' : 'w-[calc(100%-250px)]'"
+      :class="layoutStore.isMainExpanded || isMobile ? 'w-full' : 'w-[calc(100%-250px)]'"
     >
       <!-- Toggle button inside main, top-left -->
       <button
@@ -14,7 +21,8 @@
         class="absolute left-3 top-1.5 z-30 rounded-lg p-2 pt-4 ml-1 transition-colors"
         :aria-label="layoutStore.isMainExpanded ? 'Show sidebar' : 'Hide sidebar'"
       >
-        <PanelLeftOpen v-if="layoutStore.isMainExpanded" class="h-6 w-6 text-gray-600" />
+        <Menu v-if="isMobile && layoutStore.isMainExpanded" class="h-6 w-6 text-gray-600" />
+        <PanelLeftOpen v-else-if="layoutStore.isMainExpanded" class="h-6 w-6 text-gray-600" />
         <PanelLeftClose v-else class="h-6 w-6 text-gray-600" />
       </button>
 
@@ -36,13 +44,14 @@
 </template>
 
 <script setup lang="ts">
-import { PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-vue-next'
+import { PanelLeftClose, PanelLeftOpen, Archive, Menu } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
 const layoutStore = useLayoutStore()
 const chatStore = useChatStore()
 const chat = useChat()
 const route = useRoute()
+const { isMobile } = useIsMobile()
 
 const canArchive = computed(() => {
   if (route.path !== '/chat') return false
@@ -63,4 +72,12 @@ onMounted(() => {
     authStore.loadUser()
   }
 })
+
+// On mobile, ensure sidebar is hidden. immediate: true catches initial load,
+// and subsequent changes handle resize/orientation
+watch(isMobile, (mobile) => {
+  if (mobile && !layoutStore.isMainExpanded) {
+    layoutStore.setMainExpanded(true)
+  }
+}, { immediate: true })
 </script>

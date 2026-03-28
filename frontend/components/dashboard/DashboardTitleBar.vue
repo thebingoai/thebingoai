@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-shrink-0 items-center justify-between px-6 py-3 border-b border-gray-100 bg-white">
+  <div class="flex flex-shrink-0 flex-col md:flex-row md:items-center md:justify-between px-3 md:px-6 py-3 gap-2 border-b border-gray-100 bg-white">
     <!-- Left: back + breadcrumb -->
     <div class="flex items-center gap-2 min-w-0">
       <button

@@ -1,7 +1,7 @@
 <template>
   <div class="relative flex-1 flex flex-col min-h-0">
     <!-- Header bar — full-width white background keeps scroll content below the toggle button -->
-    <div class="flex-shrink-0 flex items-center h-16 bg-white pl-14 pr-4 pt-1">
+    <div class="flex-shrink-0 flex items-center h-16 bg-white pl-14 pr-2 md:pr-4 pt-1">
       <div v-if="chatStore.currentThreadId" class="flex w-full items-center">
         <div class="flex-1 min-w-0 pointer-events-none">
           <input
@@ -38,7 +38,7 @@
     </div>
 
     <!-- Scrollable message content -->
-    <div ref="threadRef" class="flex-1 overflow-y-auto pl-24 pt-6 pb-36">
+    <div ref="threadRef" class="flex-1 overflow-y-auto pl-4 md:pl-24 pt-6 pb-36">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
         <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
           <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to {{ chatStore.permanentConversation?.title || 'Bingo AI' }}</h2>
@@ -55,7 +55,7 @@
           <!-- Date header (shown when date changes between messages) -->
           <div
             v-if="message.source !== 'context_reset' && !isQaAnswerMessage(message, index) && getDateLabel(message, index)"
-            class="flex items-center gap-3 my-4 pr-32"
+            class="flex items-center gap-3 my-4 pr-4 md:pr-32"
           >
             <div class="flex-1 border-t border-gray-100" />
             <span class="text-xs text-gray-400">{{ getDateLabel(message, index) }}</span>
@@ -63,7 +63,7 @@
           </div>
 
           <!-- Context reset divider -->
-          <div v-if="message.source === 'context_reset'" class="flex items-center gap-3 my-6 pr-32">
+          <div v-if="message.source === 'context_reset'" class="flex items-center gap-3 my-6 pr-4 md:pr-32">
             <div class="flex-1 border-t border-gray-200" />
             <span class="text-xs text-gray-400 whitespace-nowrap">New Topic</span>
             <div class="flex-1 border-t border-gray-200" />

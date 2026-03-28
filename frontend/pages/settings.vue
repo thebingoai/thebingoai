@@ -1,29 +1,46 @@
 <template>
-  <div class="flex h-full pt-20 relative">
-    <!-- Close Button -->
+  <div class="flex h-full pt-2 relative" :class="isMobile ? 'flex-col' : ''">
+    <!-- Close Button (mobile: fixed, aligned with hamburger; desktop: absolute top-right) -->
     <button
+      v-if="isMobile"
       @click="router.push('/chat')"
-      class="absolute top-6 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+      class="fixed right-3 top-1.5 z-30 rounded-lg p-2 pt-4 mr-1 transition-colors hover:bg-gray-100"
+      aria-label="Close settings"
+    >
+      <X class="h-5 w-5 text-gray-500" />
+    </button>
+    <button
+      v-else
+      @click="router.push('/chat')"
+      class="absolute top-0 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
       aria-label="Close settings"
     >
       <X class="h-5 w-5" />
     </button>
 
     <!-- Settings Navigation -->
-    <div class="w-56 border-r border-gray-200 p-4 flex flex-col justify-between">
-      <nav class="space-y-1">
+    <div
+      :class="isMobile
+        ? 'flex items-center gap-2 overflow-x-auto px-4 pb-3 border-b border-gray-200 shrink-0'
+        : 'w-56 border-r border-gray-200 p-4 flex flex-col justify-between'"
+    >
+      <nav :class="isMobile ? 'flex gap-1' : 'space-y-1'">
         <button
           v-for="section in sections"
           :key="section.id"
           @click="currentSection = section.id"
-          class="w-full rounded-lg px-3 py-2 text-left text-sm font-light"
-          :class="currentSection === section.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'"
+          :class="[
+            isMobile
+              ? 'whitespace-nowrap px-3 py-1.5 text-xs rounded-full'
+              : 'w-full rounded-lg px-3 py-2 text-left text-sm font-light',
+            currentSection === section.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'
+          ]"
         >
           {{ section.name }}
         </button>
       </nav>
 
-      <div class="pt-4 border-t border-gray-200 text-xs text-gray-400 space-y-1">
+      <div v-if="!isMobile" class="pt-4 border-t border-gray-200 text-xs text-gray-400 space-y-1">
         <p>{{ appInfo?.edition || 'Community' }} Edition</p>
         <p>v{{ appInfo?.version || '1.0.0' }}</p>
       </div>
@@ -51,6 +68,7 @@
 import { X } from 'lucide-vue-next'
 
 const router = useRouter()
+const { isMobile } = useIsMobile()
 
 const { data: appInfo } = await useFetch('/api/info')
 

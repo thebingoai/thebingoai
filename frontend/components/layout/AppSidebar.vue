@@ -1,5 +1,11 @@
 <template>
-  <aside class="flex w-sidebar flex-col border-r border-gray-200 bg-white">
+  <aside
+    class="flex w-sidebar flex-col border-r border-gray-200 bg-white transition-transform duration-300"
+    :class="{
+      'fixed inset-y-0 left-0 z-40': isMobile,
+      '-translate-x-full pointer-events-none': isMobile && layoutStore.isMainExpanded,
+    }"
+  >
     <!-- Logo -->
     <div class="flex h-16 items-center border-b border-gray-200 px-6">
       <component :is="MessageSquare" class="h-6 w-6 text-gray-900" />
@@ -42,7 +48,7 @@
     <!-- Dashboard link -->
     <div>
       <button
-        @click="router.push('/dashboard')"
+        @click="router.push('/dashboard'); closeSidebarOnMobile()"
         class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100 transition-colors duration-200"
         :class="route.path === '/dashboard' ? 'bg-gray-100' : ''"
       >
@@ -157,7 +163,7 @@
 
     <!-- User account button -->
     <button
-      @click="router.push('/settings')"
+      @click="router.push('/settings'); closeSidebarOnMobile()"
       class="border-t border-gray-200 px-4 pb-6 pt-5 hover:bg-gray-50 transition-colors w-full text-left"
     >
       <div class="flex items-center">
@@ -181,9 +187,17 @@ import type { Conversation } from '~/stores/chat'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
+const layoutStore = useLayoutStore()
 const chat = useChat()
 const router = useRouter()
 const route = useRoute()
+const { isMobile } = useIsMobile()
+
+const closeSidebarOnMobile = () => {
+  if (isMobile.value) {
+    layoutStore.setMainExpanded(true)
+  }
+}
 
 const groupedTasks = computed(() => {
   const groups: { label: string; conversations: Conversation[] }[] = []
@@ -223,6 +237,7 @@ const handleNewTask = () => {
   if (route.path !== '/chat') {
     navigateTo('/chat')
   }
+  closeSidebarOnMobile()
 }
 
 const handleToggleArchived = () => {
@@ -245,6 +260,7 @@ const handleSelectConversation = (id: string) => {
   if (route.path !== '/chat') {
     navigateTo('/chat')
   }
+  closeSidebarOnMobile()
 }
 </script>
 

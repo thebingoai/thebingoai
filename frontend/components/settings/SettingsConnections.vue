@@ -1,14 +1,14 @@
 <template>
-  <div class="p-6">
+  <div class="p-4 md:p-6">
     <div class="mb-6">
       <h2 class="text-2xl font-medium text-gray-900">Connections</h2>
     </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="flex flex-wrap gap-4">
-      <UiSkeleton class="h-56 w-56 rounded-lg" />
-      <UiSkeleton class="h-56 w-56 rounded-lg" />
-      <UiSkeleton class="h-56 w-56 rounded-lg" />
+      <UiSkeleton class="h-56 w-56 max-md:w-full rounded-lg" />
+      <UiSkeleton class="h-56 w-56 max-md:w-full rounded-lg" />
+      <UiSkeleton class="h-56 w-56 max-md:w-full rounded-lg" />
     </div>
 
     <!-- Empty State -->
@@ -30,7 +30,7 @@
       <UiCard
         v-for="connection in connections"
         :key="connection.id"
-        class="px-5 py-8 h-56 w-56 cursor-pointer hover:shadow-lg transition-shadow"
+        class="px-5 py-8 h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow"
         @click="openEditDialog(connection)"
       >
         <div class="flex flex-col h-full">
@@ -70,7 +70,7 @@
       <!-- Add Connection card -->
       <button
         @click="openCreateDialog"
-        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-56 w-56 hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
+        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
       >
         <component :is="Plus" class="h-6 w-6 text-gray-400" />
         <span class="text-sm text-gray-500">Add Connection</span>
@@ -84,7 +84,7 @@
       :title="typePickerTitle"
       fullHeight
     >
-      <div class="grid grid-cols-4 gap-4 ml-auto">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 ml-auto">
         <button
           v-for="type in connectorTypes"
           :key="type.id"
@@ -109,7 +109,7 @@
       panelClass="h-[calc(80vh-6rem)]"
     >
       <template #header>
-        <div class="flex items-center justify-between w-full">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between w-full gap-2">
           <div class="flex items-center gap-3">
             <button
               v-if="!editingConnection"
@@ -170,9 +170,9 @@
         </div>
       </template>
 
-      <div class="flex">
+      <div class="flex flex-col md:flex-row">
         <!-- 40% form -->
-        <div class="w-2/5 pr-6">
+        <div class="w-full md:w-2/5 md:pr-6 pb-4 md:pb-0">
 
           <!-- Dataset upload form (creating new dataset connection) -->
           <template v-if="isDatasetConnection && !editingConnection">
@@ -265,10 +265,10 @@
               </div>
               <div v-if="editingConnection.dataset_table_name">
                 <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Table Name</label>
-                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.dataset_table_name }}</p>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono break-all">{{ editingConnection.dataset_table_name }}</p>
               </div>
             </div>
-            <div class="border-t border-gray-200 pt-4 mt-6">
+            <div class="border-t border-gray-200 pt-4 mt-6 hidden md:block">
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-sm font-medium text-gray-900">Delete this dataset</p>
@@ -393,7 +393,7 @@
         </div>
 
         <!-- 60% schema panel -->
-        <div class="w-3/5 border-l border-gray-200 pl-6 flex flex-col gap-3 overflow-hidden">
+        <div class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
           <div v-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400">
             <Database class="h-4 w-4" />
             <span v-if="isDatasetConnection">Upload the dataset to explore its schema.</span>
@@ -504,6 +504,20 @@
               </div>
             </template>
           </template>
+        </div>
+
+        <!-- Mobile-only delete section (appears after schema) -->
+        <div v-if="isDatasetConnection && editingConnection" class="border-t border-gray-200 pt-4 mt-2 md:hidden">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-900">Delete this dataset</p>
+              <p class="text-xs text-gray-500">This action cannot be undone.</p>
+            </div>
+            <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
+              <Trash2 class="h-3.5 w-3.5" />
+              Delete
+            </UiButton>
+          </div>
         </div>
       </div>
     </UiBottomSheet>

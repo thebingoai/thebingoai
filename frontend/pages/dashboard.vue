@@ -5,10 +5,25 @@
 
       <!-- List view -->
       <template v-if="!store.currentDashboard">
-        <div class="flex-shrink-0 px-6 pt-6 pb-4">
+        <div class="flex-shrink-0 px-3 md:px-6 pt-6 pb-4">
           <h1 class="text-base font-semibold text-gray-900">Dashboards</h1>
         </div>
-        <div class="flex-1 overflow-y-auto px-6 pb-6">
+
+        <!-- Mobile horizontal tabs -->
+        <div v-if="isMobile" class="flex border-b border-gray-200 px-3 pb-1 gap-4 shrink-0">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            class="flex items-center gap-1.5 py-2.5 text-xs transition-colors border-b-2"
+            :class="activeTab === tab.id ? 'text-gray-900 border-gray-900' : 'text-gray-400 border-transparent'"
+          >
+            <component :is="tab.icon" class="h-3.5 w-3.5" />
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-3 md:px-6 pt-4 pb-6">
           <div v-if="store.loading" class="flex items-center justify-center py-16 text-sm text-gray-400">
             Loading dashboards...
           </div>
@@ -59,6 +74,7 @@
               v-if="configEditorWidget"
               :widget="configEditorWidget"
               :edit-mode="store.editMode"
+              :class="isMobile ? 'fixed inset-0 z-50 w-full' : ''"
               @close="configEditorWidget = null"
             />
           </Transition>
@@ -109,8 +125,8 @@
       />
     </div>
 
-    <!-- Right-side vertical tabs -->
-    <div v-if="!store.currentDashboard" class="flex w-14 flex-shrink-0 flex-col border-l border-gray-200 bg-white py-3">
+    <!-- Right-side vertical tabs (desktop only) -->
+    <div v-if="!store.currentDashboard && !isMobile" class="flex w-14 flex-shrink-0 flex-col border-l border-gray-200 bg-white py-3">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -141,6 +157,7 @@ import DashboardWidgetEditor from '~/components/dashboard/editors/DashboardWidge
 
 const store = useDashboardStore()
 const route = useRoute()
+const { isMobile } = useIsMobile()
 
 onMounted(async () => {
   await store.fetchDashboards()

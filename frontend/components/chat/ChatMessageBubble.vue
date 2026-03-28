@@ -45,7 +45,7 @@
     </div>
 
     <!-- Assistant message: left-aligned plain text -->
-    <div v-else class="pr-32">
+    <div v-else class="pr-4 md:pr-32">
       <!-- Heartbeat source label -->
       <div v-if="message.source === 'heartbeat'" class="mb-1.5 flex items-center gap-1.5">
         <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">

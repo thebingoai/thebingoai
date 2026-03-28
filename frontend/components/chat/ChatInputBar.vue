@@ -1,5 +1,5 @@
 <template>
-  <div class="px-16 pb-4">
+  <div class="px-4 pb-4 md:px-16">
     <form
       @submit.prevent="handleSubmit"
       @dragover.prevent

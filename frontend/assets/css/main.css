@@ -174,3 +174,15 @@
     }
   }
 }
+
+/* Mobile slide-up transition for overlay panels */
+.slide-up-enter-active {
+  transition: transform 0.3s ease-out;
+}
+.slide-up-leave-active {
+  transition: transform 0.2s ease-in;
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+}

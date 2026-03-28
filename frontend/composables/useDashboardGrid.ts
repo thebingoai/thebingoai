@@ -9,6 +9,7 @@ export function useDashboardGrid(
   widgets: Ref<DashboardWidget[]>,
 ) {
   const store = useDashboardStore()
+  const { isMobile } = useIsMobile()
   let grid: GridStack | null = null
 
   // Maps widgetId → the .grid-stack-item-content element (Teleport target)
@@ -20,7 +21,7 @@ export function useDashboardGrid(
 
     grid = GridStack.init(
       {
-        column: 12,
+        column: isMobile.value ? 1 : 12,
         cellHeight: 70,
         margin: 4,
         animate: true,
@@ -131,6 +132,13 @@ export function useDashboardGrid(
     (isEdit) => syncStaticMode(!isEdit),
     { flush: 'post', immediate: true },
   )
+
+  // Collapse to single column on mobile
+  watch(isMobile, (mobile) => {
+    if (grid) {
+      grid.column(mobile ? 1 : 12)
+    }
+  })
 
   onBeforeUnmount(() => {
     grid?.destroy(false)
