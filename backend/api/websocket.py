@@ -253,6 +253,29 @@ async def _handle_chat_send(
             except Exception as title_err:
                 logger.warning(f"Title generation failed: {title_err}")
 
+        # Generate/update conversation summary
+        if final_message:
+            try:
+                from backend.services.summary_service import SummaryService
+                summary = await SummaryService.generate_or_update_summary(
+                    db, conversation.id, message, final_message
+                )
+                token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+                token_limit = SummaryService.get_token_limit()
+                await send({
+                    "type": "chat.summary",
+                    "request_id": request_id,
+                    "thread_id": conversation.thread_id,
+                    "content": {
+                        "text": summary.summary_text,
+                        "updated_at": summary.updated_at.isoformat(),
+                        "token_count": token_count,
+                        "token_limit": token_limit,
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"Summary generation failed: {e}")
+
         # Notify all connected tabs that streaming finished (reaches reconnected WS)
         await manager.send_to_user(user.id, {
             "type": "chat.stream_complete",

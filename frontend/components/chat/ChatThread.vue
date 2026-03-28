@@ -2,23 +2,38 @@
   <div class="relative flex-1 flex flex-col min-h-0">
     <!-- Header bar — full-width white background keeps scroll content below the toggle button -->
     <div class="flex-shrink-0 flex items-center h-16 bg-white pl-14 pr-4 pt-1">
-      <div v-if="chatStore.currentThreadId" class="flex w-full items-center pointer-events-none">
-        <input
-          v-if="isEditingTitle"
-          ref="titleInput"
-          v-model="editTitle"
-          @blur="saveTitle"
-          @keydown.enter="saveTitle"
-          @keydown.escape="cancelEdit"
-          class="w-full pointer-events-auto text-sm text-gray-700 bg-transparent border-b border-gray-300 outline-none w-48 "
-        />
-        <span
-          v-else
-          @click="startEditTitle"
-          class="pointer-events-auto text-sm text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
-        >
-          {{ currentTitle }}
-        </span>
+      <div v-if="chatStore.currentThreadId" class="flex w-full items-center">
+        <div class="flex-1 min-w-0 pointer-events-none">
+          <input
+            v-if="isEditingTitle"
+            ref="titleInput"
+            v-model="editTitle"
+            @blur="saveTitle"
+            @keydown.enter="saveTitle"
+            @keydown.escape="cancelEdit"
+            class="w-full pointer-events-auto text-sm text-gray-700 bg-transparent border-b border-gray-300 outline-none w-48 "
+          />
+          <span
+            v-else
+            @click="startEditTitle"
+            class="pointer-events-auto text-sm text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
+          >
+            {{ currentTitle }}
+          </span>
+        </div>
+        <!-- Info panel toggle + archive area -->
+        <div class="flex items-center gap-1 shrink-0 ml-2">
+          <button
+            @click="chatStore.toggleInfoPanel()"
+            class="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+            :class="chatStore.infoPanelOpen ? 'bg-indigo-50 text-indigo-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'"
+            title="Toggle info panel"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 

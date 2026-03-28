@@ -194,7 +194,7 @@ const stepCount = computed(() =>
 )
 
 const openReasoning = () => {
-  chatStore.openReasoningPanel(props.message.id)
+  chatStore.selectMessageForReasoning(props.message.id)
 }
 
 const isQuestionAnswered = computed(() => {

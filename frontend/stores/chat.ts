@@ -50,6 +50,13 @@ export interface Conversation {
   unread_count?: number
 }
 
+export interface ConversationSummary {
+  text: string
+  updated_at: string
+  token_count: number
+  token_limit: number
+}
+
 export const useChatStore = defineStore('chat', {
   state: () => ({
     conversations: [] as Conversation[],
@@ -61,8 +68,15 @@ export const useChatStore = defineStore('chat', {
     showUploadPanel: false,
     isStreaming: false,
     expandedThinking: new Set<string>(),
-    reasoningPanelOpen: false,
+    infoPanelOpen: true,
     selectedMessageId: null as string | null,
+    conversationSummary: null as ConversationSummary | null,
+    infoPanelSections: {
+      summary: true,
+      datasets: true,
+      dashboards: true,
+      reasoning: false,
+    } as Record<string, boolean>,
     rateLimitRetryAfter: 0
   }),
 
@@ -77,6 +91,52 @@ export const useChatStore = defineStore('chat', {
       return state.conversations
         .filter(c => c.type === 'task')
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    },
+    conversationDatasets: (state) => {
+      return state.messages
+        .filter(m => m.attachments?.length)
+        .flatMap(m => m.attachments!.map(a => ({
+          name: a.name,
+          size: a.size,
+          type: a.type,
+          fileId: a.file_id,
+          uploadedAt: m.created_at,
+        })))
+    },
+    conversationDashboards: (state) => {
+      const byId = new Map<number, { name: string; widgetCount: number; createdAt: string; dashboardId: number | null; action: string }>()
+      for (const msg of state.messages) {
+        for (const step of msg.agent_steps ?? []) {
+          if (step.tool_name !== 'create_dashboard' && step.tool_name !== 'update_dashboard') continue
+          try {
+            const result = typeof step.content?.result === 'string'
+              ? JSON.parse(step.content.result)
+              : step.content?.result
+            if (!result?.success) continue
+            const id = result.dashboard_id ?? null
+            // Extract name/widget count from result.message if not in dedicated fields
+            let name = result.dashboard_name || step.content?.args?.name || ''
+            let widgetCount = result.widget_count ?? 0
+            if ((!name || !widgetCount) && result.message) {
+              const nameMatch = result.message.match(/Dashboard\s+'([^']+)'/) || result.message.match(/\*\*([^*]+)\*\*\s*dashboard/i)
+              if (nameMatch && !name) name = nameMatch[1]
+              const countMatch = result.message.match(/(\d+)\s+widget/)
+              if (countMatch && !widgetCount) widgetCount = parseInt(countMatch[1], 10)
+            }
+            // Deduplicate by dashboardId — merge best data across entries
+            const key = id ?? -(byId.size + 1)
+            const existing = byId.get(key)
+            byId.set(key, {
+              name: name || existing?.name || 'Dashboard',
+              widgetCount: widgetCount || existing?.widgetCount || 0,
+              createdAt: msg.created_at,
+              dashboardId: id,
+              action: step.tool_name === 'create_dashboard' ? 'Created' : 'Updated',
+            })
+          } catch { /* skip malformed */ }
+        }
+      }
+      return Array.from(byId.values())
     }
   },
 
@@ -178,14 +238,29 @@ export const useChatStore = defineStore('chat', {
       this.showUploadPanel = !this.showUploadPanel
     },
 
-    openReasoningPanel(messageId: string) {
-      this.selectedMessageId = messageId
-      this.reasoningPanelOpen = true
+    toggleInfoPanel() {
+      this.infoPanelOpen = !this.infoPanelOpen
     },
 
-    closeReasoningPanel() {
-      this.reasoningPanelOpen = false
+    toggleInfoSection(key: string) {
+      this.infoPanelSections[key] = !this.infoPanelSections[key]
+    },
+
+    selectMessageForReasoning(messageId: string) {
+      this.selectedMessageId = messageId
+      this.infoPanelSections.reasoning = true
+    },
+
+    clearReasoningSelection() {
       this.selectedMessageId = null
+    },
+
+    setConversationSummary(summary: ConversationSummary) {
+      this.conversationSummary = summary
+    },
+
+    clearConversationSummary() {
+      this.conversationSummary = null
     },
 
     clearInput() {
@@ -200,8 +275,8 @@ export const useChatStore = defineStore('chat', {
       this.attachedFiles = []
       this.isStreaming = false
       this.expandedThinking.clear()
-      this.reasoningPanelOpen = false
       this.selectedMessageId = null
+      this.conversationSummary = null
       localStorage.removeItem('chat_currentThreadId')
     },
 
@@ -214,8 +289,8 @@ export const useChatStore = defineStore('chat', {
       this.attachedFiles = []
       this.isStreaming = false
       this.expandedThinking.clear()
-      this.reasoningPanelOpen = false
       this.selectedMessageId = null
+      this.conversationSummary = null
       localStorage.removeItem('chat_currentThreadId')
     }
   }

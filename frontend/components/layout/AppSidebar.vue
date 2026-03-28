@@ -214,6 +214,7 @@ onMounted(() => {
   chatStore.hydrateFromStorage()
   chat.loadConversations()
   chat.registerTitleHandler()
+  chat.registerSummaryHandler()
   chat.registerHeartbeatHandler()
 })
 

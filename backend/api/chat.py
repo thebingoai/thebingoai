@@ -5,7 +5,7 @@ from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse, UpdateTitleRequest, ArchiveRequest
+from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse, UpdateTitleRequest, ArchiveRequest, ConversationSummaryResponse
 from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
@@ -296,6 +296,19 @@ async def chat_stream(
                 except Exception as title_err:
                     logger.warning(f"Title generation failed: {title_err}")
 
+            # Generate/update conversation summary
+            if final_message:
+                try:
+                    from backend.services.summary_service import SummaryService
+                    summary = await SummaryService.generate_or_update_summary(
+                        db, conversation.id, request.message, final_message
+                    )
+                    token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+                    token_limit = SummaryService.get_token_limit()
+                    yield f"data: {json.dumps({'type': 'summary', 'content': {'text': summary.summary_text, 'updated_at': summary.updated_at.isoformat(), 'token_count': token_count, 'token_limit': token_limit}})}\n\n"
+                except Exception as summary_err:
+                    logger.warning(f"Summary generation failed: {summary_err}")
+
             # Clear streaming flag on successful completion
             if active_thread_id:
                 try:
@@ -378,6 +391,31 @@ async def archive_conversation(
         raise HTTPException(status_code=403, detail=str(e))
 
     return {"thread_id": conversation.thread_id, "is_archived": conversation.is_archived}
+
+
+@router.get("/conversations/{thread_id}/summary", response_model=ConversationSummaryResponse)
+async def get_conversation_summary(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get the summary and token usage for a conversation."""
+    from backend.services.summary_service import SummaryService
+
+    conversation = ConversationService.get_conversation_by_thread(db, thread_id, current_user.id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    summary = SummaryService.get_summary(db, conversation.id)
+    token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+    token_limit = SummaryService.get_token_limit()
+
+    return {
+        "text": summary.summary_text if summary else None,
+        "updated_at": summary.updated_at.isoformat() if summary else None,
+        "token_count": token_count,
+        "token_limit": token_limit,
+    }
 
 
 @router.delete("/conversations/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

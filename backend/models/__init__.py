@@ -44,3 +44,6 @@ from backend.models.agent_message import AgentMessage
 
 # Agent Profiles (cognitive architecture)
 from backend.models.agent_profile import AgentProfile
+
+# Conversation Summaries
+from backend.models.conversation_summary import ConversationSummary

@@ -1,43 +1,54 @@
 <template>
-  <div class="flex flex-col h-full bg-white overflow-hidden">
+  <div class="border-t border-gray-200 bg-gray-50/50 shrink-0 flex flex-col" :class="isOpen ? 'max-h-[60%]' : ''">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
-      <h2 class="text-sm font-medium text-gray-900">Reasoning</h2>
-      <button
-        @click="chatStore.closeReasoningPanel()"
-        class="text-gray-400 hover:text-gray-600 transition-colors"
-        aria-label="Close reasoning panel"
+    <button
+      @click="chatStore.toggleInfoSection('reasoning')"
+      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-100/50 transition-colors shrink-0"
+    >
+      <div class="flex items-center gap-1.5">
+        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Reasoning</span>
+        <span v-if="stepCount > 0" class="text-[9px] bg-gray-200/70 text-gray-500 px-1.5 py-px rounded-full">
+          {{ stepCount }} step{{ stepCount !== 1 ? 's' : '' }}
+        </span>
+      </div>
+      <svg
+        class="w-3 h-3 text-gray-300 transition-transform duration-200"
+        :class="{ 'rotate-180': isOpen }"
+        fill="none" viewBox="0 0 24 24" stroke="currentColor"
       >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
+
+    <!-- Content -->
+    <div v-show="isOpen" ref="treeContainer" class="overflow-y-auto px-4 pb-3 font-mono text-xs">
+      <!-- Empty state -->
+      <div v-if="!selectedMessage || !steps.length" class="text-center py-4">
+        <svg class="w-5 h-5 mx-auto text-gray-200 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.15A4.98 4.98 0 0112 17a4.98 4.98 0 01-2.39-.606l-.347-.15z" />
         </svg>
-      </button>
-    </div>
-
-    <!-- Empty state -->
-    <div v-if="!selectedMessage || !steps.length" class="flex flex-1 items-center justify-center px-6">
-      <p class="text-sm text-gray-400 text-center">
-        {{ chatStore.isStreaming ? 'Agent is working...' : 'Click an assistant message to see its reasoning.' }}
-      </p>
-    </div>
-
-    <!-- Tree view -->
-    <div v-else ref="treeContainer" class="flex-1 overflow-y-auto px-4 py-4 font-mono text-xs">
-      <!-- Root: Orchestrator -->
-      <div class="flex items-center gap-1.5 py-0.5 mb-0.5">
-        <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-        <span class="font-medium text-gray-800 font-sans">Orchestrator</span>
-        <span v-if="rootTimestamp" class="ml-auto text-[10px] font-mono text-gray-400">{{ rootTimestamp }}</span>
+        <p class="text-[11px] text-gray-300 font-sans">
+          {{ chatStore.isStreaming ? 'Agent is working...' : 'Click a message to see its reasoning' }}
+        </p>
       </div>
 
-      <!-- Root's children -->
-      <ChatReasoningTreeNode
-        v-for="(child, idx) in treeNodes.children"
-        :key="idx"
-        :node="child"
-        :is-last="idx === treeNodes.children.length - 1"
-        :ancestors="[]"
-      />
+      <!-- Tree view -->
+      <template v-else>
+        <!-- Root: Orchestrator -->
+        <div class="flex items-center gap-1.5 py-0.5 mb-0.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+          <span class="font-medium text-gray-800 font-sans text-[11px]">Orchestrator</span>
+          <span v-if="rootTimestamp" class="ml-auto text-[10px] font-mono text-gray-400">{{ rootTimestamp }}</span>
+        </div>
+
+        <ChatReasoningTreeNode
+          v-for="(child, idx) in treeNodes.children"
+          :key="idx"
+          :node="child"
+          :is-last="idx === treeNodes.children.length - 1"
+          :ancestors="[]"
+        />
+      </template>
     </div>
   </div>
 </template>
@@ -60,7 +71,8 @@ const { ensureLoaded: ensureConnectionsLoaded, getConnectionLabel } = useConnect
 ensureConnectionsLoaded()
 const treeContainer = ref<HTMLElement | null>(null)
 
-// Determine which message's steps to show
+const isOpen = computed(() => chatStore.infoPanelSections.reasoning)
+
 const selectedMessage = computed(() => {
   const id = chatStore.selectedMessageId
   if (id) return chatStore.messages.find(m => m.id === id) || null
@@ -72,6 +84,12 @@ const selectedMessage = computed(() => {
 })
 
 const steps = computed((): AgentStep[] => selectedMessage.value?.agent_steps || [])
+
+const stepCount = computed(() => {
+  // Show count from selected or latest assistant message
+  const msg = selectedMessage.value
+  return msg?.agent_steps?.length || 0
+})
 
 // Auto-scroll to bottom when tree content updates during streaming
 watch(
@@ -144,7 +162,6 @@ const treeNodes = computed((): TreeNode => {
   const root: TreeNode = { type: 'agent', label: 'Orchestrator', children: [] }
 
   for (const step of steps.value) {
-    // Handle reasoning steps
     if (step.step_type === 'reasoning') {
       root.children.push({
         type: 'reasoning',
@@ -167,7 +184,6 @@ const treeNodes = computed((): TreeNode => {
       const agentLabel = AGENT_LABELS[step.tool_name!] || formatToolName(step.tool_name)
       const agentNode: TreeNode = { type: 'agent', label: agentLabel, children: [] }
 
-      // Sub-steps from content.sub_steps
       for (const subStep of (step.content?.sub_steps || [])) {
         let subTs: string | undefined
         if (subStep.started_at) {
@@ -184,7 +200,6 @@ const treeNodes = computed((): TreeNode => {
         })
       }
 
-      // Result node when completed
       if (step.status === 'completed' && step.content?.result !== undefined) {
         agentNode.children.push({
           type: 'result',
@@ -205,7 +220,6 @@ const treeNodes = computed((): TreeNode => {
         children: [agentNode],
       })
     } else {
-      // Direct orchestrator tool call
       root.children.push({
         type: 'action',
         label: formatToolName(step.tool_name),
@@ -218,7 +232,6 @@ const treeNodes = computed((): TreeNode => {
     }
   }
 
-  // Synthetic "Response generated" node when streaming is done
   if (steps.value.length > 0 && !chatStore.isStreaming) {
     const lastStep = steps.value[steps.value.length - 1]
     root.children.push({

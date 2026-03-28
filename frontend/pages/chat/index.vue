@@ -5,12 +5,12 @@
       <ChatThread @send-action="handleAction" />
       <ChatInputBar @send="handleSend" @reset="handleReset" />
     </div>
-    <!-- Reasoning panel (slides in from the right) -->
+    <!-- Conversation info panel (slides in from the right) -->
     <div
       class="shrink-0 overflow-hidden transition-all duration-300 ease-in-out"
-      :class="chatStore.reasoningPanelOpen ? 'w-96 border-l border-gray-200' : 'w-0'"
+      :class="chatStore.infoPanelOpen ? 'w-80 border-l border-gray-200' : 'w-0'"
     >
-      <ChatReasoningPanel v-if="chatStore.reasoningPanelOpen" class="w-96" />
+      <ConversationInfoPanel v-if="chatStore.infoPanelOpen" class="w-80" />
     </div>
   </div>
 </template>

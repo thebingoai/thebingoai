@@ -83,3 +83,10 @@ class UpdateTitleRequest(BaseModel):
 
 class ArchiveRequest(BaseModel):
     archived: bool
+
+
+class ConversationSummaryResponse(BaseModel):
+    text: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    token_count: int
+    token_limit: int

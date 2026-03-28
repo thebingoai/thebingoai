@@ -104,10 +104,10 @@ export const useChat = () => {
         const content = data.content || ''
         currentReasoningText += content
 
-        // Auto-open reasoning panel on first reasoning token
-        if (!chatStore.reasoningPanelOpen) {
+        // Auto-expand reasoning section on first reasoning token
+        if (!chatStore.infoPanelSections.reasoning) {
           const lastMsg = chatStore.messages[chatStore.messages.length - 1]
-          if (lastMsg) chatStore.openReasoningPanel(lastMsg.id)
+          if (lastMsg) chatStore.selectMessageForReasoning(lastMsg.id)
         }
 
         // Update or create in-progress reasoning step
@@ -383,10 +383,29 @@ export const useChat = () => {
         }
       }
 
+      // Load conversation summary
+      loadConversationSummary(threadId)
+
       // Check if backend is still streaming for this thread via WebSocket
       checkStreamingViaWs(threadId)
     } catch (error) {
       console.error('Failed to load messages:', error)
+    }
+  }
+
+  const loadConversationSummary = async (threadId: string) => {
+    try {
+      const summary = await api.chat.getConversationSummary(threadId) as any
+      if (summary && chatStore.currentThreadId === threadId) {
+        chatStore.setConversationSummary({
+          text: summary.text || '',
+          updated_at: summary.updated_at || new Date().toISOString(),
+          token_count: summary.token_count || 0,
+          token_limit: summary.token_limit || 128000,
+        })
+      }
+    } catch {
+      // Summary may not exist yet — ignore silently
     }
   }
 
@@ -512,6 +531,21 @@ export const useChat = () => {
     })
   }
 
+  // Handle incoming summary updates from WebSocket (arrives after chat.done)
+  const registerSummaryHandler = () => {
+    return ws.on('chat.summary', (data: any) => {
+      const threadId = data.thread_id || chatStore.currentThreadId
+      if (threadId === chatStore.currentThreadId && data.content) {
+        chatStore.setConversationSummary({
+          text: data.content.text,
+          updated_at: data.content.updated_at,
+          token_count: data.content.token_count,
+          token_limit: data.content.token_limit,
+        })
+      }
+    })
+  }
+
   // Handle incoming heartbeat messages from WebSocket
   const registerHeartbeatHandler = () => {
     return ws.on('heartbeat.message', (data: any) => {
@@ -547,6 +581,7 @@ export const useChat = () => {
     loadMessages,
     renameConversation,
     registerTitleHandler,
+    registerSummaryHandler,
     registerHeartbeatHandler,
     resetContext,
     archiveConversation,
