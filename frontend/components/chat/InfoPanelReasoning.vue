@@ -1,5 +1,12 @@
 <template>
-  <div class="border-t border-gray-200 bg-gray-50/50 shrink-0 flex flex-col" :class="isOpen ? 'max-h-[60%]' : ''">
+  <div
+    class="shrink-0 flex flex-col"
+    :class="[
+      fullHeight ? 'flex-1' : 'border-t border-gray-200 bg-gray-50/50',
+      isOpen && !fullHeight ? 'max-h-[60%]' : '',
+      isOpen && fullHeight ? 'flex-1' : '',
+    ]"
+  >
     <!-- Header -->
     <button
       @click="chatStore.toggleInfoSection('reasoning')"
@@ -55,6 +62,12 @@
 
 <script setup lang="ts">
 import type { AgentStep } from '~/stores/chat'
+
+const props = withDefaults(defineProps<{
+  fullHeight?: boolean
+}>(), {
+  fullHeight: false,
+})
 
 interface TreeNode {
   type: 'agent' | 'action' | 'result' | 'reasoning'

@@ -75,7 +75,7 @@ export const useChatStore = defineStore('chat', {
       summary: true,
       datasets: true,
       dashboards: true,
-      reasoning: false,
+      reasoning: true,
     } as Record<string, boolean>,
     rateLimitRetryAfter: 0
   }),
