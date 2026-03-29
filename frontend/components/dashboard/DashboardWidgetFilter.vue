@@ -29,6 +29,7 @@
         class="relative"
       >
         <button
+          :ref="el => { if (el) multiButtonRefs.set(control.key, el as HTMLElement) }"
           class="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:border-gray-300 focus:outline-none min-w-[100px]"
           @click="toggleMultiDropdown(control.key)"
         >
@@ -36,27 +37,31 @@
           <span v-else>{{ getSelectedMulti(control.key).length }} selected</span>
           <ChevronDown class="h-3 w-3 text-gray-400 ml-auto" />
         </button>
-        <div
-          v-if="openMultiKey === control.key"
-          class="absolute top-full left-0 z-50 mt-1 w-48 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
-        >
-          <label
-            v-for="opt in getOptions(control)"
-            :key="opt"
-            class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer"
+        <Teleport to="body">
+          <div
+            v-if="openMultiKey === control.key"
+            :ref="el => { teleportedDropdownRef = el as HTMLElement }"
+            class="fixed z-[9999] w-48 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+            :style="dropdownStyle"
           >
-            <input
-              type="checkbox"
-              :checked="getSelectedMulti(control.key).includes(opt)"
-              class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
-              @change="toggleMultiOption(control.key, opt)"
-            />
-            {{ opt }}
-          </label>
-          <div v-if="getOptions(control).length === 0" class="px-3 py-2 text-xs text-gray-400">
-            No options available
+            <label
+              v-for="opt in getOptions(control)"
+              :key="opt"
+              class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                :checked="getSelectedMulti(control.key).includes(opt)"
+                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
+                @change="toggleMultiOption(control.key, opt)"
+              />
+              {{ opt }}
+            </label>
+            <div v-if="getOptions(control).length === 0" class="px-3 py-2 text-xs text-gray-400">
+              No options available
+            </div>
           </div>
-        </div>
+        </Teleport>
       </div>
 
       <!-- Search input -->
@@ -119,6 +124,9 @@ const searchTimers = ref<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 // Multi-select dropdown open state
 const openMultiKey = ref<string | null>(null)
 const multiDropdownRefs = ref<Map<string, HTMLElement>>(new Map())
+const multiButtonRefs = ref<Map<string, HTMLElement>>(new Map())
+const teleportedDropdownRef = ref<HTMLElement | null>(null)
+const dropdownStyle = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
 
 function getOptions(control: FilterControl): string[] {
   return dynamicOptions.value.get(control.key) ?? control.options ?? []
@@ -134,7 +142,19 @@ function onDropdownChange(key: string, value: string) {
 }
 
 function toggleMultiDropdown(key: string) {
-  openMultiKey.value = openMultiKey.value === key ? null : key
+  if (openMultiKey.value === key) {
+    openMultiKey.value = null
+    return
+  }
+  const btn = multiButtonRefs.value.get(key)
+  if (btn) {
+    const rect = btn.getBoundingClientRect()
+    dropdownStyle.value = {
+      top: `${rect.bottom + 4}px`,
+      left: `${rect.left}px`,
+    }
+  }
+  openMultiKey.value = key
 }
 
 function toggleMultiOption(key: string, opt: string) {
@@ -167,9 +187,16 @@ function onDateChange(key: string, side: 'from' | 'to', value: string) {
 function onClickOutside(e: MouseEvent) {
   if (!openMultiKey.value) return
   const container = multiDropdownRefs.value.get(openMultiKey.value)
-  if (container && !container.contains(e.target as Node)) {
-    openMultiKey.value = null
-  }
+  const target = e.target as Node
+  if (container && container.contains(target)) return
+  if (teleportedDropdownRef.value?.contains(target)) return
+  openMultiKey.value = null
+}
+
+function onScroll(e: Event) {
+  if (!openMultiKey.value) return
+  if (teleportedDropdownRef.value?.contains(e.target as Node)) return
+  openMultiKey.value = null
 }
 
 async function loadDynamicOptions() {
@@ -197,10 +224,12 @@ async function loadDynamicOptions() {
 onMounted(() => {
   loadDynamicOptions()
   document.addEventListener('click', onClickOutside)
+  document.addEventListener('scroll', onScroll, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
+  document.removeEventListener('scroll', onScroll, true)
   searchTimers.value.forEach(timer => clearTimeout(timer))
   searchTimers.value.clear()
 })

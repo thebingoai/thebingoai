@@ -22,6 +22,42 @@ _KEYWORD_PATTERN = re.compile(
 _WHERE_PATTERN = re.compile(r'\bWHERE\b', re.IGNORECASE)
 
 
+def _depth_at(sql: str, pos: int) -> int:
+    """Return parenthesis nesting depth at *pos* (counted from the start of *sql*)."""
+    depth = 0
+    for i in range(pos):
+        if sql[i] == '(':
+            depth += 1
+        elif sql[i] == ')':
+            depth -= 1
+    return depth
+
+
+def _find_top_level_matches(sql: str, pattern: re.Pattern) -> list[re.Match]:
+    """Return all matches of *pattern* that sit at parenthesis depth 0."""
+    matches: list[re.Match] = []
+    depth = 0
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if ch == '(':
+            depth += 1
+            i += 1
+        elif ch == ')':
+            depth -= 1
+            i += 1
+        elif depth == 0:
+            m = pattern.match(sql, i)
+            if m:
+                matches.append(m)
+                i = m.end()
+            else:
+                i += 1
+        else:
+            i += 1
+    return matches
+
+
 def inject_filters(sql: str, filters: List[FilterParam]) -> Tuple[str, dict]:
     """
     Inject filter conditions into a SQL query by adding/extending the WHERE clause.
@@ -32,6 +68,9 @@ def inject_filters(sql: str, filters: List[FilterParam]) -> Tuple[str, dict]:
     """
     if not filters:
         return sql, {}
+
+    # Strip trailing semicolons so appended conditions don't create multiple statements
+    sql = sql.rstrip().rstrip(';').rstrip()
 
     params: dict = {}
     conditions: list[str] = []
@@ -64,19 +103,23 @@ def inject_filters(sql: str, filters: List[FilterParam]) -> Tuple[str, dict]:
 
     condition_clause = ' AND '.join(conditions)
 
-    where_match = _WHERE_PATTERN.search(sql)
-    if where_match:
-        # Find where the next major keyword starts after WHERE to insert AND conditions
-        keyword_match = _KEYWORD_PATTERN.search(sql, where_match.end())
-        if keyword_match:
-            insert_pos = keyword_match.start()
+    # Find ALL top-level (depth-0) WHERE and keyword matches
+    where_matches = _find_top_level_matches(sql, _WHERE_PATTERN)
+    keyword_matches = _find_top_level_matches(sql, _KEYWORD_PATTERN)
+
+    if where_matches:
+        # Use the LAST top-level WHERE (the outermost query's WHERE)
+        last_where = where_matches[-1]
+        # Find the first top-level keyword AFTER this WHERE
+        after_keywords = [m for m in keyword_matches if m.start() > last_where.end()]
+        if after_keywords:
+            insert_pos = after_keywords[0].start()
             modified = sql[:insert_pos].rstrip() + f' AND {condition_clause} ' + sql[insert_pos:]
         else:
             modified = sql.rstrip() + f' AND {condition_clause}'
     else:
-        keyword_match = _KEYWORD_PATTERN.search(sql)
-        if keyword_match:
-            insert_pos = keyword_match.start()
+        if keyword_matches:
+            insert_pos = keyword_matches[0].start()
             modified = sql[:insert_pos].rstrip() + f' WHERE {condition_clause} ' + sql[insert_pos:]
         else:
             modified = sql.rstrip() + f' WHERE {condition_clause}'
