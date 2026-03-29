@@ -3,7 +3,7 @@
     <!-- Left: back + breadcrumb -->
     <div class="flex items-center gap-2 min-w-0">
       <button
-        class="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0"
+        class="flex items-center gap-1.5 text-sm font-semibold text-orange-500 hover:text-orange-600 transition-colors flex-shrink-0"
         @click="emit('back')"
       >
         <ChevronLeft class="h-4 w-4" />
