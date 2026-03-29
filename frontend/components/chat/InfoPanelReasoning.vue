@@ -13,7 +13,7 @@
       class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-100/50 transition-colors shrink-0"
     >
       <div class="flex items-center gap-1.5">
-        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Reasoning</span>
+        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Log</span>
         <span v-if="stepCount > 0" class="text-[9px] bg-gray-200/70 text-gray-500 px-1.5 py-px rounded-full">
           {{ stepCount }} step{{ stepCount !== 1 ? 's' : '' }}
         </span>
@@ -160,6 +160,24 @@ const formatArgs = (args: Record<string, any> | undefined): string | undefined =
 
 // --- Tree transformation ---
 
+/** Extract a compact label from tool args for grouped display (e.g. "listings" instead of repeating "Get Table Schema"). */
+const compactArgLabel = (args: Record<string, any> | undefined): string | undefined => {
+  if (!args || Object.keys(args).length === 0) return undefined
+  // Skip connection_id — show the differentiating args only
+  const meaningful = Object.entries(args).filter(([k]) => k !== 'connection_id' && !k.startsWith('_'))
+  if (meaningful.length === 0) return undefined
+  // Single arg: show just the value
+  if (meaningful.length === 1) {
+    const val = meaningful[0][1]
+    return typeof val === 'string' ? val : JSON.stringify(val)
+  }
+  // Multiple args: show key: value pairs
+  return meaningful.map(([k, v]) => {
+    const val = typeof v === 'string' ? v : JSON.stringify(v)
+    return `${k}: ${val}`
+  }).join(', ')
+}
+
 const SUB_AGENT_TOOLS = new Set(['data_agent', 'rag_agent'])
 const AGENT_LABELS: Record<string, string> = {
   data_agent: 'Data Agent',
@@ -174,8 +192,43 @@ const rootTimestamp = computed((): string | undefined => {
 const treeNodes = computed((): TreeNode => {
   const root: TreeNode = { type: 'agent', label: 'Orchestrator', children: [] }
 
+  // Buffer for grouping consecutive same-name non-sub-agent tool_calls
+  let toolBuffer: { toolName: string; nodes: TreeNode[]; steps: AgentStep[]; totalMs: number } | null = null
+
+  const flushBuffer = () => {
+    if (!toolBuffer) return
+    if (toolBuffer.nodes.length === 1) {
+      root.children.push(toolBuffer.nodes[0])
+    } else {
+      const allCompleted = toolBuffer.nodes.every(n => n.status === 'completed')
+      // Create compact children showing just the differentiating arg (e.g. table name)
+      const compactChildren: TreeNode[] = toolBuffer.steps.map((s, i) => {
+        const argLabel = compactArgLabel(s.content?.args)
+        const dur = typeof s.duration_ms === 'number' ? formatDuration(s.duration_ms) : undefined
+        return {
+          type: 'result' as const,
+          label: argLabel || toolBuffer!.nodes[i].label,
+          status: s.status === 'completed' ? 'completed' as const : 'in-progress' as const,
+          duration: dur,
+          children: [],
+        }
+      })
+      root.children.push({
+        type: 'action',
+        label: toolBuffer.nodes[0].label,
+        count: toolBuffer.nodes.length,
+        duration: toolBuffer.totalMs > 0 ? formatDuration(toolBuffer.totalMs) : undefined,
+        status: allCompleted ? 'completed' : 'in-progress',
+        timestamp: toolBuffer.nodes[0].timestamp,
+        children: compactChildren,
+      })
+    }
+    toolBuffer = null
+  }
+
   for (const step of steps.value) {
     if (step.step_type === 'reasoning') {
+      flushBuffer()
       root.children.push({
         type: 'reasoning',
         label: step.content?.text || 'Thinking...',
@@ -194,6 +247,7 @@ const treeNodes = computed((): TreeNode => {
     const argsDetail = formatArgs(step.content?.args)
 
     if (SUB_AGENT_TOOLS.has(step.tool_name || '')) {
+      flushBuffer()
       const agentLabel = AGENT_LABELS[step.tool_name!] || formatToolName(step.tool_name)
       const agentNode: TreeNode = { type: 'agent', label: agentLabel, children: [] }
 
@@ -233,7 +287,7 @@ const treeNodes = computed((): TreeNode => {
         children: [agentNode],
       })
     } else {
-      root.children.push({
+      const node: TreeNode = {
         type: 'action',
         label: formatToolName(step.tool_name),
         detail: argsDetail,
@@ -241,9 +295,25 @@ const treeNodes = computed((): TreeNode => {
         duration: dur,
         timestamp: ts,
         children: [],
-      })
+      }
+
+      if (toolBuffer && toolBuffer.toolName === step.tool_name) {
+        toolBuffer.nodes.push(node)
+        toolBuffer.steps.push(step)
+        toolBuffer.totalMs += step.duration_ms || 0
+      } else {
+        flushBuffer()
+        toolBuffer = {
+          toolName: step.tool_name || '',
+          nodes: [node],
+          steps: [step],
+          totalMs: step.duration_ms || 0,
+        }
+      }
     }
   }
+
+  flushBuffer()
 
   if (steps.value.length > 0 && !chatStore.isStreaming) {
     const lastStep = steps.value[steps.value.length - 1]

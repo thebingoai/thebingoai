@@ -66,6 +66,36 @@
       <!-- Assistant message with markdown -->
       <UiMarkdownRenderer v-else :content="message.content" />
 
+      <!-- Live steps log (collapses when final answer arrives) -->
+      <div v-if="message.steps_log?.length">
+        <button
+          v-if="message.steps_log_collapsed"
+          @click="message.steps_log_collapsed = false"
+          class="mt-2 text-[11px] text-gray-400 hover:text-gray-500 cursor-pointer flex items-center gap-1"
+        >
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+          {{ message.steps_log.length }} steps
+        </button>
+        <div v-else>
+          <button
+            v-if="message.content"
+            @click="message.steps_log_collapsed = true"
+            class="mt-2 mb-1 text-[11px] text-gray-400 hover:text-gray-500 cursor-pointer flex items-center gap-1"
+          >
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            {{ message.steps_log.length }} steps
+          </button>
+          <div class="mt-1 font-mono text-[11px] text-gray-400 bg-gray-50/80 border border-gray-100 rounded-md px-3 py-2 leading-relaxed whitespace-pre-wrap">{{ message.steps_log.join('\n') }}
+            <div v-if="chatStore.isStreaming && !message.steps_log_collapsed" class="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">
+              <span class="w-1 h-1 rounded-full bg-gray-300 animate-pulse" style="animation-delay: 0ms" />
+              <span class="w-1 h-1 rounded-full bg-gray-300 animate-pulse" style="animation-delay: 150ms" />
+              <span class="w-1 h-1 rounded-full bg-gray-300 animate-pulse" style="animation-delay: 300ms" />
+              <span class="text-[10px] text-gray-300 ml-1">working...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- SQL Query -->
       <div v-if="message.sql" class="mt-3">
         <div class="rounded-lg bg-gray-50 p-4">
@@ -104,8 +134,8 @@
         </p>
       </div>
 
-      <!-- Agent steps / reasoning toggle -->
-      <div v-if="hasSteps" class="mt-3">
+      <!-- Agent steps / reasoning toggle (hidden when steps_log is present) -->
+      <div v-if="hasSteps && !message.steps_log?.length" class="mt-3">
         <button
           @click="openReasoning"
           class="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"

@@ -220,6 +220,13 @@ class ProfileRenderer:
                 )
             sections.append(section)
 
+        # 5b. Behavioral rules (always injected, regardless of stored profile)
+        sections.append(
+            "## Response Style\n"
+            "When a request requires action (tool calls), start by briefly acknowledging "
+            "what you'll do — one sentence max. This appears as your immediate reply while you work."
+        )
+
         # 6. Tools (static guidelines from profile)
         if profile.tools:
             sections.append(profile.tools)

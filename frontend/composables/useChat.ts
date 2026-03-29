@@ -51,6 +51,30 @@ export const useChat = () => {
     const thinkingSteps: Array<{ step: string; description: string }> = []
     const agentSteps: AgentStep[] = []
     let currentReasoningText = ''
+    let acknowledgeText = ''
+    const stepsLog: string[] = []
+
+    /** Extract compact arg summary for the steps log (skip connection_id, show key value). */
+    const compactArg = (args: Record<string, any>): string => {
+      const meaningful = Object.entries(args).filter(([k]) => k !== 'connection_id' && !k.startsWith('_'))
+      if (meaningful.length === 0) return ''
+      const [key, val] = meaningful[0]
+      const str = typeof val === 'string' ? val : JSON.stringify(val)
+      // Show full request text for plan-like args (create_dashboard, update_dashboard)
+      if (key === 'request') return str
+      return str.length > 80 ? str.slice(0, 77) + '...' : str
+    }
+
+    const formatToolLabel = (name: string): string =>
+      name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+    const formatTs = (): string =>
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+    /** Push steps_log to the message so ChatMessageBubble can render it. */
+    const syncStepsLog = () => {
+      chatStore.updateLastMessage({ steps_log: [...stepsLog] })
+    }
 
     // Register one-time handlers scoped to this request_id
     const unsubs: Array<() => void> = []
@@ -95,7 +119,8 @@ export const useChat = () => {
         accumulatedContent += content
         const hasCompleteWord = /[\s\n.,!?;:]/.test(content)
         if (hasCompleteWord) {
-          chatStore.updateLastMessage({ content: accumulatedContent })
+          // Collapse steps_log when final answer starts streaming
+          chatStore.updateLastMessage({ content: accumulatedContent, steps_log_collapsed: true })
           wordBuffer = ''
         }
       })
@@ -123,17 +148,25 @@ export const useChat = () => {
             started_at: Date.now()
           })
         }
-        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+
+        // Show reasoning as temporary reply in chat bubble
+        acknowledgeText = currentReasoningText
+        chatStore.updateLastMessage({ content: currentReasoningText, agent_steps: [...agentSteps] })
       })
 
       onEvent('chat.tool_call', (data) => {
         const toolName = data.content?.tool || data.tool || 'Tool'
         const args = data.content?.args || {}
 
-        // Finalize any streaming reasoning step
+        // Finalize any streaming reasoning step and add to steps log
         const lastStep = agentSteps[agentSteps.length - 1]
         if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
           lastStep.status = 'completed'
+          // Add reasoning to steps log if not already added
+          if (stepsLog.length === 0 && acknowledgeText) {
+            const preview = acknowledgeText.length > 80 ? acknowledgeText.slice(0, 77) + '...' : acknowledgeText
+            stepsLog.push(`${formatTs()}  ● ${preview}`)
+          }
         }
         currentReasoningText = ''
 
@@ -146,6 +179,14 @@ export const useChat = () => {
           started_at: Date.now()
         })
         thinkingSteps.push({ step: toolName, description: 'Running...' })
+
+        // Append to live steps log in chat bubble
+        const label = formatToolLabel(toolName)
+        const argSummary = compactArg(args)
+        const ts = formatTs()
+        stepsLog.push(argSummary ? `${ts}  › ${label} — ${argSummary}` : `${ts}  › ${label}`)
+        syncStepsLog()
+
         chatStore.updateLastMessage({
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
@@ -191,6 +232,20 @@ export const useChat = () => {
         if (thinkingSteps.length > 0) {
           thinkingSteps[thinkingSteps.length - 1].description = 'Completed'
         }
+
+        // Update steps log with duration — find last entry without a duration marker
+        const label = formatToolLabel(toolName)
+        const logIdx = stepsLog.findLastIndex(l => l.includes(`› ${label}`) && !l.includes('(') && !l.includes('✓'))
+        if (logIdx !== -1) {
+          if (typeof serverDuration === 'number') {
+            const durStr = serverDuration < 1000 ? `${serverDuration}ms` : `${(serverDuration / 1000).toFixed(1)}s`
+            stepsLog[logIdx] = stepsLog[logIdx] + ` (${durStr})`
+          } else {
+            stepsLog[logIdx] = stepsLog[logIdx] + ' ✓'
+          }
+          syncStepsLog()
+        }
+
         chatStore.updateLastMessage({
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
@@ -206,7 +261,8 @@ export const useChat = () => {
             agentSteps.pop()
           }
           currentReasoningText = ''
-          chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+          // Clear the temporary reasoning text from bubble — final answer tokens will fill it
+          chatStore.updateLastMessage({ content: '', steps_log_collapsed: true, agent_steps: [...agentSteps] })
         }
       })
 

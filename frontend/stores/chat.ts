@@ -19,6 +19,8 @@ export interface Message {
   results?: any[]
   thinking_steps?: ThinkingStep[]  // legacy - kept for backward compat
   agent_steps?: AgentStep[]
+  steps_log?: string[]  // live steps log shown in chat bubble during streaming
+  steps_log_collapsed?: boolean  // collapse steps log after final answer arrives
   created_at: string
   attachments?: FileAttachment[]
   source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer'

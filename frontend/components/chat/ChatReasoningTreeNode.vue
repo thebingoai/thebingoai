@@ -7,6 +7,7 @@ export interface TreeNode {
   duration?: string
   timestamp?: string
   children: TreeNode[]
+  count?: number
 }
 </script>
 
@@ -80,6 +81,12 @@ const agentDotClass = computed(() => {
             'truncate text-gray-600'
           ]"
         >{{ node.label }}<span v-if="node.status === 'streaming'" class="inline-block w-[5px] h-[10px] bg-amber-400 ml-0.5 animate-blink align-baseline" /></span>
+
+        <!-- Count badge for grouped actions -->
+        <span
+          v-if="node.count && node.count > 1"
+          class="text-[9px] bg-gray-200/70 text-gray-500 px-1 py-px rounded-full ml-1 shrink-0"
+        >&times;{{ node.count }}</span>
 
         <!-- Duration (inline, after label) -->
         <span

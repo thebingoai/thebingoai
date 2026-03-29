@@ -112,6 +112,8 @@
     @apply border-l-4 border-gray-300 pl-4 italic my-3;
   }
 
+
+
   .prose-chat a {
     @apply text-gray-900 hover:underline;
   }
