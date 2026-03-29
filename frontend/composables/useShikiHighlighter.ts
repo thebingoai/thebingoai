@@ -6,7 +6,7 @@ export function useShikiHighlighter() {
   if (!highlighterPromise) {
     highlighterPromise = getHighlighter({
       themes: ['github-dark', 'github-light'],
-      langs: ['javascript', 'typescript', 'python', 'bash', 'json', 'markdown', 'html', 'css'],
+      langs: ['javascript', 'typescript', 'python', 'bash', 'json', 'markdown', 'html', 'css', 'sql'],
     })
   }
   return highlighterPromise

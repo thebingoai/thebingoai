@@ -20,16 +20,28 @@
       <!-- Body -->
       <div class="flex-1 overflow-y-auto p-5 space-y-4">
 
-        <!-- SQL textarea -->
+        <!-- SQL editor with syntax highlighting -->
         <div class="space-y-1.5">
           <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Query</label>
-          <textarea
-            v-model="localSql"
-            :readonly="!editMode"
-            class="w-full h-40 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-xs text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors"
-            :class="editMode ? 'bg-white' : 'cursor-default'"
-            spellcheck="false"
-          />
+          <div class="relative rounded-lg border border-gray-200 overflow-hidden" :class="editMode ? 'bg-white' : 'bg-gray-50'">
+            <!-- Highlighted code overlay -->
+            <div
+              ref="highlightRef"
+              class="absolute inset-0 px-3 py-2.5 font-mono text-xs leading-relaxed pointer-events-none overflow-auto whitespace-pre-wrap break-words sql-highlight"
+              aria-hidden="true"
+              v-html="highlightedSql"
+            />
+            <!-- Transparent textarea on top -->
+            <textarea
+              v-model="localSql"
+              :readonly="!editMode"
+              class="relative w-full h-64 px-3 py-2.5 font-mono text-xs leading-relaxed resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+              :class="editMode ? '' : 'cursor-default'"
+              :style="{ color: highlightedSql ? 'transparent' : undefined, caretColor: 'black' }"
+              spellcheck="false"
+              @scroll="syncScroll"
+            />
+          </div>
         </div>
 
         <!-- Mapping display -->
@@ -92,7 +104,7 @@
         <button
           v-if="editMode"
           class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          :disabled="localSql === widget.dataSource!.sql"
+          :disabled="!sqlDirty"
           @click="save()"
         >
           <Save class="h-3.5 w-3.5" />
@@ -110,11 +122,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { X, RefreshCw, Save, Sparkles } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useApi } from '~/composables/useApi'
 import { useDashboardStore } from '~/stores/dashboard'
+import { useShikiHighlighter } from '~/composables/useShikiHighlighter'
+import { format as formatSql } from 'sql-formatter'
 
 const props = defineProps<{
   widget: DashboardWidget
@@ -129,7 +143,17 @@ const emit = defineEmits<{
 const api = useApi()
 const store = useDashboardStore()
 
-const localSql = ref(props.widget.dataSource!.sql)
+function tryFormatSql(sql: string): string {
+  try {
+    return formatSql(sql, { language: 'postgresql', tabWidth: 2, keywordCase: 'upper' })
+  } catch {
+    return sql
+  }
+}
+
+const initialFormattedSql = tryFormatSql(props.widget.dataSource!.sql)
+const localSql = ref(initialFormattedSql)
+const sqlDirty = computed(() => localSql.value !== initialFormattedSql)
 
 const testLoading = ref(false)
 const previewColumns = ref<string[]>([])
@@ -138,7 +162,44 @@ const previewError = ref<string | null>(null)
 const suggestLoading = ref(false)
 const suggestion = ref<{ suggested_sql: string; explanation: string } | null>(null)
 
+// SQL syntax highlighting
+const highlightRef = ref<HTMLElement | null>(null)
+const highlightedSql = ref('')
+const highlighterReady = ref(false)
+let highlighter: any = null
+
+async function initHighlighter() {
+  highlighter = await useShikiHighlighter()
+  highlighterReady.value = true
+  updateHighlight()
+}
+
+function updateHighlight() {
+  if (!highlighter || !localSql.value) {
+    highlightedSql.value = ''
+    return
+  }
+  const html = highlighter.codeToHtml(localSql.value, {
+    lang: 'sql',
+    theme: 'github-light',
+  })
+  // Extract inner content from the <pre><code> wrapper
+  const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/)
+  highlightedSql.value = match ? match[1] : html
+}
+
+function syncScroll(e: Event) {
+  const textarea = e.target as HTMLTextAreaElement
+  if (highlightRef.value) {
+    highlightRef.value.scrollTop = textarea.scrollTop
+    highlightRef.value.scrollLeft = textarea.scrollLeft
+  }
+}
+
+watch(localSql, updateHighlight)
+
 onMounted(() => {
+  initHighlighter()
   if (props.widgetError) previewError.value = props.widgetError
 })
 
@@ -199,7 +260,7 @@ async function suggestFix() {
       mapping: ds.mapping as any,
       widget_title: props.widget.title ?? props.widget.widget.config?.title ?? props.widget.widget.config?.label,
     })
-    localSql.value = result.suggested_sql
+    localSql.value = tryFormatSql(result.suggested_sql)
     suggestion.value = result
     previewError.value = null
   } catch (err: any) {
@@ -221,3 +282,11 @@ function save() {
   emit('close')
 }
 </script>
+
+<style scoped>
+.sql-highlight :deep(span) {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+</style>

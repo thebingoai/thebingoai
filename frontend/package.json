@@ -1,6 +1,6 @@
 {
   "name": "bingo-frontend",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,12 +12,12 @@
     "type-check": "nuxt typecheck"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.0",
     "@headlessui/vue": "^1.7.19",
     "@nuxtjs/color-mode": "^3.5.2",
     "@nuxtjs/google-fonts": "^3.2.0",
     "@nuxtjs/tailwindcss": "^6.12.3",
     "@pinia/nuxt": "^0.11.0",
+    "@supabase/supabase-js": "^2.49.0",
     "@vueuse/nuxt": "^11.2.0",
     "animejs": "^3.2.2",
     "chart.js": "^4.5.1",
@@ -31,6 +31,7 @@
     "pinia": "^3.0.4",
     "pinia-plugin-persistedstate": "^4.2.0",
     "shiki": "^1.24.2",
+    "sql-formatter": "^15.7.3",
     "sql.js": "^1.14.1",
     "tailwind-merge": "^2.5.5",
     "vue": "^3.5.13",

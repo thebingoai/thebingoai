@@ -1,5 +1,5 @@
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from backend.agents.data_agent.tools import build_data_agent_tools
 from backend.agents.data_agent.prompts import DATA_AGENT_SYSTEM_PROMPT, build_data_agent_prompt
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
@@ -14,7 +14,7 @@ import json
 logger = logging.getLogger(__name__)
 
 
-def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 5):
+def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 10):
     """pre_model_hook that detects repeated tool calls and injects a stop message.
 
     Catches two patterns:
@@ -43,8 +43,8 @@ def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 5):
             if len(set(recent_calls[:max_repeats])) == 1:
                 tool_name = recent_calls[0][0]
                 logger.warning(f"Loop detected: {tool_name} called {max_repeats} times with same args, injecting stop")
-                return {"messages": [HumanMessage(content=(
-                    f"STOP: You have called {tool_name} with the same arguments {max_repeats} times and got the same result. "
+                return {"messages": [SystemMessage(content=(
+                    f"[Loop detected] You have called {tool_name} with the same arguments {max_repeats} times and got the same result. "
                     "Accept the result as final and respond to the user. Do not call this tool again."
                 ))]}
 
@@ -54,8 +54,8 @@ def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 5):
             if len(set(last_n)) == 1:
                 tool_name = last_n[0]
                 logger.warning(f"Tool-family loop detected: {tool_name} called {max_same_tool} times with varying args, injecting stop")
-                return {"messages": [HumanMessage(content=(
-                    f"STOP: You have called {tool_name} {max_same_tool} times in a row with different arguments "
+                return {"messages": [SystemMessage(content=(
+                    f"[Loop detected] You have called {tool_name} {max_same_tool} times in a row with different arguments "
                     "but no useful result. The information is not available through this approach. "
                     "Report this to the user and move on. Do NOT try more variations."
                 ))]}

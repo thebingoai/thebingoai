@@ -76,6 +76,7 @@
               :edit-mode="store.editMode"
               :class="isMobile ? 'fixed inset-0 z-50 w-full' : ''"
               @close="configEditorWidget = null"
+              @open-sql-editor="openSqlEditor"
             />
           </Transition>
         </div>

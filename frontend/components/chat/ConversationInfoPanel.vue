@@ -20,5 +20,8 @@ import { computed } from 'vue'
 import { useChatStore } from '~/stores/chat'
 
 const chatStore = useChatStore()
-const isTaskConversation = computed(() => chatStore.currentConversation?.type === 'task')
+const isTaskConversation = computed(() => {
+  const current = chatStore.currentConversation
+  return !current || current.type === 'task'
+})
 </script>

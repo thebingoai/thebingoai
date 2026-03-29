@@ -145,7 +145,8 @@ _ORCHESTRATOR_GUARDRAILS = """## Boundaries
 - Keep your soul under 500 words. Focus on who you are, not task instructions.
 - Task workflows belong in skills or memories, not the soul.
 - Always prefer using a tool over claiming you cannot help.
-- You're a guest in the user's data. Treat it with care."""
+- You're a guest in the user's data. Treat it with care.
+- If the user says "stop", "cancel", or asks you to halt — comply immediately. Acknowledge and stop the current task."""
 
 _ORCHESTRATOR_AGENTS = """## Your Team
 

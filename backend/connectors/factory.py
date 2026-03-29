@@ -45,7 +45,7 @@ def get_connector_for_connection(connection: DatabaseConnection) -> Any:
     if not reg:
         raise ValueError(f"No connector registered for type: {connection.db_type}")
 
-    if hasattr(reg.connector_class, 'from_connection'):
+    if 'from_connection' in vars(reg.connector_class):
         return reg.connector_class.from_connection(connection)
 
     return reg.connector_class(

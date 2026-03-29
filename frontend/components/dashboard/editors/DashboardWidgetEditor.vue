@@ -18,34 +18,6 @@
       </div>
     </div>
 
-    <!-- Common meta fields -->
-    <div class="flex-shrink-0 border-b border-gray-100 bg-gray-50 px-5 py-3 space-y-2">
-      <div class="space-y-1">
-        <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Title</label>
-        <input
-          v-model="localTitle"
-          type="text"
-          placeholder="Widget title (optional)"
-          class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors"
-          :readonly="!editMode"
-          :class="!editMode ? 'cursor-default bg-gray-50' : ''"
-          @input="saveMeta()"
-        />
-      </div>
-      <div class="space-y-1">
-        <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Description</label>
-        <input
-          v-model="localDescription"
-          type="text"
-          placeholder="Widget description (optional)"
-          class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors"
-          :readonly="!editMode"
-          :class="!editMode ? 'cursor-default bg-gray-50' : ''"
-          @input="saveMeta()"
-        />
-      </div>
-    </div>
-
     <!-- Tab bar (only for data widgets) -->
     <div v-if="isDataWidget" class="flex flex-shrink-0 border-b border-gray-200 px-5">
       <button
@@ -124,16 +96,35 @@
           </select>
         </div>
 
-        <!-- SQL textarea -->
-        <textarea
-          v-model="localSql"
-          :readonly="!editMode"
-          rows="5"
-          class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-colors"
-          :class="editMode ? 'bg-white' : 'cursor-default'"
-          spellcheck="false"
-          @blur="onSqlBlur()"
-        />
+        <!-- SQL textarea with syntax highlighting -->
+        <div class="relative rounded-lg border border-gray-200 overflow-hidden" :class="editMode ? 'bg-white' : 'bg-gray-50'">
+          <!-- Highlighted code overlay -->
+          <div
+            ref="sqlHighlightRef"
+            class="absolute inset-0 px-3 py-2 font-mono text-xs leading-relaxed pointer-events-none overflow-auto whitespace-pre-wrap break-words sql-highlight"
+            aria-hidden="true"
+            v-html="highlightedSql"
+          />
+          <!-- Transparent textarea on top -->
+          <textarea
+            v-model="localSql"
+            :readonly="!editMode"
+            class="relative w-full h-48 px-3 py-2 pr-8 font-mono text-xs leading-relaxed resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+            :class="editMode ? '' : 'cursor-default'"
+            :style="{ color: highlightedSql ? 'transparent' : undefined, caretColor: 'black' }"
+            spellcheck="false"
+            @blur="onSqlBlur()"
+            @scroll="syncSqlScroll"
+          />
+          <button
+            v-if="props.widget.dataSource"
+            class="absolute bottom-1.5 right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-gray-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors shadow-sm"
+            title="Open SQL editor"
+            @click="emit('open-sql-editor', props.widget.id)"
+          >
+            <Code class="h-3 w-3" />
+          </button>
+        </div>
 
         <!-- Column mapping display (only when dataSource exists) -->
         <DashboardMappingDisplay v-if="props.widget.dataSource" :mapping="props.widget.dataSource.mapping" />
@@ -202,11 +193,13 @@ const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> 
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { X, RefreshCw, Sparkles } from 'lucide-vue-next'
+import { X, RefreshCw, Sparkles, Code } from 'lucide-vue-next'
 import type { DashboardWidget, WidgetConfig, WidgetDataSource } from '~/types/dashboard'
 import { useDashboardStore } from '~/stores/dashboard'
 import { useApi } from '~/composables/useApi'
 import DashboardMappingDisplay from '~/components/dashboard/DashboardMappingDisplay.vue'
+import { useShikiHighlighter } from '~/composables/useShikiHighlighter'
+import { format as formatSql } from 'sql-formatter'
 
 const DATA_WIDGET_TYPES = new Set(['chart', 'kpi', 'table'])
 
@@ -217,6 +210,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  'open-sql-editor': [id: string]
 }>()
 
 const store = useDashboardStore()
@@ -225,12 +219,21 @@ const api = useApi()
 // Tab state (only relevant for data widgets)
 const activeTab = ref<'configure' | 'data'>('configure')
 
-// Local meta state (title/description)
-const localTitle = ref(props.widget.title ?? '')
-const localDescription = ref(props.widget.description ?? '')
+// Local meta state
+const localTitle = computed(() => props.widget.title ?? '')
+const localDescription = computed(() => props.widget.description ?? '')
+
+// SQL formatting helper
+function tryFormatSql(sql: string): string {
+  try {
+    return formatSql(sql, { language: 'postgresql', tabWidth: 2, keywordCase: 'upper' })
+  } catch {
+    return sql
+  }
+}
 
 // SQL section state
-const localSql = ref(props.widget.dataSource?.sql ?? '')
+const localSql = ref(tryFormatSql(props.widget.dataSource?.sql ?? ''))
 const selectedConnectionId = ref<number | null>(props.widget.dataSource?.connectionId ?? null)
 const connections = ref<{ id: number; name: string }[]>([])
 const testLoading = ref(false)
@@ -240,6 +243,39 @@ const previewError = ref<string | null>(null)
 const suggestLoading = ref(false)
 const suggestion = ref<{ suggested_sql: string; explanation: string } | null>(null)
 const sourceColumns = ref<string[]>([])
+
+// SQL syntax highlighting
+const sqlHighlightRef = ref<HTMLElement | null>(null)
+const highlightedSql = ref('')
+let highlighter: any = null
+
+async function initHighlighter() {
+  highlighter = await useShikiHighlighter()
+  updateHighlight()
+}
+
+function updateHighlight() {
+  if (!highlighter || !localSql.value) {
+    highlightedSql.value = ''
+    return
+  }
+  const html = highlighter.codeToHtml(localSql.value, {
+    lang: 'sql',
+    theme: 'github-light',
+  })
+  const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/)
+  highlightedSql.value = match ? match[1] : html
+}
+
+function syncSqlScroll(e: Event) {
+  const textarea = e.target as HTMLTextAreaElement
+  if (sqlHighlightRef.value) {
+    sqlHighlightRef.value.scrollTop = textarea.scrollTop
+    sqlHighlightRef.value.scrollLeft = textarea.scrollLeft
+  }
+}
+
+watch(localSql, updateHighlight)
 
 const isDataWidget = computed(() => DATA_WIDGET_TYPES.has(props.widget.widget.type))
 
@@ -264,9 +300,7 @@ const editorComponent = computed(() =>
 
 /** Reset local state when a different widget is selected */
 watch(() => props.widget.id, () => {
-  localTitle.value = props.widget.title ?? ''
-  localDescription.value = props.widget.description ?? ''
-  localSql.value = props.widget.dataSource?.sql ?? ''
+  localSql.value = tryFormatSql(props.widget.dataSource?.sql ?? '')
   selectedConnectionId.value = props.widget.dataSource?.connectionId ?? null
   previewColumns.value = []
   previewRows.value = []
@@ -300,13 +334,6 @@ function onMappingUpdate(patch: Record<string, any>) {
       store.updateWidgetConfig(props.widget.id, { type: 'kpi', config })
     })
   }
-}
-
-function saveMeta() {
-  store.updateWidgetMeta(props.widget.id, {
-    title: localTitle.value || undefined,
-    description: localDescription.value || undefined,
-  })
 }
 
 function getDefaultMapping(type: string): WidgetDataSource['mapping'] {
@@ -399,7 +426,7 @@ async function suggestFix() {
       widget_title: localTitle.value || props.widget.widget.config?.title || props.widget.widget.config?.label,
       widget_description: localDescription.value,
     })
-    localSql.value = result.suggested_sql
+    localSql.value = tryFormatSql(result.suggested_sql)
     suggestion.value = result
     previewError.value = null
     store.updateWidgetSql(props.widget.id, result.suggested_sql)
@@ -416,6 +443,7 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(async () => {
   document.addEventListener('keydown', onKeydown)
+  initHighlighter()
   if (isDataWidget.value) {
     try {
       const data = await api.connections.list() as { id: number; name: string }[]
@@ -443,3 +471,11 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>
+
+<style scoped>
+.sql-highlight :deep(span) {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+</style>

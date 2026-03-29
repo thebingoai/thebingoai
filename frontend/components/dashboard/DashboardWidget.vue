@@ -22,6 +22,16 @@
         >
           <Code class="h-3 w-3" />
         </button>
+        <!-- Refresh button — shown when widget has a data source -->
+        <button
+          v-if="hasDataSource"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          :disabled="loading"
+          title="Refresh data"
+          @click.stop="refresh()"
+        >
+          <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
+        </button>
         <!-- Duplicate button -->
         <button
           class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"

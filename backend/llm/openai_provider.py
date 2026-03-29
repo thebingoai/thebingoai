@@ -89,13 +89,10 @@ class OpenAIProvider(BaseLLMProvider):
         client = self._get_client()
         model = self.model or settings.openai_default_model
 
-        response = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=False
-        )
+        kwargs = dict(model=model, messages=messages, temperature=temperature, stream=False)
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        response = await client.chat.completions.create(**kwargs)
         return response.choices[0].message.content
 
     async def chat_stream(
@@ -122,13 +119,10 @@ class OpenAIProvider(BaseLLMProvider):
         client = self._get_client()
         model = self.model or settings.openai_default_model
 
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True
-        )
+        kwargs = dict(model=model, messages=messages, temperature=temperature, stream=True)
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        stream = await client.chat.completions.create(**kwargs)
 
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
