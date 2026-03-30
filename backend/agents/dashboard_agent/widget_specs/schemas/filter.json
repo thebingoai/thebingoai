@@ -10,6 +10,7 @@
         "label":         { "type": "string",  "required": true,  "description": "Display label" },
         "key":           { "type": "string",  "required": true,  "description": "Unique identifier for this control" },
         "column":        { "type": "string",  "required": true,  "description": "Real DB column name used for SQL filtering. EVERY control MUST have this" },
+        "dimension":     { "type": "string",  "required": false, "description": "References a dimension key from the dashboard data context" },
         "multiple":      { "type": "boolean", "required": false, "description": "Allow multi-select (dropdown only)" },
         "options":       { "type": "array",   "required": false, "description": "Static fallback options (string array)" },
         "optionsSource": {

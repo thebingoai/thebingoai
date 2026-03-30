@@ -5,6 +5,7 @@ import { useApi } from '~/composables/useApi'
 
 export interface ActiveFilter {
   column: string
+  dimension?: string  // References data_context.dimensions key
   op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'ilike' | 'in'
   value: any
 }
@@ -65,18 +66,19 @@ export const useDashboardStore = defineStore('dashboard', {
         if (value === null || value === undefined || value === '') continue
         if (!control.column) continue
 
+        const dim = control.dimension || undefined
         if (control.type === 'dropdown') {
           if (Array.isArray(value) && value.length > 0) {
-            result.push({ column: control.column, op: 'in', value })
+            result.push({ column: control.column, dimension: dim, op: 'in', value })
           } else if (typeof value === 'string' && value) {
-            result.push({ column: control.column, op: 'eq', value })
+            result.push({ column: control.column, dimension: dim, op: 'eq', value })
           }
         } else if (control.type === 'search') {
-          result.push({ column: control.column, op: 'ilike', value: `%${value}%` })
+          result.push({ column: control.column, dimension: dim, op: 'ilike', value: `%${value}%` })
         } else if (control.type === 'date_range') {
           const { from, to } = value as { from?: string; to?: string }
-          if (from) result.push({ column: control.column, op: 'gte', value: from })
-          if (to) result.push({ column: control.column, op: 'lte', value: to })
+          if (from) result.push({ column: control.column, dimension: dim, op: 'gte', value: from })
+          if (to) result.push({ column: control.column, dimension: dim, op: 'lte', value: to })
         }
       }
       return result
@@ -116,6 +118,7 @@ export const useDashboardStore = defineStore('dashboard', {
         const dashboard: Dashboard = {
           ...data,
           widgets: (data.widgets ?? []).map(normalizeWidget),
+          data_context: data.data_context ?? null,
           createdAt: data.created_at,
           updatedAt: data.updated_at,
         }
@@ -344,6 +347,8 @@ export const useDashboardStore = defineStore('dashboard', {
               sql: widget.dataSource.sql,
               mapping: widget.dataSource.mapping as any,
               filters,
+              dashboard_id: this.currentDashboardId ?? undefined,
+              widget_sources: widget.sources ?? undefined,
             }) as { config: Record<string, any>; refreshed_at: string }
             Object.assign(widget.widget.config, response.config)
             widget.dataSource.lastRefreshedAt = response.refreshed_at

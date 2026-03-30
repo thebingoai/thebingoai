@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from backend.database.base import Base, TimestampMixin
@@ -48,6 +48,14 @@ class DatabaseConnection(Base, TimestampMixin):
     schema_json_path = Column(String, nullable=True)
     schema_generated_at = Column(DateTime, nullable=True)
     table_count = Column(Integer, nullable=True)
+
+    # Profiling & data context
+    profiling_status = Column(String, default="pending", nullable=False)  # pending|in_progress|ready|failed
+    profiling_progress = Column(String, nullable=True)           # e.g. "3/12 tables"
+    profiling_error = Column(Text, nullable=True)
+    profiling_started_at = Column(DateTime, nullable=True)
+    profiling_completed_at = Column(DateTime, nullable=True)
+    data_context_path = Column(String, nullable=True)            # path to context JSON file
 
     # Plugin-specific fields (e.g., dataset connector sets these)
     source_filename = Column(String, nullable=True)

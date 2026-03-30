@@ -31,6 +31,13 @@ async def lifespan(app: FastAPI):
     for router, prefix in get_plugin_routers():
         app.include_router(router, prefix=prefix)
 
+    # Backfill profiling for existing connections (runs once after deploy)
+    try:
+        from backend.tasks.profiling_tasks import backfill_profile_all_connections
+        backfill_profile_all_connections.delay()
+    except Exception:
+        logger.warning("Failed to queue backfill profiling task", exc_info=True)
+
     yield
     # Shutdown
     logger.info("Shutting down...")

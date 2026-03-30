@@ -114,6 +114,17 @@ export const useApi = () => {
       async getSchema(id: string) {
         return fetchWithRefresh(`/api/connections/${id}/schema`, {})
       },
+      async getProfilingStatus(id: number) {
+        return fetchWithRefresh(`/api/connections/${id}/profiling-status`, {})
+      },
+      async reprofile(id: number) {
+        return fetchWithRefresh(`/api/connections/${id}/reprofile`, {
+          method: 'POST',
+        })
+      },
+      async getContext(id: number) {
+        return fetchWithRefresh(`/api/connections/${id}/context`, {})
+      },
       async listOrg() {
         return fetchWithRefresh('/api/connections/org', {})
       },
@@ -533,7 +544,7 @@ export const useApi = () => {
           method: 'DELETE',
         })
       },
-      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number; filters?: Array<{ column: string; op: string; value: any }> }) {
+      async refreshWidget(data: { connection_id: number; sql: string; mapping: any; limit?: number; filters?: Array<{ column: string; op: string; value: any }>; dashboard_id?: number; widget_sources?: string[] }) {
         return fetchWithRefresh('/api/dashboards/widgets/refresh', {
           method: 'POST',
           body: data,

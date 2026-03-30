@@ -3,8 +3,11 @@
 FILTER_GUIDANCE = """### Key Rules
 
 - Filter widgets have **NO dataSource** — controls are statically defined
-- **Every control MUST have a `column` field** — the real DB column name used for SQL WHERE clauses
+- **Every control MUST have both `column` and `dimension` fields**:
+  - `column`: the real DB column name used for SQL WHERE clauses
+  - `dimension`: references a dimension from the dashboard data context (from `build_dashboard_context`)
 - **Dropdown controls MUST have `optionsSource`** with connectionId and SQL query
+- **Filter dimensions MUST be reachable by ALL data widgets** — this is why every widget uses the baseJoin
 
 ### Example Configuration
 
@@ -21,16 +24,18 @@ FILTER_GUIDANCE = """### Key Rules
           "label": "Region",
           "key": "region",
           "column": "region",
+          "dimension": "region",
           "optionsSource": {
             "connectionId": 1,
-            "sql": "SELECT DISTINCT region AS option_value FROM sales ORDER BY 1 LIMIT 50"
+            "sql": "SELECT DISTINCT o.region AS option_value FROM orders o ORDER BY 1 LIMIT 50"
           }
         },
         {
           "type": "date_range",
           "label": "Date",
           "key": "date",
-          "column": "transaction_date"
+          "column": "order_date",
+          "dimension": "order_date"
         },
         {
           "type": "search",
@@ -47,9 +52,10 @@ FILTER_GUIDANCE = """### Key Rules
 ### Best Practices
 
 - Place at y=2, w=12, h=2 (Section 2 — Filters)
-- Include 2-4 controls for key slicing dimensions
-- Use dropdown for categorical columns with reasonable cardinality
-- Use date_range for time columns
+- Include 2-4 controls for key slicing dimensions from the data context
+- Use dropdown for categorical dimensions with reasonable cardinality
+- Use date_range for temporal dimensions
 - Use search for free-text filtering (names, descriptions)
-- optionsSource SQL should always use `AS option_value` alias, ORDER BY, and LIMIT 50
+- optionsSource SQL should use the baseJoin aliases (e.g., `o.region`), ORDER BY, and LIMIT 50
+- Every dimension you use as a filter must be included in the `build_dashboard_context` call
 """

@@ -65,6 +65,7 @@ export interface FilterControl {
   label: string
   key: string
   column?: string                    // real DB column name (used for SQL filtering)
+  dimension?: string                 // references data_context.dimensions key
   multiple?: boolean                 // allow multi-select (dropdown only)
   options?: string[]                 // static fallback options
   optionsSource?: FilterOptionsSource // dynamic SQL-based options
@@ -127,6 +128,7 @@ export interface DashboardWidget {
   position: GridPosition
   widget: WidgetConfig
   dataSource?: WidgetDataSource
+  sources?: string[]  // Which data context sources this widget uses
 }
 
 // A full dashboard with its widget collection
@@ -135,6 +137,7 @@ export interface Dashboard {
   title: string
   description?: string
   widgets: DashboardWidget[]
+  data_context?: Record<string, any> | null  // Dashboard-level semantic layer
   createdAt?: string
   updatedAt?: string
   // Schedule fields

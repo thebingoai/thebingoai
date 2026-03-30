@@ -1,7 +1,5 @@
 from langchain_core.tools import tool
 from typing import List, Dict, Any, Callable
-from decimal import Decimal
-from datetime import date, datetime
 from backend.services.schema_discovery import load_schema_file
 from backend.connectors.factory import get_connector_for_connection
 from backend.database.session import SessionLocal
@@ -212,13 +210,6 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
         if not context.can_access_connection(connection_id):
             return {"error": f"Connection {connection_id} not authorized or not available"}
 
-        def _safe(val: Any) -> Any:
-            if isinstance(val, Decimal):
-                return float(val)
-            if isinstance(val, (datetime, date)):
-                return val.isoformat()
-            return val
-
         try:
             schema_json = load_schema_file(connection_id)
         except FileNotFoundError:
@@ -236,29 +227,6 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
         if table_data is None:
             return {"error": f"Table '{table_name}' not found in schema cache."}
 
-        row_count = table_data.get("row_count", 0)
-        all_columns = table_data.get("columns", [])[:30]  # cap at 30 columns
-
-        NUMERIC_TYPES = {
-            "integer", "bigint", "smallint", "numeric", "decimal", "real",
-            "double precision", "float", "int", "tinyint", "mediumint",
-            "float4", "float8", "int2", "int4", "int8", "serial", "bigserial",
-        }
-        DATE_TYPES = {
-            "date", "timestamp", "timestamp without time zone",
-            "timestamp with time zone", "datetime", "timestamptz",
-        }
-
-        numeric_cols, date_cols, text_cols = [], [], []
-        for col in all_columns:
-            col_type = col.get("type", "").split("(")[0].strip().lower()
-            if col_type in NUMERIC_TYPES:
-                numeric_cols.append(col["name"])
-            elif col_type in DATE_TYPES:
-                date_cols.append(col["name"])
-            else:
-                text_cols.append(col["name"])
-
         db = SessionLocal()
         try:
             connection = db.query(DatabaseConnection).filter(
@@ -269,136 +237,22 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             if not connection:
                 return {"error": "Connection not found"}
 
-            # Determine quoting and table name based on connection type
             reg = get_connector_registration(connection.db_type)
             is_dataset = reg is not None and reg.sql_dialect_hint is not None and "SQLite" in reg.sql_dialect_hint
             db_type_str = "mysql" if connection.db_type == "mysql" else "postgres"
 
-            def q(name: str) -> str:
-                return f"`{name}`" if db_type_str == "mysql" else f'"{name}"'
-
-            if is_dataset:
-                qualified_table = f'"{table_name}"'  # SQLite: use table name from schema
-            else:
-                qualified_table = f"{q(found_schema)}.{q(table_name)}"
-            result_columns: Dict[str, Any] = {}
+            from backend.services.table_profiler import profile_table as _profile
 
             with get_connector_for_connection(connection) as connector:
-
-                # Query A: Numeric stats (min/max/avg/null_count per column)
-                if numeric_cols:
-                    try:
-                        parts = []
-                        for col in numeric_cols:
-                            qc = q(col)
-                            parts += [
-                                f"MIN({qc})",
-                                f"MAX({qc})",
-                                f"AVG({qc})",
-                                f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END)",
-                            ]
-                        res = connector.execute_query(
-                            f"SELECT {', '.join(parts)} FROM {qualified_table}"
-                        )
-                        if res.rows:
-                            row = res.rows[0]
-                            for i, col in enumerate(numeric_cols):
-                                b = i * 4
-                                result_columns[col] = {
-                                    "type": "numeric",
-                                    "min": _safe(row[b]),
-                                    "max": _safe(row[b + 1]),
-                                    "avg": _safe(row[b + 2]),
-                                    "null_count": _safe(row[b + 3]),
-                                }
-                    except Exception as e:
-                        logger.warning(f"profile_table numeric stats failed for {table_name}: {e}")
-                        for col in numeric_cols:
-                            result_columns[col] = {"type": "numeric", "error": str(e)}
-
-                # Query B: Date stats (min/max/null_count per column)
-                if date_cols:
-                    try:
-                        parts = []
-                        for col in date_cols:
-                            qc = q(col)
-                            parts += [
-                                f"MIN({qc})",
-                                f"MAX({qc})",
-                                f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END)",
-                            ]
-                        res = connector.execute_query(
-                            f"SELECT {', '.join(parts)} FROM {qualified_table}"
-                        )
-                        if res.rows:
-                            row = res.rows[0]
-                            for i, col in enumerate(date_cols):
-                                b = i * 3
-                                result_columns[col] = {
-                                    "type": "date",
-                                    "min": _safe(row[b]),
-                                    "max": _safe(row[b + 1]),
-                                    "null_count": _safe(row[b + 2]),
-                                }
-                    except Exception as e:
-                        logger.warning(f"profile_table date stats failed for {table_name}: {e}")
-                        for col in date_cols:
-                            result_columns[col] = {"type": "date", "error": str(e)}
-
-                # Query C: Categorical distinct counts (run before D — D is conditional on this)
-                distinct_counts: Dict[str, int] = {}
-                if text_cols:
-                    try:
-                        parts = []
-                        for col in text_cols:
-                            qc = q(col)
-                            parts += [
-                                f"COUNT(DISTINCT {qc})",
-                                f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END)",
-                            ]
-                        res = connector.execute_query(
-                            f"SELECT {', '.join(parts)} FROM {qualified_table}"
-                        )
-                        if res.rows:
-                            row = res.rows[0]
-                            for i, col in enumerate(text_cols):
-                                b = i * 2
-                                d_count = int(row[b]) if row[b] is not None else 0
-                                distinct_counts[col] = d_count
-                                result_columns[col] = {
-                                    "type": "categorical",
-                                    "distinct_count": d_count,
-                                    "null_count": _safe(row[b + 1]),
-                                }
-                    except Exception as e:
-                        logger.warning(f"profile_table categorical stats failed for {table_name}: {e}")
-                        for col in text_cols:
-                            result_columns[col] = {"type": "categorical", "error": str(e)}
-
-                # Query D: Top 5 values per categorical column (only if distinct_count <= 100)
-                for col in text_cols:
-                    d_count = distinct_counts.get(col, 0)
-                    if d_count == 0 or d_count > 100:
-                        continue
-                    try:
-                        qc = q(col)
-                        res = connector.execute_query(
-                            f"SELECT {qc}, COUNT(*) FROM {qualified_table} "
-                            f"WHERE {qc} IS NOT NULL "
-                            f"GROUP BY {qc} ORDER BY 2 DESC LIMIT 5"
-                        )
-                        top_values = [_safe(row[0]) for row in res.rows]
-                        if col in result_columns:
-                            result_columns[col]["top_values"] = top_values
-                    except Exception as e:
-                        logger.warning(f"profile_table top values failed for {table_name}.{col}: {e}")
-
-            return {
-                "table_name": table_name,
-                "row_count": row_count,
-                "columns": result_columns,
-            }
-
+                return _profile(
+                    connector=connector,
+                    table_name=table_name,
+                    schema_name=found_schema,
+                    columns=table_data.get("columns", []),
+                    row_count=table_data.get("row_count", 0),
+                    db_type=db_type_str,
+                    is_dataset=is_dataset,
+                )
         except Exception as e:
             logger.exception(f"profile_table failed for {table_name}")
             return {"error": f"{type(e).__name__}: {e}" or "Unknown error"}

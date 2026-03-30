@@ -11,6 +11,7 @@ class Dashboard(Base, TimestampMixin):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     widgets = Column(JSON, nullable=False, default=list)
+    data_context = Column(JSON, nullable=True)  # Dashboard-level semantic layer
 
     # Schedule columns
     schedule_type = Column(String(10), nullable=True)       # "preset" | "cron" | NULL (no schedule)

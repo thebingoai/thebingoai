@@ -29,32 +29,38 @@ CHART_GUIDANCE = """### Chart Type Selection
 - **Stacked charts**: use for composition comparison across categories
 - Skip animation config unless specifically requested — defaults are sensible
 
-### SQL Patterns
+### SQL Patterns (use baseJoin from data context)
 
-**Bar/pie (categorical):**
+IMPORTANT: Every chart must include the baseJoin from the dashboard data context so that
+dashboard filters can reach all dimensions. Use table aliases from the baseJoin.
+
+**Bar/pie (categorical) with baseJoin:**
 ```sql
-SELECT category, COUNT(*) AS count
-FROM orders
-GROUP BY category
+SELECT o.category, COUNT(*) AS count
+FROM orders o
+LEFT JOIN payments p ON o.id = p.order_id
+GROUP BY o.category
 ORDER BY count DESC
 LIMIT 10
 ```
 Mapping: `{"type": "chart", "labelColumn": "category", "datasetColumns": [{"column": "count", "label": "Orders"}]}`
 
-**Line/area (time-series):**
+**Line/area (time-series) with baseJoin:**
 ```sql
-SELECT month, SUM(revenue) AS revenue, SUM(costs) AS costs
-FROM financials
-GROUP BY month
-ORDER BY month
+SELECT o.month, SUM(o.revenue) AS revenue, SUM(o.costs) AS costs
+FROM orders o
+LEFT JOIN payments p ON o.id = p.order_id
+GROUP BY o.month
+ORDER BY o.month
 ```
 Mapping: `{"type": "chart", "labelColumn": "month", "datasetColumns": [{"column": "revenue", "label": "Revenue"}, {"column": "costs", "label": "Costs"}]}`
 
-**Multi-dataset (stacked):**
+**Multi-dataset (stacked) with baseJoin:**
 ```sql
-SELECT region, product_type, SUM(sales) AS sales
-FROM orders
-GROUP BY region, product_type
+SELECT o.region, o.product_type, SUM(o.sales) AS sales
+FROM orders o
+LEFT JOIN payments p ON o.id = p.order_id
+GROUP BY o.region, o.product_type
 ```
 Use one datasetColumn per series. Set `options.stacked: true`.
 """

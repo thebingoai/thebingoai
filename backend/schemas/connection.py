@@ -68,6 +68,9 @@ class ConnectionResponse(BaseModel):
     # schema_json_path removed to prevent filesystem path leakage
     schema_generated_at: Optional[datetime]
     table_count: Optional[int]
+    profiling_status: str = "pending"  # pending|in_progress|ready|failed
+    profiling_progress: Optional[str] = None
+    profiling_error: Optional[str] = None
     source_filename: Optional[str] = None  # Plugin metadata: original uploaded filename
     dataset_table_name: Optional[str] = None  # Plugin metadata: storage key for dataset file
     created_at: datetime

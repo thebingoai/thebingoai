@@ -58,16 +58,50 @@ def _find_top_level_matches(sql: str, pattern: re.Pattern) -> list[re.Match]:
     return matches
 
 
-def inject_filters(sql: str, filters: List[FilterParam]) -> Tuple[str, dict]:
+def _dimension_applies_to_sources(
+    column: str,
+    data_context: dict,
+    widget_sources: list[str],
+) -> bool:
+    """Check if a filter dimension applies to the given widget sources."""
+    dimensions = data_context.get("dimensions", {})
+    # Find the dimension by column name
+    for dim_name, dim_data in dimensions.items():
+        if dim_data.get("column") == column:
+            dim_sources = dim_data.get("sources", [])
+            # Check if any of the widget's sources overlap with the dimension's sources
+            return bool(set(dim_sources) & set(widget_sources))
+    # Dimension not found in context — apply anyway (backward compat)
+    return True
+
+
+def inject_filters(
+    sql: str,
+    filters: List[FilterParam],
+    data_context: dict | None = None,
+    widget_sources: list[str] | None = None,
+) -> Tuple[str, dict]:
     """
     Inject filter conditions into a SQL query by adding/extending the WHERE clause.
 
     Returns (modified_sql, params_dict) where params_dict contains the parameterized values.
     Column names are double-quoted to handle reserved words and mixed case.
     Values are parameterized to prevent SQL injection.
+
+    If data_context and widget_sources are provided, only filters whose dimensions
+    apply to the widget's sources are injected (dimension-aware mode).
     """
     if not filters:
         return sql, {}
+
+    # Dimension-aware: filter out inapplicable filters
+    if data_context and widget_sources:
+        filters = [
+            f for f in filters
+            if _dimension_applies_to_sources(f.column, data_context, widget_sources)
+        ]
+        if not filters:
+            return sql, {}
 
     # Strip trailing semicolons so appended conditions don't create multiple statements
     sql = sql.rstrip().rstrip(';').rstrip()
@@ -157,7 +191,22 @@ async def refresh_widget(
         sql = request.sql
         params = None
         if request.filters:
-            sql, params = inject_filters(sql, request.filters)
+            # Dimension-aware filtering: if dashboard has a data_context,
+            # only inject filters whose dimensions apply to this widget's sources
+            data_context = None
+            if request.dashboard_id:
+                dashboard = db.query(Dashboard).filter(
+                    Dashboard.id == request.dashboard_id,
+                    Dashboard.user_id == current_user.id,
+                ).first()
+                if dashboard:
+                    data_context = dashboard.data_context
+
+            sql, params = inject_filters(
+                sql, request.filters,
+                data_context=data_context,
+                widget_sources=request.widget_sources,
+            )
 
         result = connector.execute_query(sql, params=params)
 

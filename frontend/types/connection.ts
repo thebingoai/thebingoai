@@ -24,6 +24,9 @@ export interface DatabaseConnection {
   updated_at: string
   source_filename: string | null
   dataset_table_name: string | null
+  profiling_status: 'pending' | 'in_progress' | 'ready' | 'failed'
+  profiling_progress: string | null
+  profiling_error: string | null
 }
 
 export interface SchemaColumn {

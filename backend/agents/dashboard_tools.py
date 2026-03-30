@@ -486,7 +486,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
     from backend.models.dashboard import Dashboard
 
     @tool
-    async def create_dashboard(title: str, description: str, widgets_json: str) -> str:
+    async def create_dashboard(title: str, description: str, widgets_json: str, data_context_json: str = "") -> str:
         """
         Create a new dashboard with widgets and persist it to the database.
 
@@ -584,9 +584,20 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                 - kpi:    { type, valueColumn, trendValueColumn? (optional), sparklineXColumn? (optional), sparklineYColumn? (optional) }
                 - table:  { type, columnConfig: [{column, label, sortable?, format?}] }
 
+            data_context_json: Optional JSON string from build_dashboard_context. If provided,
+                stored on the dashboard for dimension-aware filtering.
+
         Returns:
             JSON with success, dashboard_id, and message
         """
+        # Parse data context (optional)
+        data_context = None
+        if data_context_json and data_context_json.strip():
+            try:
+                data_context = json.loads(data_context_json)
+            except json.JSONDecodeError:
+                logger.warning("create_dashboard: data_context_json is not valid JSON, ignoring")
+
         # Parse widgets JSON
         try:
             widgets = json.loads(widgets_json)
@@ -611,9 +622,19 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
 
-        # Validate mapping columns against schema (warnings only — don't block creation)
+        # Validate mapping columns against schema
+        # When data_context is provided, treat warnings as hard errors (context-driven mode)
+        # Without data_context (legacy), keep as warnings only
         schema_warnings = _validate_widget_sql_schema(widgets)
-        if schema_warnings:
+        if schema_warnings and data_context:
+            return json.dumps({
+                "success": False,
+                "message": (
+                    f"Schema validation failed (fix these before creating the dashboard):\n"
+                    + "\n".join(f"  - {w}" for w in schema_warnings)
+                ),
+            })
+        elif schema_warnings:
             logger.warning("Schema validation warnings for '%s': %s", title, "; ".join(schema_warnings))
 
         # Auto-execute SQL for SQL-backed widgets and populate config
@@ -628,6 +649,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                 title=title,
                 description=description or None,
                 widgets=widgets,
+                data_context=data_context,
             )
             db.add(dashboard)
             db.commit()
@@ -653,7 +675,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
             db.close()
 
     @tool
-    async def update_dashboard(dashboard_id: int, widgets: list, title: str = "", description: str = "") -> str:
+    async def update_dashboard(dashboard_id: int, widgets: list, title: str = "", description: str = "", data_context_json: str = "") -> str:
         """
         Update an existing dashboard's widgets, title, and/or description.
 
@@ -674,6 +696,14 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
         """
         logger.info(f"update_dashboard called: dashboard_id={dashboard_id}, widget_count={len(widgets)}")
 
+        # Parse data context (optional)
+        data_context = None
+        if data_context_json and data_context_json.strip():
+            try:
+                data_context = json.loads(data_context_json)
+            except json.JSONDecodeError:
+                logger.warning("update_dashboard: data_context_json is not valid JSON, ignoring")
+
         # Validate widget structure
         error = _validate_widgets(widgets)
         if error:
@@ -689,9 +719,17 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
 
-        # Validate mapping columns against schema (warnings only — don't block update)
+        # Validate mapping columns against schema
         schema_warnings = _validate_widget_sql_schema(widgets)
-        if schema_warnings:
+        if schema_warnings and data_context:
+            return json.dumps({
+                "success": False,
+                "message": (
+                    f"Schema validation failed (fix these before updating):\n"
+                    + "\n".join(f"  - {w}" for w in schema_warnings)
+                ),
+            })
+        elif schema_warnings:
             logger.warning("Schema validation warnings for dashboard %d: %s", dashboard_id, "; ".join(schema_warnings))
 
         # Load existing dashboard to compare SQL and carry over unchanged widget data
@@ -747,6 +785,9 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                 dashboard.description = description
             dashboard.widgets = widgets
             flag_modified(dashboard, "widgets")
+            if data_context is not None:
+                dashboard.data_context = data_context
+                flag_modified(dashboard, "data_context")
 
             db.commit()
             db.refresh(dashboard)

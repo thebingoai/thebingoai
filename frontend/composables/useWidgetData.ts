@@ -27,6 +27,8 @@ export function useWidgetData(widget: Ref<DashboardWidget>) {
         sql: ds.sql,
         mapping: ds.mapping as any,
         filters,
+        dashboard_id: store.currentDashboardId ?? undefined,
+        widget_sources: widget.value.sources ?? undefined,
       }) as { config: Record<string, any>; refreshed_at: string }
 
       Object.assign(widget.value.widget.config, response.config)

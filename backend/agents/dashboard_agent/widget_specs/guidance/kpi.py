@@ -12,20 +12,26 @@ KPI_GUIDANCE = """### autoTrend vs Legacy Trend
 - `sparklineXColumn` / `sparklineYColumn` — explicit sparkline axes
 - `sparklineSortColumn` / `sparklineSortDirection` — row ordering for sparkline
 
-### SQL Patterns
+### SQL Patterns (use baseJoin from data context)
 
-**Single aggregate KPI (no trend/sparkline):**
+IMPORTANT: Every KPI must include the baseJoin from the dashboard data context so that
+dashboard filters can reach all dimensions. Do NOT write single-table queries.
+
+**Single aggregate KPI with baseJoin (no trend/sparkline):**
 ```sql
-SELECT COUNT(*) AS total_count FROM orders
+SELECT COUNT(*) AS total_count
+FROM orders o
+LEFT JOIN payments p ON o.id = p.order_id
 ```
 Mapping: `{"type": "kpi", "valueColumn": "total_count"}`
 
-**KPI with autoTrend (recommended):**
+**KPI with autoTrend and baseJoin (recommended):**
 ```sql
-SELECT month, SUM(revenue) AS revenue
-FROM orders
-GROUP BY month
-ORDER BY month
+SELECT o.month, SUM(o.revenue) AS revenue
+FROM orders o
+LEFT JOIN payments p ON o.id = p.order_id
+GROUP BY o.month
+ORDER BY o.month
 ```
 Mapping: `{"type": "kpi", "valueColumn": "revenue", "aggregation": "last", "autoTrend": true, "periodLabel": "vs last month"}`
 - Returns multiple rows → autoTrend compares last 2 rows for trend

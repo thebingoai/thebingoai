@@ -59,6 +59,31 @@
               SSL
             </UiBadge>
           </div>
+          <!-- Profiling status indicator -->
+          <div v-if="connection.profiling_status" class="flex items-center gap-1.5 mt-2">
+            <template v-if="connection.profiling_status === 'pending'">
+              <span class="h-2 w-2 rounded-full bg-gray-400 shrink-0" />
+              <span class="text-xs text-gray-500">Queued</span>
+            </template>
+            <template v-else-if="connection.profiling_status === 'in_progress'">
+              <span class="h-2 w-2 rounded-full bg-yellow-400 animate-pulse shrink-0" />
+              <span class="text-xs text-yellow-600">{{ connection.profiling_progress ? `Profiling ${connection.profiling_progress} tables...` : 'Profiling...' }}</span>
+            </template>
+            <template v-else-if="connection.profiling_status === 'ready'">
+              <span class="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+              <span class="text-xs text-green-600">Ready</span>
+            </template>
+            <template v-else-if="connection.profiling_status === 'failed'">
+              <span class="h-2 w-2 rounded-full bg-red-500 shrink-0" />
+              <span class="text-xs text-red-500">Failed</span>
+              <button
+                @click.stop="handleReprofile(connection)"
+                class="text-xs text-blue-600 hover:text-blue-700 underline ml-1"
+              >
+                Retry
+              </button>
+            </template>
+          </div>
           <div class="mt-auto flex flex-col gap-0.5">
             <p v-if="connection.db_type === 'dataset' && connection.source_filename" class="text-xs text-gray-400 truncate">{{ connection.source_filename }}</p>
             <p v-else-if="connection.table_count != null" class="text-xs text-gray-400">{{ connection.table_count }} tables</p>
@@ -140,6 +165,17 @@
             >
               <RefreshCw class="h-3.5 w-3.5" />
               Refresh Schema
+            </UiButton>
+            <UiButton
+              v-if="editingConnection"
+              variant="outline"
+              size="sm"
+              :loading="reprofilingId === editingConnection.id"
+              :disabled="editingConnection.profiling_status === 'in_progress'"
+              @click.stop="handleReprofile(editingConnection)"
+            >
+              <RefreshCw class="h-3.5 w-3.5" />
+              Reprofile
             </UiButton>
             <!-- Dataset connections: no Test or Save buttons (upload form handles submission) -->
             <template v-if="!isDatasetConnection">
@@ -597,6 +633,11 @@ const testSuccess = ref(false)
 const schema = ref<DatabaseSchema | null>(null)
 const schemaLoading = ref(false)
 const schemaError = ref<string | null>(null)
+
+// Profiling state
+const reprofilingId = ref<number | null>(null)
+const profilingPollers = ref<Record<number, ReturnType<typeof setInterval>>>({})
+
 const schemaSearch = ref('')
 const expandedSchemas = ref<Record<string, boolean>>({})
 const expandedTables = ref<Record<string, boolean>>({})
@@ -652,12 +693,19 @@ onMounted(async () => {
   await Promise.all([fetchConnections(), fetchConnectorTypes()])
 })
 
+// Clean up polling on unmount
+onUnmounted(() => {
+  stopAllProfilingPolling()
+})
+
 // Actions
 async function fetchConnections() {
   try {
     loading.value = true
     const response = await api.connections.list() as DatabaseConnection[]
     connections.value = response
+    // Start polling for any connections with active profiling
+    startPollingForActiveConnections()
   } catch (err: any) {
     toast.error(err?.data?.detail || err?.message || 'Failed to fetch connections')
   } finally {
@@ -694,6 +742,94 @@ async function fetchSchema(connectionId: number) {
     }
   } finally {
     schemaLoading.value = false
+  }
+}
+
+// Profiling polling
+function startProfilingPolling(connectionId: number) {
+  // Don't start duplicate pollers
+  if (profilingPollers.value[connectionId]) return
+
+  profilingPollers.value[connectionId] = setInterval(async () => {
+    try {
+      const status = await api.connections.getProfilingStatus(connectionId) as {
+        profiling_status: string
+        profiling_progress: string | null
+        profiling_error: string | null
+      }
+
+      // Update the connection in local state
+      const conn = connections.value.find(c => c.id === connectionId)
+      if (conn) {
+        conn.profiling_status = status.profiling_status as DatabaseConnection['profiling_status']
+        conn.profiling_progress = status.profiling_progress
+        conn.profiling_error = status.profiling_error
+      }
+
+      // Also update editingConnection if it matches
+      if (editingConnection.value?.id === connectionId) {
+        editingConnection.value.profiling_status = status.profiling_status as DatabaseConnection['profiling_status']
+        editingConnection.value.profiling_progress = status.profiling_progress
+        editingConnection.value.profiling_error = status.profiling_error
+      }
+
+      // Stop polling when terminal state reached
+      if (status.profiling_status === 'ready' || status.profiling_status === 'failed') {
+        stopProfilingPolling(connectionId)
+      }
+    } catch {
+      // Silently ignore polling errors
+    }
+  }, 3000)
+}
+
+function stopProfilingPolling(connectionId: number) {
+  if (profilingPollers.value[connectionId]) {
+    clearInterval(profilingPollers.value[connectionId])
+    delete profilingPollers.value[connectionId]
+  }
+}
+
+function stopAllProfilingPolling() {
+  for (const id of Object.keys(profilingPollers.value)) {
+    clearInterval(profilingPollers.value[Number(id)])
+  }
+  profilingPollers.value = {}
+}
+
+function startPollingForActiveConnections() {
+  for (const conn of connections.value) {
+    if (conn.profiling_status === 'pending' || conn.profiling_status === 'in_progress') {
+      startProfilingPolling(conn.id)
+    }
+  }
+}
+
+async function handleReprofile(connection: DatabaseConnection) {
+  try {
+    reprofilingId.value = connection.id
+    await api.connections.reprofile(connection.id)
+    toast.success('Re-profiling started')
+
+    // Update local state to in_progress
+    const conn = connections.value.find(c => c.id === connection.id)
+    if (conn) {
+      conn.profiling_status = 'pending'
+      conn.profiling_progress = null
+      conn.profiling_error = null
+    }
+    if (editingConnection.value?.id === connection.id) {
+      editingConnection.value.profiling_status = 'pending'
+      editingConnection.value.profiling_progress = null
+      editingConnection.value.profiling_error = null
+    }
+
+    // Start polling
+    startProfilingPolling(connection.id)
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to start re-profiling')
+  } finally {
+    reprofilingId.value = null
   }
 }
 

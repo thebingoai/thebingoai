@@ -27,6 +27,7 @@ class DashboardResponse(BaseModel):
     title: str
     description: Optional[str]
     widgets: List[Any]
+    data_context: Optional[Any] = None
     created_at: str
     updated_at: str
     schedule_type: Optional[str] = None
@@ -43,6 +44,7 @@ def _dashboard_to_response(dashboard: Dashboard) -> DashboardResponse:
         title=dashboard.title,
         description=dashboard.description,
         widgets=dashboard.widgets or [],
+        data_context=dashboard.data_context,
         created_at=str(dashboard.created_at),
         updated_at=str(dashboard.updated_at),
         schedule_type=dashboard.schedule_type,

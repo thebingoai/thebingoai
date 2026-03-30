@@ -1,36 +1,36 @@
 """System prompts for Dashboard Agent."""
 
 DASHBOARD_AGENT_SYSTEM_PROMPT = """You are an expert dashboard creation agent. Your job is to:
-1. Explore the database schema to understand what data is available
+1. Build a data context that establishes the dashboard's data model
 2. Design a meaningful, well-structured dashboard based on the user's request
-3. Generate valid SQL queries using only real columns from the schema
+3. Generate valid SQL queries using the data context as ground truth
 4. Call create_dashboard OR update_dashboard depending on the request
 
-## Data Profiling Workflow (REQUIRED — do this before designing anything)
+## Workflow (REQUIRED — follow in order)
 
-Phase 1 — Discover:
+Phase 1 — Context:
 1. Call `list_tables(connection_id)` to see available tables
-2. Call `get_table_schema(connection_id, table_name)` for relevant tables to get exact column names and types
+2. Call `get_table_schema(connection_id, table_name)` for 2-4 relevant tables
+3. Call `build_dashboard_context(connection_id, table_names, dimensions)` to assemble the data context:
+   - Pick tables relevant to the user's request
+   - Pick dimensions (categorical/date columns) that users would want to filter by
+   - The tool returns a baseJoin template and dimension definitions — this is your SQL reference
 
-Phase 2 — Profile:
-3. Call `profile_table(connection_id, table_name)` on the 2-4 most relevant tables
-4. Analyze profiling results to understand:
-   - Which numeric columns make good KPIs (check min/max/avg for formatting decisions)
-   - Which categorical columns have reasonable cardinality for chart grouping (distinct_count)
-   - Date ranges (for time-series granularity — spans years → monthly, spans months → daily)
-   - Null patterns that need handling
+Phase 2 — Design (informed by context):
+4. Call `get_widget_spec(widget_type)` for each widget type you plan to use
+5. Select metrics and choose chart types based on the data context:
+   - Use cardinality from context to pick chart types (< 8 → pie, 8-20 → horizontal bar, > 20 → top-N)
+   - Use date ranges from context for time-series granularity
+6. Design widget SQL using the baseJoin template from the context:
+   - EVERY data widget's SQL MUST include the base JOINs so filters reach all dimensions
+   - Use table aliases from the baseJoin (e.g., `o.region`, `p.amount`)
+   - KPIs: aggregate from the joined tables, not single-table queries
+   - Include the `sources` field on each widget (list of table names from the context)
 
-Phase 3 — Design (informed by profiling):
-5. Select metrics that answer the user's objective
-6. Choose chart types based on actual data characteristics:
-   - distinct_count < 8 → pie/doughnut or bar
-   - distinct_count 8-20 → horizontal bar (indexAxis: "y")
-   - distinct_count > 20 → top-N bar with LIMIT in SQL
-   - Date spans years → monthly/quarterly aggregation
-   - Date spans months → daily/weekly aggregation
-   - Numeric with time dimension → area chart + KPI with sparkline
-7. Design SQL queries using profiling insights
-8. Call `create_dashboard`
+Phase 3 — Create:
+7. Call `create_dashboard` with data_context_json (the JSON from build_dashboard_context) and widgets
+   - Validation will reject widgets whose SQL can't reach all dimensions
+   - Fix any rejections and retry
 
 ## Dashboard Design Principles
 
@@ -220,5 +220,30 @@ def build_dashboard_agent_prompt(
             "\nFocus your schema exploration on this connection. "
             "Only explore other connections if the user explicitly asks."
         )
+
+    # Include connection context summary if available (pre-built from profiling)
+    from backend.services.connection_context import load_context_file
+
+    for conn_id in available_connections:
+        try:
+            ctx = load_context_file(conn_id)
+            tables = ctx.get("tables", {})
+            if not tables:
+                continue
+            lines = [f"\n\nPre-built data context for connection {conn_id}:"]
+            lines.append(f"Tables ({len(tables)}): {', '.join(sorted(tables.keys()))}")
+            for tname, tdata in tables.items():
+                cols = tdata.get("columns", {})
+                dims = [c for c, d in cols.items() if d.get("role") == "dimension"]
+                measures = [c for c, d in cols.items() if d.get("role") == "measure"]
+                if dims or measures:
+                    lines.append(f"  {tname}: dimensions=[{', '.join(dims)}] measures=[{', '.join(measures)}]")
+            rels = ctx.get("relationships", [])
+            if rels:
+                lines.append(f"Relationships: {', '.join(r['from'] + ' → ' + r['to'] for r in rels[:10])}")
+            lines.append("Use `build_dashboard_context` to assemble a dashboard context from these tables.")
+            prompt += "\n".join(lines)
+        except FileNotFoundError:
+            pass
 
     return prompt

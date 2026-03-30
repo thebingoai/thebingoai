@@ -102,11 +102,18 @@ async def create_connection(
             db.commit()
             db.refresh(connection)
 
+        # Kick off background profiling now that schema is available
+        from backend.tasks.profiling_tasks import profile_connection
+        connection.profiling_status = "pending"
+        db.commit()
+        profile_connection.delay(connection.id)
+
     except Exception as e:
         # Log error but don't fail connection creation
         # Schema can be generated later via refresh endpoint
         logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
 
+    db.refresh(connection)
     logger.info("Connection '%s' (id=%s) created successfully", connection.name, connection.id)
     return connection
 
@@ -238,8 +245,10 @@ async def delete_connection(
         except Exception as e:
             logger.warning("on_delete hook failed for connection %s: %s", connection.id, e)
 
-    # Delete schema JSON file
+    # Delete schema and context JSON files
     delete_schema_file(connection_id)
+    from backend.services.connection_context import delete_context_file
+    delete_context_file(connection_id)
 
     # Remove any team connection policies first to avoid FK violations
     db.query(TeamConnectionPolicy).filter(
@@ -345,12 +354,18 @@ async def refresh_connection_schema(
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
             connection.table_count = len(schema_json["table_names"])
+
+            # Re-trigger profiling since schema changed
+            from backend.tasks.profiling_tasks import profile_connection
+            connection.profiling_status = "pending"
             db.commit()
+            profile_connection.delay(connection.id)
+
             db.refresh(connection)
 
             return SchemaRefreshResponse(
                 success=True,
-                message="Schema refreshed successfully",
+                message="Schema refreshed successfully. Profiling will run in the background.",
                 schema_generated_at=connection.schema_generated_at
             )
 
@@ -389,3 +404,86 @@ async def get_connection_schema(
             status_code=404,
             detail="Schema not yet generated. Create the connection or use the refresh endpoint."
         )
+
+
+@router.get("/{connection_id}/profiling-status")
+async def get_profiling_status(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get profiling status for a connection (used for polling during profiling)."""
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    return {
+        "status": connection.profiling_status,
+        "progress": connection.profiling_progress,
+        "error": connection.profiling_error,
+        "started_at": connection.profiling_started_at.isoformat() if connection.profiling_started_at else None,
+        "completed_at": connection.profiling_completed_at.isoformat() if connection.profiling_completed_at else None,
+    }
+
+
+@router.post("/{connection_id}/reprofile")
+async def reprofile_connection(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Manually trigger re-profiling for a connection."""
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    if connection.profiling_status == "in_progress":
+        raise HTTPException(status_code=400, detail="Profiling is already in progress")
+
+    if not connection.schema_json_path:
+        raise HTTPException(status_code=400, detail="Schema has not been discovered yet. Refresh the schema first.")
+
+    from backend.tasks.profiling_tasks import profile_connection
+    connection.profiling_status = "pending"
+    connection.profiling_error = None
+    connection.profiling_progress = None
+    db.commit()
+    profile_connection.delay(connection.id)
+
+    return {"message": "Profiling queued", "status": "pending"}
+
+
+@router.get("/{connection_id}/context")
+async def get_connection_context(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the data context for a connection (used by the dashboard agent)."""
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    if connection.profiling_status != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Data context is not ready. Current profiling status: {connection.profiling_status}",
+        )
+
+    from backend.services.connection_context import load_context_file
+    try:
+        return load_context_file(connection_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Context file not found. Try re-profiling the connection.")
