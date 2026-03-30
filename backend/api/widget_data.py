@@ -160,6 +160,114 @@ def inject_filters(
 
     return modified, params
 
+def inject_filters_sqlite(
+    table_name: str,
+    filters: List[FilterParam],
+    data_context: dict | None = None,
+    widget_sources: list[str] | None = None,
+) -> Tuple[str, list]:
+    """Build a SELECT query with WHERE filters for a SQLite cache table.
+
+    Returns (sql, params) where params is a list of values for ? placeholders.
+    Table and column names are quoted to prevent SQL injection.
+    """
+    base = f'SELECT * FROM "{table_name}"'
+
+    if not filters:
+        return base, []
+
+    # Dimension-aware: filter out inapplicable filters
+    if data_context and widget_sources:
+        filters = [
+            f for f in filters
+            if _dimension_applies_to_sources(f.column, data_context, widget_sources)
+        ]
+        if not filters:
+            return base, []
+
+    conditions: list[str] = []
+    params: list = []
+
+    op_map = {
+        'eq': '=',
+        'neq': '!=',
+        'gt': '>',
+        'gte': '>=',
+        'lt': '<',
+        'lte': '<=',
+        'ilike': 'LIKE',
+    }
+
+    for f in filters:
+        col = f'"{f.column}"'
+        if f.op == 'in':
+            values = f.value if isinstance(f.value, list) else [f.value]
+            placeholders = ', '.join(['?'] * len(values))
+            conditions.append(f'{col} IN ({placeholders})')
+            params.extend(values)
+        else:
+            op = op_map[f.op]
+            conditions.append(f'{col} {op} ?')
+            params.append(f.value)
+
+    where = ' AND '.join(conditions)
+    return f'{base} WHERE {where}', params
+
+
+def _read_widget_from_cache(
+    dashboard_id: int,
+    widget_id: str,
+    filters: list[FilterParam] | None = None,
+    data_context: dict | None = None,
+    widget_sources: list[str] | None = None,
+) -> "QueryResult":
+    """Read widget data from SQLite cache, with optional filter injection.
+
+    Returns a QueryResult compatible with transform_widget_data().
+    Raises FileNotFoundError if cache is unavailable, ValueError if widget table missing.
+    """
+    import sqlite3
+    import time
+    from backend.connectors.base import QueryResult
+    from backend.services.dashboard_cache import get_cache_path, _sanitize_widget_id
+
+    cache_path = get_cache_path(dashboard_id)
+    table_name = _sanitize_widget_id(widget_id)
+
+    start_time = time.time()
+
+    sql, params = inject_filters_sqlite(
+        table_name, filters or [],
+        data_context=data_context,
+        widget_sources=widget_sources,
+    )
+
+    uri = f"file:{cache_path}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        # Verify table exists
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        )
+        if not cursor.fetchone():
+            raise ValueError(f"Widget table '{table_name}' not found in cache")
+
+        cursor = conn.execute(sql, params)
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        execution_time_ms = (time.time() - start_time) * 1000
+
+        return QueryResult(
+            columns=columns,
+            rows=rows,
+            row_count=len(rows),
+            execution_time_ms=execution_time_ms,
+        )
+    finally:
+        conn.close()
+
+
 router = APIRouter(prefix="/dashboards", tags=["widget-data"])
 
 
@@ -174,7 +282,46 @@ async def refresh_widget(
 
     The caller supplies connection_id, sql, and mapping. The response contains
     the new config dict to merge into widget.widget.config plus metadata.
+
+    If the dashboard has a ready SQLite cache and widget_id is provided,
+    reads from cache instead of hitting the source DB. Falls back to source
+    DB if cache is unavailable or stale.
     """
+    # Load dashboard once (used for cache check + dimension-aware filters)
+    dashboard = None
+    if request.dashboard_id:
+        dashboard = db.query(Dashboard).filter(
+            Dashboard.id == request.dashboard_id,
+            Dashboard.user_id == current_user.id,
+        ).first()
+
+    # Try cache path when dashboard has a ready cache and widget_id is provided
+    if dashboard and dashboard.cache_status == 'ready' and request.widget_id:
+        try:
+            result = _read_widget_from_cache(
+                request.dashboard_id,
+                request.widget_id,
+                filters=request.filters,
+                data_context=dashboard.data_context,
+                widget_sources=request.widget_sources,
+            )
+            config = transform_widget_data(result, request.mapping)
+            return WidgetRefreshResponse(
+                config=config,
+                execution_time_ms=result.execution_time_ms,
+                row_count=result.row_count,
+                truncated=False,
+                refreshed_at=datetime.now(timezone.utc).isoformat(),
+                source_columns=result.columns,
+                source_rows=[
+                    [_to_json_safe(v) for v in row]
+                    for row in result.rows
+                ],
+            )
+        except Exception as e:
+            logger.warning(f"Cache read failed for widget {request.widget_id}, falling back to source DB: {e}")
+
+    # Fallback: source DB query (original behavior)
     connection = db.query(DatabaseConnection).filter(
         DatabaseConnection.id == request.connection_id,
         DatabaseConnection.user_id == current_user.id,
@@ -191,17 +338,7 @@ async def refresh_widget(
         sql = request.sql
         params = None
         if request.filters:
-            # Dimension-aware filtering: if dashboard has a data_context,
-            # only inject filters whose dimensions apply to this widget's sources
-            data_context = None
-            if request.dashboard_id:
-                dashboard = db.query(Dashboard).filter(
-                    Dashboard.id == request.dashboard_id,
-                    Dashboard.user_id == current_user.id,
-                ).first()
-                if dashboard:
-                    data_context = dashboard.data_context
-
+            data_context = dashboard.data_context if dashboard else None
             sql, params = inject_filters(
                 sql, request.filters,
                 data_context=data_context,
@@ -243,6 +380,9 @@ async def refresh_dashboard_widgets(
     """
     Re-execute SQL queries for all SQL-backed widgets in a dashboard.
 
+    If the dashboard has a ready SQLite cache, reads all widget tables from
+    a single local file instead of hitting N source-DB connections.
+
     Widgets without a dataSource are skipped. Each widget result is keyed
     by widget id. Failures per-widget are captured as {error} rather than
     failing the entire request.
@@ -258,6 +398,43 @@ async def refresh_dashboard_widgets(
     widgets = dashboard.widgets or []
     results: dict = {}
 
+    # Try cache path: open SQLite once, read all widget tables
+    if dashboard.cache_status == 'ready':
+        try:
+            from backend.connectors.base import QueryResult
+            from backend.services.dashboard_cache import get_cache_path, read_widget_data
+
+            cache_path = get_cache_path(dashboard_id)
+            refreshed_at = datetime.now(timezone.utc).isoformat()
+
+            for widget in widgets:
+                widget_id = widget.get("id")
+                data_source = widget.get("dataSource")
+                if not data_source:
+                    continue
+                mapping = data_source.get("mapping")
+                if not mapping:
+                    results[widget_id] = {"error": "Incomplete dataSource (missing mapping)"}
+                    continue
+                try:
+                    data = read_widget_data(cache_path, widget_id)
+                    query_result = QueryResult(
+                        columns=data["columns"],
+                        rows=data["rows"],
+                        row_count=data["row_count"],
+                        execution_time_ms=0,
+                    )
+                    config = transform_widget_data(query_result, mapping)
+                    results[widget_id] = {"config": config, "refreshed_at": refreshed_at}
+                except Exception as e:
+                    logger.error(f"Cache read failed for widget {widget_id}: {e}")
+                    results[widget_id] = {"error": str(e)}
+
+            return BulkRefreshResponse(widgets=results)
+        except FileNotFoundError:
+            logger.warning(f"Cache file not found for dashboard {dashboard_id}, falling back to source DB")
+
+    # Fallback: source DB queries (original behavior)
     for widget in widgets:
         widget_id = widget.get("id")
         data_source = widget.get("dataSource")

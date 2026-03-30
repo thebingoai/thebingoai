@@ -14,6 +14,7 @@ class WidgetRefreshRequest(BaseModel):
     mapping: Dict[str, Any]
     filters: Optional[List[FilterParam]] = None
     dashboard_id: Optional[int] = None        # For dimension-aware filter injection
+    widget_id: Optional[str] = None           # For SQLite cache reads
     widget_sources: Optional[List[str]] = None  # Sources this widget uses (from data_context)
 
 
