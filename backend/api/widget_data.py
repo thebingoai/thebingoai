@@ -476,6 +476,49 @@ async def refresh_dashboard_widgets(
     return BulkRefreshResponse(widgets=results)
 
 
+@router.post("/{dashboard_id}/materialize", status_code=202)
+async def materialize_dashboard(
+    dashboard_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Trigger an immediate cache rebuild for a dashboard.
+
+    Returns 202 Accepted with the Celery task ID.
+    Rate limited to 1 request per dashboard per 5 minutes.
+    """
+    # Check dashboard exists and belongs to user
+    dashboard = db.query(Dashboard).filter(
+        Dashboard.id == dashboard_id,
+        Dashboard.user_id == current_user.id,
+    ).first()
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    # Rate limit: max 1 per dashboard per 5 minutes
+    import redis as _redis
+    from backend.config import settings
+    rate_limit_key = f"materialize_rate:{dashboard_id}"
+    try:
+        r = _redis.from_url(settings.redis_url)
+        if r.exists(rate_limit_key):
+            raise HTTPException(
+                status_code=429,
+                detail="Dashboard was recently materialized. Please wait 5 minutes between refreshes.",
+            )
+        r.setex(rate_limit_key, 300, "1")  # 5 min TTL
+    except HTTPException:
+        raise
+    except Exception as redis_err:
+        logger.warning(f"Redis rate limit check failed, proceeding: {redis_err}")
+
+    from backend.tasks.dashboard_refresh_tasks import execute_dashboard_refresh
+    task = execute_dashboard_refresh.delay(dashboard_id)
+
+    return {"task_id": task.id, "message": "Materialization started"}
+
+
 from backend.services.schema_utils import extract_table_names as _extract_table_names, build_schema_summary as _build_schema_summary
 
 

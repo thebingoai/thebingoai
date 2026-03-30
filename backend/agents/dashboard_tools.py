@@ -700,6 +700,15 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
             db.add(dashboard)
             db.commit()
             db.refresh(dashboard)
+
+            # Dispatch async cache materialization (non-blocking)
+            try:
+                from backend.tasks.dashboard_refresh_tasks import execute_dashboard_refresh
+                execute_dashboard_refresh.delay(dashboard.id)
+                logger.info(f"Dispatched materialization task for new dashboard {dashboard.id}")
+            except Exception as mat_err:
+                logger.warning(f"Failed to dispatch materialization for dashboard {dashboard.id}: {mat_err}")
+
             response = {
                 "success": True,
                 "dashboard_id": dashboard.id,
@@ -788,14 +797,17 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
             db.close()
 
         # Only execute SQL for widgets whose SQL changed or that are new
+        sql_changed = False
         for w in widgets:
             if "dataSource" not in w:
                 continue
             new_sql = w["dataSource"].get("sql")
+            new_conn = w["dataSource"].get("connectionId")
             existing_w = existing_widgets_map.get(w.get("id"))
             old_sql = existing_w.get("dataSource", {}).get("sql") if existing_w else None
+            old_conn = existing_w.get("dataSource", {}).get("connectionId") if existing_w else None
 
-            if old_sql == new_sql and old_sql is not None:
+            if old_sql == new_sql and old_sql is not None and old_conn == new_conn:
                 # SQL unchanged — carry over existing computed data instead of re-executing
                 existing_config = existing_w.get("widget", {}).get("config", {})
                 w_config = w.get("widget", {}).get("config", {})
@@ -804,6 +816,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         w_config[key] = existing_config[key]
                 logger.info(f"Skipping SQL execution for unchanged widget '{w.get('id')}'")
             else:
+                sql_changed = True
                 await _execute_widget_sql(w, db_session_factory, data_context=data_context)
 
         db = db_session_factory()
@@ -829,6 +842,16 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
 
             db.commit()
             db.refresh(dashboard)
+
+            # Dispatch async cache materialization only if SQL/connections changed
+            if sql_changed:
+                try:
+                    from backend.tasks.dashboard_refresh_tasks import execute_dashboard_refresh
+                    execute_dashboard_refresh.delay(dashboard.id)
+                    logger.info(f"Dispatched materialization task for updated dashboard {dashboard.id}")
+                except Exception as mat_err:
+                    logger.warning(f"Failed to dispatch materialization for dashboard {dashboard.id}: {mat_err}")
+
             response = {
                 "success": True,
                 "dashboard_id": dashboard.id,
