@@ -55,10 +55,26 @@ def build_schema_summary(schema_json: dict, referenced_tables: set) -> str:
 
     relationships = schema_json.get('relationships', [])
     if relationships and isinstance(relationships, list):
-        lines.append("Relationships: " + '; '.join(
-            f"{r.get('from_table')}.{r.get('from_column')} -> {r.get('to_table')}.{r.get('to_column')}"
-            for r in relationships
-            if r.get('from_table', '').lower() in referenced_tables or r.get('to_table', '').lower() in referenced_tables
-        ))
+        rel_parts = []
+        for r in relationships:
+            # Support both formats:
+            # Format A: {from: 'table.column', to: 'table.column'}
+            # Format B: {from_table: 't', from_column: 'c', to_table: 't', to_column: 'c'}
+            if 'from' in r and '.' in str(r.get('from', '')):
+                from_parts = str(r['from']).split('.', 1)
+                to_parts = str(r.get('to', '')).split('.', 1)
+                from_table = from_parts[0]
+                from_col = from_parts[1] if len(from_parts) > 1 else ''
+                to_table = to_parts[0]
+                to_col = to_parts[1] if len(to_parts) > 1 else ''
+            else:
+                from_table = r.get('from_table', '')
+                from_col = r.get('from_column', '')
+                to_table = r.get('to_table', '')
+                to_col = r.get('to_column', '')
+            if from_table.lower() in referenced_tables or to_table.lower() in referenced_tables:
+                rel_parts.append(f"{from_table}.{from_col} -> {to_table}.{to_col}")
+        if rel_parts:
+            lines.append("Relationships: " + '; '.join(rel_parts))
 
     return '\n'.join(lines)

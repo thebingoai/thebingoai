@@ -179,11 +179,11 @@ class TestTransformKpi:
         with pytest.raises(ValueError, match="nonexistent"):
             transform_kpi(result, mapping)
 
-    def test_zero_rows_raises(self):
+    def test_zero_rows_returns_null(self):
         result = _qr(["total"], [])
         mapping = {"valueColumn": "total"}
-        with pytest.raises(ValueError, match="no rows"):
-            transform_kpi(result, mapping)
+        out = transform_kpi(result, mapping)
+        assert out == {"value": None}
 
     def test_trend_up_positive(self):
         result = _qr(["total", "change"], [(100, 15)])

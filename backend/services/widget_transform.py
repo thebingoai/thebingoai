@@ -4,6 +4,9 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.connectors.base import QueryResult
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Maps period labels to (current_start, previous_start, previous_end) resolver
 _DATE_BASED_PERIODS = {"vs yesterday", "vs last week", "vs last month", "vs last quarter", "vs last year"}
@@ -16,6 +19,28 @@ def _to_json_safe(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     return value
+
+
+def _find_column(col: str, columns: list, field_name: str = "") -> int:
+    """Find column index case-insensitively. Raises ValueError with closest match if not found."""
+    if col in columns:
+        return columns.index(col)
+    col_lower = col.lower()
+    for i, c in enumerate(columns):
+        if c.lower() == col_lower:
+            return i
+    from difflib import get_close_matches
+    lower_cols = [c.lower() for c in columns]
+    closest = get_close_matches(col_lower, lower_cols, n=1, cutoff=0.4)
+    hint = ""
+    if closest:
+        original = columns[lower_cols.index(closest[0])]
+        hint = f" Did you mean '{original}'?"
+    field_info = f" (mapping field: {field_name})" if field_name else ""
+    raise ValueError(
+        f"Column '{col}' not found in query results{field_info}.{hint} "
+        f"Available columns: {columns}"
+    )
 
 
 def _parse_date_value(value: Any) -> Optional[date]:
@@ -102,20 +127,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     label_col = mapping.get("labelColumn")
     dataset_cols = mapping.get("datasetColumns", [])
 
-    if label_col not in result.columns:
-        raise ValueError(
-            f"Column '{label_col}' not found in query results. "
-            f"Available columns: {result.columns}"
-        )
-    for ds in dataset_cols:
-        col = ds.get("column")
-        if col not in result.columns:
-            raise ValueError(
-                f"Column '{col}' not found in query results. "
-                f"Available columns: {result.columns}"
-            )
-
-    label_idx = result.columns.index(label_col)
+    label_idx = _find_column(label_col, result.columns, "labelColumn")
     labels = [_to_json_safe(row[label_idx]) for row in result.rows]
 
     _PASSTHROUGH_KEYS = {
@@ -126,7 +138,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     datasets = []
     for ds in dataset_cols:
         col = ds["column"]
-        col_idx = result.columns.index(col)
+        col_idx = _find_column(col, result.columns, "datasetColumns[].column")
         dataset: Dict[str, Any] = {
             "label": ds.get("label", col),
             "data": [_to_json_safe(row[col_idx]) for row in result.rows],
@@ -159,30 +171,15 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
     sparkline_x_col = mapping.get("sparklineXColumn")
     sparkline_y_col = mapping.get("sparklineYColumn")
 
-    if value_col not in result.columns:
-        raise ValueError(
-            f"Column '{value_col}' not found in query results. "
-            f"Available columns: {result.columns}"
-        )
-    if trend_col and trend_col not in result.columns:
-        raise ValueError(
-            f"Column '{trend_col}' not found in query results. "
-            f"Available columns: {result.columns}"
-        )
-    if sparkline_x_col and sparkline_x_col not in result.columns:
-        raise ValueError(
-            f"Column '{sparkline_x_col}' not found in query results. "
-            f"Available columns: {result.columns}"
-        )
-    if sparkline_y_col and sparkline_y_col not in result.columns:
-        raise ValueError(
-            f"Column '{sparkline_y_col}' not found in query results. "
-            f"Available columns: {result.columns}"
-        )
-    if not result.rows:
-        raise ValueError("Query returned no rows — cannot build KPI widget")
+    # Validate columns case-insensitively (precompute indices)
+    value_idx = _find_column(value_col, result.columns, "valueColumn")
+    trend_idx = _find_column(trend_col, result.columns, "trendValueColumn") if trend_col else None
+    sparkline_x_idx = _find_column(sparkline_x_col, result.columns, "sparklineXColumn") if sparkline_x_col else None
+    sparkline_y_idx = _find_column(sparkline_y_col, result.columns, "sparklineYColumn") if sparkline_y_col else None
 
-    value_idx = result.columns.index(value_col)
+    if not result.rows:
+        logger.warning("KPI query returned 0 rows, returning null value")
+        return {"value": None}
 
     # Aggregate value across all rows
     aggregation = mapping.get("aggregation", "first")
@@ -223,9 +220,14 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
         period_label = mapping.get("periodLabel", "")
         date_col = mapping.get("trendDateColumn")
 
-        # Period-based comparison using date column
-        if date_col and date_col in result.columns and period_label in _DATE_BASED_PERIODS:
-            date_idx = result.columns.index(date_col)
+        # Period-based comparison using date column (case-insensitive)
+        date_idx = None
+        if date_col:
+            for _i, _c in enumerate(result.columns):
+                if _c.lower() == date_col.lower():
+                    date_idx = _i
+                    break
+        if date_idx is not None and period_label in _DATE_BASED_PERIODS:
             today = date.today()
             cur_start, cur_end, prev_start, prev_end = _period_ranges(period_label, today)
 
@@ -268,8 +270,7 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             else:
                 config["trend"] = {"direction": "neutral", "value": 0, "period": period_label}
         # autoTrend with < 2 rows and no date-based period: no trend emitted
-    elif trend_col:
-        trend_idx = result.columns.index(trend_col)
+    elif trend_idx is not None:
         trend_val = _to_json_safe(result.rows[0][trend_idx])
         if isinstance(trend_val, (int, float)) and trend_val > 0:
             direction = "up"
@@ -279,18 +280,21 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             direction = "neutral"
         config["trend"] = {"direction": direction, "value": trend_val}
 
-    if sparkline_y_col:
+    if sparkline_y_idx is not None:
         sort_col = mapping.get("sparklineSortColumn")
         sort_dir = mapping.get("sparklineSortDirection", "asc")
         rows = result.rows
-        if sort_col and sort_col in result.columns:
-            sort_idx = result.columns.index(sort_col)
-            rows = sorted(rows, key=lambda r: (r[sort_idx] is None, r[sort_idx]), reverse=(sort_dir == "desc"))
-        spark_y_idx = result.columns.index(sparkline_y_col)
-        config["sparkline"] = [_to_json_safe(row[spark_y_idx]) for row in rows]
-        if sparkline_x_col:
-            spark_x_idx = result.columns.index(sparkline_x_col)
-            config["sparklineLabels"] = [str(_to_json_safe(row[spark_x_idx])) for row in rows]
+        if sort_col:
+            sort_idx_val = None
+            for _i, _c in enumerate(result.columns):
+                if _c.lower() == sort_col.lower():
+                    sort_idx_val = _i
+                    break
+            if sort_idx_val is not None:
+                rows = sorted(rows, key=lambda r: (r[sort_idx_val] is None, r[sort_idx_val]), reverse=(sort_dir == "desc"))
+        config["sparkline"] = [_to_json_safe(row[sparkline_y_idx]) for row in rows]
+        if sparkline_x_idx is not None:
+            config["sparklineLabels"] = [str(_to_json_safe(row[sparkline_x_idx])) for row in rows]
 
     return config
 
@@ -305,13 +309,11 @@ def transform_table(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     """
     col_config = mapping.get("columnConfig", [])
 
+    # Validate and precompute column indices (case-insensitive)
+    col_indices = {}
     for cc in col_config:
         col = cc.get("column")
-        if col not in result.columns:
-            raise ValueError(
-                f"Column '{col}' not found in query results. "
-                f"Available columns: {result.columns}"
-            )
+        col_indices[col] = _find_column(col, result.columns, "columnConfig[].column")
 
     columns = []
     for cc in col_config:
@@ -330,8 +332,7 @@ def transform_table(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         row_dict: Dict[str, Any] = {}
         for cc in col_config:
             col = cc["column"]
-            col_idx = result.columns.index(col)
-            row_dict[col] = _to_json_safe(row[col_idx])
+            row_dict[col] = _to_json_safe(row[col_indices[col]])
         rows.append(row_dict)
 
     return {"columns": columns, "rows": rows}

@@ -174,9 +174,12 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
             continue
 
         # Extract table names and optional aliases referenced in SQL (FROM / JOIN)
+        # Negative lookahead prevents greedy alias capture from consuming JOIN keywords
         _table_alias_re = re.compile(
             r'\b(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_.]*)'
-            r'(?:\s+(?:AS\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?',
+            r'(?:\s+(?:AS\s+)?'
+            r'(?!(?:JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|NATURAL|ON|WHERE|GROUP|ORDER|HAVING|LIMIT|SET|AND|OR|USING)\b)'
+            r'([a-zA-Z_][a-zA-Z0-9_]*))?',
             re.IGNORECASE,
         )
         _table_alias_matches = _table_alias_re.findall(sql)
@@ -193,14 +196,34 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
         }
 
         all_schema_tables = _get_all_tables(schema_json)
+        # Extract CTE names to exclude from table validation
+        cte_names: set[str] = set()
+        cte_name_re = re.compile(
+            r'(?:\bWITH\b\s+(?:RECURSIVE\s+)?)([a-zA-Z_]\w*)\s+AS\s*\('
+            r'|,\s*([a-zA-Z_]\w*)\s+AS\s*\(',
+            re.IGNORECASE,
+        )
+        for m in cte_name_re.finditer(sql):
+            name = m.group(1) or m.group(2)
+            if name:
+                cte_names.add(name.lower())
+
+        known_virtual = cte_names | table_aliases
         referenced_table = table_matches[0].split(".")[-1]  # Handle schema.table notation
 
-        # Validate first referenced table exists
-        if all_schema_tables and referenced_table.lower() not in all_schema_tables:
-            warnings.append(
-                f"Widget '{widget_id}': table '{referenced_table}' not found in schema. "
-                f"Available tables: {', '.join(sorted(all_schema_tables))}"
-            )
+        # Validate ALL referenced tables exist (not just the first)
+        tables_valid = True
+        for tbl_match in table_matches:
+            tbl_name = tbl_match.split(".")[-1]
+            if tbl_name.lower() in known_virtual:
+                continue
+            if all_schema_tables and tbl_name.lower() not in all_schema_tables:
+                warnings.append(
+                    f"Widget '{widget_id}': table '{tbl_name}' not found in schema. "
+                    f"Available tables: {', '.join(sorted(all_schema_tables))}"
+                )
+                tables_valid = False
+        if not tables_valid:
             continue
 
         # Build merged column set across all referenced tables (handles JOINs)
@@ -220,6 +243,7 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
             "not", "in", "is", "null", "true", "false", "distinct", "limit",
             "offset", "union", "all", "case", "when", "then", "else", "end",
             "between", "like", "ilike", "exists", "asc", "desc", "with",
+            "recursive", "filter", "within", "rows", "range",
         }
         _SQL_FUNCTIONS = {
             "count", "sum", "avg", "min", "max", "coalesce", "nullif", "cast",
@@ -230,6 +254,8 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
             "lag", "lead", "first_value", "last_value", "over", "partition",
             "interval", "date_trunc", "generate_series", "unnest", "array_agg",
             "string_agg", "json_agg", "jsonb_agg",
+            "percent_rank", "cume_dist", "ntile", "nth_value",
+            "preceding", "following", "unbounded",
         }
 
         # Extract column-bearing clauses: SELECT ... FROM, WHERE ..., GROUP BY ..., ORDER BY ..., HAVING ...
@@ -326,6 +352,8 @@ async def _attempt_sql_fix(
     mapping: dict,
     widget_id: str,
     widget_title: str | None = None,
+    data_context: dict | None = None,
+    sample_data: str = "",
 ) -> str | None:
     """Use LLM to fix a broken SQL query. Returns corrected SQL or None."""
     import re
@@ -375,6 +403,12 @@ For example, if the title says "Average Price", the SQL must query a price-relat
     if schema_summary:
         prompt += f"\nDatabase schema:\n{schema_summary}\n"
 
+    if data_context and data_context.get("baseJoin"):
+        prompt += f"\nBase join context:\n{json.dumps(data_context['baseJoin'], indent=2)}\n"
+
+    if sample_data:
+        prompt += f"\nSample data from referenced tables:\n{sample_data}\n"
+
     prompt += """
 SQL validation rules (your output must comply):
 - Query must start with SELECT or WITH (single statement only)
@@ -404,13 +438,13 @@ The explanation should be one sentence describing what was wrong and what was ch
         return None
 
 
-async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> None:
+async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_context: dict | None = None) -> str | None:
     """
     Execute the dataSource SQL for a widget and merge results into widget.widget.config.
 
-    Modifies widget in-place. On first failure, attempts an LLM-powered SQL fix and retries once.
-    Errors are logged but not raised — the widget is left with whatever config was provided
-    by the LLM if both attempts fail.
+    Modifies widget in-place. On first failure, attempts an LLM-powered SQL fix and retries once,
+    including sample data and baseJoin context for better fix quality.
+    Returns error string if both attempts fail, None on success.
     """
     from backend.models.database_connection import DatabaseConnection
     from backend.services.widget_transform import transform_widget_data
@@ -447,7 +481,24 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
             first_error_msg = str(e)
             logger.warning(f"Widget '{widget_id}': SQL execution failed, attempting LLM fix: {first_error_msg}")
 
-        # Attempt LLM-powered SQL fix
+        # Gather sample data from referenced tables for better fix context
+        sample_data = ""
+        try:
+            from backend.services.schema_utils import extract_table_names
+            tables = extract_table_names(sql)
+            for tbl in list(tables)[:2]:
+                try:
+                    sample_result = connector.execute_query(f'SELECT * FROM "{tbl}" LIMIT 3')
+                    sample_data += f"\nTable '{tbl}' sample:\n"
+                    sample_data += f"  Columns: {sample_result.columns}\n"
+                    for srow in sample_result.rows[:3]:
+                        sample_data += f"  {list(srow)}\n"
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Attempt LLM-powered SQL fix with sample data + baseJoin context
         fixed_sql = await _attempt_sql_fix(
             sql=sql,
             error_message=first_error_msg,
@@ -455,11 +506,13 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
             mapping=mapping,
             widget_id=widget_id,
             widget_title=widget_title,
+            data_context=data_context,
+            sample_data=sample_data,
         )
 
         if not fixed_sql:
             logger.warning(f"Widget '{widget_id}': LLM fix returned no SQL, using LLM-provided config")
-            return
+            return first_error_msg
 
         logger.info(f"Widget '{widget_id}': SQL fix attempted, retrying with corrected SQL")
         try:
@@ -469,8 +522,11 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable) -> Non
             # Persist the fixed SQL back to the widget's dataSource
             data_source["sql"] = fixed_sql
             logger.info(f"Widget '{widget_id}': SQL fix succeeded, config populated with {result.row_count} rows")
+            return None
         except Exception as retry_error:
-            logger.warning(f"Widget '{widget_id}': SQL fix also failed, using LLM-provided config. Original: {first_error_msg} | Retry: {retry_error}")
+            error_msg = f"Original: {first_error_msg} | Retry: {retry_error}"
+            logger.warning(f"Widget '{widget_id}': SQL fix also failed, using LLM-provided config. {error_msg}")
+            return error_msg
     finally:
         if connector:
             connector.close()
@@ -630,7 +686,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
         # Auto-execute SQL for SQL-backed widgets and populate config
         for w in widgets:
             if "dataSource" in w:
-                await _execute_widget_sql(w, db_session_factory)
+                await _execute_widget_sql(w, db_session_factory, data_context=data_context)
 
         db = db_session_factory()
         try:
@@ -748,7 +804,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         w_config[key] = existing_config[key]
                 logger.info(f"Skipping SQL execution for unchanged widget '{w.get('id')}'")
             else:
-                await _execute_widget_sql(w, db_session_factory)
+                await _execute_widget_sql(w, db_session_factory, data_context=data_context)
 
         db = db_session_factory()
         try:
