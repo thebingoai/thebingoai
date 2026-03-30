@@ -129,12 +129,6 @@ export const useChat = () => {
         const content = data.content || ''
         currentReasoningText += content
 
-        // Auto-expand reasoning section on first reasoning token
-        if (!chatStore.infoPanelSections.reasoning) {
-          const lastMsg = chatStore.messages[chatStore.messages.length - 1]
-          if (lastMsg) chatStore.selectMessageForReasoning(lastMsg.id)
-        }
-
         // Update or create in-progress reasoning step
         const lastStep = agentSteps[agentSteps.length - 1]
         if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
