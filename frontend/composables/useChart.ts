@@ -98,8 +98,8 @@ function sortChartData(config: ChartConfig): { labels: string[]; datasets: Chart
   const indices = labels.map((_, i) => i)
   if (sortBy === 'label') {
     indices.sort((a, b) => sortDir === 'asc'
-      ? labels[a].localeCompare(labels[b])
-      : labels[b].localeCompare(labels[a]))
+      ? String(labels[a]).localeCompare(String(labels[b]))
+      : String(labels[b]).localeCompare(String(labels[a])))
   } else {
     const values = datasets[0]?.data ?? []
     indices.sort((a, b) => sortDir === 'asc'
@@ -217,7 +217,11 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
   }
 
   onMounted(() => {
-    createChart()
+    try {
+      createChart()
+    } catch (e) {
+      console.warn('[useChart] Failed to create chart:', e)
+    }
   })
 
   watch(configRef, () => {

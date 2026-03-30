@@ -5,7 +5,7 @@ from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, MessageStepsResponse, UpdateTitleRequest, ArchiveRequest, ConversationSummaryResponse
+from backend.schemas.chat import ChatRequest, ChatResponse, ConversationResponse, ConversationListResponse, ConversationListSummaryResponse, MessageStepsResponse, UpdateTitleRequest, ArchiveRequest, ConversationSummaryResponse
 from backend.services.conversation_service import ConversationService
 from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
@@ -328,16 +328,21 @@ async def chat_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/conversations", response_model=ConversationListResponse)
+@router.get("/conversations")
 async def list_conversations(
     archived: bool = Query(False),
+    summary: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List conversations for the current user, optionally filtered by archive status."""
+    """List conversations for the current user, optionally filtered by archive status.
+    Use summary=true for a lightweight response without message content (sidebar listing).
+    """
     if not archived:
         ConversationService.get_or_create_permanent_conversation(db, current_user.id)
     conversations = ConversationService.list_conversations(db, current_user.id, archived=archived)
+    if summary:
+        return ConversationListSummaryResponse(conversations=conversations)
     return ConversationListResponse(conversations=conversations)
 
 

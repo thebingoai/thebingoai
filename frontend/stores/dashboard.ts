@@ -110,11 +110,15 @@ export const useDashboardStore = defineStore('dashboard', {
       const api = useApi()
       this.loading = true
       try {
+        // Reuse cached connectionTypes if available; only fetch connections if cache is empty
+        const hasConnections = Object.keys(this.connectionTypes).length > 0
         const [data, connections] = await Promise.all([
           api.dashboards.get(id) as Promise<any>,
-          api.connections.list() as Promise<any[]>,
+          hasConnections ? Promise.resolve(null) : api.connections.list() as Promise<any[]>,
         ])
-        this.connectionTypes = Object.fromEntries(connections.map((c: any) => [c.id, c.db_type]))
+        if (connections) {
+          this.connectionTypes = Object.fromEntries(connections.map((c: any) => [c.id, c.db_type]))
+        }
         const dashboard: Dashboard = {
           ...data,
           widgets: (data.widgets ?? []).map(normalizeWidget),

@@ -53,8 +53,27 @@ class ConversationResponse(BaseModel):
         from_attributes = True
 
 
+class ConversationListItem(BaseModel):
+    """Lightweight conversation item for sidebar listing (no messages)."""
+    id: int
+    thread_id: str
+    user_id: str
+    title: Optional[str]
+    type: str = "task"
+    is_archived: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ConversationListResponse(BaseModel):
     conversations: List[ConversationResponse]
+
+
+class ConversationListSummaryResponse(BaseModel):
+    conversations: List[ConversationListItem]
 
 
 class AgentStepResponse(BaseModel):

@@ -66,12 +66,7 @@ const handleArchive = () => {
   }
 }
 
-// Load user on mount
-onMounted(() => {
-  if (process.client) {
-    authStore.loadUser()
-  }
-})
+// Auth is handled by middleware/auth.ts — no need to re-fetch here
 
 // On mobile, ensure sidebar is hidden. immediate: true catches initial load,
 // and subsequent changes handle resize/orientation

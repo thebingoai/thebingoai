@@ -24,6 +24,7 @@ export interface AuthConfig {
 // Deduplication: when multiple widgets get 401 simultaneously,
 // only the first call actually refreshes; others await the same promise.
 let _refreshPromise: Promise<boolean> | null = null
+let _fetchUserPromise: Promise<void> | null = null
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -327,7 +328,17 @@ export const useAuthStore = defineStore('auth', {
 
     async fetchUser() {
       if (!this.token) return
+      // Deduplicate concurrent fetchUser calls (e.g. middleware + layout race)
+      if (_fetchUserPromise) return _fetchUserPromise
+      _fetchUserPromise = this._doFetchUser()
+      try {
+        return await _fetchUserPromise
+      } finally {
+        _fetchUserPromise = null
+      }
+    },
 
+    async _doFetchUser() {
       try {
         const data = await $fetch<User>('/api/auth/me', {
           headers: {

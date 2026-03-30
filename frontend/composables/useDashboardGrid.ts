@@ -95,9 +95,13 @@ export function useDashboardGrid(
     if (!grid || !widgets.value.length) return
 
     for (const widget of widgets.value) {
-      grid.batchUpdate()
-      addWidgetToGrid(widget)
-      grid.batchUpdate(false)
+      try {
+        grid.batchUpdate()
+        addWidgetToGrid(widget)
+        grid.batchUpdate(false)
+      } catch (e) {
+        console.warn(`[DashboardGrid] Failed to add widget ${widget.id}:`, e)
+      }
 
       // Yield to the browser between widgets so each gets its own frame
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))

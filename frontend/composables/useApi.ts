@@ -188,9 +188,12 @@ export const useApi = () => {
 
     // Chat endpoints
     chat: {
-      async getConversations(archived = false) {
-        const params = archived ? '?archived=true' : ''
-        return fetchWithRefresh(`/api/chat/conversations${params}`, {})
+      async getConversations(archived = false, summary = true) {
+        const params = new URLSearchParams()
+        if (archived) params.set('archived', 'true')
+        if (summary) params.set('summary', 'true')
+        const qs = params.toString()
+        return fetchWithRefresh(`/api/chat/conversations${qs ? `?${qs}` : ''}`, {})
       },
       async getMessages(threadId: string) {
         return fetchWithRefresh(`/api/chat/conversations/${threadId}`, {})

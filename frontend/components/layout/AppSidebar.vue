@@ -226,7 +226,10 @@ const userInitial = computed(() => {
 // Load conversations on mount and register heartbeat handler
 onMounted(() => {
   chatStore.hydrateFromStorage()
-  chat.loadConversations()
+  // Only fetch conversations if not already loaded this session
+  if (!chatStore.conversationsLoaded) {
+    chat.loadConversations()
+  }
   chat.registerTitleHandler()
   chat.registerSummaryHandler()
   chat.registerHeartbeatHandler()

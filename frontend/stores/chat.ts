@@ -62,6 +62,7 @@ export interface ConversationSummary {
 export const useChatStore = defineStore('chat', {
   state: () => ({
     conversations: [] as Conversation[],
+    conversationsLoaded: false,
     archivedConversations: [] as Conversation[],
     currentThreadId: null as string | null,
     messages: [] as Message[],
@@ -176,6 +177,7 @@ export const useChatStore = defineStore('chat', {
 
     setConversations(conversations: Conversation[]) {
       this.conversations = conversations
+      this.conversationsLoaded = true
     },
 
     addConversation(conversation: Conversation) {
@@ -284,6 +286,7 @@ export const useChatStore = defineStore('chat', {
 
     reset() {
       this.conversations = []
+      this.conversationsLoaded = false
       this.archivedConversations = []
       this.currentThreadId = null
       this.messages = []
