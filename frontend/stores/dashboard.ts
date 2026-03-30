@@ -204,9 +204,8 @@ export const useDashboardStore = defineStore('dashboard', {
       } catch {
         this.filterValues = {}
       }
-      // Ensure full dashboard data is loaded, then auto-refresh
+      // Ensure full dashboard data is loaded (saved config already has data)
       await this.fetchDashboard(id)
-      this.refreshAllWidgets()
     },
 
     setFilterValue(key: string, value: any) {

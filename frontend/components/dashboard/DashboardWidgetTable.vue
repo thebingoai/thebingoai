@@ -106,7 +106,7 @@ function toggleSort(key: string) {
 
 // Column filtering (client-side)
 const filteredRows = computed(() => {
-  let rows = props.config.rows
+  let rows = props.config.rows ?? []
   for (const [key, filterVal] of Object.entries(columnFilters.value)) {
     if (!filterVal) continue
     const lower = filterVal.toLowerCase()

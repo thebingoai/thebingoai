@@ -110,7 +110,7 @@
         <!-- Auto-calculated info (when data source with autoTrend) -->
         <div v-if="isAutoTrend" class="rounded-lg bg-gray-100 px-3 py-2">
           <p class="text-[11px] text-gray-500">
-            Trend is auto-calculated from your query results (comparing last two periods).
+            Trend is auto-calculated from your query results. Select a period and date column below to control the comparison.
           </p>
         </div>
 
@@ -176,6 +176,20 @@
             :class="!editMode ? 'cursor-default bg-gray-50' : ''"
           />
         </div>
+
+        <!-- Date column picker (needed for period-based comparison) -->
+        <div v-if="needsDateColumn && sourceColumns && sourceColumns.length > 0" class="space-y-1.5">
+          <label class="text-xs text-gray-600">Date column</label>
+          <select
+            :value="kpiMapping?.trendDateColumn || ''"
+            :disabled="!editMode"
+            class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors disabled:cursor-default disabled:bg-gray-50"
+            @change="editMode && emit('update:mapping', { trendDateColumn: ($event.target as HTMLSelectElement).value || undefined })"
+          >
+            <option value="">Select date column...</option>
+            <option v-for="col in sourceColumns" :key="col" :value="col">{{ col }}</option>
+          </select>
+        </div>
       </template>
     </div>
 
@@ -211,9 +225,9 @@
           </p>
         </div>
 
-        <!-- X/Y axis column selectors (when data source exists and not autoTrend) -->
-        <template v-else-if="dataSource">
-          <div v-if="sourceColumns && sourceColumns.length > 0" class="space-y-2">
+        <!-- X/Y axis column selectors (when columns are available) -->
+        <template v-if="sourceColumns && sourceColumns.length > 0">
+          <div class="space-y-2">
             <div class="space-y-1">
               <label class="text-xs text-gray-600">X Axis (labels)</label>
               <select
@@ -262,11 +276,6 @@
               </div>
             </div>
           </div>
-          <div v-else class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2">
-            <p class="text-[10px] text-indigo-400">
-              Run a test query in the Data Source tab to discover available columns.
-            </p>
-          </div>
         </template>
 
         <!-- Manual input (no data source — static KPI) -->
@@ -314,6 +323,9 @@ const kpiMapping = computed(() => {
 
 const isAutoTrend = computed(() => !!kpiMapping.value?.autoTrend)
 
+// Periods that require a date column for comparison (not simple last-two-rows)
+const DATE_BASED_PERIODS = new Set(['vs yesterday', 'vs last week', 'vs last month', 'vs last quarter', 'vs last year'])
+
 // Local state mirroring config
 const localLabel = ref(kpiConfig().label)
 const localValue = ref(String(kpiConfig().value))
@@ -337,6 +349,9 @@ const effectivePeriod = computed(() => {
   if (localTrendPeriod.value === '__custom__') return customTrendPeriod.value
   return localTrendPeriod.value
 })
+
+// Show date column picker when a date-based period is selected
+const needsDateColumn = computed(() => DATE_BASED_PERIODS.has(effectivePeriod.value))
 
 // Flag to prevent resync from reverting our own emits
 let selfEmit = false
@@ -387,7 +402,7 @@ function buildConfig(): WidgetConfig {
 
   const trend = hasTrend.value
     ? hasDataSourceTrend
-      ? existingConfig.trend // keep what the backend wrote
+      ? { ...existingConfig.trend, period: effectivePeriod.value || undefined }
       : { direction: localTrendDirection.value, value: localTrendValue.value, period: effectivePeriod.value || undefined }
     : undefined
 
@@ -421,6 +436,13 @@ watch(
     nextTick(() => { selfEmit = false })
   },
 )
+
+// Sync period label into the data source mapping so it persists across refreshes
+watch(effectivePeriod, () => {
+  if (props.dataSource && hasTrend.value) {
+    emit('update:mapping', { periodLabel: effectivePeriod.value || undefined })
+  }
+})
 
 function toggleTrend() {
   hasTrend.value = !hasTrend.value

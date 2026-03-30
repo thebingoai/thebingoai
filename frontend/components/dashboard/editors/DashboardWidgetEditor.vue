@@ -120,7 +120,7 @@
             v-if="props.widget.dataSource"
             class="absolute bottom-1.5 right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-gray-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors shadow-sm"
             title="Open SQL editor"
-            @click="emit('open-sql-editor', props.widget.id)"
+            @click="emit('open-sql-editor', props.widget.id, previewError ?? undefined)"
           >
             <Code class="h-3 w-3" />
           </button>
@@ -210,7 +210,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  'open-sql-editor': [id: string]
+  'open-sql-editor': [id: string, error?: string]
 }>()
 
 const store = useDashboardStore()

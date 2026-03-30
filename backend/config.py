@@ -123,7 +123,7 @@ class Settings(BaseSettings):
 
     # Query guardrails
     max_query_rows: int = 5000
-    query_timeout_ms: int = 30000
+    query_timeout_ms: int = 120000
 
     # Authentication
     auth_provider: str = "supabase"

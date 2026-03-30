@@ -1,9 +1,12 @@
 """Widget Transform — Pure functions to convert QueryResult into widget config dicts."""
 from decimal import Decimal
-from datetime import date, datetime
-from typing import Any, Dict
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.connectors.base import QueryResult
+
+# Maps period labels to (current_start, previous_start, previous_end) resolver
+_DATE_BASED_PERIODS = {"vs yesterday", "vs last week", "vs last month", "vs last quarter", "vs last year"}
 
 
 def _to_json_safe(value: Any) -> Any:
@@ -13,6 +16,78 @@ def _to_json_safe(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     return value
+
+
+def _parse_date_value(value: Any) -> Optional[date]:
+    """Parse a date from various formats."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).date()
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _period_ranges(period_label: str, reference: date) -> Tuple[date, date, date, date]:
+    """Return (current_start, current_end, previous_start, previous_end) for a period label."""
+    today = reference
+    if period_label == "vs yesterday":
+        return today, today, today - timedelta(days=1), today - timedelta(days=1)
+    elif period_label == "vs last week":
+        # Current week: Monday..Sunday containing today
+        current_start = today - timedelta(days=today.weekday())
+        current_end = current_start + timedelta(days=6)
+        prev_start = current_start - timedelta(weeks=1)
+        prev_end = current_start - timedelta(days=1)
+        return current_start, current_end, prev_start, prev_end
+    elif period_label == "vs last month":
+        current_start = today.replace(day=1)
+        if today.month == 1:
+            prev_start = today.replace(year=today.year - 1, month=12, day=1)
+        else:
+            prev_start = today.replace(month=today.month - 1, day=1)
+        prev_end = current_start - timedelta(days=1)
+        return current_start, today, prev_start, prev_end
+    elif period_label == "vs last quarter":
+        q = (today.month - 1) // 3
+        current_start = today.replace(month=q * 3 + 1, day=1)
+        if q == 0:
+            prev_start = today.replace(year=today.year - 1, month=10, day=1)
+        else:
+            prev_start = today.replace(month=(q - 1) * 3 + 1, day=1)
+        prev_end = current_start - timedelta(days=1)
+        return current_start, today, prev_start, prev_end
+    elif period_label == "vs last year":
+        current_start = today.replace(month=1, day=1)
+        prev_start = today.replace(year=today.year - 1, month=1, day=1)
+        prev_end = current_start - timedelta(days=1)
+        return current_start, today, prev_start, prev_end
+    # Fallback — shouldn't be reached for date-based periods
+    return today, today, today, today
+
+
+def _aggregate_values(values: List[float], aggregation: str) -> Optional[float]:
+    """Aggregate a list of values using the given method."""
+    if not values:
+        return None
+    if aggregation == "sum":
+        return sum(values)
+    elif aggregation == "avg":
+        return round(sum(values) / len(values), 2)
+    elif aggregation == "count":
+        return float(len(values))
+    elif aggregation == "min":
+        return min(values)
+    elif aggregation == "max":
+        return max(values)
+    elif aggregation == "last":
+        return values[-1]
+    else:  # "first" or unrecognized
+        return values[0]
 
 
 def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any]:
@@ -68,10 +143,14 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
     """Transform QueryResult into KPI widget config data.
 
     Mapping keys:
-      - valueColumn: column for the main value (first row)
-      - trendValueColumn: optional column for trend numeric value (first row)
-      - sparklineXColumn: optional column for sparkline x-axis labels (all rows)
-      - sparklineYColumn: optional column for sparkline y-axis values (all rows)
+      - valueColumn: column for the main value
+      - aggregation: how to aggregate multi-row results (sum, avg, count, min, max, first, last)
+      - autoTrend: auto-calculate trend and sparkline from multi-row results
+      - periodLabel: trend calculation preference (e.g. "vs last month")
+      - trendDateColumn: date column for period-based trend comparison
+      - trendValueColumn: optional column for pre-computed trend numeric value
+      - sparklineXColumn: optional column for sparkline x-axis labels
+      - sparklineYColumn: optional column for sparkline y-axis values
 
     Returns dict suitable for widget.config.
     """
@@ -141,20 +220,54 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             config["sparkline"] = all_values
             config["value"] = all_values[-1]
 
-        if len(all_values) >= 2:
+        period_label = mapping.get("periodLabel", "")
+        date_col = mapping.get("trendDateColumn")
+
+        # Period-based comparison using date column
+        if date_col and date_col in result.columns and period_label in _DATE_BASED_PERIODS:
+            date_idx = result.columns.index(date_col)
+            today = date.today()
+            cur_start, cur_end, prev_start, prev_end = _period_ranges(period_label, today)
+
+            cur_values: List[float] = []
+            prev_values: List[float] = []
+            for row in result.rows:
+                v = _to_json_safe(row[value_idx])
+                if not isinstance(v, (int, float)):
+                    continue
+                d = _parse_date_value(row[date_idx])
+                if d is None:
+                    continue
+                if cur_start <= d <= cur_end:
+                    cur_values.append(float(v))
+                elif prev_start <= d <= prev_end:
+                    prev_values.append(float(v))
+
+            cur_agg = _aggregate_values(cur_values, aggregation)
+            prev_agg = _aggregate_values(prev_values, aggregation)
+
+            if cur_agg is not None:
+                config["value"] = cur_agg
+
+            if cur_agg is not None and prev_agg is not None and prev_agg != 0:
+                trend_pct = round(((cur_agg - prev_agg) / abs(prev_agg)) * 100, 2)
+                direction = "up" if trend_pct > 0 else "down" if trend_pct < 0 else "neutral"
+                config["trend"] = {"direction": direction, "value": trend_pct, "period": period_label}
+            elif cur_agg is not None and prev_agg is not None:
+                config["trend"] = {"direction": "neutral", "value": 0, "period": period_label}
+            # If either period has no data, no trend emitted
+
+        # Fallback: simple last-two-rows comparison
+        elif len(all_values) >= 2:
             current = all_values[-1]
             previous = all_values[-2]
             if previous != 0:
                 trend_pct = round(((current - previous) / abs(previous)) * 100, 2)
                 direction = "up" if trend_pct > 0 else "down" if trend_pct < 0 else "neutral"
-                config["trend"] = {
-                    "direction": direction,
-                    "value": trend_pct,
-                    "period": mapping.get("periodLabel", ""),
-                }
+                config["trend"] = {"direction": direction, "value": trend_pct, "period": period_label}
             else:
-                config["trend"] = {"direction": "neutral", "value": 0, "period": mapping.get("periodLabel", "")}
-        # autoTrend with < 2 rows: no trend emitted
+                config["trend"] = {"direction": "neutral", "value": 0, "period": period_label}
+        # autoTrend with < 2 rows and no date-based period: no trend emitted
     elif trend_col:
         trend_idx = result.columns.index(trend_col)
         trend_val = _to_json_safe(result.rows[0][trend_idx])
@@ -166,7 +279,7 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
             direction = "neutral"
         config["trend"] = {"direction": direction, "value": trend_val}
 
-    if not mapping.get("autoTrend") and sparkline_y_col:
+    if sparkline_y_col:
         sort_col = mapping.get("sparklineSortColumn")
         sort_dir = mapping.get("sparklineSortDirection", "asc")
         rows = result.rows

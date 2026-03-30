@@ -1,7 +1,7 @@
 <template>
   <!-- Backdrop -->
   <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" @click.self="emit('close')">
-    <div class="relative flex flex-col w-full max-w-2xl max-h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden">
+    <div class="relative flex flex-col w-full max-w-7xl h-[85vh] bg-white rounded-xl shadow-2xl overflow-hidden">
 
       <!-- Header -->
       <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -18,34 +18,42 @@
       </div>
 
       <!-- Body -->
-      <div class="flex-1 overflow-y-auto p-5 space-y-4">
+      <div class="flex-1 min-h-0 flex flex-col p-5 space-y-4">
 
-        <!-- SQL editor with syntax highlighting -->
-        <div class="space-y-1.5">
-          <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Query</label>
-          <div class="relative rounded-lg border border-gray-200 overflow-hidden" :class="editMode ? 'bg-white' : 'bg-gray-50'">
-            <!-- Highlighted code overlay -->
-            <div
-              ref="highlightRef"
-              class="absolute inset-0 px-3 py-2.5 font-mono text-xs leading-relaxed pointer-events-none overflow-auto whitespace-pre-wrap break-words sql-highlight"
-              aria-hidden="true"
-              v-html="highlightedSql"
-            />
-            <!-- Transparent textarea on top -->
-            <textarea
-              v-model="localSql"
-              :readonly="!editMode"
-              class="relative w-full h-64 px-3 py-2.5 font-mono text-xs leading-relaxed resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
-              :class="editMode ? '' : 'cursor-default'"
-              :style="{ color: highlightedSql ? 'transparent' : undefined, caretColor: 'black' }"
-              spellcheck="false"
-              @scroll="syncScroll"
-            />
+        <!-- Two-column layout: Query (left) + Mapping (right) -->
+        <div class="flex gap-5 flex-1 min-h-0">
+          <!-- Left: SQL editor -->
+          <div class="flex-1 flex flex-col gap-1.5 min-h-0">
+            <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide flex-shrink-0">Query</label>
+            <div class="relative flex-1 min-h-0 rounded-lg border border-gray-200 overflow-hidden" :class="editMode ? 'bg-white' : 'bg-gray-50'">
+              <!-- Highlighted code overlay -->
+              <div
+                ref="highlightRef"
+                class="absolute inset-0 px-3 py-2.5 font-mono text-xs leading-relaxed pointer-events-none overflow-auto whitespace-pre-wrap break-words sql-highlight"
+                aria-hidden="true"
+                v-html="highlightedSql"
+              />
+              <!-- Transparent textarea on top -->
+              <textarea
+                v-model="localSql"
+                :readonly="!editMode"
+                class="relative w-full h-full px-3 py-2.5 font-mono text-xs leading-relaxed resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+                :class="editMode ? '' : 'cursor-default'"
+                :style="{ color: highlightedSql ? 'transparent' : undefined, caretColor: 'black' }"
+                spellcheck="false"
+                @scroll="syncScroll"
+              />
+            </div>
+          </div>
+
+          <!-- Right: Column mapping -->
+          <div class="w-96 flex-shrink-0 flex flex-col gap-1.5 min-h-0">
+            <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide flex-shrink-0">Column Mapping</label>
+            <div class="flex-1 min-h-0 overflow-y-auto">
+              <DashboardMappingDisplay :mapping="widget.dataSource!.mapping" />
+            </div>
           </div>
         </div>
-
-        <!-- Mapping display -->
-        <DashboardMappingDisplay :mapping="widget.dataSource!.mapping" />
 
         <!-- Preview error with Suggest Fix -->
         <div v-if="previewError" class="rounded-lg bg-rose-50 border border-rose-100 px-3 py-2.5 text-xs text-rose-600">

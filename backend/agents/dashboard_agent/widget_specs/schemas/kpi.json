@@ -8,8 +8,9 @@
   "mapping": {
     "valueColumn":            { "type": "string",  "required": true,  "description": "Column name for the main KPI value" },
     "aggregation":            { "type": "enum",    "required": false, "values": ["sum", "avg", "count", "min", "max", "first", "last"], "description": "How to aggregate multi-row results into a single value (default: 'first')" },
-    "autoTrend":              { "type": "boolean", "required": false, "description": "Auto-calculate trend % by comparing last 2 rows. Also auto-populates sparkline from all rows" },
-    "periodLabel":            { "type": "string",  "required": false, "description": "Trend display label, e.g. 'vs last month'" },
+    "autoTrend":              { "type": "boolean", "required": false, "description": "Auto-calculate trend % and sparkline from multi-row results" },
+    "periodLabel":            { "type": "string",  "required": false, "description": "Trend calculation preference: 'vs last period' (compare last 2 rows), 'vs yesterday', 'vs last week', 'vs last month', 'vs last quarter', 'vs last year'. Date-based options require trendDateColumn" },
+    "trendDateColumn":        { "type": "string",  "required": false, "description": "Date column for period-based trend comparison. Required when periodLabel is a date-based period (vs yesterday/last week/last month/last quarter/last year)" },
     "trendValueColumn":       { "type": "string",  "required": false, "description": "LEGACY: Column with pre-computed trend number. Use autoTrend instead when possible" },
     "sparklineXColumn":       { "type": "string",  "required": false, "description": "LEGACY: Column for sparkline x-axis labels (time-ordered)" },
     "sparklineYColumn":       { "type": "string",  "required": false, "description": "LEGACY: Column for sparkline y-axis values (numeric)" },

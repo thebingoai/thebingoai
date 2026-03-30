@@ -88,7 +88,8 @@ export interface KpiDataSourceMapping {
   aggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max' | 'first' | 'last'
   // Auto-trend: derive trend + sparkline from multi-row time-series results
   autoTrend?: boolean
-  periodLabel?: string          // display label e.g. "vs last month"
+  trendDateColumn?: string      // date column for period-based trend comparison
+  periodLabel?: string          // calculation preference e.g. "vs last month"
   // Legacy: pre-computed trend (kept for backward compat)
   trendValueColumn?: string
   sparklineXColumn?: string
