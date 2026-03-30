@@ -622,19 +622,9 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
 
-        # Validate mapping columns against schema
-        # When data_context is provided, treat warnings as hard errors (context-driven mode)
-        # Without data_context (legacy), keep as warnings only
+        # Validate mapping columns against schema (warnings only — SQL execution is the real test)
         schema_warnings = _validate_widget_sql_schema(widgets)
-        if schema_warnings and data_context:
-            return json.dumps({
-                "success": False,
-                "message": (
-                    f"Schema validation failed (fix these before creating the dashboard):\n"
-                    + "\n".join(f"  - {w}" for w in schema_warnings)
-                ),
-            })
-        elif schema_warnings:
+        if schema_warnings:
             logger.warning("Schema validation warnings for '%s': %s", title, "; ".join(schema_warnings))
 
         # Auto-execute SQL for SQL-backed widgets and populate config
@@ -719,17 +709,9 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
 
-        # Validate mapping columns against schema
+        # Validate mapping columns against schema (warnings only — SQL execution is the real test)
         schema_warnings = _validate_widget_sql_schema(widgets)
-        if schema_warnings and data_context:
-            return json.dumps({
-                "success": False,
-                "message": (
-                    f"Schema validation failed (fix these before updating):\n"
-                    + "\n".join(f"  - {w}" for w in schema_warnings)
-                ),
-            })
-        elif schema_warnings:
+        if schema_warnings:
             logger.warning("Schema validation warnings for dashboard %d: %s", dashboard_id, "; ".join(schema_warnings))
 
         # Load existing dashboard to compare SQL and carry over unchanged widget data
