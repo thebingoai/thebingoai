@@ -11,12 +11,23 @@ import re
 import sqlite3
 import tempfile
 import time
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = "/tmp/gruda_dashboard_cache"
 CACHE_TTL_SECONDS = 3600  # 1 hour
+
+
+@dataclass
+class MaterializeResult:
+    """Result of a dashboard materialization."""
+    do_key: str
+    widgets_total: int
+    widgets_succeeded: int
+    widgets_failed: int
+    widget_errors: dict
 
 
 def _sanitize_widget_id(widget_id: str) -> str:
@@ -54,13 +65,42 @@ def _infer_column_types(columns: list[str], rows: list[tuple]) -> list[str]:
     return types
 
 
-def materialize_dashboard(dashboard_id: int) -> str:
+def _get_date_column(widget: dict, data_context: dict | None) -> str | None:
+    """Find the date column for date range scoping.
+
+    Priority: widget mapping's trendDateColumn > data_context date dimensions.
+    """
+    data_source = widget.get("dataSource", {})
+    mapping = data_source.get("mapping", {})
+    date_col = mapping.get("trendDateColumn")
+    if date_col:
+        return date_col
+
+    if data_context:
+        dimensions = data_context.get("dimensions", {})
+        for dim_data in dimensions.values():
+            if dim_data.get("type") == "date":
+                return dim_data.get("column")
+
+    return None
+
+
+def _apply_date_filter(sql: str, date_col: str, days: int) -> str:
+    """Wrap SQL in a subquery with a date range filter."""
+    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    return f'SELECT * FROM ({sql}) AS _date_scoped WHERE "{date_col}" >= \'{cutoff}\''
+
+
+def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
     """Execute all widget SQLs against source DB, build SQLite, upload to DO Spaces.
 
-    Returns the DO Spaces key for the uploaded SQLite file.
-    """
-    from sqlalchemy.orm.attributes import flag_modified
+    Features:
+    - Connection sharing: widgets grouped by connectionId, one connector per group
+    - Date range scoping: appends date filter using trendDateColumn or data_context
+    - Error isolation: partial success -> 'ready', all fail -> 'failed'
 
+    Returns a MaterializeResult with the DO key and widget statistics.
+    """
     from backend.config import settings
     from backend.connectors.factory import get_connector_for_connection, get_connector_registration
     from backend.database.session import SessionLocal
@@ -78,6 +118,26 @@ def materialize_dashboard(dashboard_id: int) -> str:
         db.commit()
 
         widgets = dashboard.widgets or []
+        data_context = dashboard.data_context
+        date_range_days = dashboard.cache_date_range_days or 90
+
+        # Group SQL-backed widgets by connectionId for connection sharing
+        connection_groups: dict[int, list[dict]] = {}
+        for widget in widgets:
+            data_source = widget.get("dataSource")
+            if not data_source:
+                continue
+            widget_id = widget.get("id")
+            connection_id = data_source.get("connectionId")
+            sql = data_source.get("sql")
+            if not widget_id or not connection_id or not sql:
+                continue
+            connection_groups.setdefault(connection_id, []).append(widget)
+
+        widgets_total = sum(len(wl) for wl in connection_groups.values())
+        widgets_succeeded = 0
+        widgets_failed = 0
+        widget_errors: dict[str, str] = {}
 
         # Create temp SQLite file
         tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
@@ -99,83 +159,93 @@ def materialize_dashboard(dashboard_id: int) -> str:
             )
             conn.commit()
 
-            for widget in widgets:
-                data_source = widget.get("dataSource")
-                if not data_source:
-                    continue
+            # Process each connection group (one connector per connectionId)
+            for connection_id, group_widgets in connection_groups.items():
+                connection = db.query(DatabaseConnection).filter(
+                    DatabaseConnection.id == connection_id,
+                    DatabaseConnection.user_id == dashboard.user_id,
+                ).first()
 
-                widget_id = widget.get("id")
-                connection_id = data_source.get("connectionId")
-                sql = data_source.get("sql")
-
-                if not widget_id or not connection_id or not sql:
-                    continue
-
-                table_name = _sanitize_widget_id(widget_id)
-                materialized_at = datetime.utcnow().isoformat()
-
-                try:
-                    # Get the source connection
-                    connection = db.query(DatabaseConnection).filter(
-                        DatabaseConnection.id == connection_id,
-                        DatabaseConnection.user_id == dashboard.user_id,
-                    ).first()
-
-                    if not connection:
+                if not connection:
+                    for widget in group_widgets:
+                        w_id = widget["id"]
+                        table_name = _sanitize_widget_id(w_id)
+                        materialized_at = datetime.utcnow().isoformat()
+                        error_msg = f"Connection {connection_id} not found"
                         conn.execute(
                             "INSERT INTO _meta (widget_id, table_name, original_sql, materialized_at, row_count, error) "
                             "VALUES (?, ?, ?, ?, 0, ?)",
-                            (widget_id, table_name, sql, materialized_at, f"Connection {connection_id} not found"),
+                            (w_id, table_name, widget.get("dataSource", {}).get("sql"), materialized_at, error_msg),
                         )
-                        conn.commit()
-                        continue
-
-                    # Skip connectors that don't support server-side queries (e.g. dataset/SQLite)
-                    reg = get_connector_registration(connection.db_type)
-                    if reg and reg.skip_schema_refresh:
-                        continue
-
-                    connector = get_connector_for_connection(connection)
-                    try:
-                        result = connector.execute_query(sql)
-                    finally:
-                        connector.close()
-
-                    # Create table with inferred types
-                    col_types = _infer_column_types(result.columns, result.rows)
-                    col_defs = ", ".join(
-                        f'"{col}" {ctype}' for col, ctype in zip(result.columns, col_types)
-                    )
-                    conn.execute(f'CREATE TABLE "{table_name}" ({col_defs})')
-
-                    # Insert rows
-                    if result.rows:
-                        placeholders = ", ".join(["?"] * len(result.columns))
-                        conn.executemany(
-                            f'INSERT INTO "{table_name}" VALUES ({placeholders})',
-                            result.rows,
-                        )
-
-                    conn.execute(
-                        "INSERT INTO _meta (widget_id, table_name, original_sql, materialized_at, row_count, error) "
-                        "VALUES (?, ?, ?, ?, ?, NULL)",
-                        (widget_id, table_name, sql, materialized_at, result.row_count),
-                    )
+                        widgets_failed += 1
+                        widget_errors[w_id] = error_msg
                     conn.commit()
+                    continue
 
-                    logger.info(
-                        "Materialized widget %s (%s) with %d rows",
-                        widget_id, table_name, result.row_count,
-                    )
+                # Skip connectors that don't support server-side queries (e.g. dataset/SQLite)
+                reg = get_connector_registration(connection.db_type)
+                if reg and reg.skip_schema_refresh:
+                    widgets_total -= len(group_widgets)
+                    continue
 
-                except Exception as widget_err:
-                    logger.error("Failed to materialize widget %s: %s", widget_id, widget_err)
-                    conn.execute(
-                        "INSERT OR REPLACE INTO _meta (widget_id, table_name, original_sql, materialized_at, row_count, error) "
-                        "VALUES (?, ?, ?, ?, 0, ?)",
-                        (widget_id, table_name, sql, materialized_at, str(widget_err)),
-                    )
-                    conn.commit()
+                connector = get_connector_for_connection(connection)
+                try:
+                    for widget in group_widgets:
+                        w_id = widget["id"]
+                        data_source = widget["dataSource"]
+                        original_sql = data_source["sql"]
+                        table_name = _sanitize_widget_id(w_id)
+                        materialized_at = datetime.utcnow().isoformat()
+
+                        try:
+                            # Apply date range filter if applicable
+                            query_sql = original_sql
+                            date_col = _get_date_column(widget, data_context)
+                            if date_col:
+                                query_sql = _apply_date_filter(original_sql, date_col, date_range_days)
+
+                            result = connector.execute_query(query_sql)
+
+                            # Create table with inferred types
+                            col_types = _infer_column_types(result.columns, result.rows)
+                            col_defs = ", ".join(
+                                f'"{col}" {ctype}' for col, ctype in zip(result.columns, col_types)
+                            )
+                            conn.execute(f'CREATE TABLE "{table_name}" ({col_defs})')
+
+                            # Insert rows
+                            if result.rows:
+                                placeholders = ", ".join(["?"] * len(result.columns))
+                                conn.executemany(
+                                    f'INSERT INTO "{table_name}" VALUES ({placeholders})',
+                                    result.rows,
+                                )
+
+                            conn.execute(
+                                "INSERT INTO _meta (widget_id, table_name, original_sql, materialized_at, row_count, error) "
+                                "VALUES (?, ?, ?, ?, ?, NULL)",
+                                (w_id, table_name, original_sql, materialized_at, result.row_count),
+                            )
+                            conn.commit()
+
+                            widgets_succeeded += 1
+                            logger.info(
+                                "Materialized widget %s (%s) with %d rows",
+                                w_id, table_name, result.row_count,
+                            )
+
+                        except Exception as widget_err:
+                            logger.error("Failed to materialize widget %s: %s", w_id, widget_err)
+                            conn.execute(
+                                "INSERT OR REPLACE INTO _meta (widget_id, table_name, original_sql, materialized_at, row_count, error) "
+                                "VALUES (?, ?, ?, ?, 0, ?)",
+                                (w_id, table_name, original_sql, materialized_at, str(widget_err)),
+                            )
+                            conn.commit()
+                            widgets_failed += 1
+                            widget_errors[w_id] = str(widget_err)
+                finally:
+                    connector.close()
 
         finally:
             conn.close()
@@ -190,14 +260,28 @@ def materialize_dashboard(dashboard_id: int) -> str:
         cache_path = os.path.join(CACHE_DIR, f"{dashboard_id}.sqlite")
         os.rename(sqlite_path, cache_path)
 
+        # Error isolation: 'ready' if any widget succeeded, 'failed' only if all failed
+        if widgets_total == 0:
+            status = "ready"
+        elif widgets_succeeded > 0:
+            status = "ready"
+        else:
+            status = "failed"
+
         # Update dashboard record
         dashboard.cache_key = do_key
         dashboard.cache_built_at = datetime.utcnow()
-        dashboard.cache_status = "ready"
+        dashboard.cache_status = status
         db.commit()
 
         logger.info("Dashboard %d cache materialized to %s", dashboard_id, do_key)
-        return do_key
+        return MaterializeResult(
+            do_key=do_key,
+            widgets_total=widgets_total,
+            widgets_succeeded=widgets_succeeded,
+            widgets_failed=widgets_failed,
+            widget_errors=widget_errors,
+        )
 
     except Exception:
         # Mark as failed and re-raise

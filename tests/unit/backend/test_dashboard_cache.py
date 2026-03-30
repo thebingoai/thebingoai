@@ -343,9 +343,9 @@ class TestMaterializeDashboard:
              patch("backend.services.object_storage.upload_bytes") as mock_upload, \
              patch("backend.config.settings", mock_settings):
 
-            do_key = dashboard_cache.materialize_dashboard(dashboard_id)
+            result = dashboard_cache.materialize_dashboard(dashboard_id)
 
-            assert do_key.endswith(f"{dashboard_id}.sqlite")
+            assert result.do_key.endswith(f"{dashboard_id}.sqlite")
             mock_upload.assert_called_once()
 
             # Verify SQLite was created with correct tables
@@ -383,7 +383,7 @@ class TestMaterializeDashboard:
             # Dashboard should be updated — re-query to avoid detached instance
             updated = dashboard_db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
             assert updated.cache_status == "ready"
-            assert updated.cache_key == do_key
+            assert updated.cache_key == result.do_key
             assert updated.cache_built_at is not None
 
     def test_widget_error_recorded_in_meta(self, dashboard_db, test_user, cache_dir):

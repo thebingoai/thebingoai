@@ -1,7 +1,7 @@
 """Celery tasks for scheduled dashboard widget refresh."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from celery import shared_task
 from backend.database.session import SessionLocal
@@ -60,16 +60,12 @@ def dispatch_dashboard_refreshes():
 @shared_task(name="execute_dashboard_refresh", time_limit=300)
 def execute_dashboard_refresh(dashboard_id: int):
     """
-    Execute a single dashboard refresh: re-run all SQL-backed widgets,
-    persist updated data to dashboard.widgets, and record the run.
+    Execute a single dashboard refresh by materializing all SQL-backed
+    widgets into a SQLite cache via dashboard_cache.materialize_dashboard().
 
-    Args:
-        dashboard_id: The ID of the Dashboard to refresh.
+    Records a DashboardRefreshRun with widget statistics.
     """
-    from sqlalchemy.orm.attributes import flag_modified
-    from backend.models.database_connection import DatabaseConnection
-    from backend.connectors.factory import get_connector_for_connection, get_connector_registration
-    from backend.services.widget_transform import transform_widget_data
+    from backend.services.dashboard_cache import materialize_dashboard
 
     db = SessionLocal()
     run = None
@@ -93,96 +89,25 @@ def execute_dashboard_refresh(dashboard_id: int):
 
         logger.info(f"Executing dashboard refresh {dashboard_id} (run {run.id})")
 
-        widgets = dashboard.widgets or []
-        widgets_total = 0
-        widgets_succeeded = 0
-        widgets_failed = 0
-        widget_errors: dict = {}
-
-        updated_widgets = []
-        for widget in widgets:
-            data_source = widget.get("dataSource")
-            if not data_source:
-                updated_widgets.append(widget)
-                continue
-
-            widget_id = widget.get("id", "unknown")
-            connection_id = data_source.get("connectionId")
-            sql = data_source.get("sql")
-            mapping = data_source.get("mapping")
-
-            if not connection_id or not sql or not mapping:
-                updated_widgets.append(widget)
-                continue
-
-            widgets_total += 1
-
-            connection = db.query(DatabaseConnection).filter(
-                DatabaseConnection.id == connection_id,
-                DatabaseConnection.user_id == dashboard.user_id,
-            ).first()
-
-            if not connection:
-                widgets_failed += 1
-                widget_errors[widget_id] = f"Connection {connection_id} not found"
-                updated_widgets.append(widget)
-                continue
-
-            reg = get_connector_registration(connection.db_type)
-            if reg and reg.skip_schema_refresh:
-                # Connector type does not support server-side refresh (e.g., dataset/SQLite)
-                updated_widgets.append(widget)
-                widgets_total -= 1  # Don't count as a processable widget
-                continue
-
-            connector = get_connector_for_connection(connection)
-
-            try:
-                result = connector.execute_query(sql)
-                config = transform_widget_data(result, mapping)
-
-                # Merge updated config into widget
-                updated_widget = dict(widget)
-                widget_inner = dict(updated_widget.get("widget", {}))
-                widget_inner["config"] = {**widget_inner.get("config", {}), **config}
-                updated_widget["widget"] = widget_inner
-
-                # Update lastRefreshedAt on dataSource
-                updated_ds = dict(data_source)
-                updated_ds["lastRefreshedAt"] = datetime.now(timezone.utc).isoformat()
-                updated_widget["dataSource"] = updated_ds
-
-                updated_widgets.append(updated_widget)
-                widgets_succeeded += 1
-
-            except Exception as widget_err:
-                logger.error(f"Widget {widget_id} refresh failed: {widget_err}")
-                widgets_failed += 1
-                widget_errors[widget_id] = str(widget_err)
-                updated_widgets.append(widget)
-            finally:
-                connector.close()
-
-        # Auto-persist updated widgets to DB
-        dashboard.widgets = updated_widgets
-        flag_modified(dashboard, "widgets")
+        # Delegate to SQLite cache materialization
+        result = materialize_dashboard(dashboard_id)
 
         completed_at = datetime.utcnow()
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-        run.status = "completed" if widgets_failed == 0 else "completed"
+        run.status = "completed"
         run.completed_at = completed_at
         run.duration_ms = duration_ms
-        run.widgets_total = widgets_total
-        run.widgets_succeeded = widgets_succeeded
-        run.widgets_failed = widgets_failed
-        run.widget_errors = widget_errors if widget_errors else None
+        run.widgets_total = result.widgets_total
+        run.widgets_succeeded = result.widgets_succeeded
+        run.widgets_failed = result.widgets_failed
+        run.widget_errors = result.widget_errors if result.widget_errors else None
 
         db.commit()
 
         logger.info(
             f"Dashboard {dashboard_id} refresh complete in {duration_ms}ms: "
-            f"{widgets_succeeded}/{widgets_total} widgets succeeded"
+            f"{result.widgets_succeeded}/{result.widgets_total} widgets succeeded"
         )
 
     except Exception as e:
