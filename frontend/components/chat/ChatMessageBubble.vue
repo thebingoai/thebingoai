@@ -69,16 +69,16 @@
       <!-- Live steps log (collapses when final answer arrives) -->
       <div v-if="message.steps_log?.length" class="mt-1 font-mono text-[11px] text-gray-400 bg-gray-50/80 border border-gray-100 rounded-md px-3 py-2 leading-relaxed">
         <button
-          @click="message.steps_log_collapsed = !message.steps_log_collapsed"
+          @click="message.steps_log_expanded = !message.steps_log_expanded"
           class="flex items-center gap-1 cursor-pointer text-gray-400 hover:text-gray-500"
         >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path v-if="message.steps_log_collapsed" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            <path v-if="!message.steps_log_expanded" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
           </svg>
           {{ message.steps_log.length }} steps
         </button>
-        <div v-if="!message.steps_log_collapsed" class="mt-1.5 whitespace-pre-wrap">{{ message.steps_log.join('\n') }}
+        <div v-if="message.steps_log_expanded" class="mt-1.5 whitespace-pre-wrap">{{ message.steps_log.join('\n') }}
           <div v-if="chatStore.isStreaming" class="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">
             <span class="text-[10px] text-glow-orange">working...</span>
           </div>

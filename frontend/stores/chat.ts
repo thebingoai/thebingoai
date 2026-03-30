@@ -20,7 +20,7 @@ export interface Message {
   thinking_steps?: ThinkingStep[]  // legacy - kept for backward compat
   agent_steps?: AgentStep[]
   steps_log?: string[]  // live steps log shown in chat bubble during streaming
-  steps_log_collapsed?: boolean  // collapse steps log after final answer arrives
+  steps_log_expanded?: boolean  // user-toggled; defaults to collapsed
   created_at: string
   attachments?: FileAttachment[]
   source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer'
@@ -77,7 +77,7 @@ export const useChatStore = defineStore('chat', {
       summary: true,
       datasets: true,
       dashboards: true,
-      reasoning: true,
+      reasoning: false,
     } as Record<string, boolean>,
     rateLimitRetryAfter: 0
   }),

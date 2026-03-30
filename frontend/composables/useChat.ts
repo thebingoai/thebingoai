@@ -120,7 +120,7 @@ export const useChat = () => {
         const hasCompleteWord = /[\s\n.,!?;:]/.test(content)
         if (hasCompleteWord) {
           // Collapse steps_log when final answer starts streaming
-          chatStore.updateLastMessage({ content: accumulatedContent, steps_log_collapsed: true })
+          chatStore.updateLastMessage({ content: accumulatedContent, steps_log_expanded: false })
           wordBuffer = ''
         }
       })
@@ -262,7 +262,7 @@ export const useChat = () => {
           }
           currentReasoningText = ''
           // Clear the temporary reasoning text from bubble — final answer tokens will fill it
-          chatStore.updateLastMessage({ content: '', steps_log_collapsed: true, agent_steps: [...agentSteps] })
+          chatStore.updateLastMessage({ content: '', steps_log_expanded: false, agent_steps: [...agentSteps] })
         }
       })
 
