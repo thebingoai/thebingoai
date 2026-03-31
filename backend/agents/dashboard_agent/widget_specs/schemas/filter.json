@@ -19,7 +19,7 @@
           "description": "Dynamic SQL-based options. REQUIRED for dropdown controls",
           "fields": {
             "connectionId": { "type": "number", "description": "Database connection ID" },
-            "sql":          { "type": "string", "description": "SQL query, e.g. SELECT DISTINCT col AS option_value FROM table ORDER BY 1 LIMIT 50" }
+            "sql":          { "type": "string", "description": "SQL query, e.g. SELECT DISTINCT col AS option_value FROM table ORDER BY 1" }
           }
         }
       }
