@@ -24,6 +24,39 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+
+def _invalidate_dashboard_caches_for_connection(
+    connection_id: int, user_id: str, db: Session,
+) -> int:
+    """Mark all dashboard caches as 'stale' that reference the given connection.
+
+    Returns the number of dashboards marked stale.
+    """
+    from backend.models.dashboard import Dashboard
+
+    dashboards = db.query(Dashboard).filter(
+        Dashboard.user_id == user_id,
+        Dashboard.cache_status.in_(["ready", "building"]),
+    ).all()
+
+    count = 0
+    for dashboard in dashboards:
+        for widget in (dashboard.widgets or []):
+            ds = widget.get("dataSource")
+            if ds and ds.get("connectionId") == connection_id:
+                dashboard.cache_status = "stale"
+                count += 1
+                break
+
+    if count:
+        db.flush()
+        logger.info(
+            "Marked %d dashboard cache(s) as stale for connection %d",
+            count, connection_id,
+        )
+    return count
+
+
 router = APIRouter(prefix="/connections", tags=["connections"])
 
 
@@ -216,6 +249,9 @@ async def update_connection(
     for field, value in request.model_dump(exclude_unset=True).items():
         setattr(connection, field, value)
 
+    # Invalidate dashboard caches that use this connection
+    _invalidate_dashboard_caches_for_connection(connection_id, current_user.id, db)
+
     db.commit()
     db.refresh(connection)
 
@@ -236,6 +272,9 @@ async def delete_connection(
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    # Invalidate dashboard caches that use this connection
+    _invalidate_dashboard_caches_for_connection(connection_id, current_user.id, db)
 
     # Run type-specific delete hook if registered (e.g., dataset cleanup)
     reg = get_connector_registration(connection.db_type)

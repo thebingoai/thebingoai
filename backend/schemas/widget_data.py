@@ -26,11 +26,15 @@ class WidgetRefreshResponse(BaseModel):
     refreshed_at: str
     source_columns: List[str] = []
     source_rows: List[List[Any]] = []
+    cache_built_at: Optional[str] = None
+    cache_status: Optional[str] = None
 
 
 class BulkRefreshResponse(BaseModel):
     # widgetId -> {config, refreshed_at} on success, or {error} on failure
     widgets: Dict[str, Any]
+    cache_built_at: Optional[str] = None
+    cache_status: Optional[str] = None
 
 
 class WidgetSuggestFixRequest(BaseModel):

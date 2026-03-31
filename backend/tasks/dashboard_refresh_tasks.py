@@ -1,6 +1,7 @@
 """Celery tasks for scheduled dashboard widget refresh."""
 
 import logging
+import random
 from datetime import datetime
 
 from celery import shared_task
@@ -9,6 +10,9 @@ from backend.models.dashboard import Dashboard
 from backend.models.dashboard_refresh_run import DashboardRefreshRun
 
 logger = logging.getLogger(__name__)
+
+# Max stagger delay per dashboard (seconds) to avoid thundering herd
+STAGGER_MAX_SECONDS = 60
 
 
 @shared_task(name="dispatch_dashboard_refreshes")
@@ -39,9 +43,13 @@ def dispatch_dashboard_refreshes():
 
         logger.info(f"Dispatching refresh for {len(due_dashboards)} due dashboard(s)")
 
-        for dashboard in due_dashboards:
+        for idx, dashboard in enumerate(due_dashboards):
             try:
-                execute_dashboard_refresh.delay(dashboard.id)
+                # Stagger tasks to avoid thundering herd
+                countdown = random.uniform(0, STAGGER_MAX_SECONDS) + idx * 2
+                execute_dashboard_refresh.apply_async(
+                    args=[dashboard.id], countdown=countdown,
+                )
                 # Advance next_run_at using croniter
                 dashboard.next_run_at = croniter(dashboard.cron_expression, now).get_next(datetime)
                 dashboard.last_run_at = now

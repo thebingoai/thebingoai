@@ -295,6 +295,10 @@ async def refresh_widget(
             Dashboard.user_id == current_user.id,
         ).first()
 
+    # Cache metadata for responses
+    _cache_built_at = str(dashboard.cache_built_at) if dashboard and dashboard.cache_built_at else None
+    _cache_status = dashboard.cache_status if dashboard else None
+
     # Try cache path when dashboard has a ready cache and widget_id is provided
     if dashboard and dashboard.cache_status == 'ready' and request.widget_id:
         try:
@@ -317,6 +321,8 @@ async def refresh_widget(
                     [_to_json_safe(v) for v in row]
                     for row in result.rows
                 ],
+                cache_built_at=_cache_built_at,
+                cache_status=_cache_status,
             )
         except Exception as e:
             logger.warning(f"Cache read failed for widget {request.widget_id}, falling back to source DB: {e}")
@@ -360,6 +366,8 @@ async def refresh_widget(
                 [_to_json_safe(v) for v in row]
                 for row in result.rows
             ],
+            cache_built_at=_cache_built_at,
+            cache_status=_cache_status,
         )
 
     except ValueError as e:
@@ -398,6 +406,9 @@ async def refresh_dashboard_widgets(
     widgets = dashboard.widgets or []
     results: dict = {}
 
+    _cache_built_at = str(dashboard.cache_built_at) if dashboard.cache_built_at else None
+    _cache_status = dashboard.cache_status
+
     # Try cache path: open SQLite once, read all widget tables
     if dashboard.cache_status == 'ready':
         try:
@@ -430,7 +441,11 @@ async def refresh_dashboard_widgets(
                     logger.error(f"Cache read failed for widget {widget_id}: {e}")
                     results[widget_id] = {"error": str(e)}
 
-            return BulkRefreshResponse(widgets=results)
+            return BulkRefreshResponse(
+                widgets=results,
+                cache_built_at=_cache_built_at,
+                cache_status=_cache_status,
+            )
         except FileNotFoundError:
             logger.warning(f"Cache file not found for dashboard {dashboard_id}, falling back to source DB")
 
@@ -473,7 +488,11 @@ async def refresh_dashboard_widgets(
         finally:
             connector.close()
 
-    return BulkRefreshResponse(widgets=results)
+    return BulkRefreshResponse(
+        widgets=results,
+        cache_built_at=_cache_built_at,
+        cache_status=_cache_status,
+    )
 
 
 @router.post("/{dashboard_id}/materialize", status_code=202)
