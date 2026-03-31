@@ -208,7 +208,6 @@ async function loadDynamicOptions() {
         connection_id: connectionId,
         sql,
         mapping: { type: 'table', columnConfig: [{ column: 'option_value', label: 'Option' }] },
-        limit: 100,
       }) as { config: { rows: Record<string, any>[] } }
       const options = response.config.rows
         .map((r: Record<string, any>) => r.option_value ?? Object.values(r)[0])
@@ -221,7 +220,22 @@ async function loadDynamicOptions() {
   }
 }
 
+function initDateRangeDefaults() {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+
+  for (const control of props.config.controls) {
+    if (control.type !== 'date_range') continue
+    if (store.filterValues[control.key]) continue
+    store.setFilterValue(control.key, { from: fmt(sevenDaysAgo), to: fmt(yesterday) })
+  }
+}
+
 onMounted(() => {
+  initDateRangeDefaults()
   loadDynamicOptions()
   document.addEventListener('click', onClickOutside)
   document.addEventListener('scroll', onScroll, true)
