@@ -6,7 +6,7 @@ CHART_GUIDANCE = """### Chart Type Selection
 |---|---|---|---|
 | Categories < 8 | bar or pie | `sortBy: "value"` | w=6 or w=8 |
 | Categories 8-20 | bar | `indexAxis: "y"` (horizontal) | w=6 or w=8 |
-| Categories > 20 | bar + LIMIT in SQL | `sortBy: "value"` | w=6 or w=8 |
+| Categories > 20 | bar | `sortBy: "value"` | w=6 or w=8 |
 | Composition | bar | `stacked: true` | w=6 or w=8 |
 | Trend over time | line or area | — | w=6, w=8, or w=12 |
 | Part-of-whole < 8 | pie or doughnut | `showValues: true` | w=4 or w=6 (NEVER w=12) |
@@ -41,7 +41,6 @@ FROM orders o
 LEFT JOIN payments p ON o.id = p.order_id
 GROUP BY o.category
 ORDER BY count DESC
-LIMIT 10
 ```
 Mapping: `{"type": "chart", "labelColumn": "category", "datasetColumns": [{"column": "count", "label": "Orders"}]}`
 
