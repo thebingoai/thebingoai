@@ -27,7 +27,7 @@ FILTER_GUIDANCE = """### Key Rules
           "dimension": "region",
           "optionsSource": {
             "connectionId": 1,
-            "sql": "SELECT DISTINCT o.region AS option_value FROM orders o ORDER BY 1 LIMIT 50"
+            "sql": "SELECT DISTINCT o.region AS option_value FROM orders o ORDER BY 1"
           }
         },
         {
@@ -56,6 +56,6 @@ FILTER_GUIDANCE = """### Key Rules
 - Use dropdown for categorical dimensions with reasonable cardinality
 - Use date_range for temporal dimensions
 - Use search for free-text filtering (names, descriptions)
-- optionsSource SQL should use the baseJoin aliases (e.g., `o.region`), ORDER BY, and LIMIT 50
+- optionsSource SQL should use the baseJoin aliases (e.g., `o.region`) and ORDER BY
 - Every dimension you use as a filter must be included in the `build_dashboard_context` call
 """
