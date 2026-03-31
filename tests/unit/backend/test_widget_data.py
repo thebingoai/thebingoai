@@ -267,6 +267,92 @@ class TestRefreshWidget:
 
         connector.close.assert_called_once()
 
+    @patch(_PATCH_TRANSFORM)
+    @patch(_PATCH_CONNECTOR_FACTORY)
+    async def test_chart_sql_passes_through_without_limit(self, mock_get_connector, mock_transform):
+        """Verify the endpoint does not inject a LIMIT clause into chart SQL."""
+        mock_conn = _mock_connection()
+        db = _mock_db(mock_conn)
+        connector = _mock_connector()
+        mock_get_connector.return_value = connector
+        mock_transform.return_value = {}
+
+        original_sql = "SELECT category, COUNT(*) AS cnt FROM orders GROUP BY category ORDER BY cnt DESC"
+        request = WidgetRefreshRequest(
+            connection_id=1, sql=original_sql, mapping={"type": "chart"},
+        )
+
+        await refresh_widget(request=request, current_user=_mock_user(), db=db)
+
+        called_sql = connector.execute_query.call_args[0][0]
+        assert called_sql == original_sql
+        assert "LIMIT" not in called_sql.upper()
+
+    @patch(_PATCH_TRANSFORM)
+    @patch(_PATCH_CONNECTOR_FACTORY)
+    async def test_chart_sql_with_filters_no_limit_added(self, mock_get_connector, mock_transform):
+        """Filters add WHERE clauses but must not inject a LIMIT."""
+        mock_conn = _mock_connection()
+        db = _mock_db(mock_conn)
+        connector = _mock_connector()
+        mock_get_connector.return_value = connector
+        mock_transform.return_value = {}
+
+        request = WidgetRefreshRequest(
+            connection_id=1,
+            sql="SELECT region, SUM(sales) FROM orders GROUP BY region ORDER BY 2 DESC",
+            mapping={"type": "chart"},
+            filters=[FilterParam(column="status", op="eq", value="active")],
+        )
+
+        await refresh_widget(request=request, current_user=_mock_user(), db=db)
+
+        called_sql = connector.execute_query.call_args[0][0]
+        assert "LIMIT" not in called_sql.upper()
+        assert '"status" = %(_f0)s' in called_sql
+
+    @patch(_PATCH_TRANSFORM)
+    @patch(_PATCH_CONNECTOR_FACTORY)
+    async def test_filter_options_sql_passes_through_without_limit(self, mock_get_connector, mock_transform):
+        """Filter option queries should not have a LIMIT appended."""
+        mock_conn = _mock_connection()
+        db = _mock_db(mock_conn)
+        connector = _mock_connector(columns=["option_value"], rows=[("A",), ("B",)])
+        mock_get_connector.return_value = connector
+        mock_transform.return_value = {}
+
+        original_sql = "SELECT DISTINCT region AS option_value FROM orders ORDER BY 1"
+        request = WidgetRefreshRequest(
+            connection_id=1, sql=original_sql,
+            mapping={"type": "table", "columnConfig": [{"column": "option_value", "label": "Option"}]},
+        )
+
+        await refresh_widget(request=request, current_user=_mock_user(), db=db)
+
+        called_sql = connector.execute_query.call_args[0][0]
+        assert called_sql == original_sql
+        assert "LIMIT" not in called_sql.upper()
+
+    @patch(_PATCH_TRANSFORM)
+    @patch(_PATCH_CONNECTOR_FACTORY)
+    async def test_sql_with_existing_limit_preserved(self, mock_get_connector, mock_transform):
+        """User-provided LIMIT in SQL must be preserved as-is."""
+        mock_conn = _mock_connection()
+        db = _mock_db(mock_conn)
+        connector = _mock_connector()
+        mock_get_connector.return_value = connector
+        mock_transform.return_value = {}
+
+        original_sql = "SELECT name FROM customers ORDER BY name LIMIT 50"
+        request = WidgetRefreshRequest(
+            connection_id=1, sql=original_sql, mapping={"type": "table"},
+        )
+
+        await refresh_widget(request=request, current_user=_mock_user(), db=db)
+
+        called_sql = connector.execute_query.call_args[0][0]
+        assert called_sql == original_sql
+
 
 # ---------------------------------------------------------------------------
 # TestRefreshDashboardWidgets — mock db
