@@ -138,12 +138,17 @@
 }
 
 /* Page transitions — fade + slide from right */
-.page-fade-slide-enter-active {
+.page-fade-slide-enter-active,
+.page-fade-slide-leave-active {
   transition: opacity 0.3s ease-out, transform 0.3s ease-out;
 }
 .page-fade-slide-enter-from {
   opacity: 0;
   transform: translateX(20px);
+}
+.page-fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
 }
 
 @layer utilities {

@@ -220,16 +220,50 @@ async function loadDynamicOptions() {
   }
 }
 
-function initDateRangeDefaults() {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+async function initDateRangeDefaults() {
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
 
   for (const control of props.config.controls) {
     if (control.type !== 'date_range') continue
     if (store.filterValues[control.key]) continue
+
+    // If dateRangeSource is configured, query actual min/max dates from the data
+    if (control.dateRangeSource) {
+      try {
+        const { connectionId, sql } = control.dateRangeSource
+        const response = await api.dashboards.refreshWidget({
+          connection_id: connectionId,
+          sql,
+          mapping: { type: 'table', columnConfig: [{ column: 'min_date', label: 'min_date' }, { column: 'max_date', label: 'max_date' }] },
+        }) as { config: { rows: Record<string, any>[] } }
+        const row = response.config.rows?.[0]
+        const maxDate = row?.max_date
+        const minDate = row?.min_date
+
+        if (maxDate) {
+          const max = new Date(maxDate)
+          const from = new Date(max)
+          from.setDate(from.getDate() - 7)
+
+          // Clamp "from" to min_date if data range is less than 7 days
+          if (minDate) {
+            const min = new Date(minDate)
+            if (from < min) from.setTime(min.getTime())
+          }
+
+          store.setFilterValue(control.key, { from: fmt(from), to: fmt(max) })
+          continue
+        }
+      } catch {
+        // Fall back to today-based range on error
+      }
+    }
+
+    // Fallback: today-based range
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     store.setFilterValue(control.key, { from: fmt(sevenDaysAgo), to: fmt(yesterday) })
   }
 }

@@ -69,6 +69,7 @@ export interface FilterControl {
   multiple?: boolean                 // allow multi-select (dropdown only)
   options?: string[]                 // static fallback options
   optionsSource?: FilterOptionsSource // dynamic SQL-based options
+  dateRangeSource?: FilterOptionsSource // dynamic SQL to fetch min/max dates for date_range controls
 }
 
 export interface FilterWidgetConfig {

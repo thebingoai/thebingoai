@@ -35,7 +35,11 @@ FILTER_GUIDANCE = """### Key Rules
           "label": "Date",
           "key": "date",
           "column": "order_date",
-          "dimension": "order_date"
+          "dimension": "order_date",
+          "dateRangeSource": {
+            "connectionId": 1,
+            "sql": "SELECT MIN(o.order_date) AS min_date, MAX(o.order_date) AS max_date FROM orders o"
+          }
         },
         {
           "type": "search",
@@ -48,6 +52,14 @@ FILTER_GUIDANCE = """### Key Rules
   }
 }
 ```
+
+### Date Range Source
+
+- **date_range controls should include `dateRangeSource`** so the frontend can query the actual min/max dates from the data instead of defaulting to today
+- The SQL must return exactly two columns: `min_date` and `max_date`
+- Example SQL: `SELECT MIN(o.order_date) AS min_date, MAX(o.order_date) AS max_date FROM orders o`
+- Both `min_date` and `max_date` are required — the frontend uses `max_date` to compute the default "to" date and `min_date` to clamp the "from" date
+- Use the same baseJoin aliases as other widget queries (e.g., `o.order_date`)
 
 ### Best Practices
 

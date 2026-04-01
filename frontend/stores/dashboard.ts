@@ -351,6 +351,7 @@ export const useDashboardStore = defineStore('dashboard', {
               mapping: widget.dataSource.mapping as any,
               filters,
               dashboard_id: this.currentDashboardId ?? undefined,
+              widget_id: widget.id,
               widget_sources: widget.sources ?? undefined,
             }) as { config: Record<string, any>; refreshed_at: string }
             Object.assign(widget.widget.config, response.config)

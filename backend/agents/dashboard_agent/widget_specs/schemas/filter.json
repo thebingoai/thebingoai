@@ -21,6 +21,15 @@
             "connectionId": { "type": "number", "description": "Database connection ID" },
             "sql":          { "type": "string", "description": "SQL query, e.g. SELECT DISTINCT col AS option_value FROM table ORDER BY 1" }
           }
+        },
+        "dateRangeSource": {
+          "type": "object",
+          "required": false,
+          "description": "Dynamic SQL to fetch min/max dates for date_range controls. SQL must return min_date and max_date columns",
+          "fields": {
+            "connectionId": { "type": "number", "description": "Database connection ID" },
+            "sql":          { "type": "string", "description": "SQL query returning min_date and max_date columns, e.g. SELECT MIN(t.date_col) AS min_date, MAX(t.date_col) AS max_date FROM table t" }
+          }
         }
       }
     }

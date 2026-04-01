@@ -160,6 +160,55 @@
           </div>
         </template>
 
+        <!-- Row 3: Date range source (date_range only) -->
+        <template v-if="control.type === 'date_range'">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Date Range Source</span>
+              <button
+                v-if="editMode"
+                type="button"
+                class="rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+                :class="control.dateRangeSource
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
+                @click="toggleDateRangeSource(control)"
+              >
+                {{ control.dateRangeSource ? 'Enabled' : 'Enable' }}
+              </button>
+            </div>
+            <template v-if="control.dateRangeSource">
+              <div class="space-y-1">
+                <label class="text-[10px] text-gray-400">Connection</label>
+                <select
+                  :value="control.dateRangeSource?.connectionId ?? ''"
+                  :disabled="!editMode"
+                  class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
+                  @change="onDateRangeConnectionChange(control, Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option value="" disabled>Select connection…</option>
+                  <option v-for="conn in connections" :key="conn.id" :value="conn.id">
+                    {{ conn.name }}
+                  </option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-gray-400">SQL Query (must return min_date and max_date)</label>
+                <textarea
+                  :value="control.dateRangeSource?.sql ?? ''"
+                  rows="2"
+                  placeholder="SELECT MIN(t.date_col) AS min_date, MAX(t.date_col) AS max_date FROM table t"
+                  class="w-full rounded border border-gray-200 bg-white px-2 py-1 font-mono text-xs text-gray-800 leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                  :readonly="!editMode"
+                  :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+                  spellcheck="false"
+                  @input="onDateRangeSqlInput(control, ($event.target as HTMLTextAreaElement).value)"
+                />
+              </div>
+            </template>
+          </div>
+        </template>
+
         <!-- Remove button -->
         <div v-if="editMode" class="flex justify-end">
           <button
@@ -246,6 +295,9 @@ function onTypeChange(control: FilterControl) {
     delete control.optionsSource
     delete (control as any).multiple
   }
+  if (control.type !== 'date_range') {
+    delete control.dateRangeSource
+  }
 }
 
 function getOptionsMode(control: FilterControl): 'static' | 'dynamic' {
@@ -282,6 +334,33 @@ function onDynamicSqlInput(control: FilterControl, sql: string) {
     control.optionsSource = { connectionId: 0, sql }
   } else {
     control.optionsSource.sql = sql
+  }
+  emitUpdate()
+}
+
+function toggleDateRangeSource(control: FilterControl) {
+  if (control.dateRangeSource) {
+    delete control.dateRangeSource
+  } else {
+    control.dateRangeSource = { connectionId: 0, sql: '' }
+  }
+  emitUpdate()
+}
+
+function onDateRangeConnectionChange(control: FilterControl, connId: number) {
+  if (!control.dateRangeSource) {
+    control.dateRangeSource = { connectionId: connId, sql: '' }
+  } else {
+    control.dateRangeSource.connectionId = connId
+  }
+  emitUpdate()
+}
+
+function onDateRangeSqlInput(control: FilterControl, sql: string) {
+  if (!control.dateRangeSource) {
+    control.dateRangeSource = { connectionId: 0, sql }
+  } else {
+    control.dateRangeSource.sql = sql
   }
   emitUpdate()
 }

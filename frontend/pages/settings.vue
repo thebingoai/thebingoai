@@ -70,7 +70,7 @@ import { X } from 'lucide-vue-next'
 const router = useRouter()
 const { isMobile } = useIsMobile()
 
-const { data: appInfo } = await useFetch('/api/info')
+const { data: appInfo } = useLazyFetch('/api/info')
 
 const sections = [
   { id: 'connections', name: 'Connections' },
