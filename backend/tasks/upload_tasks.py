@@ -60,6 +60,15 @@ celery_app.conf.beat_schedule = {
     },
 }
 
+from celery.signals import worker_process_init
+
+@worker_process_init.connect
+def on_worker_process_init(**kwargs):
+    """Load plugins so plugin-registered connectors are available in worker tasks."""
+    from backend.plugins.loader import discover_and_load_plugins
+    discover_and_load_plugins()
+    logger.info("Celery worker process: plugins loaded")
+
 
 @celery_app.task(bind=True, max_retries=settings.celery_max_retries)
 def process_upload_async(
