@@ -56,7 +56,7 @@ export const useChat = () => {
 
     /** Extract compact arg summary for the steps log (skip connection_id, show key value). */
     const compactArg = (args: Record<string, any>): string => {
-      const meaningful = Object.entries(args).filter(([k]) => k !== 'connection_id' && !k.startsWith('_'))
+      const meaningful = Object.entries(args).filter(([k]) => k !== 'connection_id' && k !== 'sql' && !k.startsWith('_'))
       if (meaningful.length === 0) return ''
       const [key, val] = meaningful[0]
       const str = typeof val === 'string' ? val : JSON.stringify(val)

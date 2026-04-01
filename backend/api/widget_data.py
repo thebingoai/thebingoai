@@ -33,8 +33,8 @@ def _depth_at(sql: str, pos: int) -> int:
     return depth
 
 
-def _find_top_level_matches(sql: str, pattern: re.Pattern) -> list[re.Match]:
-    """Return all matches of *pattern* that sit at parenthesis depth 0."""
+def _find_matches_at_depth(sql: str, pattern: re.Pattern, target_depth: int = 0) -> list[re.Match]:
+    """Return all matches of *pattern* that sit at the given parenthesis depth."""
     matches: list[re.Match] = []
     depth = 0
     i = 0
@@ -46,7 +46,7 @@ def _find_top_level_matches(sql: str, pattern: re.Pattern) -> list[re.Match]:
         elif ch == ')':
             depth -= 1
             i += 1
-        elif depth == 0:
+        elif depth == target_depth:
             m = pattern.match(sql, i)
             if m:
                 matches.append(m)
@@ -56,6 +56,11 @@ def _find_top_level_matches(sql: str, pattern: re.Pattern) -> list[re.Match]:
         else:
             i += 1
     return matches
+
+
+def _find_top_level_matches(sql: str, pattern: re.Pattern) -> list[re.Match]:
+    """Return all matches of *pattern* that sit at parenthesis depth 0."""
+    return _find_matches_at_depth(sql, pattern, target_depth=0)
 
 
 def _dimension_applies_to_sources(
@@ -137,28 +142,85 @@ def inject_filters(
 
     condition_clause = ' AND '.join(conditions)
 
-    # Find ALL top-level (depth-0) WHERE and keyword matches
+    is_cte = sql.lstrip().upper().startswith('WITH')
+
+    if is_cte:
+        modified = _inject_into_cte(sql, condition_clause)
+    else:
+        modified = _inject_into_simple(sql, condition_clause)
+
+    return modified, params
+
+
+def _inject_into_simple(sql: str, condition_clause: str) -> str:
+    """Inject filter conditions into a simple (non-CTE) SQL query."""
     where_matches = _find_top_level_matches(sql, _WHERE_PATTERN)
     keyword_matches = _find_top_level_matches(sql, _KEYWORD_PATTERN)
 
     if where_matches:
-        # Use the LAST top-level WHERE (the outermost query's WHERE)
         last_where = where_matches[-1]
-        # Find the first top-level keyword AFTER this WHERE
         after_keywords = [m for m in keyword_matches if m.start() > last_where.end()]
         if after_keywords:
             insert_pos = after_keywords[0].start()
-            modified = sql[:insert_pos].rstrip() + f' AND {condition_clause} ' + sql[insert_pos:]
+            return sql[:insert_pos].rstrip() + f' AND {condition_clause} ' + sql[insert_pos:]
         else:
-            modified = sql.rstrip() + f' AND {condition_clause}'
+            return sql.rstrip() + f' AND {condition_clause}'
     else:
         if keyword_matches:
             insert_pos = keyword_matches[0].start()
-            modified = sql[:insert_pos].rstrip() + f' WHERE {condition_clause} ' + sql[insert_pos:]
+            return sql[:insert_pos].rstrip() + f' WHERE {condition_clause} ' + sql[insert_pos:]
         else:
-            modified = sql.rstrip() + f' WHERE {condition_clause}'
+            return sql.rstrip() + f' WHERE {condition_clause}'
 
-    return modified, params
+
+def _inject_into_cte(sql: str, condition_clause: str) -> str:
+    """Inject filter conditions into the first CTE body where the base table is queried.
+
+    For queries like:
+        WITH b AS (SELECT ... FROM hr_dataset h)
+        SELECT ... FROM b GROUP BY ...
+
+    The filter is injected inside the first CTE body (depth 1) where base table
+    columns are accessible, rather than the outer SELECT which only sees CTE output columns.
+    """
+    # Find the boundaries of the first CTE body: WITH <name> AS ( ... )
+    cte_open = _find_first_cte_open_paren(sql)
+    cte_close = _find_first_cte_close_paren(sql)
+    if cte_open is None or cte_close is None:
+        return _inject_into_simple(sql, condition_clause)
+
+    # Extract the first CTE body and inject filter into it as a "simple" query
+    cte_body = sql[cte_open + 1:cte_close]
+    modified_body = _inject_into_simple(cte_body, condition_clause)
+    return sql[:cte_open + 1] + modified_body + sql[cte_close:]
+
+
+def _find_first_cte_open_paren(sql: str) -> int | None:
+    """Find the opening '(' of the first CTE body (WITH <name> AS *(*...)."""
+    depth = 0
+    for i, ch in enumerate(sql):
+        if ch == '(':
+            if depth == 0:
+                return i
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+    return None
+
+
+def _find_first_cte_close_paren(sql: str) -> int | None:
+    """Find the closing ')' of the first CTE body."""
+    depth = 0
+    found_open = False
+    for i, ch in enumerate(sql):
+        if ch == '(':
+            depth += 1
+            found_open = True
+        elif ch == ')':
+            depth -= 1
+            if found_open and depth == 0:
+                return i
+    return None
 
 def inject_filters_sqlite(
     table_name: str,
