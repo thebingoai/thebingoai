@@ -11,7 +11,9 @@ COPY --from=builder /install /usr/local
 COPY backend/ ./backend/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser \
+    && mkdir -p /app/data/schemas /app/data/contexts \
+    && chown -R appuser:appuser /app
 USER appuser
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
