@@ -300,6 +300,16 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
             connection.table_count = 1
             db.commit()
 
+            # Kick off background profiling
+            if connection.schema_json_path:
+                try:
+                    from backend.tasks.profiling_tasks import profile_connection
+                    connection.profiling_status = "pending"
+                    db.commit()
+                    profile_connection.delay(connection.id)
+                except Exception as e:
+                    logger.error("Failed to queue profiling for dataset connection %s: %s", connection.id, e)
+
             # Auto-enable for creator's teams
             if settings.enable_governance:
                 user_memberships = (
