@@ -1,6 +1,6 @@
 {
   "name": "bingo-frontend",
-  "version": "0.2.17",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,9 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "type-check": "nuxt typecheck"
+    "type-check": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.19",
@@ -38,13 +40,18 @@
     "vue-sonner": "^1.2.1"
   },
   "devDependencies": {
+    "@nuxt/test-utils": "^4.0.0",
+    "@pinia/testing": "^1.0.3",
     "@playwright/test": "^1.58.2",
     "@types/animejs": "^3.1.13",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.2.3",
     "@types/sql.js": "^1.4.9",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^20.8.9",
     "playwright": "^1.58.2",
     "typescript": "^5.7.3",
+    "vitest": "^4.1.2",
     "vue-tsc": "^2.2.0"
   }
 }

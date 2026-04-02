@@ -89,3 +89,95 @@ def sample_data_context():
             "joins": ["LEFT JOIN payments p ON o.id = p.order_id"],
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Shared utility fixtures (Phase 6b)
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock, AsyncMock
+
+
+@pytest.fixture
+def fake_redis():
+    """MagicMock standing in for a Redis client.
+
+    Provides common Redis methods as MagicMock/AsyncMock so tests can
+    assert calls without a live Redis instance.
+    """
+    redis = MagicMock()
+    redis.get = MagicMock(return_value=None)
+    redis.set = MagicMock(return_value=True)
+    redis.delete = MagicMock(return_value=1)
+    redis.exists = MagicMock(return_value=0)
+    redis.expire = MagicMock(return_value=True)
+    redis.pipeline = MagicMock(return_value=MagicMock())
+    return redis
+
+
+@pytest.fixture
+def mock_llm_provider():
+    """MagicMock mimicking BaseLLMProvider.
+
+    Both ``chat`` and ``chat_stream`` are async mocks so they can be
+    awaited in tests that exercise LLM-dependent code paths.
+    """
+    provider = MagicMock()
+    provider.model = "mock-model"
+    provider.chat = AsyncMock(return_value="mocked llm response")
+
+    async def _stream(*_args, **_kwargs):
+        for token in ["hello", " ", "world"]:
+            yield token
+
+    provider.chat_stream = MagicMock(side_effect=_stream)
+    return provider
+
+
+@pytest.fixture
+def test_client():
+    """FastAPI TestClient with auth and DB dependency overrides.
+
+    The app lifespan is skipped (Qdrant / plugin discovery not needed).
+    ``get_current_user`` returns a stub User and ``get_db`` yields
+    an in-memory SQLite session.
+    """
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    from backend.api import routes
+    from backend.auth.dependencies import get_current_user
+    from backend.database.session import get_db
+
+    # Lightweight app without the full lifespan
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api")
+
+    # Stub user for auth
+    stub_user = MagicMock()
+    stub_user.id = "test-user-id"
+    stub_user.email = "test@example.com"
+    stub_user.auth_provider = "supabase"
+
+    app.dependency_overrides[get_current_user] = lambda: stub_user
+
+    # In-memory SQLite session for DB
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[
+        Organization.__table__, User.__table__,
+        Dashboard.__table__, DashboardRefreshRun.__table__,
+    ])
+    TestSession = sessionmaker(bind=engine)
+
+    def _override_db():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = _override_db
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client
