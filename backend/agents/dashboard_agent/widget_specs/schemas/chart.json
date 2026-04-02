@@ -17,7 +17,9 @@
         "showGrid":         { "type": "boolean", "description": "Show grid lines" },
         "showTooltips":     { "type": "boolean", "description": "Show hover tooltips" },
         "sortBy":           { "type": "enum",    "values": ["none", "label", "value"], "description": "Sort bars by label or value (skip for time-series)" },
-        "sortDirection":    { "type": "enum",    "values": ["asc", "desc"], "description": "Sort direction" }
+        "sortDirection":    { "type": "enum",    "values": ["asc", "desc"], "description": "Sort direction" },
+        "roundValues":      { "type": "boolean", "description": "Round displayed data labels to fixed decimal places" },
+        "decimalPlaces":    { "type": "number",  "description": "Decimal places for rounding displayed values (default: 2)" }
       }
     },
     "animation": {

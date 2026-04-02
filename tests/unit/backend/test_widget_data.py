@@ -364,6 +364,8 @@ class TestRefreshDashboardWidgets:
     def _make_dashboard(self, widgets=None):
         dashboard = MagicMock()
         dashboard.widgets = widgets
+        dashboard.cache_status = None
+        dashboard.cache_built_at = None
         return dashboard
 
     @patch(_PATCH_TRANSFORM)

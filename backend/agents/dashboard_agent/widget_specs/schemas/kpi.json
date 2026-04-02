@@ -3,7 +3,9 @@
   "config": {
     "label":  { "type": "string",  "required": true,  "description": "Display label for the KPI card. Use 'label', NOT 'title'" },
     "prefix": { "type": "string",  "required": false, "description": "Value prefix, e.g. '$', 'RM'" },
-    "suffix": { "type": "string",  "required": false, "description": "Value suffix, e.g. '%', 'units'" }
+    "suffix": { "type": "string",  "required": false, "description": "Value suffix, e.g. '%', 'units'" },
+    "roundValue": { "type": "boolean", "required": false, "description": "Round the KPI value to a fixed number of decimal places" },
+    "decimalPlaces": { "type": "number", "required": false, "description": "Number of decimal places to round KPI value to (default: 2)" }
   },
   "mapping": {
     "valueColumn":            { "type": "string",  "required": true,  "description": "Column name for the main KPI value" },
