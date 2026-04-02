@@ -299,10 +299,6 @@
                 <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Source File</label>
                 <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.source_filename }}</p>
               </div>
-              <div v-if="editingConnection.dataset_table_name">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Table Name</label>
-                <p class="text-sm text-gray-900 mt-0.5 font-mono break-all">{{ editingConnection.dataset_table_name }}</p>
-              </div>
             </div>
             <div class="border-t border-gray-200 pt-4 mt-6 hidden md:block">
               <div class="flex items-center justify-between">
@@ -662,10 +658,6 @@ const isDatasetConnection = computed(() => {
 
 // Computed
 const typePickerTitle = computed(() => {
-  if (showFormSheet.value) {
-    const typeName = getConnectorType(form.value.db_type)?.display_name || form.value.db_type
-    return `Choose a Database : ${typeName} Connection`
-  }
   return 'Choose a Database'
 })
 
@@ -842,7 +834,6 @@ function toggleTable(key: string) {
 }
 
 function handleTypePickerClose(value: boolean) {
-  if (value === false && showFormSheet.value) return
   showTypePicker.value = value
 }
 
@@ -856,21 +847,22 @@ function selectConnectorType(typeId: string) {
   clearDatasetFile()
   datasetForm.value = { name: '' }
   datasetFormErrors.value = {}
-  // Keep type picker open, open form sheet on top
+  // Close type picker first to avoid HeadlessUI focus trap conflict
+  showTypePicker.value = false
   showFormSheet.value = true
 }
 
 function goBackToTypePicker() {
   showFormSheet.value = false
-  // showTypePicker stays open
+  showTypePicker.value = true
 }
 
 function handleFormSheetClose(value: boolean) {
   if (value === false) {
     testSuccess.value = false
-    // If creating (type picker is open), go back to type picker
-    // If editing (no type picker), close form sheet
-    if (showTypePicker.value) {
+    // If creating, go back to type picker
+    // If editing, close form sheet
+    if (!editingConnection.value) {
       goBackToTypePicker()
     } else {
       showFormSheet.value = false
