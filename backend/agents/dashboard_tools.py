@@ -94,16 +94,17 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
     Returns a list of warning strings. Empty list means no issues found.
     """
     from backend.services.schema_discovery import load_schema_file
-    import re
+    from backend.agents.sql_validation import (
+        extract_table_refs, extract_cte_names, get_all_tables,
+        validate_tables, validate_sql_columns, validate_mapping_columns,
+    )
 
-    # Collect unique connection IDs
+    # Collect unique connection IDs and load schemas
     connection_ids = {
         w["dataSource"]["connectionId"]
         for w in widgets
         if "dataSource" in w
     }
-
-    # Load schemas
     schemas: dict[int, dict] = {}
     for cid in connection_ids:
         try:
@@ -114,52 +115,7 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
     if not schemas:
         return []
 
-    def _get_tables_dict(schema_json: dict) -> dict:
-        """Extract {table_name: {columns: [...]}} from flat or nested schema format."""
-        # Flat: {"tables": {...}} or {"tables": [...]}
-        tables = schema_json.get("tables", {})
-        if tables:
-            return tables
-        # Nested: {"schemas": {"public": {"tables": {...}}}}
-        for schema_data in schema_json.get("schemas", {}).values():
-            if isinstance(schema_data, dict) and "tables" in schema_data:
-                return schema_data["tables"]
-        return {}
-
-    def _get_table_columns(schema_json: dict, table_name: str) -> set[str]:
-        """Return lowercase column names for a table from the schema."""
-        tables = _get_tables_dict(schema_json)
-        if not tables:
-            return set()
-        # Flat format: {"tables": [{"name": "...", "columns": [...]}]}
-        if isinstance(tables, list):
-            for t in tables:
-                if t.get("name", "").lower() == table_name.lower():
-                    cols = t.get("columns", [])
-                    return {
-                        (c["name"].lower() if isinstance(c, dict) else c.lower())
-                        for c in cols
-                    }
-        # Dict format: {"tables": {"tableName": {"columns": [...]}}}
-        elif isinstance(tables, dict):
-            for tname, tdata in tables.items():
-                if tname.lower() == table_name.lower():
-                    cols = tdata.get("columns", []) if isinstance(tdata, dict) else []
-                    return {
-                        (c["name"].lower() if isinstance(c, dict) else c.lower())
-                        for c in cols
-                    }
-        return set()
-
-    def _get_all_tables(schema_json: dict) -> set[str]:
-        tables = _get_tables_dict(schema_json)
-        if isinstance(tables, list):
-            return {t.get("name", "").lower() for t in tables if t.get("name")}
-        elif isinstance(tables, dict):
-            return {t.lower() for t in tables}
-        return set()
-
-    warnings = []
+    warnings: list[str] = []
     for w in widgets:
         if "dataSource" not in w:
             continue
@@ -173,174 +129,35 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
         if not schema_json:
             continue
 
-        # Extract table names and optional aliases referenced in SQL (FROM / JOIN)
-        # Negative lookahead prevents greedy alias capture from consuming JOIN keywords
-        _table_alias_re = re.compile(
-            r'\b(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_.]*)'
-            r'(?:\s+(?:AS\s+)?'
-            r'(?!(?:JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|NATURAL|ON|WHERE|GROUP|ORDER|HAVING|LIMIT|SET|AND|OR|USING)\b)'
-            r'([a-zA-Z_][a-zA-Z0-9_]*))?',
-            re.IGNORECASE,
-        )
-        _table_alias_matches = _table_alias_re.findall(sql)
-        if not _table_alias_matches:
+        table_matches, table_aliases = extract_table_refs(sql)
+        if not table_matches:
             continue
-        # _table_alias_matches is list of (table_name, alias_or_empty)
-        _JOIN_KEYWORDS = {"on", "where", "group", "order", "having", "limit", "left",
-                          "right", "inner", "outer", "full", "cross", "natural", "join",
-                          "set", "returning", "using", "and", "or"}
-        table_matches = [m[0] for m in _table_alias_matches]
-        table_aliases: set[str] = {
-            m[1].lower() for m in _table_alias_matches
-            if m[1] and m[1].lower() not in _JOIN_KEYWORDS
-        }
 
-        all_schema_tables = _get_all_tables(schema_json)
-        # Extract CTE names to exclude from table validation
-        cte_names: set[str] = set()
-        cte_name_re = re.compile(
-            r'(?:\bWITH\b\s+(?:RECURSIVE\s+)?)([a-zA-Z_]\w*)\s+AS\s*\('
-            r'|,\s*([a-zA-Z_]\w*)\s+AS\s*\(',
-            re.IGNORECASE,
-        )
-        for m in cte_name_re.finditer(sql):
-            name = m.group(1) or m.group(2)
-            if name:
-                cte_names.add(name.lower())
-
+        cte_names = extract_cte_names(sql)
         known_virtual = cte_names | table_aliases
-        referenced_table = table_matches[0].split(".")[-1]  # Handle schema.table notation
+        all_schema_tables = get_all_tables(schema_json)
+        referenced_table = table_matches[0].split(".")[-1]
 
-        # Validate ALL referenced tables exist (not just the first)
-        tables_valid = True
-        for tbl_match in table_matches:
-            tbl_name = tbl_match.split(".")[-1]
-            if tbl_name.lower() in known_virtual:
-                continue
-            if all_schema_tables and tbl_name.lower() not in all_schema_tables:
-                warnings.append(
-                    f"Widget '{widget_id}': table '{tbl_name}' not found in schema. "
-                    f"Available tables: {', '.join(sorted(all_schema_tables))}"
-                )
-                tables_valid = False
-        if not tables_valid:
+        # Validate tables
+        table_warnings = validate_tables(table_matches, known_virtual, all_schema_tables, widget_id)
+        if table_warnings:
+            warnings.extend(table_warnings)
             continue
 
-        # Build merged column set across all referenced tables (handles JOINs)
-        all_joined_tables = [m.split(".")[-1] for m in table_matches]
-        merged_columns: set[str] = set()
-        for tbl in all_joined_tables:
-            merged_columns |= _get_table_columns(schema_json, tbl)
-
-        if not merged_columns:
-            continue
-
-        # --- SQL column validation ---
-        # SQL keywords, functions, and common literals to exclude from column checks
-        _SQL_KEYWORDS = {
-            "select", "from", "where", "group", "by", "order", "having", "join",
-            "left", "right", "inner", "outer", "full", "on", "as", "and", "or",
-            "not", "in", "is", "null", "true", "false", "distinct", "limit",
-            "offset", "union", "all", "case", "when", "then", "else", "end",
-            "between", "like", "ilike", "exists", "asc", "desc", "with",
-            "recursive", "filter", "within", "rows", "range",
-        }
-        _SQL_FUNCTIONS = {
-            "count", "sum", "avg", "min", "max", "coalesce", "nullif", "cast",
-            "to_char", "to_date", "to_number", "extract", "date_part", "now",
-            "current_date", "current_timestamp", "replace", "trim", "lower",
-            "upper", "length", "substring", "concat", "round", "floor", "ceil",
-            "abs", "mod", "greatest", "least", "row_number", "rank", "dense_rank",
-            "lag", "lead", "first_value", "last_value", "over", "partition",
-            "interval", "date_trunc", "generate_series", "unnest", "array_agg",
-            "string_agg", "json_agg", "jsonb_agg",
-            "percent_rank", "cume_dist", "ntile", "nth_value",
-            "preceding", "following", "unbounded",
-        }
-
-        # Extract column-bearing clauses: SELECT ... FROM, WHERE ..., GROUP BY ..., ORDER BY ..., HAVING ...
-        clause_pattern = re.compile(
-            r'SELECT\s+(.*?)\s+FROM\b'
-            r'|WHERE\s+(.*?)(?:\s+GROUP\s+BY|\s+ORDER\s+BY|\s+HAVING|\s+LIMIT|$)'
-            r'|GROUP\s+BY\s+(.*?)(?:\s+HAVING|\s+ORDER\s+BY|\s+LIMIT|$)'
-            r'|ORDER\s+BY\s+(.*?)(?:\s+LIMIT|$)'
-            r'|HAVING\s+(.*?)(?:\s+ORDER\s+BY|\s+LIMIT|$)',
-            re.IGNORECASE | re.DOTALL,
+        # Validate SQL columns
+        col_warnings = validate_sql_columns(
+            sql, schema_json, table_matches, table_aliases, all_schema_tables, widget_id,
         )
-        clause_text = " ".join(
-            part for m in clause_pattern.finditer(sql) for part in m.groups() if part
+        if col_warnings:
+            warnings.extend(col_warnings)
+            continue  # Skip mapping validation — fix SQL first
+
+        # Validate mapping columns
+        mapping_warnings = validate_mapping_columns(
+            sql, mapping, mapping.get("type", ""), schema_json,
+            table_matches, referenced_table, widget_id,
         )
-
-        # Extract bare identifiers, skipping aliases defined with AS
-        # Strip quoted identifiers (e.g. "Average points", [Unnamed: 0])
-        # so the regex below doesn't split them into spurious column references
-        clause_text = re.sub(r'"[^"]*"', '', clause_text)
-        clause_text = re.sub(r'\[[^\]]*\]', '', clause_text)
-        # Remove AS <alias> to avoid alias names being treated as column refs
-        clause_text = re.sub(r'\bAS\s+[a-zA-Z_][a-zA-Z0-9_]*', '', clause_text, flags=re.IGNORECASE)
-        # Strip table alias dot-prefixes (e.g. "f.id" → "id") so aliases
-        # aren't mistaken for column references
-        for _alias in table_aliases:
-            clause_text = re.sub(rf'\b{re.escape(_alias)}\.', '', clause_text)
-
-        raw_identifiers = re.findall(r'\b([a-z_][a-z0-9_]*)\b', clause_text.lower())
-        candidate_columns = {
-            tok for tok in raw_identifiers
-            if tok not in _SQL_KEYWORDS
-            and tok not in _SQL_FUNCTIONS
-            and not tok.isdigit()
-        }
-
-        # Also exclude table names and aliases (they appear in JOINs/subqueries)
-        candidate_columns -= {t.lower() for t in all_joined_tables}
-        candidate_columns -= all_schema_tables  # table names used as schema-qualified refs
-        candidate_columns -= table_aliases
-
-        bad_sql_columns = [c for c in sorted(candidate_columns) if c not in merged_columns]
-        if bad_sql_columns:
-            tables_checked = ", ".join(all_joined_tables)
-            warnings.append(
-                f"Widget '{widget_id}': SQL references column(s) {bad_sql_columns} "
-                f"that do not exist in table(s) '{tables_checked}'. "
-                f"Available columns: {', '.join(sorted(merged_columns))}"
-            )
-            continue  # Skip mapping validation for this widget — fix SQL first
-
-        # --- Mapping column validation (against SQL aliases / result columns) ---
-        # Get columns for the primary table (for mapping alias check)
-        table_columns = _get_table_columns(schema_json, referenced_table)
-
-        # Extract SQL output aliases (SELECT ... AS alias)
-        alias_pattern = re.compile(r'\bAS\s+([a-zA-Z_][a-zA-Z0-9_]*)', re.IGNORECASE)
-        sql_aliases = {m.group(1).lower() for m in alias_pattern.finditer(sql)}
-        # Mapping columns are aliases in the SQL output, not raw table columns
-        valid_output_cols = merged_columns | sql_aliases
-
-        # Extract mapping columns to validate
-        mapping_columns = []
-        mapping_type = mapping.get("type")
-        if mapping_type == "kpi":
-            for field in ("valueColumn", "trendValueColumn", "sparklineXColumn", "sparklineYColumn", "sparklineSortColumn"):
-                if mapping.get(field):
-                    mapping_columns.append(mapping[field])
-        elif mapping_type == "chart":
-            if mapping.get("labelColumn"):
-                mapping_columns.append(mapping["labelColumn"])
-            for ds_col in mapping.get("datasetColumns", []):
-                if isinstance(ds_col, dict) and ds_col.get("column"):
-                    mapping_columns.append(ds_col["column"])
-        elif mapping_type == "table":
-            for col_cfg in mapping.get("columnConfig", []):
-                if isinstance(col_cfg, dict) and col_cfg.get("column"):
-                    mapping_columns.append(col_cfg["column"])
-
-        bad_columns = [c for c in mapping_columns if c.lower() not in valid_output_cols]
-        if bad_columns:
-            warnings.append(
-                f"Widget '{widget_id}': mapping column(s) {bad_columns} not found in "
-                f"SQL output or table '{referenced_table}'. "
-                f"Available output columns: {', '.join(sorted(valid_output_cols))}"
-            )
+        warnings.extend(mapping_warnings)
 
     return warnings
 

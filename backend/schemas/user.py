@@ -7,10 +7,6 @@ class UserBase(BaseModel):
     email: EmailStr
 
 
-class UserCreate(UserBase):
-    password: str
-
-
 class UserResponse(UserBase):
     id: str
     org_id: str | None = None
