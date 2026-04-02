@@ -81,6 +81,139 @@ async def _get_user_from_token(token: str) -> Optional[User]:
         db.close()
 
 
+async def _resolve_conversation(
+    db: Session,
+    user: User,
+    thread_id: Optional[str],
+    connection_ids: list,
+    send,
+    request_id: str,
+):
+    """Get or create conversation, validate connection access.
+    Returns (conversation, is_new). Raises on error (sends error to client first)."""
+    is_new = not thread_id
+
+    if thread_id:
+        conversation = ConversationService.get_conversation_by_thread(db, thread_id, user.id)
+        if not conversation:
+            await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": "Conversation not found"})
+            return None, False
+    else:
+        conversation = ConversationService.create_conversation(db, user.id, title="New Task")
+
+    # Validate connection access
+    if connection_ids:
+        accessible = db.query(DatabaseConnection.id).filter(
+            DatabaseConnection.id.in_(connection_ids),
+            DatabaseConnection.user_id == user.id,
+        ).all()
+        if len(accessible) != len(connection_ids):
+            await send({"type": "chat.error", "request_id": request_id, "thread_id": conversation.thread_id, "content": "Access denied to one or more connections"})
+            return None, False
+
+    return conversation, is_new
+
+
+async def _resolve_attachments(file_ids, chat_file_service):
+    """Resolve file_ids to file contents and attachment metadata.
+    Returns (file_contents, attachments)."""
+    file_contents = []
+    if file_ids:
+        for fid in file_ids:
+            file_data = chat_file_service.get_file(fid)
+            if file_data is not None:
+                file_contents.append(file_data)
+
+    attachments = [
+        {
+            "file_id": f["file_id"],
+            "name": f["original_name"],
+            "type": f["mime_type"],
+            "size": f["size"],
+            "content_type": f["content_type"],
+            "storage_key": f.get("storage_key"),
+        }
+        for f in (file_contents or [])
+    ]
+    return file_contents, attachments
+
+
+async def _persist_and_postprocess(
+    db: Session,
+    conversation,
+    is_new: bool,
+    user_message: str,
+    final_message: str,
+    collected_steps: list,
+    send,
+    request_id: str,
+    user: User,
+    active_thread_id: str,
+):
+    """Persist assistant message, steps, generate title/summary, broadcast completion."""
+    # Persist assistant message (save even if empty — tool-only turns
+    # like ask_user_question still need steps persisted)
+    if final_message or collected_steps:
+        assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message or "")
+
+        if collected_steps:
+            from backend.models.agent_step import AgentStep
+            for i, step in enumerate(collected_steps):
+                db.add(AgentStep(
+                    message_id=assistant_msg.id,
+                    step_number=i + 1,
+                    agent_type=step.get("agent_type", "unknown"),
+                    step_type=step.get("step_type", "unknown"),
+                    tool_name=step.get("tool_name"),
+                    content=step.get("content", {}),
+                    duration_ms=step.get("duration_ms"),
+                ))
+            db.commit()
+
+    # Generate title for new conversations
+    if is_new and final_message:
+        try:
+            title = await _generate_title(user_message, final_message)
+            ConversationService.update_title(db, conversation.id, title)
+            await send({
+                "type": "chat.title",
+                "request_id": request_id,
+                "thread_id": conversation.thread_id,
+                "content": title,
+            })
+        except Exception as title_err:
+            logger.warning(f"Title generation failed: {title_err}")
+
+    # Generate/update conversation summary
+    if final_message:
+        try:
+            from backend.services.summary_service import SummaryService
+            summary = await SummaryService.generate_or_update_summary(
+                db, conversation.id, user_message, final_message
+            )
+            token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+            token_limit = SummaryService.get_token_limit()
+            await send({
+                "type": "chat.summary",
+                "request_id": request_id,
+                "thread_id": conversation.thread_id,
+                "content": {
+                    "text": summary.summary_text,
+                    "updated_at": summary.updated_at.isoformat(),
+                    "token_count": token_count,
+                    "token_limit": token_limit,
+                }
+            })
+        except Exception as e:
+            logger.warning(f"Summary generation failed: {e}")
+
+    # Notify all connected tabs that streaming finished (reaches reconnected WS)
+    await manager.send_to_user(user.id, {
+        "type": "chat.stream_complete",
+        "thread_id": active_thread_id,
+    })
+
+
 async def _handle_chat_send(
     ws: WebSocket,
     user: User,
@@ -110,28 +243,13 @@ async def _handle_chat_send(
             pass
 
     try:
-        is_new_conversation = not thread_id
-
-        # Get or create conversation
-        if thread_id:
-            conversation = ConversationService.get_conversation_by_thread(db, thread_id, user.id)
-            if not conversation:
-                await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": "Conversation not found"})
-                return
-        else:
-            conversation = ConversationService.create_conversation(db, user.id, title="New Task")
-
+        # Resolve conversation and validate connections
+        conversation, is_new_conversation = await _resolve_conversation(
+            db, user, thread_id, connection_ids, send, request_id,
+        )
+        if conversation is None:
+            return
         active_thread_id = conversation.thread_id
-
-        # Validate connection access
-        if connection_ids:
-            accessible = db.query(DatabaseConnection.id).filter(
-                DatabaseConnection.id.in_(connection_ids),
-                DatabaseConnection.user_id == user.id,
-            ).all()
-            if len(accessible) != len(connection_ids):
-                await send({"type": "chat.error", "request_id": request_id, "thread_id": conversation.thread_id, "content": "Access denied to one or more connections"})
-                return
 
         # Build orchestrator context
         ctx = await build_orchestrator_context(
@@ -150,26 +268,10 @@ async def _handle_chat_send(
                 history = history[i + 1:]
                 break
 
-        # Resolve file_ids to file_contents
-        file_contents = []
-        if file_ids:
-            for fid in file_ids:
-                file_data = chat_file_service.get_file(fid)
-                if file_data is not None:
-                    file_contents.append(file_data)
+        # Resolve attachments
+        file_contents, attachments = await _resolve_attachments(file_ids, chat_file_service)
 
         # Save user message with attachment metadata
-        attachments = [
-            {
-                "file_id": f["file_id"],
-                "name": f["original_name"],
-                "type": f["mime_type"],
-                "size": f["size"],
-                "content_type": f["content_type"],
-                "storage_key": f.get("storage_key"),
-            }
-            for f in (file_contents or [])
-        ]
         ConversationService.add_message(
             db, conversation.id, "user", message,
             attachments=attachments if attachments else None,
@@ -220,67 +322,11 @@ async def _handle_chat_send(
             if event_type == "done" and "steps" in event:
                 collected_steps = event.get("steps", [])
 
-        # Persist assistant message (save even if empty — tool-only turns
-        # like ask_user_question still need steps persisted)
-        if final_message or collected_steps:
-            assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message or "")
-
-            if collected_steps:
-                from backend.models.agent_step import AgentStep
-                for i, step in enumerate(collected_steps):
-                    db.add(AgentStep(
-                        message_id=assistant_msg.id,
-                        step_number=i + 1,
-                        agent_type=step.get("agent_type", "unknown"),
-                        step_type=step.get("step_type", "unknown"),
-                        tool_name=step.get("tool_name"),
-                        content=step.get("content", {}),
-                        duration_ms=step.get("duration_ms"),
-                    ))
-                db.commit()
-
-        # Generate title for new conversations
-        if is_new_conversation and final_message:
-            try:
-                title = await _generate_title(message, final_message)
-                ConversationService.update_title(db, conversation.id, title)
-                await send({
-                    "type": "chat.title",
-                    "request_id": request_id,
-                    "thread_id": conversation.thread_id,
-                    "content": title,
-                })
-            except Exception as title_err:
-                logger.warning(f"Title generation failed: {title_err}")
-
-        # Generate/update conversation summary
-        if final_message:
-            try:
-                from backend.services.summary_service import SummaryService
-                summary = await SummaryService.generate_or_update_summary(
-                    db, conversation.id, message, final_message
-                )
-                token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
-                token_limit = SummaryService.get_token_limit()
-                await send({
-                    "type": "chat.summary",
-                    "request_id": request_id,
-                    "thread_id": conversation.thread_id,
-                    "content": {
-                        "text": summary.summary_text,
-                        "updated_at": summary.updated_at.isoformat(),
-                        "token_count": token_count,
-                        "token_limit": token_limit,
-                    }
-                })
-            except Exception as e:
-                logger.warning(f"Summary generation failed: {e}")
-
-        # Notify all connected tabs that streaming finished (reaches reconnected WS)
-        await manager.send_to_user(user.id, {
-            "type": "chat.stream_complete",
-            "thread_id": active_thread_id,
-        })
+        # Persist message, steps, generate title/summary, broadcast completion
+        await _persist_and_postprocess(
+            db, conversation, is_new_conversation, message, final_message,
+            collected_steps, send, request_id, user, active_thread_id,
+        )
 
     except Exception as e:
         logger.exception(f"chat.send error: {e}")

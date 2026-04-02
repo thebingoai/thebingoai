@@ -146,11 +146,6 @@ export interface JobInfo {
   result?: JobResult
 }
 
-export interface JobListResponse {
-  jobs: JobInfo[]
-  count: number
-}
-
 // ============================================================
 // ENUMS & UNIONS
 // ============================================================
@@ -215,11 +210,3 @@ export interface NamespaceInfo {
   vector_count: number
 }
 
-export interface UploadProgress {
-  id: string
-  file: File
-  progress: number
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
-  error?: string
-  job_id?: string
-}
