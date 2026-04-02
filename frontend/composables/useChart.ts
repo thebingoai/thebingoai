@@ -140,6 +140,12 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
         font: { size: 11, weight: 'bold' as const },
         anchor: isPieOrDoughnut ? 'center' : 'end',
         align: isPieOrDoughnut ? 'center' : 'top',
+        ...(opts.roundValues && {
+          formatter: (value: unknown) => {
+            if (typeof value === 'number') return value.toFixed(opts.decimalPlaces ?? 2)
+            return value
+          },
+        }),
       },
     },
   }

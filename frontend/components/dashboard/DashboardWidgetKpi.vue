@@ -50,8 +50,18 @@ const formattedValue = computed(() => {
   const v = props.config.value
   if (v === null || v === undefined) return '—'
   if (typeof v === 'number') {
-    if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M'
-    if (v >= 1_000) return v.toLocaleString()
+    const dp = props.config.decimalPlaces ?? 2
+    const round = !!props.config.roundValue
+    if (v >= 1_000_000) {
+      const m = v / 1_000_000
+      return (round ? m.toFixed(dp) : m.toFixed(2)) + 'M'
+    }
+    if (v >= 1_000) {
+      return round
+        ? Number(v.toFixed(dp)).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })
+        : v.toLocaleString()
+    }
+    if (round) return v.toFixed(dp)
     return v % 1 !== 0 ? v.toFixed(2) : String(v)
   }
   return String(v)

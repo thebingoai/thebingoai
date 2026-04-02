@@ -10,7 +10,21 @@
         <span>Dashboards</span>
       </button>
       <span class="text-gray-300">/</span>
-      <span class="text-sm font-medium text-gray-800 truncate">{{ title }}</span>
+      <input
+        v-if="editMode && isEditingTitle"
+        ref="titleInput"
+        v-model="editTitle"
+        @blur="saveTitle"
+        @keydown.enter="saveTitle"
+        @keydown.escape="cancelEdit"
+        class="text-sm font-medium text-gray-800 bg-transparent border-b border-gray-300 outline-none w-full md:w-[400px]"
+      />
+      <span
+        v-else
+        class="text-sm font-medium text-gray-800 truncate"
+        :class="editMode ? 'cursor-pointer hover:text-gray-900' : ''"
+        @click="editMode && startEditTitle()"
+      >{{ title }}</span>
       <!-- Dirty indicator dot -->
       <span
         v-if="dirty"
@@ -74,9 +88,10 @@
 </template>
 
 <script setup lang="ts">
+import { ref, nextTick } from 'vue'
 import { ChevronLeft, Pencil, Eye, Save, RefreshCw, Trash2 } from 'lucide-vue-next'
 
-defineProps<{
+const props = defineProps<{
   title: string
   editMode: boolean
   dirty: boolean
@@ -91,5 +106,35 @@ const emit = defineEmits<{
   save: []
   'refresh-all': []
   delete: []
+  'update:title': [value: string]
 }>()
+
+const titleInput = ref<HTMLInputElement>()
+const isEditingTitle = ref(false)
+const editTitle = ref('')
+
+const startEditTitle = () => {
+  editTitle.value = props.title
+  isEditingTitle.value = true
+  nextTick(() => {
+    const el = titleInput.value
+    if (!el) return
+    el.focus()
+    el.select()
+    el.scrollLeft = 0
+  })
+}
+
+const saveTitle = () => {
+  if (!isEditingTitle.value) return
+  isEditingTitle.value = false
+  const newTitle = editTitle.value.trim()
+  if (newTitle && newTitle !== props.title) {
+    emit('update:title', newTitle)
+  }
+}
+
+const cancelEdit = () => {
+  isEditingTitle.value = false
+}
 </script>

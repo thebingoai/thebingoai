@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full overflow-auto p-4" :class="alignClass">
+  <div class="h-full overflow-hidden" :class="[alignClass, editMode ? 'px-3 py-1 compact-text' : 'p-4']">
     <UiMarkdownRenderer :content="config.content" />
   </div>
 </template>
@@ -9,6 +9,7 @@ import type { TextWidgetConfig } from '~/types/dashboard'
 
 const props = defineProps<{
   config: TextWidgetConfig
+  editMode?: boolean
 }>()
 
 const alignClass = computed(() => {
@@ -19,3 +20,13 @@ const alignClass = computed(() => {
   }
 })
 </script>
+
+<style scoped>
+.compact-text :deep(h1),
+.compact-text :deep(h2),
+.compact-text :deep(h3),
+.compact-text :deep(h4) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+</style>

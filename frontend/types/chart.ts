@@ -39,6 +39,8 @@ export interface ChartOptions {
   sortBy?: 'none' | 'label' | 'value'
   sortDirection?: 'asc' | 'desc'
   showValues?: boolean             // default false
+  roundValues?: boolean            // round displayed data labels
+  decimalPlaces?: number           // decimal places for rounding (default 2)
 }
 
 // Main chart config — the JSON spec AI will generate

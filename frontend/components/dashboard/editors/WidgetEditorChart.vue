@@ -1,6 +1,20 @@
 <template>
   <div class="h-full overflow-y-auto p-5 space-y-5">
 
+    <!-- Label -->
+    <div class="space-y-1.5">
+      <label class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Label</label>
+      <input
+        v-model="localTitle"
+        type="text"
+        placeholder="e.g. Monthly Revenue"
+        class="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+        :readonly="!editMode"
+        :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+        @input="emitDebounced()"
+      />
+    </div>
+
     <!-- Chart Type -->
     <div class="space-y-2">
       <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Chart Type</h3>
@@ -97,6 +111,43 @@
             />
           </button>
         </div>
+
+        <!-- Round values (nested under Show values) -->
+        <template v-if="localOptions.showValues">
+          <div class="ml-4 border-l-2 border-indigo-100 pl-3 space-y-1">
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-gray-700">Round values</span>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="!!localOptions.roundValues"
+                :disabled="!editMode"
+                class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="localOptions.roundValues ? 'bg-indigo-600' : 'bg-gray-200'"
+                @click="editMode && (localOptions.roundValues = !localOptions.roundValues, emitDebounced())"
+              >
+                <span
+                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+                  :class="localOptions.roundValues ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+                />
+              </button>
+            </div>
+
+            <div v-if="localOptions.roundValues" class="flex items-center justify-between py-1">
+              <span class="text-sm text-gray-700">Decimal places</span>
+              <input
+                v-model.number="localOptions.decimalPlaces"
+                type="number"
+                min="0"
+                max="10"
+                class="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-center text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+                :readonly="!editMode"
+                :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+                @input="emitDebounced()"
+              />
+            </div>
+          </div>
+        </template>
 
         <div
           v-if="localType === 'bar' || localType === 'line'"
@@ -197,6 +248,7 @@ const emit = defineEmits<{
 const chartConfig = computed(() => props.modelValue.config as ChartWidgetConfig)
 
 // Local state
+const localTitle = ref(chartConfig.value.title ?? '')
 const localType = ref<ChartType>(chartConfig.value.type)
 const localOptions = ref<ChartOptions>(JSON.parse(JSON.stringify(chartConfig.value.options ?? {})))
 
@@ -215,6 +267,7 @@ function buildConfig(): WidgetConfig {
     type: 'chart',
     config: {
       type: localType.value,
+      title: localTitle.value || undefined,
       data: chartConfig.value.data,
       options: Object.keys(localOptions.value).length > 0 ? localOptions.value : undefined,
     },

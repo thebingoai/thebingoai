@@ -25,7 +25,7 @@ export function useDashboardGrid(
         cellHeight: 70,
         margin: 4,
         animate: true,
-        float: true,
+        float: false,
         resizable: { handles: 'se' },
         draggable: { handle: '.widget-drag-handle' },
       },

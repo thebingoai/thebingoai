@@ -237,7 +237,10 @@ export const useDashboardStore = defineStore('dashboard', {
       this.dirty = false
     },
 
-    toggleEditMode() {
+    async toggleEditMode() {
+      if (this.editMode && this.dirty) {
+        await this.saveDashboard()
+      }
       this.editMode = !this.editMode
     },
 

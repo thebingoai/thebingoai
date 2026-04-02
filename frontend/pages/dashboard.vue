@@ -51,6 +51,7 @@
           @save="store.saveDashboard()"
           @refresh-all="store.refreshAllWidgets()"
           @delete="handleDeleteRequest"
+          @update:title="handleTitleUpdate"
         />
 
         <!-- Edit toolbar (visible only in edit mode) -->
@@ -176,6 +177,13 @@ const configEditorWidget = ref<DashboardWidget | null>(null)
 const showDeleteDialog = ref(false)
 const deleteConfirmText = ref('')
 const deleting = ref(false)
+
+function handleTitleUpdate(newTitle: string) {
+  if (store.currentDashboard) {
+    store.currentDashboard.title = newTitle
+    store.dirty = true
+  }
+}
 
 function handleDeleteRequest() {
   deleteConfirmText.value = ''

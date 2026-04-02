@@ -45,7 +45,7 @@
               :class="col.format === 'currency' || col.format === 'number' || col.format === 'percent' ? 'tabular-nums' : ''"
             >
               <span :class="getCellClass(row[col.key], col.format)">
-                {{ formatCell(row[col.key], col.format) }}
+                {{ formatCell(row[col.key], col) }}
               </span>
             </td>
           </tr>
@@ -81,7 +81,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { TableWidgetConfig } from '~/types/dashboard'
+import type { TableWidgetConfig, TableColumn } from '~/types/dashboard'
 
 const props = defineProps<{
   config: TableWidgetConfig
@@ -144,15 +144,26 @@ const displayRows = computed(() => {
 // Reset page when data or filters change
 watch([() => props.config.rows, columnFilters], () => { currentPage.value = 1 }, { deep: true })
 
-function formatCell(value: any, format?: string): string {
+function formatCell(value: any, col: TableColumn): string {
   if (value == null) return '—'
-  switch (format) {
-    case 'currency':
-      return '$' + Number(value).toLocaleString()
-    case 'number':
-      return Number(value).toLocaleString()
-    case 'percent':
-      return (value > 0 ? '+' : '') + Number(value).toFixed(1) + '%'
+  const dp = col.decimalPlaces ?? 2
+  const round = !!col.roundValue
+  switch (col.format) {
+    case 'currency': {
+      const num = Number(value)
+      if (round) return '$' + num.toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+      return '$' + num.toLocaleString()
+    }
+    case 'number': {
+      const num = Number(value)
+      if (round) return num.toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+      return num.toLocaleString()
+    }
+    case 'percent': {
+      const num = Number(value)
+      const formatted = round ? num.toFixed(dp) : num.toFixed(1)
+      return (num > 0 ? '+' : '') + formatted + '%'
+    }
     case 'date':
       return new Date(value).toLocaleDateString()
     default:

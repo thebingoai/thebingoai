@@ -20,6 +20,8 @@ export interface KpiWidgetConfig {
   label: string
   prefix?: string
   suffix?: string
+  roundValue?: boolean
+  decimalPlaces?: number
   trend?: {
     direction: 'up' | 'down' | 'neutral'
     value: number
@@ -39,6 +41,8 @@ export interface TableColumn {
   sortable?: boolean
   filterable?: boolean
   format?: 'number' | 'currency' | 'percent' | 'date' | 'text'
+  roundValue?: boolean
+  decimalPlaces?: number
 }
 
 export interface TableWidgetConfig {

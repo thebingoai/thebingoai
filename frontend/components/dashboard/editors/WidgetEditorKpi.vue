@@ -84,6 +84,38 @@
           />
         </div>
       </div>
+
+      <!-- Round value -->
+      <div class="flex items-center justify-between py-1">
+        <span class="text-sm text-gray-700">Round value</span>
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="localRoundValue"
+          :disabled="!editMode"
+          class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="localRoundValue ? 'bg-indigo-600' : 'bg-gray-200'"
+          @click="editMode && (localRoundValue = !localRoundValue)"
+        >
+          <span
+            class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+            :class="localRoundValue ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+          />
+        </button>
+      </div>
+
+      <div v-if="localRoundValue" class="flex items-center justify-between py-1">
+        <span class="text-sm text-gray-700">Decimal places</span>
+        <input
+          v-model.number="localDecimalPlaces"
+          type="number"
+          min="0"
+          max="10"
+          class="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-center text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-colors"
+          :readonly="!editMode"
+          :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+        />
+      </div>
     </div>
 
     <!-- Trend section -->
@@ -331,6 +363,8 @@ const localLabel = ref(kpiConfig().label)
 const localValue = ref(String(kpiConfig().value))
 const localPrefix = ref(kpiConfig().prefix ?? '')
 const localSuffix = ref(kpiConfig().suffix ?? '')
+const localRoundValue = ref(!!kpiConfig().roundValue)
+const localDecimalPlaces = ref(kpiConfig().decimalPlaces ?? 2)
 const hasTrend = ref(!!kpiConfig().trend)
 const localTrendDirection = ref<'up' | 'down' | 'neutral'>(kpiConfig().trend?.direction ?? 'up')
 const localTrendValue = ref(kpiConfig().trend?.value ?? 0)
@@ -376,6 +410,8 @@ watch([() => props.modelValue, () => props.dataSource], () => {
   localValue.value = String(cfg.value)
   localPrefix.value = cfg.prefix ?? ''
   localSuffix.value = cfg.suffix ?? ''
+  localRoundValue.value = !!cfg.roundValue
+  localDecimalPlaces.value = cfg.decimalPlaces ?? 2
   hasTrend.value = !!cfg.trend
   localTrendDirection.value = cfg.trend?.direction ?? 'up'
   localTrendValue.value = cfg.trend?.value ?? 0
@@ -421,6 +457,8 @@ function buildConfig(): WidgetConfig {
         : parsedValue,
       prefix: localPrefix.value || undefined,
       suffix: localSuffix.value || undefined,
+      roundValue: localRoundValue.value || undefined,
+      decimalPlaces: localRoundValue.value ? localDecimalPlaces.value : undefined,
       trend,
       sparkline,
     },
@@ -429,7 +467,7 @@ function buildConfig(): WidgetConfig {
 
 // Emit on any local field change — set flag to skip resync from our own emit
 watch(
-  [localLabel, localValue, localPrefix, localSuffix, hasTrend, localTrendDirection, localTrendValue, localTrendPeriod, customTrendPeriod, hasSparkline, sparklineInput],
+  [localLabel, localValue, localPrefix, localSuffix, localRoundValue, localDecimalPlaces, hasTrend, localTrendDirection, localTrendValue, localTrendPeriod, customTrendPeriod, hasSparkline, sparklineInput],
   () => {
     selfEmit = true
     emit('update:modelValue', buildConfig())

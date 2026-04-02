@@ -65,6 +65,39 @@
               </select>
             </div>
 
+            <template v-if="col.format === 'number' || col.format === 'currency' || col.format === 'percent'">
+              <div class="flex items-center gap-1.5 mt-4">
+                <span class="text-xs text-gray-600">Round</span>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="!!col.roundValue"
+                  :disabled="!editMode"
+                  class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                  :class="col.roundValue ? 'bg-indigo-600' : 'bg-gray-200'"
+                  @click="editMode && (col.roundValue = !col.roundValue, col.decimalPlaces = col.decimalPlaces ?? 2, emitUpdate())"
+                >
+                  <span
+                    class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+                    :class="col.roundValue ? 'translate-x-3 ml-0.5' : 'translate-x-0 ml-0.5'"
+                  />
+                </button>
+              </div>
+              <div v-if="col.roundValue" class="flex items-center gap-1.5 mt-4">
+                <span class="text-xs text-gray-600">Digits</span>
+                <input
+                  v-model.number="col.decimalPlaces"
+                  type="number"
+                  min="0"
+                  max="10"
+                  class="w-10 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-center text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                  :readonly="!editMode"
+                  :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+                  @input="emitUpdate()"
+                />
+              </div>
+            </template>
+
             <div class="flex items-center gap-1.5 mt-4">
               <span class="text-xs text-gray-600">Sortable</span>
               <button
