@@ -26,7 +26,7 @@ docker compose -f "$COMPOSE_FILE" up -d --no-deps backend
 echo "  Waiting for backend health check..."
 for i in $(seq 1 30); do
     if docker compose -f "$COMPOSE_FILE" exec backend \
-        python -c "import httpx; httpx.get('http://localhost:8000/health', timeout=5)" 2>/dev/null; then
+        python3 -c "import httpx; httpx.get('http://localhost:8000/health', timeout=5)" 2>/dev/null; then
         echo "  Backend is healthy."
         break
     fi
