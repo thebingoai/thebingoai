@@ -65,6 +65,24 @@ async def _do_create_dashboard(
             finally:
                 db2.close()
 
+    # Auto-promote ephemeral dataset when used for a dashboard
+    if target_connection_id:
+        from backend.models.database_connection import DatabaseConnection as _DC
+        _db = db_session_factory()
+        try:
+            _conn = _db.query(_DC).filter(
+                _DC.id == target_connection_id,
+                _DC.user_id == context.user_id,
+                _DC.db_type == "dataset",
+                _DC.is_ephemeral == True,  # noqa: E712
+            ).first()
+            if _conn:
+                _conn.is_ephemeral = False
+                _db.commit()
+                logger.info("Promoted ephemeral dataset %s for dashboard creation", target_connection_id)
+        finally:
+            _db.close()
+
     result = await invoke_dashboard_agent(request, context, db_session_factory, target_connection_id=target_connection_id)
     return json.dumps(result)
 
@@ -148,6 +166,7 @@ async def _do_create_dataset_from_upload(
         parse_excel,
         sanitize_name,
         infer_column_types,
+        compute_schema_fingerprint,
         create_dataset_sqlite,
         generate_dataset_schema,
     )
@@ -187,6 +206,8 @@ async def _do_create_dataset_from_upload(
     name = base_name.strip() or "dataset"
     sanitized = sanitize_name(base_name)
 
+    fingerprint = compute_schema_fingerprint(columns)
+
     db = db_session_factory()
     try:
         connection = DatabaseConnection(
@@ -198,6 +219,8 @@ async def _do_create_dataset_from_upload(
             database="dataset",
             username="dataset",
             source_filename=filename,
+            is_ephemeral=True,
+            schema_fingerprint=fingerprint,
         )
         connection.password = "dataset"
         connection.ssl_ca_cert = None
