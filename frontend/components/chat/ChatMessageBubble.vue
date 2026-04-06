@@ -44,6 +44,30 @@
       </div>
     </div>
 
+    <!-- Skill suggestion message -->
+    <div v-else-if="message.source === 'skill_suggestion'" class="pr-4 md:pr-32">
+      <div class="flex gap-2.5 items-start">
+        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+          <span class="text-white text-xs">&starf;</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-gray-900 mb-1 text-[13px]">I noticed some patterns in your conversations</div>
+          <div class="text-gray-500 text-xs mb-3">
+            Based on your recent activity, I have {{ pendingSuggestions.length }} skill suggestion{{ pendingSuggestions.length !== 1 ? 's' : '' }} that could save you time.
+          </div>
+          <TransitionGroup name="suggestion-list" tag="div" class="space-y-2">
+            <ChatSkillSuggestionCard
+              v-for="s in pendingSuggestions"
+              :key="s.id"
+              :suggestion="s"
+              @accept="handleAcceptSuggestion"
+              @dismiss="handleDismissSuggestion"
+            />
+          </TransitionGroup>
+        </div>
+      </div>
+    </div>
+
     <!-- Assistant message: left-aligned plain text -->
     <div v-else class="pr-4 md:pr-32">
       <!-- Heartbeat source label -->
@@ -186,6 +210,7 @@
 
 <script setup lang="ts">
 import type { Message } from '~/stores/chat'
+import type { SkillSuggestion } from '~/types/skillSuggestion'
 import { useDashboardStore } from '~/stores/dashboard'
 
 const props = defineProps<{
@@ -201,6 +226,25 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const dashboardStore = useDashboardStore()
+const api = useApi()
+
+const pendingSuggestions = computed(() =>
+  (props.message.skillSuggestions ?? []).filter(s => chatStore.skillSuggestions.some(ss => ss.id === s.id))
+)
+
+const handleAcceptSuggestion = async (id: string) => {
+  try {
+    await api.skills.respondToSuggestion(id, 'accept')
+  } catch { /* best-effort */ }
+  chatStore.removeSkillSuggestion(id)
+}
+
+const handleDismissSuggestion = async (id: string) => {
+  try {
+    await api.skills.respondToSuggestion(id, 'dismiss')
+  } catch { /* best-effort */ }
+  chatStore.removeSkillSuggestion(id)
+}
 
 const hasSteps = computed(() =>
   props.message.role === 'assistant' &&
@@ -323,5 +367,16 @@ const userQuestion = computed(() => {
     transform: translateY(-10px);
     opacity: 1;
   }
+}
+
+.suggestion-list-leave-active {
+  transition: all 0.3s ease;
+}
+.suggestion-list-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+.suggestion-list-move {
+  transition: transform 0.3s ease;
 }
 </style>

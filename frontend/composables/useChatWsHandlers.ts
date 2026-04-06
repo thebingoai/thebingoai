@@ -77,5 +77,27 @@ export const useChatWsHandlers = () => {
     })
   }
 
-  return { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, resetContext }
+  // Handle incoming skill suggestion notifications from WebSocket
+  const registerSkillSuggestionsHandler = () => {
+    return ws.on('skill_suggestions.new', (data: any) => {
+      if (!data.suggestions?.length) return
+
+      // Add to store (dedup)
+      chatStore.addSkillSuggestions(data.suggestions)
+
+      // Inject a skill_suggestion message into chat
+      chatStore.addMessage({
+        id: `skill-suggestion-${Date.now()}`,
+        role: 'assistant',
+        content: '',
+        source: 'skill_suggestion',
+        skillSuggestions: data.suggestions,
+        created_at: new Date().toISOString(),
+        agent_steps: [],
+        thinking_steps: [],
+      })
+    })
+  }
+
+  return { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, registerSkillSuggestionsHandler, resetContext }
 }

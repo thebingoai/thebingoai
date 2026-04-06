@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 class QueryRequest(BaseModel):
@@ -8,14 +8,13 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=100)
     filter: Optional[dict] = None
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "What are embeddings?",
-                "namespace": "default",
-                "top_k": 5
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "query": "What are embeddings?",
+            "namespace": "default",
+            "top_k": 5
         }
+    })
 
 class AskRequest(BaseModel):
     """POST /api/ask request body."""
@@ -28,13 +27,12 @@ class AskRequest(BaseModel):
     stream: bool = False
     thread_id: Optional[str] = None  # For LangGraph conversation memory
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "question": "Summarize my notes on embeddings",
-                "namespace": "personal",
-                "provider": "openai",
-                "stream": True,
-                "thread_id": "abc123-def456"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "question": "Summarize my notes on embeddings",
+            "namespace": "personal",
+            "provider": "openai",
+            "stream": True,
+            "thread_id": "abc123-def456"
         }
+    })

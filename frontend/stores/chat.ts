@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { SkillSuggestion } from '~/types/skillSuggestion'
 
 export interface AgentStep {
   agent_type: string         // "orchestrator" | "data_agent" | "rag_agent"
@@ -23,7 +24,8 @@ export interface Message {
   steps_log_expanded?: boolean  // user-toggled; defaults to collapsed
   created_at: string
   attachments?: FileAttachment[]
-  source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer'
+  source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer' | 'skill_suggestion'
+  skillSuggestions?: SkillSuggestion[]
 }
 
 export interface ThinkingStep {
@@ -74,10 +76,12 @@ export const useChatStore = defineStore('chat', {
     infoPanelOpen: true,
     selectedMessageId: null as string | null,
     conversationSummary: null as ConversationSummary | null,
+    skillSuggestions: [] as SkillSuggestion[],
     infoPanelSections: {
       summary: true,
       datasets: true,
       dashboards: true,
+      skills: true,
       reasoning: false,
     } as Record<string, boolean>,
     rateLimitRetryAfter: 0
@@ -140,7 +144,10 @@ export const useChatStore = defineStore('chat', {
         }
       }
       return Array.from(byId.values())
-    }
+    },
+    pendingSkillSuggestions: (state) => {
+      return state.skillSuggestions.filter(s => s.status === 'pending')
+    },
   },
 
   actions: {
@@ -270,6 +277,23 @@ export const useChatStore = defineStore('chat', {
     clearInput() {
       this.inputText = ''
       this.attachedFiles = []
+    },
+
+    setSkillSuggestions(suggestions: SkillSuggestion[]) {
+      this.skillSuggestions = suggestions
+    },
+
+    addSkillSuggestions(suggestions: SkillSuggestion[]) {
+      const existingIds = new Set(this.skillSuggestions.map(s => s.id))
+      for (const s of suggestions) {
+        if (!existingIds.has(s.id)) {
+          this.skillSuggestions.push(s)
+        }
+      }
+    },
+
+    removeSkillSuggestion(id: string) {
+      this.skillSuggestions = this.skillSuggestions.filter(s => s.id !== id)
     },
 
     startNewChat() {

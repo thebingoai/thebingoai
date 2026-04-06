@@ -7,6 +7,7 @@
         <InfoPanelSummary />
         <InfoPanelDatasets />
         <InfoPanelDashboards />
+        <InfoPanelSkills />
       </div>
 
       <!-- Reasoning: pinned to bottom (or fills panel in non-task conversations) -->

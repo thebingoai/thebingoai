@@ -1,5 +1,5 @@
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -29,8 +29,7 @@ class JobInfo(BaseModel):
     error: Optional[str] = None
     result: Optional[JobResult] = None
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 class JobListResponse(BaseModel):
     jobs: list[JobInfo]

@@ -105,6 +105,9 @@ async def list_suggestions(
             pattern_summary=s.pattern_summary,
             confidence=s.confidence,
             status=s.status,
+            recommendation=s.recommendation,
+            recommendation_reason=s.recommendation_reason,
+            frequency_count=s.frequency_count,
             created_at=s.created_at,
         )
         for s in suggestions
@@ -249,5 +252,8 @@ async def respond_to_suggestion(
         pattern_summary=suggestion.pattern_summary,
         confidence=suggestion.confidence,
         status=suggestion.status,
+        recommendation=suggestion.recommendation,
+        recommendation_reason=suggestion.recommendation_reason,
+        frequency_count=suggestion.frequency_count,
         created_at=suggestion.created_at,
     )

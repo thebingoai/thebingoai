@@ -5,7 +5,7 @@ import { useChatWsHandlers } from './useChatWsHandlers'
 export const useChat = () => {
   const { sendMessage, newChat } = useChatStreaming()
   const { loadConversations, loadMessages, generateSummary, loadConversationSummary, renameConversation, archiveConversation, unarchiveConversation, loadArchivedConversations } = useChatConversations()
-  const { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, resetContext } = useChatWsHandlers()
+  const { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, registerSkillSuggestionsHandler, resetContext } = useChatWsHandlers()
 
   return {
     sendMessage,
@@ -16,6 +16,7 @@ export const useChat = () => {
     registerTitleHandler,
     registerSummaryHandler,
     registerHeartbeatHandler,
+    registerSkillSuggestionsHandler,
     resetContext,
     archiveConversation,
     unarchiveConversation,

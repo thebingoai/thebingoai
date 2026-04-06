@@ -52,6 +52,9 @@ class SkillSuggestionResponse(BaseModel):
     pattern_summary: Optional[str] = None
     confidence: float
     status: str
+    recommendation: Optional[str] = None
+    recommendation_reason: Optional[str] = None
+    frequency_count: Optional[int] = None
     created_at: datetime
 
     class Config:

@@ -233,6 +233,17 @@ onMounted(() => {
   chat.registerTitleHandler()
   chat.registerSummaryHandler()
   chat.registerHeartbeatHandler()
+  chat.registerSkillSuggestionsHandler()
+
+  // Fetch pending skill suggestions for side panel (catches missed WS pushes)
+  const api = useApi()
+  api.skills.listSuggestions()
+    .then((suggestions: any) => {
+      if (Array.isArray(suggestions) && suggestions.length > 0) {
+        chatStore.setSkillSuggestions(suggestions)
+      }
+    })
+    .catch(() => { /* non-critical */ })
 })
 
 const handleNewTask = () => {
