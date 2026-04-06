@@ -333,7 +333,7 @@ class TestInlineExecutionAlongsideAsync:
 
         execute_calls = []
 
-        async def mock_execute(widget, db_factory, data_context=None):
+        async def mock_execute(widget, db_factory, data_context=None, user_id=None):
             execute_calls.append(widget["id"])
             widget["widget"]["config"]["value"] = 42
             return None

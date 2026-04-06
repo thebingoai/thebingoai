@@ -255,7 +255,7 @@ The explanation should be one sentence describing what was wrong and what was ch
         return None
 
 
-async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_context: dict | None = None) -> str | None:
+async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_context: dict | None = None, user_id: str | None = None) -> str | None:
     """
     Execute the dataSource SQL for a widget and merge results into widget.widget.config.
 
@@ -284,9 +284,10 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
     db = db_session_factory()
     connector = None
     try:
-        connection = db.query(DatabaseConnection).filter(
-            DatabaseConnection.id == connection_id,
-        ).first()
+        filters = [DatabaseConnection.id == connection_id]
+        if user_id:
+            filters.append(DatabaseConnection.user_id == user_id)
+        connection = db.query(DatabaseConnection).filter(*filters).first()
         if not connection:
             logger.warning(f"Widget '{widget_id}': connection {connection_id} not found, skipping SQL execution")
             return
@@ -532,7 +533,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
         # Auto-execute SQL for SQL-backed widgets and populate config
         for w in widgets:
             if "dataSource" in w:
-                await _execute_widget_sql(w, db_session_factory, data_context=data_context)
+                await _execute_widget_sql(w, db_session_factory, data_context=data_context, user_id=context.user_id)
 
         db = db_session_factory()
         try:
@@ -663,7 +664,7 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                 logger.info(f"Skipping SQL execution for unchanged widget '{w.get('id')}'")
             else:
                 sql_changed = True
-                await _execute_widget_sql(w, db_session_factory, data_context=data_context)
+                await _execute_widget_sql(w, db_session_factory, data_context=data_context, user_id=context.user_id)
 
         db = db_session_factory()
         try:
