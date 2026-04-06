@@ -2,16 +2,20 @@
   <div class="flex flex-col h-full bg-white overflow-hidden">
     <!-- Main body: scrollable top sections + pinned reasoning -->
     <div class="flex-1 flex flex-col min-h-0">
-      <!-- Scrollable top 3 sections (task conversations only) -->
+      <!-- Scrollable sections (task conversations) -->
       <div v-if="isTaskConversation" class="flex-1 overflow-y-auto">
         <InfoPanelSummary />
         <InfoPanelDatasets />
         <InfoPanelDashboards />
+      </div>
+
+      <!-- Scrollable sections (BingoAI chat) -->
+      <div v-if="!isTaskConversation && hasSkillSuggestions" class="flex-shrink-0 overflow-y-auto max-h-[40%]">
         <InfoPanelSkills />
       </div>
 
-      <!-- Reasoning: pinned to bottom (or fills panel in non-task conversations) -->
-      <InfoPanelReasoning :full-height="!isTaskConversation" />
+      <!-- Reasoning: pinned to bottom (or fills panel when no other sections) -->
+      <InfoPanelReasoning :full-height="!isTaskConversation && !hasSkillSuggestions" />
     </div>
   </div>
 </template>
@@ -25,4 +29,5 @@ const isTaskConversation = computed(() => {
   const current = chatStore.currentConversation
   return !current || current.type === 'task'
 })
+const hasSkillSuggestions = computed(() => chatStore.pendingSkillSuggestions.length > 0)
 </script>
