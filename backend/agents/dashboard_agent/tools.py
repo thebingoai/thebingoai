@@ -66,6 +66,18 @@ def _build_dashboard_context_tool(context: AgentContext, db_session_factory: Cal
             if not connection:
                 return json.dumps({"success": False, "message": f"Connection {connection_id} not found"})
 
+            # Guard: reject dataset connections when CSV plugin is not loaded
+            if connection.db_type == "dataset":
+                from backend.agents.tool_registry import get_plugin_tool_builders
+                if "create_dataset_from_upload" not in get_plugin_tool_builders():
+                    return json.dumps({
+                        "success": False,
+                        "message": (
+                            f"Connection {connection_id} is a dataset connection. "
+                            "Dataset dashboards require the CSV connector enterprise plugin."
+                        ),
+                    })
+
             if connection.profiling_status != "ready":
                 return json.dumps({
                     "success": False,
@@ -216,66 +228,6 @@ def _build_dashboard_context_tool(context: AgentContext, db_session_factory: Cal
     return build_dashboard_context
 
 
-def _build_merge_datasets_tool(context: AgentContext, db_session_factory: Callable):
-    """Build the merge_datasets tool for combining multiple CSV/Excel files."""
-
-    @tool
-    def merge_datasets(connection_ids: list, merged_name: str) -> str:
-        """Merge multiple CSV/Excel dataset connections into a single multi-table database.
-
-        Use this when a dashboard needs data from multiple uploaded files. Each file
-        becomes a separate table in a single SQLite database, enabling JOINs and
-        cross-file filtering.
-
-        After merging, wait for profiling to complete before calling build_dashboard_context.
-
-        Args:
-            connection_ids: List of dataset connection IDs to merge
-            merged_name: Name for the new merged connection (e.g. "Sales & Products")
-
-        Returns:
-            JSON with the new connection_id, table names, and row counts
-        """
-        import json
-
-        for cid in connection_ids:
-            if not context.can_access_connection(cid):
-                return json.dumps({"success": False, "message": f"Connection {cid} not authorized"})
-
-        db = db_session_factory()
-        try:
-            from bingo_csv_connector.service import merge_dataset_connections
-            result = merge_dataset_connections(
-                connection_ids=connection_ids,
-                merged_name=merged_name,
-                user_id=context.user_id,
-                db_session=db,
-            )
-            return json.dumps({
-                "success": True,
-                **result,
-                "message": (
-                    f"Merged {len(connection_ids)} datasets into connection {result['connection_id']}. "
-                    f"Tables: {', '.join(result['tables'])}. "
-                    "Profiling is running in the background — wait for it to complete "
-                    "before calling build_dashboard_context."
-                ),
-            })
-        except ValueError as e:
-            return json.dumps({"success": False, "message": str(e)})
-        except ImportError:
-            return json.dumps({
-                "success": False,
-                "message": "CSV connector plugin is not installed. Cannot merge datasets.",
-            })
-        except Exception as e:
-            return json.dumps({"success": False, "message": f"Merge failed: {e}"})
-        finally:
-            db.close()
-
-    return merge_datasets
-
-
 def build_dashboard_agent_tools(
     context: AgentContext,
     db_session_factory: Callable,
@@ -322,5 +274,12 @@ def build_dashboard_agent_tools(
     # Default: inline data exploration tools
     db_tools = build_data_agent_tools(context)
     context_tool = _build_dashboard_context_tool(context, db_session_factory)
-    merge_tool = _build_merge_datasets_tool(context, db_session_factory)
-    return db_tools + dashboard_creation_tools + [get_widget_spec, context_tool, merge_tool]
+    tools = db_tools + dashboard_creation_tools + [get_widget_spec, context_tool]
+
+    # Dynamically include plugin-provided tools
+    from backend.agents.tool_registry import get_plugin_tool_builders
+    plugin_builders = get_plugin_tool_builders()
+    if "merge_datasets" in plugin_builders:
+        tools.extend(plugin_builders["merge_datasets"](context, db_session_factory))
+
+    return tools

@@ -273,6 +273,11 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
     connection_id = data_source.get("connectionId")
     sql = data_source.get("sql")
     mapping = data_source.get("mapping")
+    # Inject chartType so scatter charts produce {x,y} points
+    chart_type = widget.get("widget", {}).get("config", {}).get("type")
+    if chart_type and mapping and "chartType" not in mapping:
+        mapping = {**mapping, "chartType": chart_type}
+        data_source["mapping"] = mapping
     widget_id = widget.get("id")
     widget_title = widget.get("widget", {}).get("config", {}).get("title") or widget.get("widget", {}).get("config", {}).get("label")
 
@@ -494,6 +499,30 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Callable) -
                         "success": False,
                         "message": f"Connection {cid} in dataSource is not accessible to you.",
                     })
+
+        # Guard: reject dataset connections when CSV connector plugin is not loaded
+        from backend.agents.tool_registry import get_plugin_tool_builders
+        plugin_builders = get_plugin_tool_builders()
+        csv_plugin_loaded = "create_dataset_from_upload" in plugin_builders
+        if not csv_plugin_loaded:
+            from backend.models.database_connection import DatabaseConnection as _DC
+            _guard_db = db_session_factory()
+            try:
+                ds_cids = {w["dataSource"]["connectionId"] for w in widgets if "dataSource" in w}
+                for cid in ds_cids:
+                    conn = _guard_db.query(_DC).filter(_DC.id == cid).first()
+                    if conn and conn.db_type == "dataset":
+                        return json.dumps({
+                            "success": False,
+                            "message": (
+                                f"Connection {cid} is a dataset connection. "
+                                "Dataset dashboards require the CSV connector enterprise plugin."
+                            ),
+                        })
+            except Exception:
+                pass  # Guard is best-effort; don't block on DB errors
+            finally:
+                _guard_db.close()
 
         # Validate mapping columns against schema (warnings only — SQL execution is the real test)
         schema_warnings = _validate_widget_sql_schema(widgets)

@@ -61,6 +61,10 @@ class DatabaseConnection(Base, TimestampMixin):
     source_filename = Column(String, nullable=True)
     dataset_table_name = Column(String, nullable=True)
 
+    # Ephemeral dataset tracking
+    is_ephemeral = Column(Boolean, default=False, nullable=False)
+    schema_fingerprint = Column(String(64), nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="database_connections")
 

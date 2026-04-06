@@ -11,6 +11,7 @@ from backend.models.database_connection import DatabaseType
 from backend.plugins.base import BingoPlugin, ConnectorRegistration
 from backend.plugins import loader
 from backend.connectors import factory
+from backend.agents import tool_registry
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +109,7 @@ def reset_plugin_state():
     original_plugins = loader._loaded_plugins.copy()
     original_connectors = factory._CONNECTORS.copy()
     original_all = DatabaseType._all.copy()
+    original_tool_builders = tool_registry._PLUGIN_TOOL_BUILDERS.copy()
     # Snapshot dynamic attrs on DatabaseType
     original_attrs = {
         k: v for k, v in vars(DatabaseType).items()
@@ -122,6 +124,8 @@ def reset_plugin_state():
     factory._CONNECTORS.update(original_connectors)
     DatabaseType._all.clear()
     DatabaseType._all.update(original_all)
+    tool_registry._PLUGIN_TOOL_BUILDERS.clear()
+    tool_registry._PLUGIN_TOOL_BUILDERS.update(original_tool_builders)
     # Remove any dynamic attrs added during the test
     current_attrs = {
         k for k, v in vars(DatabaseType).items()
@@ -330,6 +334,71 @@ class TestPluginLoader:
         assert len(routers) == 1
         assert routers[0][0] is router
         assert routers[0][1] == "/api/test"
+
+    def test_tool_builders_default_empty(self):
+        """BingoPlugin.tool_builders() returns empty dict by default."""
+        plugin = PluginA()
+        assert plugin.tool_builders() == {}
+
+    def test_tool_builders_registered_by_loader(self):
+        """Plugin tool builders are registered during discover_and_load_plugins."""
+        def my_builder(ctx):
+            return []
+
+        class ToolPlugin(BingoPlugin):
+            @property
+            def name(self):
+                return "tool-plugin"
+
+            @property
+            def version(self):
+                return "0.1.0"
+
+            def tool_builders(self):
+                return {"my_tool": my_builder}
+
+        with patch.object(loader, "entry_points", return_value=[_make_entry_point(ToolPlugin)]):
+            loader.discover_and_load_plugins()
+
+        builders = tool_registry.get_plugin_tool_builders()
+        assert "my_tool" in builders
+        assert builders["my_tool"] is my_builder
+
+    def test_failing_tool_builder_registration_skipped(self):
+        """Plugin whose tool_builders() raises doesn't prevent other plugins from loading."""
+        class FailToolPlugin(BingoPlugin):
+            @property
+            def name(self):
+                return "fail-tool"
+
+            @property
+            def version(self):
+                return "0.1.0"
+
+            def tool_builders(self):
+                raise RuntimeError("tool builder boom")
+
+        with patch.object(
+            loader,
+            "entry_points",
+            return_value=[_make_entry_point(FailToolPlugin), _make_entry_point(DummyPlugin)],
+        ):
+            loader.discover_and_load_plugins()
+
+        assert "test-plugin" in loader._loaded_plugins
+
+    def test_get_plugin_tool_builders_returns_copy(self):
+        """Mutating returned dict doesn't affect internal state."""
+        def builder_fn(ctx):
+            return []
+
+        tool_registry.register_plugin_tool_builder("test_tool", builder_fn)
+        result = tool_registry.get_plugin_tool_builders()
+        result["injected"] = lambda ctx: []
+
+        fresh = tool_registry.get_plugin_tool_builders()
+        assert "injected" not in fresh
+        assert "test_tool" in fresh
 
 
 # ===========================================================================

@@ -27,6 +27,8 @@ export interface DatabaseConnection {
   profiling_status: 'pending' | 'in_progress' | 'ready' | 'failed'
   profiling_progress: string | null
   profiling_error: string | null
+  is_ephemeral: boolean
+  schema_fingerprint: string | null
 }
 
 export interface SchemaColumn {

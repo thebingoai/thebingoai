@@ -348,10 +348,14 @@ export const useDashboardStore = defineStore('dashboard', {
         await Promise.all(sqlWidgets.map(async (widget) => {
           if (!widget.dataSource) return
           try {
+            const chartType = widget.widget?.config?.type
+            const mapping = chartType
+              ? { ...widget.dataSource.mapping, chartType }
+              : widget.dataSource.mapping
             const response = await api.dashboards.refreshWidget({
               connection_id: widget.dataSource.connectionId,
               sql: widget.dataSource.sql,
-              mapping: widget.dataSource.mapping as any,
+              mapping: mapping as any,
               filters,
               dashboard_id: this.currentDashboardId ?? undefined,
               widget_id: widget.id,

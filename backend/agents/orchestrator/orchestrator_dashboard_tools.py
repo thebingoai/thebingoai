@@ -1,6 +1,3 @@
-import uuid
-from datetime import datetime
-
 from langchain_core.tools import tool
 from backend.agents.context import AgentContext
 from backend.agents.dashboard_agent import invoke_dashboard_agent
@@ -10,11 +7,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-try:
-    import bingo_csv_connector  # noqa: F401
-    _CSV_PLUGIN_AVAILABLE = True
-except ImportError:
-    _CSV_PLUGIN_AVAILABLE = False
 
 
 async def _do_create_dashboard(
@@ -64,6 +56,24 @@ async def _do_create_dashboard(
                 return json.dumps({"success": False, "message": "Dashboard agent did not respond in time"})
             finally:
                 db2.close()
+
+    # Auto-promote ephemeral dataset when used for a dashboard
+    if target_connection_id:
+        from backend.models.database_connection import DatabaseConnection as _DC
+        _db = db_session_factory()
+        try:
+            _conn = _db.query(_DC).filter(
+                _DC.id == target_connection_id,
+                _DC.user_id == context.user_id,
+                _DC.db_type == "dataset",
+                _DC.is_ephemeral == True,  # noqa: E712
+            ).first()
+            if _conn:
+                _conn.is_ephemeral = False
+                _db.commit()
+                logger.info("Promoted ephemeral dataset %s for dashboard creation", target_connection_id)
+        finally:
+            _db.close()
 
     result = await invoke_dashboard_agent(request, context, db_session_factory, target_connection_id=target_connection_id)
     return json.dumps(result)
@@ -134,151 +144,6 @@ async def _do_update_dashboard(
 
     result = await invoke_dashboard_agent(enriched_request, context, db_session_factory, target_connection_id=target_connection_id)
     return json.dumps(result)
-
-
-async def _do_create_dataset_from_upload(
-    context: AgentContext,
-    db_session_factory: Callable,
-    file_id: str,
-) -> str:
-    """Business logic for create_dataset_from_upload tool."""
-    from backend.services import chat_file_service
-    from bingo_csv_connector.service import (
-        parse_csv,
-        parse_excel,
-        sanitize_name,
-        infer_column_types,
-        create_dataset_sqlite,
-        generate_dataset_schema,
-    )
-    from backend.models.database_connection import DatabaseConnection
-    from backend.models.team_membership import TeamMembership
-    from backend.models.team_connection_policy import TeamConnectionPolicy
-    from backend.services.schema_discovery import save_schema_file
-    from backend.config import settings
-
-    # Find raw file in DO Spaces
-    raw_result = chat_file_service.get_raw_file(context.user_id, file_id)
-    if not raw_result:
-        return json.dumps({"success": False, "message": "File not found or expired. Please re-upload the file."})
-
-    file_bytes, ext = raw_result
-
-    # Get filename from Redis metadata or fall back to file_id + ext
-    file_data = chat_file_service.get_file(file_id)
-    filename = file_data["original_name"] if file_data else f"dataset{ext}"
-
-    try:
-        if ext == ".csv":
-            df = parse_csv(file_bytes)
-        else:
-            df = parse_excel(file_bytes)
-    except Exception as e:
-        return json.dumps({"success": False, "message": f"Could not parse file: {e}"})
-
-    if len(df) > settings.dataset_max_rows:
-        return json.dumps({"success": False, "message": f"File exceeds {settings.dataset_max_rows:,} row limit"})
-
-    if df.empty or len(df.columns) == 0:
-        return json.dumps({"success": False, "message": "File is empty or has no columns"})
-
-    columns = infer_column_types(df)
-    base_name = filename.rsplit(".", 1)[0] if "." in filename else filename
-    name = base_name.strip() or "dataset"
-    sanitized = sanitize_name(base_name)
-
-    db = db_session_factory()
-    try:
-        connection = DatabaseConnection(
-            user_id=context.user_id,
-            name=name,
-            db_type="dataset",
-            host="internal",
-            port=0,
-            database="dataset",
-            username="dataset",
-            source_filename=filename,
-        )
-        connection.password = "dataset"
-        connection.ssl_ca_cert = None
-        db.add(connection)
-        db.commit()
-        db.refresh(connection)
-
-        from backend.services import object_storage as _object_storage
-        from backend.config import settings as _settings
-
-        sqlite_path = create_dataset_sqlite(connection.id, sanitized, columns, df)
-        do_spaces_key = f"{_settings.do_spaces_base_path}/{context.user_id}/datasets/{connection.id}.sqlite"
-        with open(sqlite_path, 'rb') as f:
-            _object_storage.upload_bytes(do_spaces_key, f.read(), content_type="application/x-sqlite3")
-
-        connection.dataset_table_name = do_spaces_key
-        db.commit()
-
-        row_count = len(df)
-        schema_json = generate_dataset_schema(
-            connection_id=connection.id,
-            name=name,
-            table_name=do_spaces_key,
-            columns=columns,
-            row_count=row_count,
-            sqlite_table_name=sanitized,
-        )
-        schema_path = save_schema_file(connection.id, schema_json)
-        connection.schema_json_path = schema_path
-        connection.schema_generated_at = datetime.utcnow()
-        connection.table_count = 1
-        db.commit()
-
-        # Kick off background profiling
-        if connection.schema_json_path:
-            try:
-                from backend.tasks.profiling_tasks import profile_connection
-                connection.profiling_status = "pending"
-                db.commit()
-                profile_connection.delay(connection.id)
-            except Exception as e:
-                logger.error("Failed to queue profiling for dataset connection %s: %s", connection.id, e)
-
-        # Auto-enable for creator's teams
-        if settings.enable_governance:
-            user_memberships = (
-                db.query(TeamMembership)
-                .filter(TeamMembership.user_id == context.user_id)
-                .all()
-            )
-            for membership in user_memberships:
-                db.add(TeamConnectionPolicy(
-                    id=str(uuid.uuid4()),
-                    team_id=membership.team_id,
-                    connection_id=connection.id,
-                ))
-            if user_memberships:
-                db.commit()
-
-        # Make the new connection immediately available for dashboard creation
-        context.available_connections.append(connection.id)
-
-        logger.info(
-            "Created dataset connection %s from chat upload file_id=%s, key=%s, rows=%d",
-            connection.id, file_id, do_spaces_key, row_count,
-        )
-
-        return json.dumps({
-            "success": True,
-            "connection_id": connection.id,
-            "table_name": do_spaces_key,
-            "columns": [{"name": c["name"], "type": c["pg_type"]} for c in columns],
-            "row_count": row_count,
-        })
-    except Exception as e:
-        db.delete(connection)
-        db.commit()
-        logger.error("create_dataset_from_upload failed for file_id=%s: %s", file_id, e, exc_info=True)
-        return json.dumps({"success": False, "message": str(e)})
-    finally:
-        db.close()
 
 
 def _do_list_dashboards(
@@ -509,23 +374,6 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         return await _do_update_dashboard(context, db_session_factory, request, dashboard_id)
 
     @tool
-    async def create_dataset_from_upload(file_id: str) -> str:
-        """
-        Create a permanent queryable dataset from a CSV or Excel file uploaded in chat.
-
-        Call this BEFORE create_dashboard when the user wants a dashboard from an uploaded
-        file. This persists the file as a PostgreSQL table and registers it as a database
-        connection that the dashboard agent can query.
-
-        Args:
-            file_id: The file_id from the uploaded file (shown in the message as file_id: xxx)
-
-        Returns:
-            JSON with connection_id, table_name, column info, row_count, or error message
-        """
-        return await _do_create_dataset_from_upload(context, db_session_factory, file_id)
-
-    @tool
     def list_dashboards() -> str:
         """
         List all dashboards owned by the current user.
@@ -581,6 +429,11 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         return await _do_read_dashboard(context, db_session_factory, dashboard_id, widget_id)
 
     tools = [create_dashboard, update_dashboard, read_dashboard, list_dashboards, list_connections]
-    if _CSV_PLUGIN_AVAILABLE:
-        tools.append(create_dataset_from_upload)
+
+    # Dynamically include plugin-provided tools
+    from backend.agents.tool_registry import get_plugin_tool_builders
+    plugin_builders = get_plugin_tool_builders()
+    if "create_dataset_from_upload" in plugin_builders:
+        tools.extend(plugin_builders["create_dataset_from_upload"](context, db_session_factory))
+
     return tools

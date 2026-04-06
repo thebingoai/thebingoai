@@ -153,15 +153,22 @@ async def create_connection(
 
 @router.get("", response_model=List[ConnectionResponse])
 async def list_connections(
+    include_ephemeral: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all database connections for current user."""
-    connections = db.query(DatabaseConnection).filter(
-        DatabaseConnection.user_id == current_user.id
-    ).all()
+    """List all database connections for current user.
 
-    return connections
+    By default, ephemeral datasets (created via chat uploads) are hidden.
+    Pass include_ephemeral=true to include them.
+    """
+    query = db.query(DatabaseConnection).filter(
+        DatabaseConnection.user_id == current_user.id
+    )
+    if not include_ephemeral:
+        query = query.filter(DatabaseConnection.is_ephemeral == False)  # noqa: E712
+
+    return query.all()
 
 
 @router.get("/org", response_model=List[ConnectionResponse])

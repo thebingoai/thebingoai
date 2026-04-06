@@ -153,6 +153,12 @@ summary, or to understand/suggest what can be visualized — but do NOT explicit
 2. Then use `data_agent` to analyze the data (schema, distributions, patterns)
 3. Respond with analysis findings and visualization recommendations
 Do NOT call `create_dashboard` unless the user explicitly asks to create one.
+
+## Data Agent Response Relay
+When relaying data_agent results to the user:
+- Summarize key findings concisely — do not restate the full data_agent output verbatim
+- The user already sees agent execution steps in the UI, so don't narrate which tools were called
+- Focus on insights and actionable takeaways, not process description
 """
 
     return base

@@ -22,10 +22,14 @@ export function useWidgetData(widget: Ref<DashboardWidget>) {
     try {
       const api = useApi()
       const filters = store.activeFilters.length > 0 ? store.activeFilters : undefined
+      const chartType = widget.value.widget?.config?.type
+      const mapping = chartType
+        ? { ...ds.mapping, chartType }
+        : ds.mapping
       const response = await api.dashboards.refreshWidget({
         connection_id: ds.connectionId,
         sql: ds.sql,
-        mapping: ds.mapping as any,
+        mapping: mapping as any,
         filters,
         dashboard_id: store.currentDashboardId ?? undefined,
         widget_sources: widget.value.sources ?? undefined,

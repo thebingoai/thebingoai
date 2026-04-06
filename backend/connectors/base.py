@@ -547,6 +547,11 @@ class BaseConnector(ABC):
         query_clean = re.sub(r'/\*.*?\*/', ' ', query_clean, flags=re.DOTALL)
         query_clean = ' '.join(query_clean.split())  # Normalize whitespace
 
+        # Strip quoted identifiers and string literals so column names
+        # like "cluster" don't trigger the dangerous-keyword check.
+        query_for_keyword_check = re.sub(r'"[^"]*"', ' ', query_clean)
+        query_for_keyword_check = re.sub(r"'[^']*'", ' ', query_for_keyword_check)
+
         # Block semicolons (prevent multi-statement queries)
         if ';' in query_clean.rstrip(';'):  # Allow trailing semicolon only
             raise ValueError("Multiple statements not allowed. Only single SELECT queries permitted.")
@@ -563,7 +568,7 @@ class BaseConnector(ABC):
 
         for keyword in dangerous_keywords:
             # Use word boundary regex to match whole words only
-            if re.search(rf'\b{keyword}\b', query_clean):
+            if re.search(rf'\b{keyword}\b', query_for_keyword_check):
                 raise ValueError(f"Query contains forbidden keyword: {keyword}. Only SELECT queries are allowed.")
 
         # Block dangerous PostgreSQL functions

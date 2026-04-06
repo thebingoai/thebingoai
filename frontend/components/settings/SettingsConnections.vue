@@ -27,8 +27,9 @@
 
     <!-- Connections Grid -->
     <div v-else class="flex flex-wrap gap-4">
+      <!-- Ungrouped connections (non-dataset or unique fingerprint datasets) -->
       <UiCard
-        v-for="connection in connections"
+        v-for="connection in ungroupedConnections"
         :key="connection.id"
         class="px-5 py-8 h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow"
         @click="openEditDialog(connection)"
@@ -88,6 +89,56 @@
             <p v-if="connection.db_type === 'dataset' && connection.source_filename" class="text-xs text-gray-400 truncate">{{ connection.source_filename }}</p>
             <p v-else-if="connection.table_count != null" class="text-xs text-gray-400">{{ connection.table_count }} tables</p>
             <p v-if="connection.schema_generated_at" class="text-xs text-gray-400">{{ formatRelativeDate(connection.schema_generated_at) }}</p>
+          </div>
+        </div>
+      </UiCard>
+
+      <!-- Grouped dataset connections (shared schema_fingerprint) -->
+      <UiCard
+        v-for="group in datasetGroups"
+        :key="group.fingerprint"
+        class="px-5 py-5 w-56 max-md:w-full hover:shadow-lg transition-shadow"
+        :class="{ 'h-56': !expandedGroups[group.fingerprint] }"
+      >
+        <div class="flex flex-col h-full">
+          <button
+            class="flex items-start justify-between gap-3 w-full text-left cursor-pointer"
+            @click="toggleGroup(group.fingerprint)"
+          >
+            <div class="flex items-start gap-3 min-w-0">
+              <div class="h-8 w-8 shrink-0" v-html="connectorIcons['dataset']" />
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">{{ group.name }}</p>
+                <p class="text-xs text-gray-500">{{ group.connections.length }} datasets</p>
+              </div>
+            </div>
+            <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 shrink-0 mt-1" />
+          </button>
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            <UiBadge variant="secondary" size="sm">Dataset Group</UiBadge>
+          </div>
+          <!-- Expanded: list individual datasets -->
+          <div v-if="expandedGroups[group.fingerprint]" class="mt-3 space-y-2 border-t border-gray-100 pt-3">
+            <div
+              v-for="conn in group.connections"
+              :key="conn.id"
+              class="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+              @click="openEditDialog(conn)"
+            >
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-medium text-gray-700 truncate">{{ conn.name }}</p>
+                <p v-if="conn.source_filename" class="text-xs text-gray-400 truncate">{{ conn.source_filename }}</p>
+              </div>
+              <button
+                @click.stop="openDeleteDialog(conn)"
+                class="text-gray-400 hover:text-red-500 shrink-0"
+              >
+                <Trash2 class="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+          <div v-else class="mt-auto flex flex-col gap-0.5">
+            <p class="text-xs text-gray-400">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
           </div>
         </div>
       </UiCard>
@@ -585,7 +636,7 @@
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 
@@ -646,6 +697,58 @@ const uploadingDataset = ref(false)
 const datasetForm = ref({ name: '' })
 const datasetFormErrors = ref<{ name?: string; file?: string }>({})
 const datasetPreviewColumns = ref<Array<{ name: string; type: string }>>([])
+
+// Dataset grouping state
+const expandedGroups = ref<Record<string, boolean>>({})
+
+interface DatasetGroup {
+  fingerprint: string
+  name: string
+  connections: DatabaseConnection[]
+}
+
+// Computed: group dataset connections by schema_fingerprint
+const datasetGroups = computed<DatasetGroup[]>(() => {
+  const fingerMap = new Map<string, DatabaseConnection[]>()
+  for (const conn of connections.value) {
+    if (conn.db_type === 'dataset' && conn.schema_fingerprint) {
+      const existing = fingerMap.get(conn.schema_fingerprint) || []
+      existing.push(conn)
+      fingerMap.set(conn.schema_fingerprint, existing)
+    }
+  }
+  // Only groups with 2+ datasets
+  const groups: DatasetGroup[] = []
+  for (const [fingerprint, conns] of fingerMap) {
+    if (conns.length >= 2) {
+      groups.push({
+        fingerprint,
+        name: conns[0].name,
+        connections: conns,
+      })
+    }
+  }
+  return groups
+})
+
+// Computed: connections not in any group
+const groupedIds = computed(() => {
+  const ids = new Set<number>()
+  for (const group of datasetGroups.value) {
+    for (const conn of group.connections) {
+      ids.add(conn.id)
+    }
+  }
+  return ids
+})
+
+const ungroupedConnections = computed(() => {
+  return connections.value.filter(c => !groupedIds.value.has(c.id))
+})
+
+function toggleGroup(fingerprint: string) {
+  expandedGroups.value[fingerprint] = !expandedGroups.value[fingerprint]
+}
 
 // Helpers
 function getConnectorType(id: string): ConnectorType | undefined {

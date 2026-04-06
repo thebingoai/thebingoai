@@ -497,6 +497,10 @@ async def refresh_dashboard_widgets(
                         row_count=data["row_count"],
                         execution_time_ms=0,
                     )
+                    # Inject chartType so scatter charts produce {x,y} points
+                    chart_type = widget.get("widget", {}).get("config", {}).get("type")
+                    if chart_type and "chartType" not in mapping:
+                        mapping = {**mapping, "chartType": chart_type}
                     config = transform_widget_data(query_result, mapping)
                     results[widget_id] = {"config": config, "refreshed_at": refreshed_at}
                 except Exception as e:
@@ -541,6 +545,10 @@ async def refresh_dashboard_widgets(
 
         try:
             result = connector.execute_query(sql)
+            # Inject chartType so scatter charts produce {x,y} points
+            chart_type = widget.get("widget", {}).get("config", {}).get("type")
+            if chart_type and "chartType" not in mapping:
+                mapping = {**mapping, "chartType": chart_type}
             config = transform_widget_data(result, mapping)
             refreshed_at = datetime.now(timezone.utc).isoformat()
             results[widget_id] = {"config": config, "refreshed_at": refreshed_at}

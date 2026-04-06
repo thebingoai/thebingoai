@@ -73,6 +73,8 @@ class ConnectionResponse(BaseModel):
     profiling_error: Optional[str] = None
     source_filename: Optional[str] = None  # Plugin metadata: original uploaded filename
     dataset_table_name: Optional[str] = None  # Plugin metadata: storage key for dataset file
+    is_ephemeral: bool = False
+    schema_fingerprint: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
