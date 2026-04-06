@@ -51,6 +51,17 @@ def delete_object(key: str) -> None:
         logger.error("Failed to delete %s/%s: %s", settings.do_spaces_bucket, key, e)
 
 
+def object_exists(key: str) -> bool:
+    """Check whether an object exists in DO Spaces using HEAD request."""
+    try:
+        _client().head_object(Bucket=settings.do_spaces_bucket, Key=key)
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            return False
+        raise
+
+
 def generate_presigned_url(key: str, expires_in: int = 3600) -> str:
     """Generate a presigned download URL for a DO Spaces object."""
     client = _client()

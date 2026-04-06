@@ -261,3 +261,21 @@ class TestDeleteConnection:
                 await delete_connection(connection_id=99999, current_user=user_a, db=conn_db)
 
         assert exc_info.value.status_code == 404
+
+
+class TestConnectionModelHealthFields:
+    """Verify health monitoring columns exist on DatabaseConnection."""
+
+    def test_connection_model_has_health_fields(self, conn_db):
+        conn = DatabaseConnection(
+            user_id="user-1", name="test", db_type="dataset",
+            host="internal", port=0, database="dataset",
+            username="dataset", _encrypted_password="dataset",
+            health_status="healthy",
+        )
+        conn_db.add(conn)
+        conn_db.commit()
+
+        loaded = conn_db.query(DatabaseConnection).filter_by(id=conn.id).one()
+        assert loaded.health_status == "healthy"
+        assert loaded.health_checked_at is None

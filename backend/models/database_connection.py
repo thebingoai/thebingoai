@@ -65,6 +65,10 @@ class DatabaseConnection(Base, TimestampMixin):
     is_ephemeral = Column(Boolean, default=False, nullable=False)
     schema_fingerprint = Column(String(64), nullable=True)
 
+    # Health monitoring (populated by dataset heartbeat)
+    health_status = Column(String, nullable=True)        # healthy|unhealthy
+    health_checked_at = Column(DateTime, nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="database_connections")
 
