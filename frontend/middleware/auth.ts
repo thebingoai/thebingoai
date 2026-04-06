@@ -1,7 +1,7 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
 
-  const publicRoutes = ['/login', '/register', '/auth/verify', '/auth/success', '/auth/error', '/auth/forgot-password', '/auth/reset-password']
+  const publicRoutes = ['/login', '/register', '/auth/verify', '/auth/success', '/auth/error', '/auth/forgot-password', '/auth/reset-password', '/verify-account', '/reset-password']
   // OAuth callback routes must not redirect authenticated users — tokens are being exchanged
   const oauthCallbackRoutes = ['/auth/success', '/auth/error']
 
