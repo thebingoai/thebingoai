@@ -59,6 +59,6 @@ async def app_info() -> dict:
     edition = "Enterprise" if plugins else "Community"
     return {
         "edition": edition,
-        "version": "0.4.0",
+        "version": "0.4.1",
         "plugins": [{"name": p.name, "version": p.version} for p in plugins.values()],
     }
