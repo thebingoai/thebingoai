@@ -35,8 +35,9 @@
     }
   },
   "mapping": {
-    "labelColumn":    { "type": "string", "required": true,  "description": "Column for x-axis labels or pie slice names" },
-    "datasetColumns": { "type": "array",  "required": true,  "description": "Array of {column, label} objects — each becomes a dataset series", "items": { "column": "string", "label": "string" } }
+    "labelColumn":    { "type": "string", "required": true,  "description": "Column for x-axis labels or pie slice names (for scatter: grouping column)" },
+    "datasetColumns": { "type": "array",  "required": true,  "description": "Array of {column, label} objects — each becomes a dataset series. For scatter: first = X axis, second = Y axis", "items": { "column": "string", "label": "string" } },
+    "chartType":      { "type": "string", "required": false, "description": "Must match config.type (e.g. 'scatter') — required for scatter charts so the backend produces {x,y} point data" }
   },
   "position_defaults": { "w": 6, "h": 5, "minW": 3, "minH": 3 }
 }

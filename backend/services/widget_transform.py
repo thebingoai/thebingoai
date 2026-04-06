@@ -121,11 +121,14 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     Mapping keys:
       - labelColumn: column name to use for chart labels (x-axis / slices)
       - datasetColumns: list of {column, label} dicts for datasets
+      - chartType: (optional) the chart subtype (e.g. "scatter") — when "scatter",
+        produces {x, y} point objects grouped by labelColumn instead of flat arrays.
 
     Returns dict suitable for widget.config (merged with existing chart-level fields).
     """
     label_col = mapping.get("labelColumn")
     dataset_cols = mapping.get("datasetColumns", [])
+    chart_type = mapping.get("chartType", "")
 
     label_idx = _find_column(label_col, result.columns, "labelColumn")
     labels = [_to_json_safe(row[label_idx]) for row in result.rows]
@@ -134,6 +137,33 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         "backgroundColor", "borderColor", "borderWidth", "fill",
         "tension", "pointRadius",
     }
+
+    # Scatter charts need {x, y} point objects grouped by label (e.g. team)
+    if chart_type == "scatter" and len(dataset_cols) >= 2:
+        # Detect X/Y roles from label hints like "(X)" / "(Y)", else default first=X, second=Y
+        col0_label = (dataset_cols[0].get("label") or "").upper()
+        col1_label = (dataset_cols[1].get("label") or "").upper()
+        if "(X)" in col0_label and "(Y)" in col1_label:
+            x_col, y_col = dataset_cols[0], dataset_cols[1]
+        elif "(Y)" in col0_label and "(X)" in col1_label:
+            x_col, y_col = dataset_cols[1], dataset_cols[0]
+        else:
+            x_col, y_col = dataset_cols[0], dataset_cols[1]
+        x_idx = _find_column(x_col["column"], result.columns, "datasetColumns(X).column")
+        y_idx = _find_column(y_col["column"], result.columns, "datasetColumns(Y).column")
+
+        # Group points by label (e.g. team name)
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for row in result.rows:
+            group_key = str(_to_json_safe(row[label_idx]))
+            point = {"x": _to_json_safe(row[x_idx]), "y": _to_json_safe(row[y_idx])}
+            groups.setdefault(group_key, []).append(point)
+
+        datasets = []
+        for group_label, points in groups.items():
+            datasets.append({"label": group_label, "data": points})
+
+        return {"data": {"labels": [], "datasets": datasets}}
 
     datasets = []
     for ds in dataset_cols:

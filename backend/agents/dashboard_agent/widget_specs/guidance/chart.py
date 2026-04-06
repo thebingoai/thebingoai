@@ -10,7 +10,7 @@ CHART_GUIDANCE = """### Chart Type Selection
 | Composition | bar | `stacked: true` | w=6 or w=8 |
 | Trend over time | line or area | — | w=6, w=8, or w=12 |
 | Part-of-whole < 8 | pie or doughnut | `showValues: true` | w=4 or w=6 (NEVER w=12) |
-| Correlation (x vs y) | scatter | `showLegend: false` if single dataset | w=6 or w=8 |
+| Correlation (x vs y) | scatter | `showLegend: true` for grouped scatter | w=6 or w=8 |
 
 ### Layout Rules
 
@@ -62,4 +62,18 @@ LEFT JOIN payments p ON o.id = p.order_id
 GROUP BY o.region, o.product_type
 ```
 Use one datasetColumn per series. Set `options.stacked: true`.
+
+**Scatter (correlation) with baseJoin:**
+```sql
+SELECT o.metric_x, o.metric_y, o.category
+FROM orders o
+LEFT JOIN payments p ON o.id = p.order_id
+WHERE o.metric_x IS NOT NULL AND o.metric_y IS NOT NULL
+```
+Scatter mapping rules:
+- `labelColumn`: the grouping column (e.g. category/team) — points are grouped into one dataset per unique value
+- `datasetColumns`: exactly 2 entries — label them with `(X)` and `(Y)` suffixes so the backend maps axes correctly
+- `chartType`: **must** be set to `"scatter"` in the mapping
+
+Mapping: `{"type": "chart", "chartType": "scatter", "labelColumn": "category", "datasetColumns": [{"column": "metric_x", "label": "Metric X (X)"}, {"column": "metric_y", "label": "Metric Y (Y)"}]}`
 """

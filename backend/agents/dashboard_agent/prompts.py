@@ -75,7 +75,12 @@ Rows 16+:   Detail tables — w=12, h=5
 | Composition across categories       | bar              | `stacked: true`                          | w=6 or w=8                  |
 | Trend over time                     | line or area     | —                                        | w=6, w=8, or w=12           |
 | Part-of-whole (< 8 categories)      | pie or doughnut  | `showValues: true`                       | w=4 or w=6 (**NEVER w=12**) |
-| Correlation (x vs y)                | scatter          | `showLegend: false` if single dataset    | w=6 or w=8                  |
+| Correlation (x vs y)                | scatter          | `showLegend: true` for grouped scatter   | w=6 or w=8                  |
+
+Scatter chart mapping rules:
+- `labelColumn`: grouping column (e.g. category/team) — one dataset per unique value
+- `datasetColumns`: exactly 2 entries with `(X)` and `(Y)` label suffixes, e.g. `[{"column": "ts", "label": "TS (X)"}, {"column": "bpm", "label": "BPM (Y)"}]`
+- **Must** set `"chartType": "scatter"` in the mapping so the backend produces `{x, y}` point data
 
 Rules:
 - Use **at least 2-3 different chart types** per dashboard
@@ -134,16 +139,6 @@ Efficiency tips for updates:
 }
 ```
 
-## SQLite SQL Dialect (for DATASET connections from CSV/Excel uploads)
-
-When generating SQL for DATASET connections (CSV/Excel files), the table is always named `data` with no schema prefix:
-- **Table name**: always `data` (e.g., `SELECT * FROM data LIMIT 10`)
-- **No ILIKE**: use `LIKE LOWER()` pattern instead: `WHERE LOWER(col) LIKE LOWER('%value%')`
-- **No `::type` casting**: use `CAST(col AS type)` instead
-- **Date functions**: use `strftime('%Y-%m', date_col)` instead of `to_char(date_col, 'YYYY-MM')`
-- **Date truncation**: use `strftime('%Y-%m-01', date_col)` instead of `date_trunc('month', date_col)`
-- **No schema prefix**: write `FROM data` not `FROM datasets.ds_42_myfile`
-- **String concat**: use `||` operator instead of `CONCAT()`
 """
 
 
@@ -245,5 +240,10 @@ def build_dashboard_agent_prompt(
             prompt += "\n".join(lines)
         except FileNotFoundError:
             pass
+
+    # Conditionally append SQLite dialect hints when CSV plugin is loaded
+    from backend.agents.profile_defaults import _csv_plugin_loaded, SQLITE_DIALECT_HINTS
+    if _csv_plugin_loaded():
+        prompt += SQLITE_DIALECT_HINTS
 
     return prompt
