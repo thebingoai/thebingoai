@@ -50,6 +50,10 @@ class BingoPlugin(ABC):
         """Return (router, url_prefix) tuples."""
         return []
 
+    def tool_builders(self) -> dict[str, Callable]:
+        """Return {tool_name: builder_fn} for agent tools this plugin provides."""
+        return {}
+
     def on_startup(self) -> None:
         pass
 

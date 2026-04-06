@@ -255,7 +255,7 @@ class ProfileRenderer:
             org_id=org_id,
             identity=defaults.get("identity", f"You are a {agent_type} agent."),
             soul=defaults.get("soul"),
-            tools=defaults.get("tools"),
+            tools=get_default_section(agent_type, "tools"),
             agents=defaults.get("agents"),
             bootstrap=defaults.get("bootstrap"),
             heartbeat=defaults.get("heartbeat"),

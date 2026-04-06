@@ -65,6 +65,14 @@ def discover_and_load_plugins() -> None:
                 register_provider(name, cls)
                 logger.info("Registered auth provider '%s' from plugin '%s'", name, plugin.name)
 
+            try:
+                from backend.agents.tool_registry import register_plugin_tool_builder
+                for tool_name, builder in plugin.tool_builders().items():
+                    register_plugin_tool_builder(tool_name, builder)
+                    logger.info("Registered tool builder '%s' from plugin '%s'", tool_name, plugin.name)
+            except Exception:
+                logger.exception("Failed to register tool builders from plugin '%s'", plugin.name)
+
             plugin.on_startup()
             _loaded_plugins[plugin.name] = plugin
             logger.info("Loaded plugin: %s v%s", plugin.name, plugin.version)

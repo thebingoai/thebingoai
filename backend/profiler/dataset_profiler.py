@@ -181,8 +181,8 @@ def _classify_column(series: pd.Series, row_count: int) -> str:
     if pd.api.types.is_numeric_dtype(series):
         return "numeric"
 
-    # Object columns: try to detect hidden numerics or datetimes
-    if series.dtype == object:
+    # Object / string columns: try to detect hidden numerics or datetimes
+    if series.dtype == object or pd.api.types.is_string_dtype(series):
         non_null = series.dropna()
         if len(non_null) == 0:
             return "text"

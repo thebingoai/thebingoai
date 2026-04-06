@@ -133,6 +133,23 @@ def _build_communication_tools(context: AgentContext) -> List:
     )
 
 
+# ---------------------------------------------------------------------------
+# Plugin tool builders (populated by plugin loader at startup)
+# ---------------------------------------------------------------------------
+
+_PLUGIN_TOOL_BUILDERS: Dict[str, Callable] = {}
+
+
+def register_plugin_tool_builder(name: str, builder: Callable) -> None:
+    """Register a tool builder provided by a plugin."""
+    _PLUGIN_TOOL_BUILDERS[name] = builder
+
+
+def get_plugin_tool_builders() -> Dict[str, Callable]:
+    """Return a copy of all plugin-registered tool builders."""
+    return dict(_PLUGIN_TOOL_BUILDERS)
+
+
 TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "list_tables": build_list_tables_tool,
     "get_table_schema": build_get_table_schema_tool,

@@ -13,6 +13,28 @@ Used to seed profiles for new users and as fallback when no profile exists.
 from typing import Dict, Optional
 
 # ---------------------------------------------------------------------------
+# SQLite dialect hints — appended only when the CSV connector plugin is loaded
+# ---------------------------------------------------------------------------
+SQLITE_DIALECT_HINTS = """
+
+## SQLite SQL Dialect (for DATASET connections from CSV/Excel uploads)
+
+When generating SQL for DATASET connections (CSV/Excel files), the table is always named `data` with no schema prefix:
+- **Table name**: always `data` (e.g., `SELECT * FROM data LIMIT 10`)
+- **No ILIKE**: use `LIKE LOWER()` pattern instead
+- **No `::type` casting**: use `CAST(col AS type)` instead
+- **Date functions**: use `strftime('%Y-%m', date_col)` instead of `to_char()`
+- **Date truncation**: use `strftime('%Y-%m-01', date_col)` instead of `date_trunc()`
+- **No schema prefix**: write `FROM data` not `FROM datasets.ds_42_myfile`
+- **String concat**: use `||` operator instead of `CONCAT()`"""
+
+
+def _csv_plugin_loaded() -> bool:
+    """Check if the CSV connector plugin is loaded (has registered tool builders)."""
+    from backend.agents.tool_registry import get_plugin_tool_builders
+    return "create_dataset_from_upload" in get_plugin_tool_builders()
+
+# ---------------------------------------------------------------------------
 # Section type constants
 # ---------------------------------------------------------------------------
 SECTIONS = [
@@ -397,16 +419,7 @@ Available types: kpi, chart, table, filter, text.
 Every widget MUST have: `id`, `position` {x, y, w, h}, `widget.type`, `widget.config`.
 Data widgets (kpi, chart, table) also need: `dataSource` {connectionId, sql, mapping}.
 
-## SQLite SQL Dialect (for DATASET connections from CSV/Excel uploads)
-
-When generating SQL for DATASET connections (CSV/Excel files), the table is always named `data` with no schema prefix:
-- **Table name**: always `data` (e.g., `SELECT * FROM data LIMIT 10`)
-- **No ILIKE**: use `LIKE LOWER()` pattern instead
-- **No `::type` casting**: use `CAST(col AS type)` instead
-- **Date functions**: use `strftime('%Y-%m', date_col)` instead of `to_char()`
-- **Date truncation**: use `strftime('%Y-%m-01', date_col)` instead of `date_trunc()`
-- **No schema prefix**: write `FROM data` not `FROM datasets.ds_42_myfile`
-- **String concat**: use `||` operator instead of `CONCAT()`"""
+"""
 
 _DASHBOARD_AGENT_SOUL = """## Who You Are
 
@@ -628,4 +641,8 @@ DEFAULTS: Dict[str, Dict[str, Optional[str]]] = {
 def get_default_section(agent_type: str, section: str) -> Optional[str]:
     """Get the default content for a specific agent type and section."""
     agent_defaults = DEFAULTS.get(agent_type, {})
-    return agent_defaults.get(section)
+    content = agent_defaults.get(section)
+    # Conditionally append SQLite dialect hints for dashboard agent tools
+    if content and agent_type == "dashboard_agent" and section == "tools" and _csv_plugin_loaded():
+        content += SQLITE_DIALECT_HINTS
+    return content

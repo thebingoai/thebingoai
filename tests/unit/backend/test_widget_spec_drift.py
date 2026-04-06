@@ -28,6 +28,8 @@ def _parse_ts_interface_fields(file_path: Path, interface_name: str) -> set[str]
       - field?: type
       - field?: { nested }  (extracts outer field only)
     """
+    if not file_path.exists():
+        pytest.skip(f"{file_path} not available (backend-only image)")
     content = file_path.read_text()
 
     # Find the interface block
