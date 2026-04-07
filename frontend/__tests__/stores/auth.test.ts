@@ -13,6 +13,9 @@ vi.stubGlobal('localStorage', {
   removeItem: vi.fn((key: string) => { delete storage[key] }),
 })
 
+// Stub window.location.origin for redirect_base_url
+vi.stubGlobal('window', { location: { origin: 'http://localhost:3000' } })
+
 // Auth store's logout() uses auto-imported composables — stub them globally
 vi.stubGlobal('useChatStore', () => ({ reset: vi.fn() }))
 vi.stubGlobal('useDashboardStore', () => ({ $resetAll: vi.fn() }))
@@ -84,7 +87,7 @@ describe('auth store', () => {
     expect(result.success).toBe(true)
     expect(vi.mocked($fetch)).toHaveBeenCalledWith(
       '/sso-api/auth/register',
-      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com', password: 'pass123' } }),
+      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com', password: 'pass123', redirect_base_url: 'http://localhost:3000' } }),
     )
   })
 
@@ -141,7 +144,20 @@ describe('auth store', () => {
     expect(result.success).toBe(true)
     expect(vi.mocked($fetch)).toHaveBeenCalledWith(
       '/sso-api/auth/forgot-password',
-      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com' } }),
+      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com', redirect_base_url: 'http://localhost:3000' } }),
+    )
+  })
+
+  // ── resendVerification ────────────────────────────────────────────
+  it('resendVerification() calls /sso-api/auth/resend-verification with redirect_base_url', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    const result = await store.resendVerification('a@b.com')
+    expect(result.success).toBe(true)
+    expect(vi.mocked($fetch)).toHaveBeenCalledWith(
+      '/sso-api/auth/resend-verification',
+      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com', redirect_base_url: 'http://localhost:3000' } }),
     )
   })
 

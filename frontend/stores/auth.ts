@@ -57,6 +57,10 @@ export const useAuthStore = defineStore('auth', {
       return headers
     },
 
+    _redirectBaseUrl(): string {
+      return process.client ? window.location.origin : ''
+    },
+
     _parseSSOError(error: any, fallback: string): string {
       const data = error?.data
       const detail = data?.detail
@@ -79,7 +83,7 @@ export const useAuthStore = defineStore('auth', {
         await $fetch('/sso-api/auth/register', {
           method: 'POST',
           headers: this._ssoHeaders(),
-          body: { email, password },
+          body: { email, password, redirect_base_url: this._redirectBaseUrl() },
         })
         return { success: true }
       } catch (error: any) {
@@ -173,7 +177,7 @@ export const useAuthStore = defineStore('auth', {
         await $fetch('/sso-api/auth/resend-verification', {
           method: 'POST',
           headers: this._ssoHeaders(),
-          body: { email },
+          body: { email, redirect_base_url: this._redirectBaseUrl() },
         })
         return { success: true }
       } catch (error: any) {
@@ -220,7 +224,7 @@ export const useAuthStore = defineStore('auth', {
         await $fetch('/sso-api/auth/forgot-password', {
           method: 'POST',
           headers: this._ssoHeaders(),
-          body: { email },
+          body: { email, redirect_base_url: this._redirectBaseUrl() },
         })
         return { success: true }
       } catch (error: any) {
