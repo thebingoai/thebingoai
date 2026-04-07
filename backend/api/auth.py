@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
-from backend.auth.factory import get_auth_provider
+from backend.auth.sso import get_config as sso_get_config, logout as sso_logout
 from backend.schemas.auth import LogoutRequest
 from backend.schemas.user import UserResponse
 from backend.models.user import User
@@ -21,8 +21,7 @@ async def get_auth_config():
     Returns provider-specific config (URLs, public keys, etc.).
     Public endpoint - no authentication required.
     """
-    provider = get_auth_provider()
-    return provider.get_config()
+    return sso_get_config()
 
 
 @router.get("/me", response_model=UserResponse)
@@ -49,7 +48,6 @@ async def logout(
     """
     access_token = credentials.credentials
 
-    provider = get_auth_provider()
-    await provider.logout(access_token, request.refresh_token)
+    await sso_logout(access_token, request.refresh_token)
 
     return {"message": "Logged out successfully"}

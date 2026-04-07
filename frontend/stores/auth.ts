@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 export interface User {
   id: string
@@ -12,13 +11,9 @@ export interface User {
 
 export interface AuthConfig {
   provider: string
-  // SSO fields
   sso_base_url?: string
   publishable_key?: string
   google_oauth_url?: string
-  // Supabase fields
-  supabase_url?: string
-  supabase_anon_key?: string
 }
 
 // Deduplication: when multiple widgets get 401 simultaneously,
@@ -39,8 +34,7 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isAuthenticated: (state) => !!state.token && !!state.user,
     currentUser: (state) => state.user,
-    isSSO: (state) => state.authConfig?.provider === 'sso',
-    isSupabase: (state) => state.authConfig?.provider === 'supabase',
+    hasGoogleOAuth: (state) => !!state.authConfig?.google_oauth_url,
   },
 
   actions: {
@@ -82,17 +76,6 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
 
       try {
-        if (this.isSupabase) {
-          const supabase = useSupabase()
-          const { error } = await supabase.auth.signUp({ email, password })
-          if (error) {
-            this.error = error.message
-            return { success: false, error: error.message }
-          }
-          return { success: true }
-        }
-
-        // SSO
         await $fetch('/sso-api/auth/register', {
           method: 'POST',
           headers: this._ssoHeaders(),
@@ -100,9 +83,7 @@ export const useAuthStore = defineStore('auth', {
         })
         return { success: true }
       } catch (error: any) {
-        this.error = this.isSSO
-          ? this._parseSSOError(error, 'Registration failed')
-          : (error.message || 'Registration failed')
+        this.error = this._parseSSOError(error, 'Registration failed')
         return { success: false, error: this.error }
       } finally {
         this.loading = false
@@ -116,20 +97,6 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
 
       try {
-        if (this.isSupabase) {
-          const supabase = useSupabase()
-          const { data, error } = await supabase.auth.signInWithPassword(credentials)
-          if (error) {
-            this.error = error.message
-            return { success: false, error: error.message }
-          }
-          this.token = data.session?.access_token ?? null
-          this._persistTokens()
-          await this.fetchUser()
-          return { success: true }
-        }
-
-        // SSO
         const data = await $fetch<{ access_token: string; refresh_token: string }>(
           '/sso-api/auth/login',
           {
@@ -144,9 +111,7 @@ export const useAuthStore = defineStore('auth', {
         await this.fetchUser()
         return { success: true }
       } catch (error: any) {
-        this.error = this.isSSO
-          ? this._parseSSOError(error, 'Login failed')
-          : (error.message || 'Login failed')
+        this.error = this._parseSSOError(error, 'Login failed')
         return { success: false, error: this.error }
       } finally {
         this.loading = false
@@ -156,25 +121,8 @@ export const useAuthStore = defineStore('auth', {
     // ─── Google OAuth ───────────────────────────────────────────
 
     async loginWithGoogle() {
-      if (this.isSupabase) {
-        try {
-          const supabase = useSupabase()
-          const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              redirectTo: `${window.location.origin}/auth/success`,
-            },
-          })
-          if (error) console.error('Google OAuth error:', error.message)
-        } catch (error: any) {
-          console.error('Google OAuth error:', error)
-        }
-        return
-      }
-
-      // SSO
-      if (!this.authConfig) {
-        console.error('Auth config not loaded')
+      if (!this.authConfig?.google_oauth_url) {
+        console.error('Google OAuth not available')
         return
       }
       const successUrl = encodeURIComponent(`${window.location.origin}/auth/success`)
@@ -192,7 +140,7 @@ export const useAuthStore = defineStore('auth', {
       await this.fetchUser()
     },
 
-    // ─── Email verification (SSO) ──────────────────────────────
+    // ─── Email verification ────────────────────────────────────
 
     async verifyEmail(token: string) {
       this.loading = true
@@ -247,19 +195,6 @@ export const useAuthStore = defineStore('auth', {
 
     async _doRefreshToken() {
       try {
-        if (this.isSupabase) {
-          const supabase = useSupabase()
-          const { data, error } = await supabase.auth.refreshSession()
-          if (error || !data.session) {
-            await this.logout()
-            return false
-          }
-          this.token = data.session.access_token
-          this._persistTokens()
-          return true
-        }
-
-        // SSO
         if (!this.refreshToken) return false
         const data = await $fetch<{ access_token: string }>(
           '/sso-api/auth/token/refresh',
@@ -282,16 +217,6 @@ export const useAuthStore = defineStore('auth', {
 
     async forgotPassword(email: string) {
       try {
-        if (this.isSupabase) {
-          const supabase = useSupabase()
-          const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/auth/reset-password`,
-          })
-          if (error) return { success: false, error: error.message }
-          return { success: true }
-        }
-
-        // SSO
         await $fetch('/sso-api/auth/forgot-password', {
           method: 'POST',
           headers: this._ssoHeaders(),
@@ -305,14 +230,6 @@ export const useAuthStore = defineStore('auth', {
 
     async resetPassword(token: string, newPassword: string) {
       try {
-        if (this.isSupabase) {
-          const supabase = useSupabase()
-          const { error } = await supabase.auth.updateUser({ password: newPassword })
-          if (error) return { success: false, error: error.message }
-          return { success: true }
-        }
-
-        // SSO
         await $fetch('/sso-api/auth/reset-password', {
           method: 'POST',
           headers: this._ssoHeaders(),
@@ -328,7 +245,6 @@ export const useAuthStore = defineStore('auth', {
 
     async fetchUser() {
       if (!this.token) return
-      // Deduplicate concurrent fetchUser calls (e.g. middleware + layout race)
       if (_fetchUserPromise) return _fetchUserPromise
       _fetchUserPromise = this._doFetchUser()
       try {
@@ -348,7 +264,6 @@ export const useAuthStore = defineStore('auth', {
         this.user = data
       } catch (error: any) {
         if (error?.statusCode === 401 || error?.status === 401) {
-          // Try refreshing the token before giving up
           const refreshed = await this.refreshAccessToken()
           if (refreshed) {
             try {
@@ -380,31 +295,10 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    handleAuthStateChange(event: AuthChangeEvent, session: Session | null) {
-      if (session) {
-        this.token = session.access_token
-        this._persistTokens()
-      } else if (event === 'SIGNED_OUT') {
-        this.token = null
-        this.user = null
-        if (process.client) {
-          localStorage.removeItem('auth_token')
-        }
-      }
-    },
-
     // ─── Logout ─────────────────────────────────────────────────
 
     async logout() {
-      if (this.isSupabase) {
-        try {
-          const supabase = useSupabase()
-          await supabase.auth.signOut()
-        } catch {
-          // Ignore signOut errors
-        }
-      } else if (this.token && this.refreshToken) {
-        // SSO: notify backend to invalidate refresh token
+      if (this.token && this.refreshToken) {
         try {
           await $fetch('/api/auth/logout', {
             method: 'POST',

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), Supabase authentication, and Celery + Redis for async background processing. SSO authentication is available via the enterprise `bingo-sso-auth` plugin.
+A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), SSO authentication (via LEAD SSO), and Celery + Redis for async background processing.
 
 ## Project Structure
 This is the community edition. It can run standalone or as a git submodule inside the enterprise repo.
@@ -159,7 +159,7 @@ All config in `backend/config.py` using Pydantic Settings:
 - `embedding_model`: "text-embedding-3-large" (default)
 - `embedding_dimensions`: **3072** (MUST match Qdrant collection vector size)
 - `chunk_size`: 512 tokens, `chunk_overlap`: 0.2 (20%)
-- `auth_provider`: "supabase" (default for community; "sso" via enterprise plugin)
+- SSO settings: `sso_base_url`, `sso_publishable_key`, `sso_secret_key`, `sso_token_cache_ttl`
 
 **Validation**:
 - `chunk_overlap` validated to be 0.0-0.5
@@ -175,14 +175,12 @@ Vector size must be 3072 to match `text-embedding-3-large` embeddings.
 
 ### Authentication
 
-The auth system uses a **provider pattern** (`backend/auth/`):
-- `factory.py`: Provider registry (built-in + plugin-provided)
-- `dependencies.py`: FastAPI dependency for route protection
-- `providers/supabase_provider.py`: Community default (Supabase)
+SSO authentication via LEAD SSO (`backend/auth/`):
+- `sso.py`: Core SSO module — `validate_token()`, `logout()`, `get_config()` as plain async functions
+- `dependencies.py`: FastAPI dependency for route protection (`get_current_user`)
+- `webhooks.py`: SSO webhook handler at `/api/webhooks/sso`
 
-**Plugin extensibility**: Auth providers can be registered by plugins via `BingoPlugin.auth_providers()`. The enterprise `bingo-sso-auth` plugin adds SSO support this way.
-
-**Key config**: `AUTH_PROVIDER` env var selects the active provider ("supabase" or "sso").
+**Key config**: `SSO_BASE_URL`, `SSO_PUBLISHABLE_KEY` (enables Google OAuth), `SSO_SECRET_KEY` (enterprise: adds X-API-Key header). Community mode works without secret key.
 
 ### API Structure
 
@@ -285,13 +283,15 @@ OPENAI_API_KEY=sk-...           # Required (embeddings + LLM)
 DB_ENCRYPTION_KEY=...           # Required (Fernet key for DB password encryption)
 ```
 
-### Auth Environment Variables
+### SSO Environment Variables
 
 ```bash
-AUTH_PROVIDER=supabase          # Default for community (or "sso" with enterprise plugin)
-SUPABASE_URL=...                # Supabase project URL
-SUPABASE_ANON_KEY=...           # Supabase anon/public key
-SUPABASE_JWT_SECRET=...         # JWT secret for token verification
+SSO_BASE_URL=https://sso.thelead.io   # SSO service URL
+SSO_PUBLISHABLE_KEY=pk_...            # Frontend key (enables Google OAuth)
+SSO_SECRET_KEY=sk_...                 # Backend key (enterprise: X-API-Key header)
+SSO_TOKEN_CACHE_TTL=300               # Token cache TTL in seconds
+SSO_WEBHOOK_SECRET=...                # Optional: webhook signature verification
+SSO_REDIS_URL=redis://localhost:6379/3  # Redis DB for token cache
 ```
 
 ### Optional Environment Variables

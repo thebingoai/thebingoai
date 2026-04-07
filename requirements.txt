@@ -8,7 +8,7 @@ tiktoken>=0.7,<1.0
 python-dotenv==1.0.0
 pydantic[email]>=2.7.4,<3.0.0
 pydantic-settings>=2.1.0,<3.0.0
-httpx>=0.26.0,<1.0
+httpx>=0.26.0,<0.28
 
 # LangChain & LangGraph (compatible versions)
 langchain-core>=1.2.0,<2.0.0

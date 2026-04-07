@@ -125,16 +125,7 @@ class Settings(BaseSettings):
     max_query_rows: int = 5000
     query_timeout_ms: int = 120000
 
-    # Authentication
-    auth_provider: str = "supabase"
-
-    # Supabase Authentication (community default)
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
-    supabase_jwt_secret: str = ""
-    supabase_service_role_key: str = ""
-
-    # SSO Authentication (enterprise — provided by bingo-sso-auth plugin)
+    # SSO Authentication
     sso_base_url: str = "https://sso.thelead.io"
     sso_publishable_key: str = ""      # pk_* key for frontend
     sso_secret_key: str = ""           # sk_* key for backend
@@ -164,17 +155,6 @@ class Settings(BaseSettings):
             raise ValueError(f"provider must be one of: {', '.join(valid)}")
         return v
 
-    @field_validator("supabase_jwt_secret")
-    @classmethod
-    def validate_supabase_jwt_secret(cls, v, info):
-        # Only enforce when auth_provider is supabase
-        auth_provider = info.data.get("auth_provider", "supabase")
-        if auth_provider == "supabase" and not v:
-            raise ValueError(
-                "SUPABASE_JWT_SECRET is required when AUTH_PROVIDER=supabase. "
-                "Find it in your Supabase project settings under API > JWT Secret."
-            )
-        return v
 
     @field_validator("db_encryption_key")
     @classmethod

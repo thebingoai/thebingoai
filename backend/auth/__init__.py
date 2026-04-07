@@ -1,11 +1,12 @@
 from backend.auth.dependencies import get_current_user, get_current_active_user
-from backend.auth.base import AuthUser, BaseAuthProvider
-from backend.auth.factory import get_auth_provider
+from backend.auth.sso import AuthUser
+from backend.auth.sso import validate_token, logout, get_config
 
 __all__ = [
     "get_current_user",
     "get_current_active_user",
     "AuthUser",
-    "BaseAuthProvider",
-    "get_auth_provider",
+    "validate_token",
+    "logout",
+    "get_config",
 ]

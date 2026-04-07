@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from backend.auth.base import AuthUser
+from backend.auth.sso import AuthUser
 from backend.database.base import Base
 from backend.models.organization import Organization
 from backend.models.user import User
@@ -80,7 +80,7 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = sso_user
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider):
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token):
             result = await get_current_user(
                 credentials=_make_credentials("valid-token"),
                 db=auth_db,
@@ -98,9 +98,8 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = sso_user
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider), \
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token), \
              patch("backend.auth.dependencies.settings") as mock_settings:
-            mock_settings.auth_provider = "sso"
             mock_settings.enable_governance = False
 
             result = await get_current_user(
@@ -123,10 +122,7 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = sso_user
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider), \
-             patch("backend.auth.dependencies.settings") as mock_settings:
-            mock_settings.auth_provider = "sso"
-
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token):
             result = await get_current_user(
                 credentials=_make_credentials("valid-token"),
                 db=auth_db,
@@ -144,7 +140,7 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = None
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider):
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_user(
                     credentials=_make_credentials("bad-token"),
@@ -163,7 +159,7 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = sso_user
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider):
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_user(
                     credentials=_make_credentials("token"),
@@ -182,7 +178,7 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = sso_user
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider):
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token):
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_user(
                     credentials=_make_credentials("token"),
@@ -217,9 +213,8 @@ class TestGetCurrentUser:
         mock_provider = AsyncMock()
         mock_provider.validate_token.return_value = sso_user
 
-        with patch("backend.auth.dependencies.get_auth_provider", return_value=mock_provider), \
+        with patch("backend.auth.dependencies.sso_validate_token", new=mock_provider.validate_token), \
              patch("backend.auth.dependencies.settings") as mock_settings:
-            mock_settings.auth_provider = "sso"
             mock_settings.enable_governance = True
 
             result = await get_current_user(

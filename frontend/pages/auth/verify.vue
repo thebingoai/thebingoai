@@ -29,9 +29,8 @@
           Verification email resent!
         </div>
 
-        <!-- SSO: resend button -->
         <UiButton
-          v-if="authStore.isSSO && pendingEmail"
+          v-if="pendingEmail"
           variant="secondary"
           :loading="resending"
           :disabled="resending"
@@ -62,47 +61,16 @@ const error = ref('')
 const pendingEmail = ref('')
 
 onMounted(async () => {
-  if (authStore.isSupabase) {
-    // Supabase: verify via token_hash query param
-    const tokenHash = route.query.token_hash as string
-    const type = route.query.type as string
-
-    if (tokenHash && type === 'email') {
-      verifying.value = true
-      try {
-        const supabase = useSupabase()
-        const { data, error: verifyError } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: 'email',
-        })
-        if (verifyError) {
-          error.value = verifyError.message
-        } else if (data.session) {
-          authStore.token = data.session.access_token
-          localStorage.setItem('auth_token', data.session.access_token)
-          await authStore.fetchUser()
-          verified.value = true
-          setTimeout(() => router.push('/chat'), 1500)
-        }
-      } catch (e: any) {
-        error.value = e.message || 'Verification failed'
-      } finally {
-        verifying.value = false
-      }
-    }
-  } else {
-    // SSO: verify via token query param
-    const token = route.query.token as string
-    if (token) {
-      verifying.value = true
-      const result = await authStore.verifyEmail(token)
-      verifying.value = false
-      if (result.success) {
-        verified.value = true
-        setTimeout(() => router.push('/chat'), 1500)
-      } else {
-        error.value = result.error || 'Verification failed. Please try again.'
-      }
+  const token = route.query.token as string
+  if (token) {
+    verifying.value = true
+    const result = await authStore.verifyEmail(token)
+    verifying.value = false
+    if (result.success) {
+      verified.value = true
+      setTimeout(() => router.push('/chat'), 1500)
+    } else {
+      error.value = result.error || 'Verification failed. Please try again.'
     }
   }
 })

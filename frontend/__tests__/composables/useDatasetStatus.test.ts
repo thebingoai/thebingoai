@@ -28,9 +28,6 @@ vi.stubGlobal('useApi', () => ({
   },
 }))
 
-vi.mock('~/composables/useSupabase', () => ({
-  useSupabase: vi.fn(),
-}))
 vi.mock('~/stores/dashboard', () => ({
   useDashboardStore: () => ({ $resetAll: vi.fn() }),
 }))

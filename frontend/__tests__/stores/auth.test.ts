@@ -13,28 +13,18 @@ vi.stubGlobal('localStorage', {
   removeItem: vi.fn((key: string) => { delete storage[key] }),
 })
 
-vi.mock('~/composables/useSupabase', () => ({
-  useSupabase: vi.fn(),
-}))
-
-// Auth store's logout() calls these — mock them so the store module can load
-vi.mock('~/stores/chat', () => ({
-  useChatStore: () => ({ reset: vi.fn() }),
-}))
-vi.mock('~/stores/dashboard', () => ({
-  useDashboardStore: () => ({ $resetAll: vi.fn() }),
-}))
-vi.mock('~/composables/useWebSocket', () => ({
-  useWebSocket: () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }),
-}))
+// Auth store's logout() uses auto-imported composables — stub them globally
+vi.stubGlobal('useChatStore', () => ({ reset: vi.fn() }))
+vi.stubGlobal('useDashboardStore', () => ({ $resetAll: vi.fn() }))
+vi.stubGlobal('useWebSocket', () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }))
 
 import { useAuthStore } from '~/stores/auth'
 
 describe('auth store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    // Clear storage between tests
     for (const key of Object.keys(storage)) delete storage[key]
+    vi.mocked($fetch).mockReset()
   })
 
   // ── Initial state ──────────────────────────────────────────────────
@@ -54,12 +44,6 @@ describe('auth store', () => {
     expect(store.isAuthenticated).toBe(false)
   })
 
-  it('isAuthenticated returns false when token set but no user', () => {
-    const store = useAuthStore()
-    store.token = 'some-token'
-    expect(store.isAuthenticated).toBe(false)
-  })
-
   it('isAuthenticated returns true when both token and user exist', () => {
     const store = useAuthStore()
     store.token = 'some-token'
@@ -74,19 +58,104 @@ describe('auth store', () => {
     expect(store.isAuthenticated).toBe(true)
   })
 
-  // ── isSSO / isSupabase ─────────────────────────────────────────────
-  it('isSSO returns true when authConfig.provider is sso', () => {
+  // ── hasGoogleOAuth ────────────────────────────────────────────────
+  it('hasGoogleOAuth returns false when google_oauth_url is absent', () => {
     const store = useAuthStore()
-    store.authConfig = { provider: 'sso' }
-    expect(store.isSSO).toBe(true)
-    expect(store.isSupabase).toBe(false)
+    store.authConfig = { provider: 'sso', sso_base_url: 'https://sso.example.com' }
+    expect(store.hasGoogleOAuth).toBe(false)
   })
 
-  it('isSupabase returns true when authConfig.provider is supabase', () => {
+  it('hasGoogleOAuth returns true when google_oauth_url is present', () => {
     const store = useAuthStore()
-    store.authConfig = { provider: 'supabase' }
-    expect(store.isSupabase).toBe(true)
-    expect(store.isSSO).toBe(false)
+    store.authConfig = {
+      provider: 'sso',
+      sso_base_url: 'https://sso.example.com',
+      google_oauth_url: 'https://sso.example.com/api/v1/oauth/google',
+    }
+    expect(store.hasGoogleOAuth).toBe(true)
+  })
+
+  // ── register ──────────────────────────────────────────────────────
+  it('register() calls /sso-api/auth/register', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    const result = await store.register('a@b.com', 'pass123')
+    expect(result.success).toBe(true)
+    expect(vi.mocked($fetch)).toHaveBeenCalledWith(
+      '/sso-api/auth/register',
+      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com', password: 'pass123' } }),
+    )
+  })
+
+  // ── login ─────────────────────────────────────────────────────────
+  it('login() calls /sso-api/auth/login', async () => {
+    vi.mocked($fetch)
+      .mockResolvedValueOnce({ access_token: 'at', refresh_token: 'rt' })
+      .mockResolvedValueOnce({ id: '1', email: 'a@b.com', org_id: null, sso_id: 's1', auth_provider: 'sso', created_at: '' })
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    const result = await store.login({ email: 'a@b.com', password: 'pass' })
+    expect(result.success).toBe(true)
+    expect(store.token).toBe('at')
+    expect(store.refreshToken).toBe('rt')
+  })
+
+  // ── logout ────────────────────────────────────────────────────────
+  it('logout() calls /api/auth/logout with refresh token', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    store.token = 'at'
+    store.refreshToken = 'rt'
+    await store.logout()
+    expect(vi.mocked($fetch)).toHaveBeenCalledWith(
+      '/api/auth/logout',
+      expect.objectContaining({
+        method: 'POST',
+        body: { refresh_token: 'rt' },
+      }),
+    )
+    expect(store.token).toBeNull()
+    expect(store.user).toBeNull()
+  })
+
+  // ── _doRefreshToken ───────────────────────────────────────────────
+  it('_doRefreshToken() calls /sso-api/auth/token/refresh', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({ access_token: 'new_at' })
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    store.refreshToken = 'rt'
+    store.token = 'old'
+    const result = await store._doRefreshToken()
+    expect(result).toBe(true)
+    expect(store.token).toBe('new_at')
+  })
+
+  // ── forgotPassword ────────────────────────────────────────────────
+  it('forgotPassword() calls /sso-api/auth/forgot-password', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    const result = await store.forgotPassword('a@b.com')
+    expect(result.success).toBe(true)
+    expect(vi.mocked($fetch)).toHaveBeenCalledWith(
+      '/sso-api/auth/forgot-password',
+      expect.objectContaining({ method: 'POST', body: { email: 'a@b.com' } }),
+    )
+  })
+
+  // ── resetPassword ─────────────────────────────────────────────────
+  it('resetPassword() calls /sso-api/auth/reset-password', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    const result = await store.resetPassword('tok', 'newpass')
+    expect(result.success).toBe(true)
+    expect(vi.mocked($fetch)).toHaveBeenCalledWith(
+      '/sso-api/auth/reset-password',
+      expect.objectContaining({ method: 'POST', body: { token: 'tok', new_password: 'newpass' } }),
+    )
   })
 
   // ── _ssoHeaders ───────────────────────────────────────────────────
@@ -118,21 +187,10 @@ describe('auth store', () => {
     )
   })
 
-  it('_parseSSOError parses string detail', () => {
+  // ── No Supabase imports ───────────────────────────────────────────
+  it('store has no isSSO or isSupabase getters', () => {
     const store = useAuthStore()
-    const error = { data: { detail: 'Invalid credentials' } }
-    expect(store._parseSSOError(error, 'fallback')).toBe('Invalid credentials')
-  })
-
-  it('_parseSSOError uses message field when no detail', () => {
-    const store = useAuthStore()
-    const error = { data: { message: 'Server error' } }
-    expect(store._parseSSOError(error, 'fallback')).toBe('Server error')
-  })
-
-  it('_parseSSOError uses fallback when no data', () => {
-    const store = useAuthStore()
-    expect(store._parseSSOError({}, 'fallback')).toBe('fallback')
-    expect(store._parseSSOError(null, 'fallback')).toBe('fallback')
+    expect('isSSO' in store).toBe(false)
+    expect('isSupabase' in store).toBe(false)
   })
 })

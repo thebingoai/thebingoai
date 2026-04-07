@@ -60,11 +60,6 @@ def discover_and_load_plugins() -> None:
                 register_connector(reg)
                 logger.info("Registered connector type '%s' from plugin '%s'", reg.type_id, plugin.name)
 
-            from backend.auth.factory import register_provider
-            for name, cls in plugin.auth_providers():
-                register_provider(name, cls)
-                logger.info("Registered auth provider '%s' from plugin '%s'", name, plugin.name)
-
             try:
                 from backend.agents.tool_registry import register_plugin_tool_builder
                 for tool_name, builder in plugin.tool_builders().items():

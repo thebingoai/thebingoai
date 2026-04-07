@@ -48,10 +48,9 @@ async def _generate_title(user_message: str, assistant_response: str) -> str:
 
 async def _get_user_from_token(token: str) -> Optional[User]:
     """Validate auth token and return User, or None on failure."""
-    from backend.auth.factory import get_auth_provider
+    from backend.auth.sso import validate_token
 
-    auth_provider = get_auth_provider()
-    sso_user = await auth_provider.validate_token(token)
+    sso_user = await validate_token(token)
     if sso_user is None or not sso_user.is_active or not sso_user.is_verified:
         return None
 
@@ -67,7 +66,7 @@ async def _get_user_from_token(token: str) -> Optional[User]:
             if user is not None:
                 # Link existing user to SSO
                 user.sso_id = sso_user.id
-                user.auth_provider = settings.auth_provider
+                user.auth_provider = "sso"
                 db.commit()
                 db.refresh(user)
             else:

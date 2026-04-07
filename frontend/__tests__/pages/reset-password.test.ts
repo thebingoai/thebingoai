@@ -2,20 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-vi.mock('~/composables/useSupabase', () => ({
-  useSupabase: vi.fn(),
-}))
-
 // ── Dependent stores mocked so auth store loads ─────────────────────────
-vi.mock('~/stores/chat', () => ({
-  useChatStore: () => ({ reset: vi.fn() }),
-}))
-vi.mock('~/stores/dashboard', () => ({
-  useDashboardStore: () => ({ $resetAll: vi.fn() }),
-}))
-vi.mock('~/composables/useWebSocket', () => ({
-  useWebSocket: () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }),
-}))
+vi.stubGlobal('useChatStore', () => ({ reset: vi.fn() }))
+vi.stubGlobal('useDashboardStore', () => ({ $resetAll: vi.fn() }))
+vi.stubGlobal('useWebSocket', () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }))
 
 vi.stubGlobal('$fetch', vi.fn())
 ;(globalThis as any).process = { ...process, client: true }
@@ -48,7 +38,6 @@ vi.stubGlobal('useAuthStore', () => useAuthStore())
 
 import ResetPassword from '~/pages/reset-password.vue'
 
-// ── Stub child components ───────────────────────────────────────────────
 const stubs = {
   UiButton: { template: '<button type="submit"><slot /></button>', props: ['loading', 'disabled', 'variant', 'fullWidth'] },
   UiInput: { template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />', props: ['modelValue', 'type', 'label', 'placeholder', 'required'], emits: ['update:modelValue'] },
@@ -66,8 +55,7 @@ describe('reset-password page', () => {
     vi.clearAllMocks()
   })
 
-  // ── SSO: shows invalid link when no token ─────────────────────────
-  it('shows invalid link message for SSO when no token', () => {
+  it('shows invalid link message when no token', () => {
     store.authConfig = { provider: 'sso' }
     routeQuery.value = {}
 
@@ -75,19 +63,7 @@ describe('reset-password page', () => {
     expect(wrapper.text()).toContain('Invalid reset link')
   })
 
-  // ── Supabase: shows form even without token ───────────────────────
-  it('shows form for Supabase even without token query param', () => {
-    store.authConfig = { provider: 'supabase' }
-    routeQuery.value = {}
-
-    const wrapper = mount(ResetPassword, { global: { stubs } })
-    expect(wrapper.text()).toContain('New Password')
-    expect(wrapper.text()).toContain('Reset Password')
-    expect(wrapper.text()).not.toContain('Invalid reset link')
-  })
-
-  // ── SSO: shows form when token present ────────────────────────────
-  it('shows form for SSO when token is present', () => {
+  it('shows form when token is present', () => {
     store.authConfig = { provider: 'sso' }
     routeQuery.value = { token: 'reset-token-123' }
 
@@ -97,7 +73,6 @@ describe('reset-password page', () => {
     expect(wrapper.text()).not.toContain('Invalid reset link')
   })
 
-  // ── Password mismatch ─────────────────────────────────────────────
   it('shows error when passwords do not match', async () => {
     store.authConfig = { provider: 'sso' }
     routeQuery.value = { token: 'reset-token-123' }
@@ -113,7 +88,6 @@ describe('reset-password page', () => {
     expect(wrapper.text()).toContain('Passwords do not match')
   })
 
-  // ── Successful reset ──────────────────────────────────────────────
   it('calls resetPassword and shows success on submit', async () => {
     store.authConfig = { provider: 'sso', publishable_key: 'pk_test' }
     routeQuery.value = { token: 'reset-token-123' }
@@ -132,7 +106,6 @@ describe('reset-password page', () => {
     expect(wrapper.text()).toContain('Password reset successfully')
   })
 
-  // ── Failed reset ──────────────────────────────────────────────────
   it('shows error on failed reset', async () => {
     store.authConfig = { provider: 'sso', publishable_key: 'pk_test' }
     routeQuery.value = { token: 'expired-token' }

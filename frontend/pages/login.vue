@@ -37,24 +37,26 @@
         </UiButton>
       </form>
 
-      <div class="relative my-6">
-        <div class="absolute inset-0 flex items-center">
-          <div class="w-full border-t border-gray-200"></div>
+      <template v-if="authStore.hasGoogleOAuth">
+        <div class="relative my-6">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-200"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-2 bg-white text-gray-500">or</span>
+          </div>
         </div>
-        <div class="relative flex justify-center text-sm">
-          <span class="px-2 bg-white text-gray-500">or</span>
-        </div>
-      </div>
 
-      <UiButton
-        type="button"
-        variant="secondary"
-        :disabled="loading"
-        full-width
-        @click="handleGoogleLogin"
-      >
-        Continue with Google
-      </UiButton>
+        <UiButton
+          type="button"
+          variant="secondary"
+          :disabled="loading"
+          full-width
+          @click="handleGoogleLogin"
+        >
+          Continue with Google
+        </UiButton>
+      </template>
 
       <div class="mt-4 text-center">
         <NuxtLink to="/auth/forgot-password" class="text-sm text-gray-500 hover:underline">
