@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files
+from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files, sqlite_upload
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
 from backend.auth.webhooks import router as webhook_router
 from backend.api import query_results, agent_sessions
@@ -14,6 +14,9 @@ router.include_router(webhook_router)
 
 # Database Connections
 router.include_router(connections.router)
+
+# SQLite Upload
+router.include_router(sqlite_upload.router)
 
 # Direct SQL Query Execution
 router.include_router(sql_query.router)

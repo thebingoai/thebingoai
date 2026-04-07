@@ -2,6 +2,7 @@ from typing import Any, Type
 from backend.connectors.base import BaseConnector
 from backend.connectors.postgres import PostgresConnector
 from backend.connectors.mysql import MySQLConnector
+from backend.connectors.sqlite import SqliteFileConnector
 from backend.models.database_connection import DatabaseType, DatabaseConnection
 from backend.plugins.base import ConnectorRegistration
 
@@ -122,4 +123,37 @@ register_connector(ConnectorRegistration(
     default_port=3306,
     badge_variant="warning",
     connector_class=MySQLConnector,
+))
+
+
+def _delete_sqlite_file(connection) -> None:
+    """Delete a SQLite file from DO Spaces."""
+    if connection.dataset_table_name:
+        from backend.services import object_storage
+        object_storage.delete_object(connection.dataset_table_name)
+
+
+def _check_sqlite_health(connection) -> bool:
+    """Check whether a SQLite connection's file exists in DO Spaces."""
+    if not connection.dataset_table_name:
+        return False
+    from backend.services import object_storage
+    return object_storage.object_exists(connection.dataset_table_name)
+
+
+register_connector(ConnectorRegistration(
+    type_id="sqlite",
+    display_name="SQLite",
+    description="Upload a SQLite database file",
+    default_port=0,
+    badge_variant="secondary",
+    connector_class=SqliteFileConnector,
+    on_delete=_delete_sqlite_file,
+    on_test=_check_sqlite_health,
+    skip_schema_refresh=False,
+    sql_dialect_hint=(
+        "SQLite dialect: use strftime() for dates, LIKE instead of ILIKE, "
+        "no :: type casting — use CAST() instead. "
+        "Database may have multiple tables with foreign keys."
+    ),
 ))
