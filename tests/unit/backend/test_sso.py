@@ -123,7 +123,7 @@ async def test_validate_token_401(mock_redis, mock_http):
 
 @pytest.mark.asyncio
 async def test_validate_token_no_api_key(mock_redis, mock_http):
-    """validate_token() omits X-API-Key header when sso_secret_key is empty (community)."""
+    """validate_token() omits X-API-Key when both secret key and publishable key are empty."""
     mock_redis.get = AsyncMock(return_value=None)
 
     response = MagicMock()
@@ -139,14 +139,42 @@ async def test_validate_token_no_api_key(mock_redis, mock_http):
         patch("backend.auth.sso.settings") as mock_settings,
     ):
         mock_settings.sso_secret_key = ""
+        mock_settings.sso_publishable_key = ""
+        mock_settings.sso_token_cache_ttl = 300
+        from backend.auth.sso import validate_token
+        result = await validate_token("tok_no_keys")
+
+    call_kwargs = mock_http.get.call_args
+    headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
+    assert "X-API-Key" not in headers
+
+
+@pytest.mark.asyncio
+async def test_validate_token_community_app_name(mock_redis, mock_http):
+    """validate_token() sends X-API-Key: <app name> when no secret key but publishable key is set (community)."""
+    mock_redis.get = AsyncMock(return_value=None)
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"id": "u1", "email": "a@b.com", "is_active": True, "is_verified": True}
+    response.raise_for_status = MagicMock()
+    mock_http.get = AsyncMock(return_value=response)
+    mock_redis.setex = AsyncMock()
+
+    with (
+        patch("backend.auth.sso._get_redis_client", return_value=mock_redis),
+        patch("backend.auth.sso._get_http_client", return_value=mock_http),
+        patch("backend.auth.sso.settings") as mock_settings,
+    ):
+        mock_settings.sso_secret_key = ""
+        mock_settings.sso_publishable_key = "bingo-community"
         mock_settings.sso_token_cache_ttl = 300
         from backend.auth.sso import validate_token
         result = await validate_token("tok_community")
 
-    # Check headers passed to httpx — no X-API-Key
     call_kwargs = mock_http.get.call_args
     headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
-    assert "X-API-Key" not in headers
+    assert headers.get("X-API-Key") == "bingo-community"
 
 
 @pytest.mark.asyncio
@@ -207,7 +235,7 @@ async def test_logout_success(mock_redis, mock_http):
 
 @pytest.mark.asyncio
 async def test_logout_no_api_key(mock_redis, mock_http):
-    """logout() omits X-API-Key when sso_secret_key is empty."""
+    """logout() omits X-API-Key when both secret key and publishable key are empty."""
     mock_redis.delete = AsyncMock()
 
     response = MagicMock()
@@ -220,6 +248,7 @@ async def test_logout_no_api_key(mock_redis, mock_http):
         patch("backend.auth.sso.settings") as mock_settings,
     ):
         mock_settings.sso_secret_key = ""
+        mock_settings.sso_publishable_key = ""
         from backend.auth.sso import logout
         result = await logout("access_tok", "refresh_tok")
 
@@ -229,12 +258,37 @@ async def test_logout_no_api_key(mock_redis, mock_http):
     assert "X-API-Key" not in headers
 
 
+@pytest.mark.asyncio
+async def test_logout_community_app_name(mock_redis, mock_http):
+    """logout() sends X-API-Key: <app name> when no secret key but publishable key is set (community)."""
+    mock_redis.delete = AsyncMock()
+
+    response = MagicMock()
+    response.status_code = 200
+    mock_http.post = AsyncMock(return_value=response)
+
+    with (
+        patch("backend.auth.sso._get_redis_client", return_value=mock_redis),
+        patch("backend.auth.sso._get_http_client", return_value=mock_http),
+        patch("backend.auth.sso.settings") as mock_settings,
+    ):
+        mock_settings.sso_secret_key = ""
+        mock_settings.sso_publishable_key = "bingo-community"
+        from backend.auth.sso import logout
+        result = await logout("access_tok", "refresh_tok")
+
+    assert result is True
+    call_kwargs = mock_http.post.call_args
+    headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
+    assert headers.get("X-API-Key") == "bingo-community"
+
+
 # ---------------------------------------------------------------------------
 # get_config tests
 # ---------------------------------------------------------------------------
 
-def test_get_config_community():
-    """get_config() returns only provider and sso_base_url when no publishable key (community)."""
+def test_get_config_no_key():
+    """get_config() returns only provider and sso_base_url when publishable key is empty."""
     with patch("backend.auth.sso.settings") as mock_settings:
         mock_settings.sso_base_url = "https://sso.example.com"
         mock_settings.sso_publishable_key = ""
@@ -243,6 +297,20 @@ def test_get_config_community():
 
     assert config == {"provider": "sso", "sso_base_url": "https://sso.example.com"}
     assert "publishable_key" not in config
+    assert "google_oauth_url" not in config
+
+
+def test_get_config_community():
+    """get_config() returns publishable_key (app name) but no google_oauth_url for community."""
+    with patch("backend.auth.sso.settings") as mock_settings:
+        mock_settings.sso_base_url = "https://sso.thelead.io"
+        mock_settings.sso_publishable_key = "bingo-community"
+        from backend.auth.sso import get_config
+        config = get_config()
+
+    assert config["provider"] == "sso"
+    assert config["sso_base_url"] == "https://sso.thelead.io"
+    assert config["publishable_key"] == "bingo-community"
     assert "google_oauth_url" not in config
 
 

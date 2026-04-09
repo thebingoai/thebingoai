@@ -74,8 +74,11 @@ async def validate_token(access_token: str) -> Optional[AuthUser]:
     try:
         client = _get_http_client()
         headers = {"Authorization": f"Bearer {access_token}"}
+        # X-API-Key: uses sso_secret_key (enterprise) or sso_publishable_key/app name (community)
         if settings.sso_secret_key:
             headers["X-API-Key"] = settings.sso_secret_key
+        elif settings.sso_publishable_key:
+            headers["X-API-Key"] = settings.sso_publishable_key
 
         response = await client.get("/api/v1/auth/me", headers=headers)
 
@@ -124,9 +127,12 @@ async def logout(access_token: str, refresh_token: str) -> bool:
     # Tell SSO to blacklist the refresh token
     try:
         client = _get_http_client()
+        # X-API-Key: uses sso_secret_key (enterprise) or sso_publishable_key/app name (community)
         headers = {}
         if settings.sso_secret_key:
             headers["X-API-Key"] = settings.sso_secret_key
+        elif settings.sso_publishable_key:
+            headers["X-API-Key"] = settings.sso_publishable_key
 
         response = await client.post(
             "/api/v1/auth/logout",
@@ -143,7 +149,7 @@ def get_config() -> dict:
     """
     Return SSO config for the frontend.
 
-    Community mode (no publishable key): returns provider + sso_base_url only.
+    Community mode (app name key): returns provider, sso_base_url, and publishable_key — no Google OAuth.
     Enterprise mode (publishable key set): also includes publishable_key and google_oauth_url.
     """
     config = {
@@ -152,5 +158,6 @@ def get_config() -> dict:
     }
     if settings.sso_publishable_key:
         config["publishable_key"] = settings.sso_publishable_key
-        config["google_oauth_url"] = f"{settings.sso_base_url}/api/v1/oauth/google"
+        if settings.sso_publishable_key.startswith("pk_"):
+            config["google_oauth_url"] = f"{settings.sso_base_url}/api/v1/oauth/google"
     return config
