@@ -75,6 +75,26 @@ def discover_and_load_plugins() -> None:
             logger.exception("Failed to initialize plugin '%s', skipping", plugin.name)
 
 
+def import_plugin_celery_tasks() -> list[str]:
+    """Import all Celery task modules declared by loaded plugins.
+
+    Must be called after discover_and_load_plugins() so _loaded_plugins is populated.
+    Returns list of successfully imported module paths.
+    """
+    import importlib
+
+    imported: list[str] = []
+    for plugin in _loaded_plugins.values():
+        for mod_path in plugin.celery_task_modules():
+            try:
+                importlib.import_module(mod_path)
+                imported.append(mod_path)
+                logger.info("Imported Celery task module '%s' from plugin '%s'", mod_path, plugin.name)
+            except Exception:
+                logger.exception("Failed to import task module '%s' from plugin '%s'", mod_path, plugin.name)
+    return imported
+
+
 def get_plugin_routers() -> list[tuple[APIRouter, str]]:
     """Return all API routers from loaded plugins for mounting."""
     routers: list[tuple[APIRouter, str]] = []
