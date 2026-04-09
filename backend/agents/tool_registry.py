@@ -4,7 +4,8 @@ Tool Registry — maps tool_key strings (stored in DB) to Python tool-builder fu
 Each builder receives an AgentContext and returns a list of LangChain tools.
 New tools are registered here by adding an entry to TOOL_BUILDERS.
 """
-from typing import Dict, Callable, List
+import inspect
+from typing import Dict, Callable, List, Optional
 from backend.agents.context import AgentContext
 from backend.agents.data_agent.tools import (
     build_list_tables_tool,
@@ -167,14 +168,32 @@ TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
 }
 
 
-def build_tools_for_keys(tool_keys: List[str], context: AgentContext) -> List:
-    """Build LangChain tools for a list of allowed tool_keys."""
+def build_tools_for_keys(
+    tool_keys: List[str],
+    context: AgentContext,
+    db_session_factory: Optional[Callable] = None,
+) -> List:
+    """Build LangChain tools for a list of allowed tool_keys.
+
+    Merges core TOOL_BUILDERS with plugin-registered builders so that
+    plugin tools (e.g. facebook_ads_summary) are resolved alongside
+    built-in tools.
+    """
+    all_builders = {**TOOL_BUILDERS, **_PLUGIN_TOOL_BUILDERS}
     tools: List = []
     for key in tool_keys:
-        builder = TOOL_BUILDERS.get(key)
+        builder = all_builders.get(key)
         if builder:
             try:
-                tools.extend(builder(context))
+                sig = inspect.signature(builder)
+                if "db_session_factory" in sig.parameters:
+                    factory = db_session_factory
+                    if factory is None:
+                        from backend.database.session import SessionLocal
+                        factory = SessionLocal
+                    tools.extend(builder(context, factory))
+                else:
+                    tools.extend(builder(context))
             except Exception as exc:
                 logger.warning(f"Failed to build tool '{key}': {exc}")
         else:
