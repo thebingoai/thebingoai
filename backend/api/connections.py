@@ -370,6 +370,15 @@ async def refresh_connection_schema(
 
     reg = get_connector_registration(connection.db_type)
     if reg and reg.skip_schema_refresh:
+        if reg.on_refresh_schema:
+            try:
+                result = reg.on_refresh_schema(connection)
+                return SchemaRefreshResponse(**result)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Schema refresh failed: {str(e)}",
+                )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Schema refresh is not supported for {reg.display_name} connections.",
