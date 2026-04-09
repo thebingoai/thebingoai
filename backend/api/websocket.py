@@ -113,6 +113,31 @@ async def _resolve_conversation(
     return conversation, is_new
 
 
+async def _inject_conversation_datasets(
+    db: Session, user: User, thread_id: str,
+    agent_context, file_contents: list, chat_file_service,
+) -> None:
+    """
+    Discover ephemeral datasets (uploaded via chat) and inject ready ones
+    into the orchestrator context.
+    """
+    from backend.models.database_connection import DatabaseConnection
+
+    ephemeral_connections = (
+        db.query(DatabaseConnection)
+        .filter(
+            DatabaseConnection.user_id == user.id,
+            DatabaseConnection.is_ephemeral.is_(True),
+            DatabaseConnection.is_active.is_(True),
+        )
+        .all()
+    )
+
+    for conn in ephemeral_connections:
+        if conn.profiling_status == "ready" and conn.id not in agent_context.available_connections:
+            agent_context.available_connections.append(conn.id)
+
+
 async def _resolve_attachments(file_ids, chat_file_service):
     """Resolve file_ids to file contents and attachment metadata.
     Returns (file_contents, attachments)."""
@@ -269,6 +294,12 @@ async def _handle_chat_send(
 
         # Resolve attachments
         file_contents, attachments = await _resolve_attachments(file_ids, chat_file_service)
+
+        # Discover conversation datasets (auto-created from uploads)
+        await _inject_conversation_datasets(
+            db, user, conversation.thread_id,
+            ctx.agent_context, file_contents, chat_file_service,
+        )
 
         # Save user message with attachment metadata
         ConversationService.add_message(

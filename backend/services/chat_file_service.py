@@ -77,9 +77,8 @@ def _process_image(file_bytes: bytes, mime_type: str) -> dict:
 
 
 def _process_csv(file_bytes: bytes) -> dict:
-    """Extract CSV text with statistical profiling."""
+    """Extract CSV text preview (profiling happens async via Celery)."""
     import pandas as pd
-    from backend.profiler.dataset_profiler import profile_dataframe
 
     try:
         df = pd.read_csv(io.BytesIO(file_bytes))
@@ -90,17 +89,7 @@ def _process_csv(file_bytes: bytes) -> dict:
     headers = list(df.columns)
     row_count = len(df)
 
-    # Generate statistical profile
-    try:
-        profile = profile_dataframe(df)
-        profile_text = profile.to_prompt_text("")  # filename injected at message build time
-        profiled = True
-    except Exception as exc:
-        logger.warning("Dataset profiling failed, using truncated text: %s", exc)
-        profile_text = None
-        profiled = False
-
-    # Build sample text for truncated_text (backward compat + small sample)
+    # Build sample text for truncated_text (quick preview only)
     sample_rows = min(settings.profile_sample_rows, row_count)
     lines = []
     if headers:
@@ -110,19 +99,17 @@ def _process_csv(file_bytes: bytes) -> dict:
         lines.append(" | ".join(str(row.get(h, "")) for h in headers))
     truncated_text = "\n".join(lines).strip()
 
-    result = {
+    return {
         "extracted_text": truncated_text,
         "truncated_text": truncated_text,
+        "profile_status": "processing",
         "metadata": {
             "headers": headers,
             "row_count": row_count,
             "truncated_rows": sample_rows,
-            "profiled": profiled,
+            "profiled": False,
         },
     }
-    if profile_text:
-        result["profile_text"] = profile_text
-    return result
 
 
 def _process_pdf(file_bytes: bytes) -> dict:
@@ -159,7 +146,7 @@ def _process_pdf(file_bytes: bytes) -> dict:
 
 
 def _process_excel(file_bytes: bytes) -> dict:
-    """Extract Excel text preview with statistical profiling."""
+    """Extract Excel text preview (profiling happens async via Celery)."""
     try:
         import pandas as pd
     except ImportError:
@@ -185,23 +172,11 @@ def _process_excel(file_bytes: bytes) -> dict:
         except ImportError:
             return {"extracted_text": "[Excel preview requires pandas or openpyxl]", "truncated_text": "[Excel preview requires pandas or openpyxl]", "metadata": {"headers": [], "row_count": 0, "truncated_rows": 0, "profiled": False}}
 
-    from backend.profiler.dataset_profiler import profile_dataframe
-
     df = pd.read_excel(io.BytesIO(file_bytes))
     row_count = len(df)
     headers = list(df.columns)
 
-    # Generate statistical profile
-    try:
-        profile = profile_dataframe(df)
-        profile_text = profile.to_prompt_text("")
-        profiled = True
-    except Exception as exc:
-        logger.warning("Excel profiling failed, using truncated text: %s", exc)
-        profile_text = None
-        profiled = False
-
-    # Build sample text
+    # Build sample text (quick preview only, profiling is async)
     sample_rows = min(settings.profile_sample_rows, row_count)
     lines = []
     if headers:
@@ -211,19 +186,17 @@ def _process_excel(file_bytes: bytes) -> dict:
         lines.append(" | ".join(str(row.get(h, "")) for h in headers))
     truncated_text = "\n".join(lines).strip()
 
-    result = {
+    return {
         "extracted_text": truncated_text,
         "truncated_text": truncated_text,
+        "profile_status": "processing",
         "metadata": {
             "headers": headers,
             "row_count": row_count,
             "truncated_rows": sample_rows,
-            "profiled": profiled,
+            "profiled": False,
         },
     }
-    if profile_text:
-        result["profile_text"] = profile_text
-    return result
 
 
 def _process_docx(file_bytes: bytes) -> dict:
@@ -289,6 +262,8 @@ def process_file(file_bytes: bytes, filename: str, mime_type: str) -> dict:
         file_data["metadata"] = text_result["metadata"]
         if "profile_text" in text_result:
             file_data["profile_text"] = text_result["profile_text"]
+        if "profile_status" in text_result:
+            file_data["profile_status"] = text_result["profile_status"]
 
     return file_data
 
@@ -313,6 +288,12 @@ def get_file(file_id: str) -> Optional[dict]:
     if data is None:
         return None
     return json.loads(data)
+
+
+def delete_file(file_id: str) -> bool:
+    """Delete a chat file from Redis. Returns True if the key existed."""
+    key = f"{CHAT_FILE_PREFIX}{file_id}"
+    return redis_client.delete(key) > 0
 
 
 def get_truncated_content(file_id: str) -> str:

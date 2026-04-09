@@ -424,6 +424,23 @@
               <UiButton type="submit" class="w-full" :loading="uploadingDataset" :disabled="!datasetFile">
                 Upload Dataset
               </UiButton>
+              <div v-if="uploadingDataset" class="w-full mt-2">
+                <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                  <span>{{ datasetUploadProgress >= 100 ? 'Processing file...' : 'Uploading...' }}</span>
+                  <span v-if="datasetUploadProgress < 100">{{ datasetUploadProgress }}%</span>
+                </div>
+                <div class="h-1.5 w-full bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                  <div
+                    v-if="datasetUploadProgress < 100"
+                    class="h-full bg-gray-900 dark:bg-gray-100 rounded-full transition-all duration-200 ease-out"
+                    :style="{ width: `${datasetUploadProgress}%` }"
+                  />
+                  <div
+                    v-else
+                    class="h-full w-full bg-gray-900 dark:bg-gray-100 rounded-full animate-pulse"
+                  />
+                </div>
+              </div>
             </form>
           </template>
 
@@ -822,6 +839,7 @@ const datasetFile = ref<File | null>(null)
 const datasetDragOver = ref(false)
 const datasetFileInputRef = ref<HTMLInputElement | null>(null)
 const uploadingDataset = ref(false)
+const datasetUploadProgress = ref(0)
 const datasetForm = ref({ name: '' })
 const datasetFormErrors = ref<{ name?: string; file?: string }>({})
 const datasetPreviewColumns = ref<Array<{ name: string; type: string }>>([])
@@ -1603,7 +1621,8 @@ async function handleDatasetUpload() {
     const connectionsApi = api.connections as any
     const result = await connectionsApi.uploadDataset(
       datasetFile.value,
-      datasetForm.value.name || undefined
+      datasetForm.value.name || undefined,
+      (percent: number) => { datasetUploadProgress.value = percent }
     ) as DatasetUploadResponse
     toast.success(`Dataset "${result.name}" uploaded — ${result.row_count.toLocaleString()} rows`)
     showFormSheet.value = false
@@ -1615,6 +1634,7 @@ async function handleDatasetUpload() {
     toast.error(err?.message || 'Upload failed')
   } finally {
     uploadingDataset.value = false
+    datasetUploadProgress.value = 0
   }
 }
 </script>

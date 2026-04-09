@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     upload_max_file_size: int = 52428800  # 50MB
 
     # Chat file upload settings
-    chat_file_max_size: int = 10_485_760  # 10MB
+    chat_file_max_size: int = 52_428_800  # 50MB
     chat_file_max_count: int = 5
     chat_file_ttl_seconds: int = 3600
     chat_file_csv_max_rows: int = 100

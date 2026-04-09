@@ -195,7 +195,7 @@ def _classify_column(series: pd.Series, row_count: int) -> str:
         # Try datetime conversion (sample to avoid slow parsing)
         sample = non_null.head(100)
         try:
-            dt_converted = pd.to_datetime(sample, errors="coerce")
+            dt_converted = pd.to_datetime(sample, errors="coerce", format="mixed")
             if dt_converted.notna().sum() / len(sample) > 0.8:
                 return "datetime"
         except Exception:
@@ -291,7 +291,7 @@ def _fill_categorical(cp: ColumnProfile, series: pd.Series, row_count: int) -> N
 def _fill_datetime(cp: ColumnProfile, series: pd.Series) -> None:
     """Populate datetime statistics on a ColumnProfile."""
     if series.dtype == object:
-        series = pd.to_datetime(series, errors="coerce")
+        series = pd.to_datetime(series, errors="coerce", format="mixed")
 
     clean = series.dropna()
     if len(clean) == 0:

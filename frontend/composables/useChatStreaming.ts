@@ -307,13 +307,19 @@ export const useChatStreaming = () => {
         cleanup()
       })
 
+      // Collect ready dataset connection IDs from the dataset status composable
+      const { datasets: currentDatasets } = useDatasetStatus()
+      const readyConnectionIds = currentDatasets.value
+        .filter(d => d.step === 'ready' && d.connectionId)
+        .map(d => d.connectionId!)
+
       // Send via WebSocket
       ws.send({
         type: 'chat.send',
         request_id: requestId,
         thread_id: chatStore.currentThreadId || null,
         message,
-        connection_ids: [],
+        connection_ids: readyConnectionIds,
         file_ids: fileIds
       })
     })

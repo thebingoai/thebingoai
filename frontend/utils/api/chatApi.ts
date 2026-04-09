@@ -1,3 +1,5 @@
+import { xhrUpload, withAuthRetry } from './xhrUpload'
+
 export function createChatApi(fetchWithRefresh: Function, authStore: any, router: any) {
   return {
     async getConversations(archived = false, summary = true) {
@@ -45,56 +47,32 @@ export function createChatApi(fetchWithRefresh: Function, authStore: any, router
       const params = storageKey ? `?storage_key=${encodeURIComponent(storageKey)}` : ''
       return fetchWithRefresh(`/api/chat/files/${fileId}/url${params}`, {})
     },
-    async uploadChatFiles(files: File[]) {
-      const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        const formData = new FormData()
+    async uploadChatFiles(files: File[], onProgress?: (percent: number) => void, threadId?: string | null) {
+      const formData = new FormData()
+      files.forEach(file => formData.append('files', file))
 
-        files.forEach(file => formData.append('files', file))
+      const url = threadId
+        ? `/api/chat/files/upload?thread_id=${encodeURIComponent(threadId)}`
+        : '/api/chat/files/upload'
 
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText))
-            } catch (e) {
-              reject(new Error('Failed to parse response'))
-            }
-          } else {
-            try {
-              const error = JSON.parse(xhr.responseText)
-              reject(Object.assign(new Error(error.detail || 'Upload failed'), { status: xhr.status }))
-            } catch (e) {
-              reject(Object.assign(new Error(`Upload failed with status ${xhr.status}`), { status: xhr.status }))
-            }
-          }
-        })
-
-        xhr.addEventListener('error', () => {
-          reject(new Error('Network error during upload'))
-        })
-
-        xhr.open('POST', '/api/chat/files/upload')
-        if (token) {
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-        }
-        xhr.send(formData)
+      return withAuthRetry(
+        (token) => xhrUpload({ url, formData, token, onProgress }),
+        authStore,
+        router
+      )
+    },
+    async createConversation() {
+      return fetchWithRefresh('/api/chat/conversations/create', {
+        method: 'POST',
       })
-
-      try {
-        return await doUpload(authStore.token)
-      } catch (error: any) {
-        if (error?.status === 401) {
-          const refreshed = await authStore.refreshAccessToken()
-          if (refreshed) {
-            return await doUpload(authStore.token)
-          } else {
-            const router = useRouter()
-            await authStore.logout()
-            await router.push('/login')
-          }
-        }
-        throw error
-      }
+    },
+    async cancelDataset(fileId: string) {
+      return fetchWithRefresh(`/api/chat/files/${fileId}/dataset`, {
+        method: 'DELETE',
+      })
+    },
+    async getConversationDatasets(threadId: string) {
+      return fetchWithRefresh(`/api/chat/conversations/${threadId}/datasets`, {})
     }
   }
 }

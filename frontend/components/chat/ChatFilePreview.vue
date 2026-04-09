@@ -37,31 +37,20 @@
 
     <!-- Status overlays -->
 
-    <!-- Uploading spinner -->
+    <!-- Upload progress -->
     <div
       v-if="file.status === 'uploading'"
-      class="absolute inset-0 flex items-center justify-center rounded-lg bg-white/70 dark:bg-neutral-900/70"
+      class="absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-white/70 dark:bg-neutral-900/70"
     >
-      <svg
-        class="h-4 w-4 animate-spin text-neutral-600 dark:text-neutral-300"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          class="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          stroke-width="4"
+      <span class="text-xs font-medium text-neutral-700 dark:text-neutral-200">
+        {{ file.progress ?? 0 }}%
+      </span>
+      <div class="absolute bottom-0 left-0 right-0 h-1 bg-neutral-200 dark:bg-neutral-700 rounded-b-lg overflow-hidden">
+        <div
+          class="h-full bg-blue-500 transition-all duration-200 ease-out"
+          :style="{ width: `${file.progress ?? 0}%` }"
         />
-        <path
-          class="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
-      </svg>
+      </div>
     </div>
 
     <!-- Error indicator -->
@@ -91,10 +80,10 @@
 
 <script setup lang="ts">
 import { Image as ImageIcon, FileText, FileSpreadsheet, File, AlertCircle, X } from 'lucide-vue-next'
-import type { FileAttachment } from '~/composables/useChatFileUpload'
+import type { UploadingFile } from '~/composables/useChatFileUpload'
 
 interface Props {
-  file: FileAttachment
+  file: UploadingFile
   index: number
 }
 

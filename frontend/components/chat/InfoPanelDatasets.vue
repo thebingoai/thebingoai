@@ -55,6 +55,16 @@
                 <template v-if="ds.columnCount"> · {{ ds.columnCount }} columns</template>
               </p>
             </div>
+            <button
+              v-if="ds.fileId"
+              @click="cancelDataset(ds.fileId)"
+              class="shrink-0 p-0.5 text-gray-300 hover:text-red-400 transition-colors"
+              title="Remove dataset"
+            >
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           <!-- Timeline card: in-progress or failed -->
@@ -70,6 +80,16 @@
               </svg>
               <span class="text-[11px] font-medium text-gray-600 truncate min-w-0 flex-1">{{ ds.name }}</span>
               <span class="text-[9px] text-gray-300 shrink-0">{{ formatSize(ds.size) }}</span>
+              <button
+                v-if="ds.fileId"
+                @click="cancelDataset(ds.fileId)"
+                class="shrink-0 p-0.5 text-gray-300 hover:text-red-400 transition-colors"
+                :title="ds.step === 'failed' ? 'Remove' : 'Cancel'"
+              >
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             <!-- Vertical timeline -->
@@ -122,7 +142,7 @@
 import type { DatasetStatus } from '~/composables/useDatasetStatus'
 
 const chatStore = useChatStore()
-const { datasets, retryProfiling } = useDatasetStatus()
+const { datasets, retryProfiling, cancelDataset } = useDatasetStatus()
 
 type StepName = 'uploading' | 'schema' | 'profiling'
 type StepState = 'completed' | 'active' | 'pending' | 'failed'

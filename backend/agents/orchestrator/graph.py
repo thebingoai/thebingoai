@@ -62,11 +62,20 @@ def build_user_message(user_question: str, file_contents: list = None) -> HumanM
         return HumanMessage(content=user_question)
 
     blocks = []
+    has_processing_files = False
     for item in file_contents:
         if item.get("content_type") == "image":
             blocks.append({
                 "type": "image_url",
                 "image_url": {"url": item["base64_data"]},
+            })
+        elif item.get("profile_status") == "processing":
+            # File is still being profiled in the background
+            has_processing_files = True
+            file_label = f"[File: {item['original_name']} (file_id: {item['file_id']})]"
+            blocks.append({
+                "type": "text",
+                "text": f"{file_label}\n[This file is still being analyzed. Tell the user their data is being processed and you'll be able to help once it's ready. Ask them to try again in a moment.]",
             })
         else:
             file_label = f"[File: {item['original_name']} (file_id: {item['file_id']})]"

@@ -1,9 +1,11 @@
-export interface FileAttachment {
+export interface UploadingFile {
   file: File
   file_id: string | null
+  connection_id?: number | null  // for dataset files uploaded via connections API
   preview_url: string | null  // object URL for images
   status: 'uploading' | 'ready' | 'error'
   error?: string
+  progress?: number  // 0-100, only meaningful when status === 'uploading'
 }
 
 interface FileRejection {
@@ -12,7 +14,6 @@ interface FileRejection {
 }
 
 const MAX_FILE_COUNT = 5
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const ACCEPTED_TYPES = new Set([
   'image/png',
@@ -32,8 +33,13 @@ const IMAGE_TYPES = new Set([
   'image/webp',
 ])
 
+const DATASET_TYPES = new Set([
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+])
+
 // Module-level singleton state (shared across all callers)
-const attachedFiles = ref<FileAttachment[]>([])
+const attachedFiles = ref<UploadingFile[]>([])
 
 const allFilesReady = computed<boolean>(() => {
   return attachedFiles.value.length > 0 && attachedFiles.value.every(f => f.status === 'ready')
@@ -41,6 +47,27 @@ const allFilesReady = computed<boolean>(() => {
 
 export const useChatFileUpload = () => {
   const api = useApi()
+  const chatStore = useChatStore()
+  const config = useRuntimeConfig()
+  const maxFileSizeBytes = config.public.chatFileMaxSizeMb * 1024 * 1024
+
+  /** Ensure a conversation exists for file uploads, creating one if needed. */
+  const ensureThread = async (): Promise<string> => {
+    if (chatStore.currentThreadId) return chatStore.currentThreadId
+
+    const chatApi = api.chat as any
+    const { thread_id: tid } = await chatApi.createConversation() as { thread_id: string }
+    chatStore.setCurrentThread(tid)
+    chatStore.addConversation({
+      id: tid,
+      title: 'File Upload',
+      type: 'task',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      message_count: 0,
+    })
+    return tid
+  }
 
   const addFiles = async (files: File[]): Promise<FileRejection[]> => {
     const rejections: FileRejection[] = []
@@ -64,8 +91,8 @@ export const useChatFileUpload = () => {
         continue
       }
 
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        rejections.push({ name: file.name, error: 'File size exceeds 10MB limit' })
+      if (file.size > maxFileSizeBytes) {
+        rejections.push({ name: file.name, error: `File size exceeds ${config.public.chatFileMaxSizeMb}MB limit` })
         continue
       }
 
@@ -76,51 +103,104 @@ export const useChatFileUpload = () => {
       return rejections
     }
 
+    // Split files: datasets (CSV/Excel) use connections API, others use chat files API
+    const datasetFiles = validFiles.filter(f => DATASET_TYPES.has(f.type))
+    const otherFiles = validFiles.filter(f => !DATASET_TYPES.has(f.type))
+
     // Build attachment objects with initial status and preview URLs
-    const newAttachments: FileAttachment[] = validFiles.map(file => ({
+    const newAttachments: UploadingFile[] = validFiles.map(file => ({
       file,
       file_id: null,
+      connection_id: null,
       preview_url: IMAGE_TYPES.has(file.type) ? URL.createObjectURL(file) : null,
       status: 'uploading' as const,
+      progress: 0,
     }))
 
-    // Track the starting index for these new attachments
     const startIndex = attachedFiles.value.length
     attachedFiles.value = [...attachedFiles.value, ...newAttachments]
 
-    // Upload the valid files
-    try {
-      const chatApi = api.chat as any
-      if (typeof chatApi.uploadChatFiles !== 'function') {
-        throw new Error('uploadChatFiles API method is not yet available')
+    // Helper to update progress for a specific file
+    const updateProgress = (fileIndex: number, percent: number) => {
+      const updated = [...attachedFiles.value]
+      if (updated[fileIndex]?.status === 'uploading') {
+        updated[fileIndex] = { ...updated[fileIndex], progress: percent }
+        attachedFiles.value = updated
       }
+    }
 
-      const response = await chatApi.uploadChatFiles(validFiles) as { files: Array<{ file_id: string }> }
+    const markReady = (fileIndex: number, extra: Partial<UploadingFile>) => {
+      const updated = [...attachedFiles.value]
+      if (updated[fileIndex]) {
+        updated[fileIndex] = { ...updated[fileIndex], ...extra, status: 'ready' }
+        attachedFiles.value = updated
+      }
+    }
 
-      // Update each uploaded file with its file_id and mark as ready
-      const updatedAttachments = [...attachedFiles.value]
-      response.files.forEach((fileResult, i) => {
-        const idx = startIndex + i
-        if (updatedAttachments[idx]) {
-          updatedAttachments[idx] = {
-            ...updatedAttachments[idx],
-            file_id: fileResult.file_id,
-            status: 'ready',
-          }
+    const markError = (fileIndex: number, error: string) => {
+      const updated = [...attachedFiles.value]
+      if (updated[fileIndex]) {
+        updated[fileIndex] = { ...updated[fileIndex], status: 'error', error }
+        attachedFiles.value = updated
+      }
+    }
+
+    // Upload dataset files via connections API (reuses existing proven endpoint)
+    for (const file of datasetFiles) {
+      const idx = startIndex + validFiles.indexOf(file)
+      try {
+        const threadId = await ensureThread()
+        const connectionsApi = api.connections as any
+        const result = await connectionsApi.uploadDataset(
+          file,
+          undefined,
+          (percent: number) => updateProgress(idx, percent),
+          threadId,
+        ) as { id: number; name: string; row_count: number }
+        markReady(idx, { file_id: `connection:${result.id}`, connection_id: result.id })
+      } catch (err: any) {
+        markError(idx, err?.message || 'Dataset upload failed')
+      }
+    }
+
+    // Upload non-dataset files via chat files API
+    if (otherFiles.length > 0) {
+      try {
+        const chatApi = api.chat as any
+        const response = await chatApi.uploadChatFiles(
+          otherFiles,
+          (percent: number) => {
+            for (const file of otherFiles) {
+              const idx = startIndex + validFiles.indexOf(file)
+              updateProgress(idx, percent)
+            }
+          },
+          chatStore.currentThreadId || null
+        ) as { files: Array<{ file_id: string; thread_id: string }>; thread_id: string }
+
+        // Handle auto-created conversation
+        if (response.thread_id && !chatStore.currentThreadId) {
+          chatStore.setCurrentThread(response.thread_id)
+          chatStore.addConversation({
+            id: response.thread_id,
+            title: 'File Upload',
+            type: 'task',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            message_count: 0,
+          })
         }
-      })
-      attachedFiles.value = updatedAttachments
-    } catch (err: any) {
-      // Mark all newly added files as errored
-      const updatedAttachments = [...attachedFiles.value]
-      for (let i = startIndex; i < startIndex + newAttachments.length; i++) {
-        updatedAttachments[i] = {
-          ...updatedAttachments[i],
-          status: 'error',
-          error: err?.message || 'Upload failed',
+
+        response.files.forEach((fileResult, i) => {
+          const idx = startIndex + validFiles.indexOf(otherFiles[i])
+          markReady(idx, { file_id: fileResult.file_id })
+        })
+      } catch (err: any) {
+        for (const file of otherFiles) {
+          const idx = startIndex + validFiles.indexOf(file)
+          markError(idx, err?.message || 'Upload failed')
         }
       }
-      attachedFiles.value = updatedAttachments
     }
 
     return rejections

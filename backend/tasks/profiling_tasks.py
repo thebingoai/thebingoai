@@ -131,6 +131,78 @@ def profile_connection(self, connection_id: int):
         db.close()
 
 
+@shared_task(name="profile_chat_file", time_limit=120)
+def profile_chat_file(file_id: str):
+    """Profile an uploaded CSV/Excel chat file in the background.
+
+    Reads the raw file bytes back from the Redis-cached file data,
+    runs the dataset profiler, and updates the Redis entry with
+    the profile_text and profile_status='ready'.
+    """
+    import io
+    import json
+
+    import pandas as pd
+    import redis
+
+    from backend.config import settings
+    from backend.profiler.dataset_profiler import profile_dataframe
+    from backend.services.chat_file_service import CHAT_FILE_PREFIX
+
+    redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+
+    key = f"{CHAT_FILE_PREFIX}{file_id}"
+    raw = redis_client.get(key)
+    if raw is None:
+        logger.warning("profile_chat_file: file %s not found in Redis (expired?)", file_id)
+        return
+
+    file_data = json.loads(raw)
+    mime_type = file_data.get("mime_type", "")
+
+    # Re-read the raw file from object storage
+    from backend.services import object_storage
+
+    storage_key = file_data.get("storage_key")
+    if not storage_key:
+        logger.warning("profile_chat_file: no storage_key for file %s", file_id)
+        file_data["profile_status"] = "ready"
+        ttl = max(redis_client.ttl(key), 60)
+        redis_client.setex(key, ttl, json.dumps(file_data))
+        return
+
+    file_bytes = object_storage.download_bytes(storage_key)
+    if file_bytes is None:
+        logger.warning("profile_chat_file: could not download %s", storage_key)
+        file_data["profile_status"] = "ready"
+        ttl = max(redis_client.ttl(key), 60)
+        redis_client.setex(key, ttl, json.dumps(file_data))
+        return
+
+    try:
+        if "csv" in mime_type:
+            try:
+                df = pd.read_csv(io.BytesIO(file_bytes))
+            except Exception:
+                df = pd.read_csv(io.BytesIO(file_bytes), encoding="latin-1")
+        else:
+            df = pd.read_excel(io.BytesIO(file_bytes))
+
+        profile = profile_dataframe(df)
+        profile_text = profile.to_prompt_text("")
+
+        file_data["profile_text"] = profile_text
+        file_data["profile_status"] = "ready"
+        file_data["metadata"]["profiled"] = True
+    except Exception as exc:
+        logger.warning("profile_chat_file: profiling failed for %s: %s", file_id, exc)
+        file_data["profile_status"] = "ready"  # Mark ready so chat isn't blocked forever
+
+    ttl = max(redis_client.ttl(key), 60)
+    redis_client.setex(key, ttl, json.dumps(file_data))
+    logger.info("profile_chat_file: completed for file %s", file_id)
+
+
 @shared_task(name="backfill_profile_all_connections")
 def backfill_profile_all_connections():
     """One-time task: queue profiling for all existing connections that have

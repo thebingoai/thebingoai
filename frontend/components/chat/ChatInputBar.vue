@@ -58,18 +58,20 @@
           <Scissors class="h-4 w-4" />
         </button>
         <!-- Paperclip button -->
-        <label
-          for="chat-file-input"
+        <button
+          type="button"
+          :disabled="chatStore.isStreaming"
+          @click="fileInputRef?.click()"
           :class="[
             'flex h-8 w-8 items-center justify-center rounded-full transition-colors cursor-pointer',
             chatStore.isStreaming
-              ? 'text-gray-300 pointer-events-none opacity-40'
+              ? 'text-gray-300 opacity-40'
               : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
           ]"
           title="Attach files"
         >
           <Paperclip class="h-4 w-4" />
-        </label>
+        </button>
         <!-- Send button -->
         <button
           type="submit"
@@ -82,13 +84,12 @@
 
       <!-- Hidden file input -->
       <input
-        id="chat-file-input"
         type="file"
         multiple
         accept="image/png,image/jpeg,image/gif,image/webp,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ref="fileInputRef"
         @change="handleFileChange"
-        class="hidden"
+        class="sr-only"
       />
     </form>
   </div>

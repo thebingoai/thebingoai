@@ -34,14 +34,37 @@ function stepTimestamp(step: AgentStep): string | null {
  * Composable that derives per-dataset processing status by joining
  * message attachments, agent steps, and profiling status polling.
  */
+export interface WsDatasetEvent {
+  file_id: string
+  thread_id: string
+  step: 'schema' | 'profiling' | 'ready' | 'failed' | 'cancelled'
+  connection_id?: number
+  error?: string
+}
+
 export const useDatasetStatus = () => {
   const chatStore = useChatStore()
   const api = useApi()
+  const ws = useWebSocket()
 
   // Profiling status cache keyed by connection_id
   const profilingStatuses = ref<Map<number, { status: string; error: string | null; completedAt: string | null }>>(new Map())
+  // WebSocket-driven dataset status keyed by file_id
+  const wsDatasets = ref<Map<string, WsDatasetEvent>>(new Map())
   // Non-reactive bookkeeping — interval IDs don't need Vue reactivity
   const pollers: Record<number, ReturnType<typeof setInterval>> = {}
+
+  // --- WebSocket handler for dataset.status events ---
+  const unsubWs = ws.on('dataset.status', (data: WsDatasetEvent) => {
+    if (data.thread_id !== chatStore.currentThreadId) return
+    wsDatasets.value.set(data.file_id, data)
+    wsDatasets.value = new Map(wsDatasets.value)
+
+    // If profiling step received with connection_id, start polling profiling status
+    if (data.step === 'profiling' && data.connection_id) {
+      startPolling(data.connection_id)
+    }
+  })
 
   // --- Polling ---
 
@@ -95,12 +118,74 @@ export const useDatasetStatus = () => {
     }
   }
 
+  // --- REST fallback for page refresh ---
+  const restDatasets = ref<Map<string, { file_id: string; name: string; status: string; connection_id: number | null }>>(new Map())
+
+  async function loadConversationDatasets() {
+    if (!chatStore.currentThreadId) return
+    try {
+      const result = await (api.chat as any).getConversationDatasets(chatStore.currentThreadId) as {
+        datasets: Array<{ file_id: string; name: string; status: string; connection_id: number | null }>
+      }
+      const map = new Map<string, typeof result.datasets[0]>()
+      for (const ds of result.datasets) {
+        map.set(ds.file_id, ds)
+      }
+      restDatasets.value = map
+    } catch {
+      // Silently fail
+    }
+  }
+
   // --- Core computed ---
 
   const datasets = computed<DatasetStatus[]>(() => {
     const results: DatasetStatus[] = []
+    const seenFileIds = new Set<string>()
 
-    // Collect all agent steps across messages for lookup
+    // Source 1: WebSocket events (highest priority, real-time)
+    for (const [fileId, evt] of wsDatasets.value) {
+      if (evt.step === 'cancelled') continue
+      seenFileIds.add(fileId)
+
+      const ds: DatasetStatus = {
+        name: '',
+        size: 0,
+        fileId,
+        connectionId: evt.connection_id ?? null,
+        step: evt.step === 'failed' ? 'failed' : evt.step as DatasetStatus['step'],
+        uploadedAt: new Date().toISOString(),
+        schemaBuiltAt: evt.step !== 'schema' ? new Date().toISOString() : null,
+        profilingStartedAt: evt.step === 'profiling' ? new Date().toISOString() : null,
+        completedAt: evt.step === 'ready' ? new Date().toISOString() : null,
+        rowCount: null,
+        columnCount: null,
+        error: evt.error ?? null,
+      }
+
+      // Enrich from REST data if available
+      const rest = restDatasets.value.get(fileId)
+      if (rest) {
+        ds.name = rest.name
+        ds.connectionId = ds.connectionId ?? rest.connection_id
+      }
+
+      // Check profiling status if we have a connection ID and step is profiling
+      if (ds.connectionId && ds.step === 'profiling') {
+        const profiling = profilingStatuses.value.get(ds.connectionId)
+        if (profiling?.status === 'ready') {
+          ds.step = 'ready'
+          ds.completedAt = profiling.completedAt
+        } else if (profiling?.status === 'failed') {
+          ds.step = 'failed'
+          ds.error = profiling.error || 'Profiling failed'
+        }
+      }
+
+      results.push(ds)
+    }
+
+    // Source 2: Message attachments + agent steps (existing logic for active sessions)
     const allSteps: AgentStep[] = []
     for (const msg of chatStore.messages) {
       if (msg.agent_steps?.length) {
@@ -108,7 +193,6 @@ export const useDatasetStatus = () => {
       }
     }
 
-    // Find create_dataset_from_upload tool calls
     const datasetToolCalls = allSteps.filter(
       s => s.tool_name === 'create_dataset_from_upload' && s.step_type === 'tool_call'
     )
@@ -117,8 +201,9 @@ export const useDatasetStatus = () => {
       if (!msg.attachments?.length) continue
 
       for (const att of msg.attachments) {
-        // Only show CSV/Excel files in the dataset timeline
         if (!CSV_MIME_TYPES.has(att.type)) continue
+        if (att.file_id && seenFileIds.has(att.file_id)) continue
+        if (att.file_id) seenFileIds.add(att.file_id)
 
         const ds: DatasetStatus = {
           name: att.name,
@@ -135,7 +220,6 @@ export const useDatasetStatus = () => {
           error: null,
         }
 
-        // Step 1: Upload status
         if (att.status === 'uploading') {
           ds.step = 'uploading'
           ds.uploadedAt = msg.created_at
@@ -151,23 +235,17 @@ export const useDatasetStatus = () => {
           continue
         }
 
-        // File is uploaded (status === 'ready')
         ds.uploadedAt = msg.created_at
 
-        // Step 2: Find the matching tool call for this file_id
         const toolCall = att.file_id
           ? datasetToolCalls.find(s => s.content?.args?.file_id === att.file_id)
           : null
 
         if (!toolCall) {
-          // Agent hasn't called create_dataset_from_upload yet — could be still
-          // processing or file was uploaded but not used for a dataset
-          // If streaming is active, show as "uploading" complete, waiting for schema
           if (chatStore.isStreaming) {
             ds.step = 'schema'
             ds.schemaBuiltAt = null
           } else {
-            // Not streaming, no tool call — just a plain file, show compact
             ds.step = 'ready'
             ds.completedAt = msg.created_at
           }
@@ -175,22 +253,18 @@ export const useDatasetStatus = () => {
           continue
         }
 
-        // Tool call exists — check if it's completed
         if (toolCall.status === 'started') {
-          // Schema building in progress
           ds.step = 'schema'
           ds.schemaBuiltAt = null
           results.push(ds)
           continue
         }
 
-        // Tool call completed — extract result
         const result = typeof toolCall.content?.result === 'string'
           ? (() => { try { return JSON.parse(toolCall.content.result) } catch { return toolCall.content.result } })()
           : toolCall.content?.result
 
         if (result && !result.success) {
-          // Dataset creation failed
           ds.step = 'failed'
           ds.schemaBuiltAt = stepTimestamp(toolCall)
           ds.error = result.message || 'Dataset creation failed'
@@ -198,7 +272,6 @@ export const useDatasetStatus = () => {
           continue
         }
 
-        // Schema built successfully
         ds.schemaBuiltAt = stepTimestamp(toolCall)
         ds.connectionId = result?.connection_id ?? null
         ds.rowCount = result?.row_count ?? null
@@ -211,11 +284,9 @@ export const useDatasetStatus = () => {
           continue
         }
 
-        // Step 3: Check profiling status
         const profiling = profilingStatuses.value.get(ds.connectionId)
 
         if (!profiling) {
-          // Haven't polled yet — assume profiling is pending
           ds.step = 'profiling'
           ds.profilingStartedAt = ds.schemaBuiltAt
           results.push(ds)
@@ -238,11 +309,35 @@ export const useDatasetStatus = () => {
           continue
         }
 
-        // pending or in_progress
         ds.step = 'profiling'
         ds.profilingStartedAt = ds.schemaBuiltAt
         results.push(ds)
       }
+    }
+
+    // Source 3: REST fallback (for datasets not covered by WS or attachments)
+    for (const [fileId, rest] of restDatasets.value) {
+      if (seenFileIds.has(fileId)) continue
+
+      const profiling = rest.connection_id ? profilingStatuses.value.get(rest.connection_id) : null
+      let step: DatasetStatus['step'] = 'profiling'
+      if (rest.status === 'ready' || profiling?.status === 'ready') step = 'ready'
+      else if (rest.status === 'failed' || profiling?.status === 'failed') step = 'failed'
+
+      results.push({
+        name: rest.name,
+        size: 0,
+        fileId,
+        connectionId: rest.connection_id,
+        step,
+        uploadedAt: null,
+        schemaBuiltAt: null,
+        profilingStartedAt: null,
+        completedAt: step === 'ready' ? profiling?.completedAt ?? null : null,
+        rowCount: null,
+        columnCount: null,
+        error: step === 'failed' ? (profiling?.error || 'Processing failed') : null,
+      })
     }
 
     return results
@@ -260,15 +355,20 @@ export const useDatasetStatus = () => {
     { immediate: true }
   )
 
-  // Stop all polling when conversation changes
+  // Stop all polling and reload data when conversation changes
   watch(() => chatStore.currentThreadId, () => {
     stopAllPolling()
     profilingStatuses.value = new Map()
+    wsDatasets.value = new Map()
+    restDatasets.value = new Map()
+    // Load datasets from REST for the new conversation (page refresh scenario)
+    loadConversationDatasets()
   })
 
   // Cleanup on unmount
   onUnmounted(() => {
     stopAllPolling()
+    unsubWs()
   })
 
   // --- Actions ---
@@ -284,8 +384,21 @@ export const useDatasetStatus = () => {
     }
   }
 
+  async function cancelDataset(fileId: string) {
+    try {
+      await (api.chat as any).cancelDataset(fileId)
+      wsDatasets.value.delete(fileId)
+      wsDatasets.value = new Map(wsDatasets.value)
+    } catch {
+      // Silently fail
+    }
+  }
+
   return {
     datasets,
+    wsDatasets,
     retryProfiling,
+    cancelDataset,
+    loadConversationDatasets,
   }
 }

@@ -4,6 +4,7 @@ import { createChatApi } from '~/utils/api/chatApi'
 import { createConnectionsApi } from '~/utils/api/connectionsApi'
 import { createDashboardsApi } from '~/utils/api/dashboardsApi'
 import { createResourcesApi } from '~/utils/api/resourcesApi'
+import { createFacebookAdsApi } from '~/utils/api/facebookAdsApi'
 
 export const useApi = () => {
   const authStore = useAuthStore()
@@ -18,5 +19,6 @@ export const useApi = () => {
     connections: createConnectionsApi(fetchWithRefresh, authStore, router),
     chat: createChatApi(fetchWithRefresh, authStore, router),
     dashboards: createDashboardsApi(fetchWithRefresh),
+    facebookAds: createFacebookAdsApi(fetchWithRefresh),
   }
 }

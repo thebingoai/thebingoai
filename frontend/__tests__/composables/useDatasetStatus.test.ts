@@ -21,10 +21,16 @@ vi.stubGlobal('onUnmounted', vi.fn())
 // useApi global (Nuxt auto-imports composables)
 const mockGetProfilingStatus = vi.fn()
 const mockReprofile = vi.fn()
+const mockCancelDataset = vi.fn()
+const mockGetConversationDatasets = vi.fn().mockResolvedValue({ datasets: [] })
 vi.stubGlobal('useApi', () => ({
   connections: {
     getProfilingStatus: mockGetProfilingStatus,
     reprofile: mockReprofile,
+  },
+  chat: {
+    cancelDataset: mockCancelDataset,
+    getConversationDatasets: mockGetConversationDatasets,
   },
 }))
 
@@ -33,6 +39,17 @@ vi.mock('~/stores/dashboard', () => ({
 }))
 vi.mock('~/composables/useWebSocket', () => ({
   useWebSocket: () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }),
+}))
+
+// Capture WebSocket event handlers for testing
+const wsHandlers = new Map<string, Function>()
+vi.stubGlobal('useWebSocket', () => ({
+  on: vi.fn((type: string, handler: Function) => {
+    wsHandlers.set(type, handler)
+    return vi.fn()
+  }),
+  disconnect: vi.fn(),
+  clearHandlers: vi.fn(),
 }))
 
 import { useChatStore } from '~/stores/chat'
@@ -197,5 +214,93 @@ describe('useDatasetStatus', () => {
 
     const { datasets } = useDatasetStatus()
     expect(datasets.value).toHaveLength(0)
+  })
+
+  // ── WebSocket-driven dataset status tests (Phase 6) ──────────────
+
+  it('shows datasets from WebSocket events', () => {
+    const store = useChatStore()
+    store.currentThreadId = 'thread-1'
+    store.messages = []
+
+    const { datasets, wsDatasets } = useDatasetStatus()
+
+    // Simulate WebSocket event
+    const handler = wsHandlers.get('dataset.status')
+    expect(handler).toBeDefined()
+    handler!({
+      file_id: 'ws-file-1',
+      thread_id: 'thread-1',
+      step: 'schema',
+    })
+
+    expect(datasets.value).toHaveLength(1)
+    expect(datasets.value[0].fileId).toBe('ws-file-1')
+    expect(datasets.value[0].step).toBe('schema')
+  })
+
+  it('WebSocket events take priority over attachment-based tracking', () => {
+    const store = useChatStore()
+    store.currentThreadId = 'thread-1'
+    store.messages = [
+      makeMessage({
+        attachments: [csvAttachment({ file_id: 'file-1' })],
+      }),
+    ]
+
+    const { datasets } = useDatasetStatus()
+
+    // WS event for the same file should override
+    const handler = wsHandlers.get('dataset.status')
+    handler!({
+      file_id: 'file-1',
+      thread_id: 'thread-1',
+      step: 'profiling',
+      connection_id: 42,
+    })
+
+    // Should only appear once (from WS, not duplicated from attachments)
+    const matching = datasets.value.filter(d => d.fileId === 'file-1')
+    expect(matching).toHaveLength(1)
+    expect(matching[0].step).toBe('profiling')
+  })
+
+  it('cancel removes dataset from wsDatasets', async () => {
+    const store = useChatStore()
+    store.currentThreadId = 'thread-1'
+    store.messages = []
+
+    mockCancelDataset.mockResolvedValue({})
+
+    const { datasets, cancelDataset } = useDatasetStatus()
+
+    // Add via WS
+    const handler = wsHandlers.get('dataset.status')
+    handler!({ file_id: 'file-cancel', thread_id: 'thread-1', step: 'schema' })
+    expect(datasets.value).toHaveLength(1)
+
+    await cancelDataset('file-cancel')
+    expect(mockCancelDataset).toHaveBeenCalledWith('file-cancel')
+    expect(datasets.value).toHaveLength(0)
+  })
+
+  it('REST datasets appear on page refresh', async () => {
+    const store = useChatStore()
+    store.currentThreadId = 'thread-1'
+    store.messages = []
+
+    mockGetConversationDatasets.mockResolvedValue({
+      datasets: [
+        { file_id: 'rest-1', name: 'uploaded.csv', status: 'ready', connection_id: 10 },
+      ],
+    })
+
+    const { datasets, loadConversationDatasets } = useDatasetStatus()
+    await loadConversationDatasets()
+
+    expect(datasets.value).toHaveLength(1)
+    expect(datasets.value[0].fileId).toBe('rest-1')
+    expect(datasets.value[0].name).toBe('uploaded.csv')
+    expect(datasets.value[0].step).toBe('ready')
   })
 })

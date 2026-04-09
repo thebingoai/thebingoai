@@ -1,3 +1,5 @@
+import { xhrUpload, withAuthRetry } from './xhrUpload'
+
 export function createResourcesApi(fetchWithRefresh: Function, authStore: any, router: any) {
   return {
     // Auth endpoints
@@ -19,63 +21,15 @@ export function createResourcesApi(fetchWithRefresh: Function, authStore: any, r
     // Upload endpoints
     upload: {
       async uploadFiles(files: File[], namespace?: string, onProgress?: (percent: number) => void) {
-        const doUpload = (token: string | null): Promise<any> => new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest()
-          const formData = new FormData()
+        const formData = new FormData()
+        files.forEach(file => formData.append('files', file))
+        if (namespace) formData.append('namespace', namespace)
 
-          files.forEach(file => formData.append('files', file))
-          if (namespace) formData.append('namespace', namespace)
-
-          if (onProgress) {
-            xhr.upload.addEventListener('progress', (e) => {
-              if (e.lengthComputable) {
-                onProgress(Math.round((e.loaded / e.total) * 100))
-              }
-            })
-          }
-
-          xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                resolve(JSON.parse(xhr.responseText))
-              } catch (e) {
-                reject(new Error('Failed to parse response'))
-              }
-            } else {
-              try {
-                const error = JSON.parse(xhr.responseText)
-                reject(Object.assign(new Error(error.detail || 'Upload failed'), { status: xhr.status }))
-              } catch (e) {
-                reject(Object.assign(new Error(`Upload failed with status ${xhr.status}`), { status: xhr.status }))
-              }
-            }
-          })
-
-          xhr.addEventListener('error', () => {
-            reject(new Error('Network error during upload'))
-          })
-
-          xhr.open('POST', '/api/upload')
-          if (token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-          }
-          xhr.send(formData)
-        })
-
-        try {
-          return await doUpload(authStore.token)
-        } catch (error: any) {
-          if (error?.status === 401) {
-            const refreshed = await authStore.refreshAccessToken()
-            if (refreshed) {
-              return await doUpload(authStore.token)
-            } else {
-              await authStore.logout()
-              await router.push('/login')
-            }
-          }
-          throw error
-        }
+        return withAuthRetry(
+          (token) => xhrUpload({ url: '/api/upload', formData, token, onProgress }),
+          authStore,
+          router
+        )
       }
     },
 

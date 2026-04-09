@@ -38,10 +38,42 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
+      chatFileMaxSizeMb: Number(process.env.NUXT_PUBLIC_CHAT_FILE_MAX_SIZE_MB) || 50,
     }
   },
 
   routeRules: {
+    // Upload routes need longer timeout — server-side processing (type inference,
+    // SQLite creation) can take 10-30s for large files after upload completes.
+    '/api/connections/upload-dataset': {
+      proxy: {
+        to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/connections/upload-dataset`,
+        timeout: 120_000,
+        headers: {
+          'X-Forwarded-Host': 'localhost:3000'
+        }
+      }
+    },
+    '/api/connections/upload-sqlite': {
+      proxy: {
+        to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/connections/upload-sqlite`,
+        timeout: 120_000,
+        headers: {
+          'X-Forwarded-Host': 'localhost:3000'
+        }
+      }
+    },
+    // CSV/Excel uploads go through /api/connections/upload-dataset instead.
+    // This route handles non-dataset file uploads (images, PDF, DOCX).
+    '/api/chat/files/upload': {
+      proxy: {
+        to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/chat/files/upload`,
+        timeout: 120_000,
+        headers: {
+          'X-Forwarded-Host': 'localhost:3000'
+        }
+      }
+    },
     '/api/**': {
       proxy: {
         // In Docker: BACKEND_INTERNAL_URL=http://backend:8000 (set in docker-compose)
