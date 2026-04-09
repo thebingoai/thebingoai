@@ -42,6 +42,7 @@ class ConnectionUpdate(BaseModel):
     ssl_enabled: Optional[bool] = None
     ssl_ca_cert: Optional[str] = None  # empty string or null = clear cert
     is_active: Optional[bool] = None
+    source_filename: Optional[str] = None
 
     @field_validator('ssl_ca_cert')
     @classmethod
@@ -98,7 +99,7 @@ class ConnectionTestResponse(BaseModel):
 class SchemaRefreshResponse(BaseModel):
     success: bool
     message: str
-    schema_generated_at: datetime
+    schema_generated_at: datetime | None = None
 
 
 class SchemaResponse(BaseModel):

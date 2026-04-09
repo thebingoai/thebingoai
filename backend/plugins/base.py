@@ -16,6 +16,7 @@ class ConnectorRegistration:
     connector_class: Type
     on_delete: Optional[Callable] = None
     on_test: Optional[Callable] = None
+    on_refresh_schema: Optional[Callable] = None
     skip_schema_refresh: bool = False
     sql_dialect_hint: Optional[str] = None
 
@@ -49,6 +50,10 @@ class BingoPlugin(ABC):
     def tool_builders(self) -> dict[str, Callable]:
         """Return {tool_name: builder_fn} for agent tools this plugin provides."""
         return {}
+
+    def celery_task_modules(self) -> list[str]:
+        """Return dotted module paths containing Celery tasks (e.g. ['myplugin.tasks'])."""
+        return []
 
     def on_startup(self) -> None:
         pass

@@ -470,6 +470,49 @@
             </div>
           </template>
 
+          <!-- Facebook Ads connection -->
+          <template v-else-if="isFacebookAdsConnection && editingConnection">
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connection Name</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Ad Account ID</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.database }}</p>
+              </div>
+              <div v-if="editingConnection.source_filename">
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connected At</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ formatFbConnectedAt(editingConnection.source_filename) }}</p>
+              </div>
+
+              <div class="border-t border-gray-200 pt-4">
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Sync Settings</label>
+                <UiInput
+                  v-model="fbLookbackDays"
+                  label="Lookback Days"
+                  type="number"
+                  placeholder="7"
+                  class="mt-2"
+                />
+                <p class="text-xs text-gray-400 mt-1">Number of days of historical insights to sync (default: 7)</p>
+              </div>
+            </div>
+
+            <div class="border-t border-gray-200 pt-4 mt-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Delete this connection</p>
+                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
+                </div>
+                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
+                  <Trash2 class="h-3.5 w-3.5" />
+                  Delete
+                </UiButton>
+              </div>
+            </div>
+          </template>
+
           <!-- Standard database connection form -->
           <template v-else>
           <form @submit.prevent="handleFormSubmit" class="space-y-4">
@@ -801,6 +844,7 @@ const loading = ref(true)
 const showTypePicker = ref(false)
 const showFormSheet = ref(false)
 const editingConnection = ref<DatabaseConnection | null>(null)
+const fbLookbackDays = ref<string>('7')
 const form = ref<ConnectionFormData>({
   name: '',
   db_type: '',
@@ -926,9 +970,22 @@ const isSqliteConnection = computed(() => {
   return form.value.db_type === 'sqlite' || editingConnection.value?.db_type === 'sqlite'
 })
 
+const isFacebookAdsConnection = computed(() => {
+  return form.value.db_type === 'facebook_ads' || editingConnection.value?.db_type === 'facebook_ads'
+})
+
 const isFileUploadConnection = computed(() => {
   return isDatasetConnection.value || isSqliteConnection.value
 })
+
+function formatFbConnectedAt(sourceFilename: string): string {
+  try {
+    const data = JSON.parse(sourceFilename)
+    return new Date(data.token_refreshed_at).toLocaleString()
+  } catch {
+    return 'Unknown'
+  }
+}
 
 // Computed
 const typePickerTitle = computed(() => {
@@ -1264,6 +1321,13 @@ function openEditDialog(connection: DatabaseConnection) {
     ssl_enabled: connection.ssl_enabled,
     ssl_ca_cert: '' // Never pre-fill cert content
   }
+  // Init Facebook Ads lookback from metadata
+  if (connection.db_type === 'facebook_ads') {
+    try {
+      const meta = JSON.parse(connection.source_filename || '{}')
+      fbLookbackDays.value = String(meta.lookback_days ?? 7)
+    } catch { fbLookbackDays.value = '7' }
+  }
   formErrors.value = {}
   testSuccess.value = false
   // Reset schema state
@@ -1321,6 +1385,26 @@ function validateForm(): boolean {
 }
 
 async function handleFormSubmit() {
+  // Facebook Ads connections have a separate save flow
+  if (isFacebookAdsConnection.value && editingConnection.value) {
+    try {
+      saving.value = true
+      const existingMeta = JSON.parse(editingConnection.value.source_filename || '{}')
+      existingMeta.lookback_days = Math.max(1, Math.min(365, Number(fbLookbackDays.value) || 7))
+      await api.connections.update(String(editingConnection.value.id), {
+        source_filename: JSON.stringify(existingMeta)
+      })
+      toast.success('Connection updated successfully')
+      showFormSheet.value = false
+      await fetchConnections()
+    } catch (err: any) {
+      toast.error(err?.data?.detail || err?.message || 'Failed to save')
+    } finally {
+      saving.value = false
+    }
+    return
+  }
+
   if (!validateForm()) return
 
   try {

@@ -2,12 +2,13 @@
   <Transition name="suggestion-card" appear>
     <div
       class="rounded-lg bg-white p-3"
-      :class="isRecommended ? 'border border-indigo-200' : 'border border-gray-100'"
+      :class="isRecommended ? 'border border-orange-200' : 'border border-gray-100'"
     >
       <!-- Header: name + badge -->
       <div class="flex items-center justify-between mb-1.5">
         <span class="font-semibold text-gray-900 text-[13px]">
-          {{ typeEmoji }} {{ suggestion.suggested_name }}
+          <component :is="typeIcon" class="w-3.5 h-3.5 text-gray-400 inline-block align-middle" />
+          {{ suggestion.suggested_name }}
         </span>
         <span
           class="text-[10px] rounded-full px-2 py-0.5 font-semibold"
@@ -34,7 +35,7 @@
         <template v-if="isRecommended">
           <button
             @click="emit('accept', suggestion.id)"
-            class="bg-indigo-500 text-white border-none rounded-md px-3.5 py-1 text-xs cursor-pointer font-medium hover:bg-indigo-600 transition-colors"
+            class="bg-orange-500 text-white border-none rounded-md px-3.5 py-1 text-xs cursor-pointer font-medium hover:bg-orange-600 transition-colors"
           >
             Accept
           </button>
@@ -66,6 +67,7 @@
 
 <script setup lang="ts">
 import type { SkillSuggestion } from '~/types/skillSuggestion'
+import { getSkillTypeIcon } from '~/utils/skillTypeIcon'
 
 const props = defineProps<{
   suggestion: SkillSuggestion
@@ -78,15 +80,7 @@ const emit = defineEmits<{
 
 const isRecommended = computed(() => props.suggestion.recommendation === 'recommended')
 
-const SKILL_TYPE_EMOJI: Record<string, string> = {
-  instruction: '\uD83D\uDCCB',
-  code: '\uD83D\uDCBB',
-  prompt: '\uD83D\uDCAC',
-}
-
-const typeEmoji = computed(() =>
-  SKILL_TYPE_EMOJI[props.suggestion.suggested_skill_type] || '\uD83D\uDCCA'
-)
+const typeIcon = computed(() => getSkillTypeIcon(props.suggestion.suggested_skill_type))
 </script>
 
 <style scoped>
