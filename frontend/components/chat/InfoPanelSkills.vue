@@ -7,7 +7,7 @@
     >
       <div class="flex items-center gap-1.5">
         <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Suggested Skills</span>
-        <span class="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-px rounded-full font-semibold">
+        <span class="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-px rounded-full font-semibold">
           {{ suggestions.length }}
         </span>
       </div>
@@ -32,7 +32,7 @@
               @click="toggleExpanded(s.id)"
               class="flex items-center gap-2 min-w-0 flex-1 text-left"
             >
-              <span class="text-[13px] flex-shrink-0">{{ typeEmoji(s.suggested_skill_type) }}</span>
+              <component :is="getSkillTypeIcon(s.suggested_skill_type)" class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
               <div class="min-w-0">
                 <div class="text-[11px] font-semibold text-gray-900 truncate">{{ s.suggested_name }}</div>
                 <div class="text-[10px] text-gray-400">
@@ -71,6 +71,8 @@
 </template>
 
 <script setup lang="ts">
+import { getSkillTypeIcon } from '~/utils/skillTypeIcon'
+
 const chatStore = useChatStore()
 const api = useApi()
 
@@ -85,14 +87,6 @@ const toggleExpanded = (id: string) => {
     expandedIds.value.add(id)
   }
 }
-
-const SKILL_TYPE_EMOJI: Record<string, string> = {
-  instruction: '\uD83D\uDCCB',
-  code: '\uD83D\uDCBB',
-  prompt: '\uD83D\uDCAC',
-}
-
-const typeEmoji = (skillType: string) => SKILL_TYPE_EMOJI[skillType] || '\uD83D\uDCCA'
 
 const handleAccept = async (id: string) => {
   try {

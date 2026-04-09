@@ -26,7 +26,7 @@
           <button
             @click="chatStore.toggleInfoPanel()"
             class="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
-            :class="chatStore.infoPanelOpen ? 'bg-indigo-50 text-indigo-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'"
+            :class="chatStore.infoPanelOpen ? 'bg-orange-50 text-orange-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'"
             title="Toggle info panel"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
