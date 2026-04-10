@@ -34,7 +34,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=settings.celery_task_time_limit,
     worker_prefetch_multiplier=1,  # Process one task at a time per worker
-    include=["backend.tasks.memory_tasks", "backend.tasks.heartbeat_tasks", "backend.tasks.skill_detection_tasks", "backend.tasks.dashboard_refresh_tasks", "backend.tasks.agent_tasks", "backend.tasks.profiling_tasks"],
+    include=["backend.tasks.memory_tasks", "backend.tasks.heartbeat_tasks", "backend.tasks.skill_detection_tasks", "backend.tasks.dashboard_refresh_tasks", "backend.tasks.agent_tasks", "backend.tasks.profiling_tasks", "backend.tasks.trial_tasks"],
 )
 
 celery_app.conf.beat_schedule = {
@@ -57,6 +57,10 @@ celery_app.conf.beat_schedule = {
     "agent-health-check": {
         "task": "agent_health_check",
         "schedule": 60.0,  # every 60 seconds
+    },
+    "expire-trial-accounts": {
+        "task": "expire_trial_accounts",
+        "schedule": crontab(hour="*"),  # every 1 hour
     },
 }
 
