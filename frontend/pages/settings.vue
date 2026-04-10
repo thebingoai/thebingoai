@@ -53,8 +53,8 @@
         <SettingsSkills v-else-if="currentSection === 'skills'" key="skills" />
         <SettingsJobs v-else-if="currentSection === 'jobs'" key="jobs" />
         <SettingsMemory v-else-if="currentSection === 'memory'" key="memory" />
-        <SettingsUsage v-else-if="currentSection === 'usage'" key="usage" />
         <SettingsProfile v-else-if="currentSection === 'profile'" key="profile" />
+        <SettingsCredits v-else-if="currentSection === 'credits'" key="credits" />
         <div v-else key="default" class="p-6">
           <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
           <p class="text-gray-500">This section is under construction.</p>
@@ -77,11 +77,12 @@ const sections = [
   { id: 'skills', name: 'Skills' },
   { id: 'jobs', name: 'Jobs' },
   { id: 'memory', name: 'Memory' },
-  { id: 'usage', name: 'Usage' },
+  { id: 'credits', name: 'Credits & API Keys' },
   { id: 'profile', name: 'Profile' }
 ]
 
-const currentSection = ref('connections')
+const route = useRoute()
+const currentSection = ref((route.query.tab as string) || 'connections')
 
 const currentSectionName = computed(() => {
   return sections.find(s => s.id === currentSection.value)?.name || ''

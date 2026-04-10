@@ -133,9 +133,6 @@ class Settings(BaseSettings):
     sso_webhook_secret: str = ""       # webhook signature verification
     sso_redis_url: str = "redis://localhost:6379/3"  # DB 3: SSO token cache
 
-    # Trial settings
-    trial_period_days: float = 14  # 1 minute for testing (change to 14 for production)
-
     # Feature flags
     enable_governance: bool = True
     agent_mesh_enabled: bool = False

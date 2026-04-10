@@ -1,5 +1,16 @@
 <template>
   <div class="px-4 pb-4 md:px-16">
+    <!-- Out-of-credits banner -->
+    <div
+      v-if="isExhausted"
+      class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-3"
+    >
+      <span>Daily credits used up. Resets at midnight.</span>
+      <NuxtLink to="/settings?tab=credits" class="font-medium underline hover:text-amber-900 whitespace-nowrap">
+        Add your own API key →
+      </NuxtLink>
+    </div>
+
     <form
       @submit.prevent="handleSubmit"
       @dragover.prevent
@@ -45,7 +56,16 @@
         @input="autoResize"
         @keydown="handleKeydown"
       />
-      <div class="flex justify-end gap-1.5 px-3 pb-3">
+      <div class="flex items-center justify-between gap-1.5 px-3 pb-3">
+        <!-- Credit badge -->
+        <span
+          v-if="dailyLimit > 0"
+          class="text-xs text-gray-400 tabular-nums"
+          :title="`${remaining} / ${dailyLimit} credits remaining today`"
+        >{{ Math.round(remaining) }}/{{ dailyLimit }}</span>
+        <span v-else class="flex-1" />
+
+        <div class="flex gap-1.5">
         <!-- New Topic button — only visible on permanent conversation -->
         <button
           v-if="isPermanentConversation"
@@ -80,6 +100,7 @@
         >
           <ArrowUp class="h-4 w-4" />
         </button>
+        </div>
       </div>
 
       <!-- Hidden file input -->
@@ -103,6 +124,8 @@ const emit = defineEmits<{
   send: []
   reset: []
 }>()
+
+const { remaining, dailyLimit, isExhausted } = useCreditBalance()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
