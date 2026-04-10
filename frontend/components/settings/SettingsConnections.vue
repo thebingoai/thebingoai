@@ -181,18 +181,18 @@
       :title="typePickerTitle"
       fullHeight
     >
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 ml-auto">
+      <div class="flex flex-wrap gap-4">
         <button
           v-for="type in connectorTypes"
           :key="type.id"
           @click="selectConnectorType(type.id)"
-          class="flex flex-col items-center justify-center gap-2 rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+          class="flex flex-col items-center justify-center gap-2 rounded-lg border border-gray-200 p-4 h-56 w-56 max-md:w-full overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
         >
           <div v-if="connectorIcons[type.id]" class="h-10 w-10" v-html="connectorIcons[type.id]" />
           <component v-else :is="Database" class="h-10 w-10 text-gray-400" />
           <div class="text-center">
             <h3 class="text-xs font-normal text-gray-900">{{ type.display_name }}</h3>
-            <p class="text-xs text-gray-600">{{ type.description }}</p>
+            <p class="text-xs text-gray-600 line-clamp-2">{{ type.description }}</p>
           </div>
         </button>
       </div>
