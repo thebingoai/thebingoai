@@ -194,6 +194,45 @@ async def get_connector_types():
     return get_available_types()
 
 
+@router.get("/types/{type_id}/changelog")
+async def get_connector_changelog(type_id: str):
+    """Return changelog for a connector type."""
+    from backend.api.health import APP_VERSION
+    from backend.plugins.loader import get_plugin_for_connector
+    from pathlib import Path
+    import importlib
+
+    reg = get_connector_registration(type_id)
+    if not reg:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Unknown connector type: {type_id}")
+
+    plugin = get_plugin_for_connector(type_id)
+    if plugin is None:
+        return {
+            "changelog": "Built-in connector. See application release notes.",
+            "version": reg.version or APP_VERSION,
+        }
+
+    # Resolve CHANGELOG.md from plugin's package directory
+    try:
+        mod = importlib.import_module(plugin.__class__.__module__)
+        pkg_dir = Path(mod.__file__).parent
+        changelog_path = pkg_dir / "CHANGELOG.md"
+        if changelog_path.exists():
+            return {
+                "changelog": changelog_path.read_text(encoding="utf-8"),
+                "version": reg.version or plugin.version,
+            }
+    except Exception:
+        pass
+
+    return {
+        "changelog": "No changelog available.",
+        "version": reg.version or plugin.version,
+    }
+
+
 @router.post("/test-connection", response_model=ConnectionTestResponse)
 async def test_unsaved_connection(
     request: ConnectionCreate,

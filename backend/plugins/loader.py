@@ -9,6 +9,7 @@ from backend.plugins.base import BingoPlugin
 logger = logging.getLogger(__name__)
 
 _loaded_plugins: dict[str, BingoPlugin] = {}
+_connector_to_plugin: dict[str, str] = {}  # type_id -> plugin name
 
 
 def _topo_sort(plugins: list[BingoPlugin]) -> list[BingoPlugin]:
@@ -57,7 +58,10 @@ def discover_and_load_plugins() -> None:
     for plugin in sorted_plugins:
         try:
             for reg in plugin.connectors():
+                if reg.version is None:
+                    reg.version = plugin.version
                 register_connector(reg)
+                _connector_to_plugin[reg.type_id] = plugin.name
                 logger.info("Registered connector type '%s' from plugin '%s'", reg.type_id, plugin.name)
 
             try:
@@ -109,6 +113,14 @@ def get_plugin_routers() -> list[tuple[APIRouter, str]]:
 def get_loaded_plugins() -> dict[str, BingoPlugin]:
     """Return dict of loaded plugins by name."""
     return dict(_loaded_plugins)
+
+
+def get_plugin_for_connector(type_id: str) -> Optional[BingoPlugin]:
+    """Find the plugin that registered a given connector type_id."""
+    plugin_name = _connector_to_plugin.get(type_id)
+    if plugin_name:
+        return _loaded_plugins.get(plugin_name)
+    return None
 
 
 def shutdown_plugins() -> None:

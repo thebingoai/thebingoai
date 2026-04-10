@@ -39,6 +39,9 @@ class TestFactoryRegistration:
         assert t["display_name"] == "SQLite"
         assert t["default_port"] == 0
         assert t["badge_variant"] == "secondary"
+        assert "version" in t
+        assert "card_meta_items" in t
+        assert t["card_meta_items"] == ["table_count", "schema_date"]
 
     @patch("backend.connectors.sqlite.SqliteFileConnector.from_connection")
     def test_get_connector_for_sqlite_connection(self, mock_from_conn):
