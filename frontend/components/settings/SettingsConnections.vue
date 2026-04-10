@@ -31,64 +31,80 @@
       <UiCard
         v-for="connection in ungroupedConnections"
         :key="connection.id"
-        class="px-5 py-8 h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow"
+        class="relative overflow-hidden px-4 py-5 h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow"
         @click="openEditDialog(connection)"
       >
+        <!-- Top accent border -->
+        <div
+          class="absolute top-0 left-0 right-0 h-[3px]"
+          :class="getAccentClass(connection)"
+        />
         <div class="flex flex-col h-full">
-          <div class="flex items-start justify-between gap-3">
-            <div class="flex items-start gap-3 min-w-0">
-              <div
-                class="h-8 w-8 shrink-0"
-                v-if="connectorIcons[connection.db_type]"
-                v-html="connectorIcons[connection.db_type]"
-              />
-              <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
-              <p class="text-sm font-medium text-gray-900 truncate">{{ connection.name }}</p>
+          <!-- Header: icon + type name + spinner -->
+          <div class="flex items-start gap-2.5">
+            <div
+              class="h-8 w-8 shrink-0"
+              v-if="connectorIcons[connection.db_type]"
+              v-html="connectorIcons[connection.db_type]"
+            />
+            <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-gray-900 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
+              <div class="flex items-center gap-1 mt-0.5">
+                <span class="text-[11px] text-gray-400">v{{ getConnectorType(connection.db_type)?.version }}</span>
+                <button
+                  @click.stop="openChangelog(connection.db_type)"
+                  class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
+                >
+                  <Info class="h-2 w-2" />
+                </button>
+              </div>
             </div>
-            <span v-if="connection.is_active" class="flex items-center justify-center h-6 w-6 rounded-full bg-green-500 shrink-0">
-              <Check class="h-3.5 w-3.5 text-white" />
-            </span>
-            <span v-else class="flex items-center justify-center h-6 w-6 rounded-full bg-red-500 shrink-0">
-              <X class="h-3.5 w-3.5 text-white" />
-            </span>
+            <!-- Spinner for profiling in progress -->
+            <Loader2
+              v-if="connection.profiling_status === 'in_progress'"
+              class="h-4 w-4 text-yellow-500 animate-spin shrink-0 mt-1"
+            />
           </div>
-          <div class="flex flex-wrap gap-1.5 mt-3">
-            <UiBadge v-if="connection.db_type === 'dataset'" variant="secondary" size="sm">
-              Dataset
-            </UiBadge>
-            <UiBadge v-if="connection.ssl_enabled" variant="success" size="sm">
-              SSL
-            </UiBadge>
+          <!-- Connected account (Facebook Ads) or source filename (file-based connectors) -->
+          <div v-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
+            <User class="h-3 w-3 text-gray-400 shrink-0" />
+            <span class="text-[11px] text-gray-400 truncate">Account: {{ connection.name }}</span>
           </div>
-          <!-- Profiling status indicator -->
-          <div v-if="connection.profiling_status" class="flex items-center gap-1.5 mt-2">
-            <template v-if="connection.profiling_status === 'pending'">
-              <span class="h-2 w-2 rounded-full bg-gray-400 shrink-0" />
-              <span class="text-xs text-gray-500">Queued</span>
-            </template>
-            <template v-else-if="connection.profiling_status === 'in_progress'">
-              <span class="h-2 w-2 rounded-full bg-yellow-400 animate-pulse shrink-0" />
-              <span class="text-xs text-yellow-600">{{ connection.profiling_progress ? `Profiling ${connection.profiling_progress} tables...` : 'Profiling...' }}</span>
-            </template>
-            <template v-else-if="connection.profiling_status === 'ready'">
-              <span class="h-2 w-2 rounded-full bg-green-500 shrink-0" />
-              <span class="text-xs text-green-600">Ready</span>
-            </template>
-            <template v-else-if="connection.profiling_status === 'failed'">
-              <span class="h-2 w-2 rounded-full bg-red-500 shrink-0" />
-              <span class="text-xs text-red-500">Failed</span>
-              <button
-                @click.stop="handleReprofile(connection)"
-                class="text-xs text-blue-600 hover:text-blue-700 underline ml-1"
-              >
-                Retry
-              </button>
-            </template>
+          <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
+            <FileText class="h-3 w-3 text-gray-400 shrink-0" />
+            <span class="text-[11px] text-gray-400 truncate">{{ connection.source_filename }}</span>
           </div>
-          <div class="mt-auto flex flex-col gap-0.5">
-            <p v-if="connection.db_type === 'dataset' && connection.source_filename" class="text-xs text-gray-400 truncate">{{ connection.source_filename }}</p>
-            <p v-else-if="connection.table_count != null" class="text-xs text-gray-400">{{ connection.table_count }} tables</p>
-            <p v-if="connection.schema_generated_at" class="text-xs text-gray-400">{{ formatRelativeDate(connection.schema_generated_at) }}</p>
+          <!-- Bottom metadata row -->
+          <div class="mt-auto border-t border-gray-100 pt-2.5 flex items-end gap-4">
+            <!-- Profiling status (always first) -->
+            <div class="flex flex-col items-center gap-1" :title="getProfilingTitle(connection)">
+              <Activity class="h-3.5 w-3.5" :class="getProfilingIconClass(connection)" />
+              <span class="text-[10px]" :class="getProfilingTextClass(connection)">{{ getProfilingLabel(connection) }}</span>
+            </div>
+            <!-- Dynamic meta items from connector type -->
+            <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
+              <div v-if="item === 'ssl' && connection.ssl_enabled" class="flex flex-col items-center gap-1" title="SSL Enabled">
+                <Lock class="h-3.5 w-3.5 text-gray-500" />
+                <span class="text-[10px] text-gray-500">SSL</span>
+              </div>
+              <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} tables`">
+                <Table2 class="h-3.5 w-3.5 text-gray-500" />
+                <span class="text-[10px] text-gray-500">{{ connection.table_count }} tables</span>
+              </div>
+              <div v-if="item === 'schema_date' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Schema refreshed ${formatRelativeDate(connection.schema_generated_at)}`">
+                <Clock class="h-3.5 w-3.5 text-gray-500" />
+                <span class="text-[10px] text-gray-500">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+              </div>
+              <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1" title="Lookback window">
+                <Clock class="h-3.5 w-3.5 text-gray-500" />
+                <span class="text-[10px] text-gray-500">{{ parseLookbackDays(connection) }}d lookback</span>
+              </div>
+              <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Last synced ${formatRelativeDate(connection.schema_generated_at)}`">
+                <RefreshCw class="h-3.5 w-3.5 text-gray-500" />
+                <span class="text-[10px] text-gray-500">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+              </div>
+            </template>
           </div>
         </div>
       </UiCard>
@@ -97,26 +113,31 @@
       <UiCard
         v-for="group in datasetGroups"
         :key="group.fingerprint"
-        class="px-5 py-5 w-56 max-md:w-full hover:shadow-lg transition-shadow"
+        class="relative overflow-hidden px-4 py-5 w-56 max-md:w-full hover:shadow-lg transition-shadow"
         :class="{ 'h-56': !expandedGroups[group.fingerprint] }"
       >
+        <div class="absolute top-0 left-0 right-0 h-[3px] bg-green-500" />
         <div class="flex flex-col h-full">
           <button
-            class="flex items-start justify-between gap-3 w-full text-left cursor-pointer"
+            class="flex items-start gap-2.5 w-full text-left cursor-pointer"
             @click="toggleGroup(group.fingerprint)"
           >
-            <div class="flex items-start gap-3 min-w-0">
-              <div class="h-8 w-8 shrink-0" v-html="connectorIcons['dataset']" />
-              <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-900 truncate">{{ group.name }}</p>
-                <p class="text-xs text-gray-500">{{ group.connections.length }} datasets</p>
+            <div class="h-8 w-8 shrink-0" v-html="connectorIcons['dataset']" />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-gray-900 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
+              <div class="flex items-center gap-1 mt-0.5">
+                <span class="text-[11px] text-gray-400">v{{ getConnectorType('dataset')?.version }}</span>
+                <button
+                  @click.stop="openChangelog('dataset')"
+                  class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
+                >
+                  <Info class="h-2 w-2" />
+                </button>
               </div>
             </div>
             <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 shrink-0 mt-1" />
           </button>
-          <div class="flex flex-wrap gap-1.5 mt-3">
-            <UiBadge variant="secondary" size="sm">Dataset Group</UiBadge>
-          </div>
+          <p class="text-[13px] text-gray-500 mt-2.5">{{ group.connections.length }} datasets</p>
           <!-- Expanded: list individual datasets -->
           <div v-if="expandedGroups[group.fingerprint]" class="mt-3 space-y-2 border-t border-gray-100 pt-3">
             <div
@@ -818,11 +839,23 @@
         </UiButton>
       </div>
     </UiBottomSheet>
+
+    <!-- Changelog Bottom Sheet -->
+    <UiBottomSheet
+      :open="showChangelog"
+      @update:open="showChangelog = $event"
+      :title="`${changelogTypeName} Changelog`"
+    >
+      <div v-if="loadingChangelog" class="flex items-center justify-center py-12">
+        <Loader2 class="h-6 w-6 text-gray-400 animate-spin" />
+      </div>
+      <pre v-else class="text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">{{ changelogContent }}</pre>
+    </UiBottomSheet>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen, Info, Loader2, Lock, Clock, Activity, FileText, User } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 
@@ -841,6 +874,13 @@ const connectorIcons: Record<string, string> = {
 const connections = ref<DatabaseConnection[]>([])
 const connectorTypes = ref<ConnectorType[]>([])
 const loading = ref(true)
+
+// Changelog state
+const showChangelog = ref(false)
+const changelogContent = ref('')
+const changelogTypeId = ref<string | null>(null)
+const changelogTypeName = ref('')
+const loadingChangelog = ref(false)
 const showTypePicker = ref(false)
 const showFormSheet = ref(false)
 const editingConnection = ref<DatabaseConnection | null>(null)
@@ -960,6 +1000,83 @@ function toggleGroup(fingerprint: string) {
 // Helpers
 function getConnectorType(id: string): ConnectorType | undefined {
   return connectorTypes.value.find(t => t.id === id)
+}
+
+// Card accent color based on active/profiling status
+function getAccentClass(connection: DatabaseConnection): string {
+  if (connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending') {
+    return 'bg-yellow-400'
+  }
+  return connection.is_active ? 'bg-green-500' : 'bg-red-500'
+}
+
+// Profiling status helpers for bottom metadata
+function getProfilingLabel(connection: DatabaseConnection): string {
+  switch (connection.profiling_status) {
+    case 'ready': return 'Profiled'
+    case 'in_progress': return 'Profiling...'
+    case 'pending': return 'Queued'
+    case 'failed': return 'Failed'
+    default: return 'Pending'
+  }
+}
+
+function getProfilingIconClass(connection: DatabaseConnection): string {
+  switch (connection.profiling_status) {
+    case 'ready': return 'text-green-600'
+    case 'in_progress': return 'text-yellow-500'
+    case 'pending': return 'text-gray-400'
+    case 'failed': return 'text-red-500'
+    default: return 'text-gray-400'
+  }
+}
+
+function getProfilingTextClass(connection: DatabaseConnection): string {
+  switch (connection.profiling_status) {
+    case 'ready': return 'text-green-600'
+    case 'in_progress': return 'text-yellow-600'
+    case 'pending': return 'text-gray-500'
+    case 'failed': return 'text-red-500'
+    default: return 'text-gray-500'
+  }
+}
+
+function getProfilingTitle(connection: DatabaseConnection): string {
+  switch (connection.profiling_status) {
+    case 'ready': return 'Profiling complete'
+    case 'in_progress': return 'Profiling in progress'
+    case 'pending': return 'Profiling queued'
+    case 'failed': return 'Profiling failed — click card to retry'
+    default: return 'Profiling status unknown'
+  }
+}
+
+// Parse lookback days from Facebook Ads source_filename JSON metadata
+function parseLookbackDays(connection: DatabaseConnection): string {
+  if (connection.source_filename) {
+    try {
+      const meta = JSON.parse(connection.source_filename)
+      if (meta.lookback_days) return String(meta.lookback_days)
+    } catch {}
+  }
+  return '7'
+}
+
+// Changelog
+async function openChangelog(typeId: string) {
+  changelogTypeId.value = typeId
+  changelogTypeName.value = getConnectorType(typeId)?.display_name || typeId
+  changelogContent.value = ''
+  showChangelog.value = true
+  loadingChangelog.value = true
+  try {
+    const response = await api.connections.getChangelog(typeId) as { changelog: string; version: string }
+    changelogContent.value = response.changelog
+  } catch (err: any) {
+    changelogContent.value = 'Failed to load changelog.'
+  } finally {
+    loadingChangelog.value = false
+  }
 }
 
 const isDatasetConnection = computed(() => {
