@@ -9,6 +9,7 @@ from backend.plugins.base import BingoPlugin
 logger = logging.getLogger(__name__)
 
 _loaded_plugins: dict[str, BingoPlugin] = {}
+_connector_to_plugin: dict[str, str] = {}  # type_id -> plugin name
 
 
 def _topo_sort(plugins: list[BingoPlugin]) -> list[BingoPlugin]:
@@ -57,7 +58,10 @@ def discover_and_load_plugins() -> None:
     for plugin in sorted_plugins:
         try:
             for reg in plugin.connectors():
+                if reg.version is None:
+                    reg.version = plugin.version
                 register_connector(reg)
+                _connector_to_plugin[reg.type_id] = plugin.name
                 logger.info("Registered connector type '%s' from plugin '%s'", reg.type_id, plugin.name)
 
             try:
@@ -75,6 +79,26 @@ def discover_and_load_plugins() -> None:
             logger.exception("Failed to initialize plugin '%s', skipping", plugin.name)
 
 
+def import_plugin_celery_tasks() -> list[str]:
+    """Import all Celery task modules declared by loaded plugins.
+
+    Must be called after discover_and_load_plugins() so _loaded_plugins is populated.
+    Returns list of successfully imported module paths.
+    """
+    import importlib
+
+    imported: list[str] = []
+    for plugin in _loaded_plugins.values():
+        for mod_path in plugin.celery_task_modules():
+            try:
+                importlib.import_module(mod_path)
+                imported.append(mod_path)
+                logger.info("Imported Celery task module '%s' from plugin '%s'", mod_path, plugin.name)
+            except Exception:
+                logger.exception("Failed to import task module '%s' from plugin '%s'", mod_path, plugin.name)
+    return imported
+
+
 def get_plugin_routers() -> list[tuple[APIRouter, str]]:
     """Return all API routers from loaded plugins for mounting."""
     routers: list[tuple[APIRouter, str]] = []
@@ -89,6 +113,14 @@ def get_plugin_routers() -> list[tuple[APIRouter, str]]:
 def get_loaded_plugins() -> dict[str, BingoPlugin]:
     """Return dict of loaded plugins by name."""
     return dict(_loaded_plugins)
+
+
+def get_plugin_for_connector(type_id: str) -> Optional[BingoPlugin]:
+    """Find the plugin that registered a given connector type_id."""
+    plugin_name = _connector_to_plugin.get(type_id)
+    if plugin_name:
+        return _loaded_plugins.get(plugin_name)
+    return None
 
 
 def shutdown_plugins() -> None:

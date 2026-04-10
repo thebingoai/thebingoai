@@ -51,6 +51,9 @@ async def health_detailed() -> dict:
     return {"status": overall, "checks": checks}
 
 
+APP_VERSION = "0.5.9"
+
+
 async def app_info() -> dict:
     """Return application edition, version, and loaded plugins."""
     from backend.plugins.loader import get_loaded_plugins
@@ -59,6 +62,6 @@ async def app_info() -> dict:
     edition = "Enterprise" if plugins else "Community"
     return {
         "edition": edition,
-        "version": "0.5.6",
+        "version": APP_VERSION,
         "plugins": [{"name": p.name, "version": p.version} for p in plugins.values()],
     }

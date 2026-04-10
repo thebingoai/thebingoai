@@ -64,14 +64,23 @@ celery_app.conf.beat_schedule = {
     },
 }
 
-from celery.signals import worker_process_init
+from celery.signals import worker_process_init, celeryd_init
+
+@celeryd_init.connect
+def on_celeryd_init(**kwargs):
+    """Import plugin task modules in the main process so Celery recognises them."""
+    from backend.plugins.loader import discover_and_load_plugins, import_plugin_celery_tasks
+    discover_and_load_plugins()
+    imported = import_plugin_celery_tasks()
+    logger.info("Celery main process: plugins loaded, %d task module(s) imported", len(imported))
 
 @worker_process_init.connect
 def on_worker_process_init(**kwargs):
-    """Load plugins so plugin-registered connectors are available in worker tasks."""
-    from backend.plugins.loader import discover_and_load_plugins
+    """Load plugins so plugin-registered connectors and tasks are available in workers."""
+    from backend.plugins.loader import discover_and_load_plugins, import_plugin_celery_tasks
     discover_and_load_plugins()
-    logger.info("Celery worker process: plugins loaded")
+    imported = import_plugin_celery_tasks()
+    logger.info("Celery worker process: plugins loaded, %d task module(s) imported", len(imported))
 
 
 @celery_app.task(bind=True, max_retries=settings.celery_max_retries)

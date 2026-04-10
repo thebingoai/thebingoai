@@ -227,7 +227,26 @@ def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Call
             return json.dumps({"success": True, "memories": [], "message": "No relevant memories found"})
         return json.dumps({"success": True, "memories": context_str})
 
-    return [data_agent, rag_agent, recall_memory]
+    # Include plugin-registered tools so specialised tools (e.g.
+    # facebook_ads_summary) are available even in legacy mode.
+    from backend.agents.tool_registry import _PLUGIN_TOOL_BUILDERS
+    plugin_tools: list = []
+    for _name, _builder in _PLUGIN_TOOL_BUILDERS.items():
+        try:
+            import inspect as _inspect
+            sig = _inspect.signature(_builder)
+            if "db_session_factory" in sig.parameters:
+                factory = db_session_factory
+                if factory is None:
+                    from backend.database.session import SessionLocal
+                    factory = SessionLocal
+                plugin_tools.extend(_builder(context, factory))
+            else:
+                plugin_tools.extend(_builder(context))
+        except Exception as exc:
+            logger.warning(f"Failed to build plugin tool '{_name}': {exc}")
+
+    return [data_agent, rag_agent, recall_memory] + plugin_tools
 
 
 def _build_mesh_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
@@ -386,7 +405,7 @@ def _build_dynamic_tools(
         )
 
         # Build the concrete LangChain tools for this agent
-        agent_tools = build_tools_for_keys(effective_tool_keys, agent_context)
+        agent_tools = build_tools_for_keys(effective_tool_keys, agent_context, db_session_factory)
 
         agent_name = agent_def.name
         # Sanitize to match OpenAI tool name pattern: ^[a-zA-Z0-9_-]+$

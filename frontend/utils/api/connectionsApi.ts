@@ -44,6 +44,9 @@ export function createConnectionsApi(fetchWithRefresh: Function, authStore: any,
         body: data
       })
     },
+    async getChangelog(typeId: string) {
+      return fetchWithRefresh(`/api/connections/types/${typeId}/changelog`, {})
+    },
     async getSchema(id: string) {
       return fetchWithRefresh(`/api/connections/${id}/schema`, {})
     },

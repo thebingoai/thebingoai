@@ -4,6 +4,8 @@ export interface ConnectorType {
   description: string
   default_port: number
   badge_variant: string
+  version: string | null
+  card_meta_items: string[]
 }
 
 export interface DatabaseConnection {
