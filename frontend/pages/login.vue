@@ -69,10 +69,15 @@
         <NuxtLink to="/register" class="text-gray-900 hover:underline font-light">Sign up</NuxtLink>
       </p>
     </div>
+
+    <!-- Trial Expired Dialog -->
+    <TrialExpiredDialog v-model:open="showTrialExpired" />
   </div>
 </template>
 
 <script setup lang="ts">
+import TrialExpiredDialog from '~/components/TrialExpiredDialog.vue'
+
 const authStore = useAuthStore()
 const router = useRouter()
 
@@ -80,10 +85,14 @@ const email = ref('')
 const password = ref('')
 const loading = computed(() => authStore.loading)
 const error = computed(() => authStore.error)
+const showTrialExpired = ref(false)
 
 async function handleLogin() {
   const result = await authStore.login({ email: email.value, password: password.value })
-  if (result.success) {
+
+  if (authStore.isAccountInactive) {
+    showTrialExpired.value = true
+  } else if (result.success) {
     router.push('/chat')
   }
 }
