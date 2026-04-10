@@ -86,6 +86,26 @@ export const useCreditSettings = () => {
     }
   }
 
+  // ----- Daily totals (chart) -----
+  const dailyTotals = ref<{ date: string; total: number }[]>([])
+  const dailyTotalsLoading = ref(false)
+
+  async function fetchDailyTotals(startDate?: string, endDate?: string) {
+    dailyTotalsLoading.value = true
+    try {
+      const params = new URLSearchParams()
+      if (startDate) params.set('start_date', startDate)
+      if (endDate) params.set('end_date', endDate)
+      const qs = params.toString() ? `?${params.toString()}` : ''
+      dailyTotals.value = await fetchWithRefresh<{ date: string; total: number }[]>(
+        `/api/credits/history/daily${qs}`,
+        { method: 'GET' }
+      )
+    } finally {
+      dailyTotalsLoading.value = false
+    }
+  }
+
   // ----- API keys -----
   const apiKeys = ref<ApiKeyItem[]>([])
   const keysLoading = ref(false)
@@ -114,7 +134,7 @@ export const useCreditSettings = () => {
 
   // ----- Init -----
   onMounted(async () => {
-    await Promise.all([fetchBalance(), fetchHistory(), fetchApiKeys()])
+    await Promise.all([fetchBalance(), fetchHistory(), fetchDailyTotals(), fetchApiKeys()])
   })
 
   return {
@@ -123,6 +143,8 @@ export const useCreditSettings = () => {
     // History
     historyItems, historyTotal, historyPage, historyPerPage, historyTotalPages,
     historyLoading, fetchHistory, nextPage, prevPage,
+    // Daily totals
+    dailyTotals, dailyTotalsLoading, fetchDailyTotals,
     // API keys
     apiKeys, keysLoading, saveApiKey, deleteApiKey, fetchApiKeys,
   }

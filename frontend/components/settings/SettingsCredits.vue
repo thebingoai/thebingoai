@@ -2,22 +2,116 @@
   <div class="p-6 space-y-8">
     <h2 class="text-2xl font-medium text-gray-900">Credits & API Keys</h2>
 
-    <!-- Credit Meter -->
-    <div class="rounded-xl border border-gray-200 p-6 space-y-3">
-      <h3 class="text-base font-medium text-gray-900">Daily Credits</h3>
-      <div class="flex items-center justify-between text-sm text-gray-600">
-        <span>{{ Math.round(usedToday) }} used</span>
-        <span>{{ dailyLimit }} daily limit</span>
+    <!-- Two-column row: Credit Meter + API Key Management -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+
+      <!-- Left column: Daily Credits + Consumption Chart -->
+      <div class="space-y-6">
+        <!-- Credit Meter -->
+        <div class="rounded-xl border border-gray-200 p-6 space-y-3">
+          <h3 class="text-base font-medium text-gray-900">Daily Credits</h3>
+          <div class="flex items-center justify-between text-sm text-gray-600">
+            <span>{{ Math.round(usedToday) }} used</span>
+            <span>{{ dailyLimit }} daily limit</span>
+          </div>
+          <!-- Progress bar -->
+          <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-300"
+              :class="usedPercent >= 90 ? 'bg-red-500' : usedPercent >= 70 ? 'bg-amber-500' : 'bg-emerald-500'"
+              :style="{ width: `${usedPercent}%` }"
+            />
+          </div>
+          <p class="text-xs text-gray-400">{{ Math.round(remaining) }} credits remaining today. Resets at midnight.</p>
+        </div>
+
+        <!-- Daily Consumption Chart -->
+        <div class="rounded-xl border border-gray-200 p-6 space-y-3">
+          <h3 class="text-base font-medium text-gray-900">Daily Consumption</h3>
+          <div v-if="dailyTotalsLoading" class="h-36 rounded-lg bg-gray-100 animate-pulse" />
+          <div v-else-if="dailyTotals.length === 0" class="h-36 flex items-center justify-center text-sm text-gray-400">
+            No usage data yet.
+          </div>
+          <div v-else class="h-36">
+            <canvas ref="chartCanvas" />
+          </div>
+        </div>
       </div>
-      <!-- Progress bar -->
-      <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
-        <div
-          class="h-full rounded-full transition-all duration-300"
-          :class="usedPercent >= 90 ? 'bg-red-500' : usedPercent >= 70 ? 'bg-amber-500' : 'bg-emerald-500'"
-          :style="{ width: `${usedPercent}%` }"
-        />
+
+      <!-- API Key Management -->
+      <div class="rounded-xl border border-gray-200 p-6 flex flex-col">
+        <h3 class="text-base font-medium text-gray-900">Bring Your Own API Key</h3>
+        <p class="text-sm text-gray-500 mt-1">Use your own API keys to bypass daily credit limits.</p>
+
+        <!-- Stored keys -->
+        <div class="flex-1 mt-4 space-y-2">
+          <div
+            v-for="key in apiKeys"
+            :key="key.provider"
+            class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+          >
+            <div>
+              <p class="text-sm font-medium text-gray-700 capitalize">{{ key.provider }}</p>
+              <p class="text-xs text-gray-400 font-mono">{{ key.masked_key }}</p>
+              <p v-if="key.api_base_url" class="text-xs text-gray-400">{{ key.api_base_url }}</p>
+            </div>
+            <button
+              @click="handleDeleteKey(key.provider)"
+              class="text-xs text-red-500 hover:text-red-700 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+          <div v-if="apiKeys.length === 0" class="flex items-center justify-center text-sm text-gray-400 py-4">
+            No API keys configured.
+          </div>
+        </div>
+
+        <!-- Add key form (pinned to bottom) -->
+        <form @submit.prevent="handleSaveKey" class="space-y-3 mt-4 pt-4 border-t border-gray-100">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+              <select
+                v-model="newProvider"
+                class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">
+                Base URL <span class="text-gray-400">(optional)</span>
+              </label>
+              <input
+                v-model="newBaseUrl"
+                type="url"
+                :placeholder="defaultBaseUrls[newProvider]"
+                class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
+              />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+            <input
+              v-model="newApiKey"
+              type="password"
+              placeholder="sk-..."
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            :disabled="!newApiKey || saving"
+            class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+          >
+            {{ saving ? 'Saving...' : 'Save Key' }}
+          </button>
+        </form>
       </div>
-      <p class="text-xs text-gray-400">{{ Math.round(remaining) }} credits remaining today. Resets at midnight.</p>
+
     </div>
 
     <!-- Usage History -->
@@ -69,76 +163,6 @@
       </div>
     </div>
 
-    <!-- API Key Management -->
-    <div class="rounded-xl border border-gray-200 p-6 space-y-4">
-      <h3 class="text-base font-medium text-gray-900">Bring Your Own API Key</h3>
-      <p class="text-sm text-gray-500">Use your own API keys to bypass daily credit limits.</p>
-
-      <!-- Add key form -->
-      <form @submit.prevent="handleSaveKey" class="space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">Provider</label>
-            <select
-              v-model="newProvider"
-              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
-            >
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">API Key</label>
-            <input
-              v-model="newApiKey"
-              type="password"
-              placeholder="sk-..."
-              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
-              required
-            />
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">
-            Base URL <span class="text-gray-400">(optional)</span>
-          </label>
-          <input
-            v-model="newBaseUrl"
-            type="url"
-            :placeholder="defaultBaseUrls[newProvider]"
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
-          />
-        </div>
-        <button
-          type="submit"
-          :disabled="!newApiKey || saving"
-          class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
-        >
-          {{ saving ? 'Saving...' : 'Save Key' }}
-        </button>
-      </form>
-
-      <!-- Stored keys -->
-      <div v-if="apiKeys.length > 0" class="space-y-2 pt-2">
-        <div
-          v-for="key in apiKeys"
-          :key="key.provider"
-          class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
-        >
-          <div>
-            <p class="text-sm font-medium text-gray-700 capitalize">{{ key.provider }}</p>
-            <p class="text-xs text-gray-400 font-mono">{{ key.masked_key }}</p>
-            <p v-if="key.api_base_url" class="text-xs text-gray-400">{{ key.api_base_url }}</p>
-          </div>
-          <button
-            @click="handleDeleteKey(key.provider)"
-            class="text-xs text-red-500 hover:text-red-700 transition-colors"
-          >
-            Remove
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -146,8 +170,42 @@
 const {
   dailyLimit, usedToday, remaining, usedPercent,
   historyItems, historyTotal, historyPage, historyTotalPages, historyLoading, nextPage, prevPage,
+  dailyTotals, dailyTotalsLoading,
   apiKeys, saveApiKey, deleteApiKey,
 } = useCreditSettings()
+
+// ----- Consumption chart -----
+const chartCanvas = ref<HTMLCanvasElement | null>(null)
+
+const chartConfig = computed<import('~/types/chart').ChartConfig>(() => {
+  const labels = dailyTotals.value.map(d => {
+    const dt = new Date(d.date + 'T00:00:00')
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  })
+  const data = dailyTotals.value.map(d => Math.round(d.total * 100) / 100)
+
+  return {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Credits Used',
+        data,
+        backgroundColor: '#f97316',
+        borderColor: '#ea580c',
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      showLegend: false,
+      showGrid: false,
+      showTooltips: true,
+      showValues: false,
+    },
+  }
+})
+
+useChart(chartCanvas, chartConfig)
 
 const defaultBaseUrls: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
