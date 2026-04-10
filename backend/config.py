@@ -127,7 +127,7 @@ class Settings(BaseSettings):
 
     # SSO Authentication
     sso_base_url: str = "https://sso.thelead.io"
-    sso_publishable_key: str = ""      # pk_* key for frontend
+    sso_publishable_key: str = "Bingo-Community"   # app name (community) or pk_* key (enterprise)
     sso_secret_key: str = ""           # sk_* key for backend
     sso_token_cache_ttl: int = 300     # seconds (5 min)
     sso_webhook_secret: str = ""       # webhook signature verification

@@ -29,12 +29,14 @@ export const useAuthStore = defineStore('auth', {
     authConfig: null as AuthConfig | null,
     loading: false,
     error: null as string | null,
+    isInactive: false,
   }),
 
   getters: {
     isAuthenticated: (state) => !!state.token && !!state.user,
     currentUser: (state) => state.user,
     hasGoogleOAuth: (state) => !!state.authConfig?.google_oauth_url,
+    isAccountInactive: (state) => state.isInactive,
   },
 
   actions: {
@@ -115,7 +117,16 @@ export const useAuthStore = defineStore('auth', {
         await this.fetchUser()
         return { success: true }
       } catch (error: any) {
-        this.error = this._parseSSOError(error, 'Login failed')
+        const detail = error?.data?.detail ?? ''
+        const isInactiveError =
+          typeof detail === 'string' &&
+          (detail.toLowerCase().includes('inactive') || detail.toLowerCase().includes('deactivated'))
+        if (isInactiveError) {
+          this.isInactive = true
+          this.error = 'Account is inactive'
+        } else {
+          this.error = this._parseSSOError(error, 'Login failed')
+        }
         return { success: false, error: this.error }
       } finally {
         this.loading = false
@@ -266,8 +277,13 @@ export const useAuthStore = defineStore('auth', {
           },
         })
         this.user = data
+        this.isInactive = false
       } catch (error: any) {
-        if (error?.statusCode === 401 || error?.status === 401) {
+        if (error?.statusCode === 403 || error?.status === 403) {
+          this.isInactive = true
+          this.error = 'Account is inactive'
+          throw error
+        } else if (error?.statusCode === 401 || error?.status === 401) {
           const refreshed = await this.refreshAccessToken()
           if (refreshed) {
             try {
@@ -282,6 +298,8 @@ export const useAuthStore = defineStore('auth', {
               // Retry also failed — fall through to logout
             }
           }
+          this.logout()
+        } else {
           this.logout()
         }
       }
@@ -327,6 +345,7 @@ export const useAuthStore = defineStore('auth', {
       this.token = null
       this.refreshToken = null
       this.error = null
+      this.isInactive = false
 
       if (process.client) {
         localStorage.removeItem('auth_token')
