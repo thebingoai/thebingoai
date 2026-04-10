@@ -288,6 +288,10 @@ export const useChatStreaming = () => {
             message_count: 2
           })
         }
+
+        // Refresh credit balance after each turn so the badge stays current
+        useCreditBalance().refresh()
+
         cleanup()
       })
 

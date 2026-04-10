@@ -1,7 +1,7 @@
 """LLM Provider factory."""
 
 import logging
-from typing import Optional
+from typing import Optional, Callable
 
 from backend.llm.base import BaseLLMProvider
 from backend.llm.openai_provider import OpenAIProvider
@@ -17,6 +17,18 @@ _PROVIDERS: dict[str, type[BaseLLMProvider]] = {
     "ollama": OllamaProvider,
 }
 
+# Plugin-registered provider wrappers (applied in registration order)
+_provider_wrappers: list[Callable[[BaseLLMProvider], BaseLLMProvider]] = []
+
+
+def register_provider_wrapper(fn: Callable[[BaseLLMProvider], BaseLLMProvider]) -> None:
+    """Register a wrapper function that transforms a provider instance.
+
+    Wrappers are applied in registration order inside get_provider().
+    Plugins should call this during on_startup().
+    """
+    _provider_wrappers.append(fn)
+
 
 def get_provider(name: str, model: Optional[str] = None) -> BaseLLMProvider:
     """
@@ -27,7 +39,7 @@ def get_provider(name: str, model: Optional[str] = None) -> BaseLLMProvider:
         model: Optional model override
 
     Returns:
-        Provider instance
+        Provider instance (with any registered wrappers applied)
 
     Raises:
         ValueError: If provider not found
@@ -37,4 +49,7 @@ def get_provider(name: str, model: Optional[str] = None) -> BaseLLMProvider:
         available = ", ".join(_PROVIDERS.keys())
         raise ValueError(f"Unknown provider '{name}'. Available: {available}")
 
-    return provider_class(model=model)
+    provider = provider_class(model=model)
+    for wrapper in _provider_wrappers:
+        provider = wrapper(provider)
+    return provider

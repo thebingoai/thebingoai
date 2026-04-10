@@ -246,6 +246,25 @@ async def chat_stream(
             # Set Redis streaming flag (TTL 5 min safety net)
             redis_client.setex(f"streaming:{active_thread_id}", 300, "sse")
 
+            # --- Credit context setup (bingo-credits plugin) ---
+            _credit_ctx = None
+            _credit_token = None
+            _credit_title = None
+            try:
+                from backend.plugins.loader import get_loaded_plugins
+                if "bingo-credits" in get_loaded_plugins():
+                    from bingo_credits.credit_context import CreditContext, credit_context, InsufficientCreditsError as _InsufficientCreditsError
+                    from bingo_credits.service import CreditService as _CreditService
+                    _remaining = _CreditService.get_remaining_credits(db, current_user.id)
+                    _has_own_key = _CreditService.get_decrypted_key(db, current_user.id, settings.default_llm_provider) is not None
+                    _credit_ctx = CreditContext(user_id=current_user.id, has_own_key=_has_own_key)
+                    _credit_token = credit_context.set(_credit_ctx)
+                    if not _has_own_key and _remaining < 0.5:
+                        yield f"data: {json.dumps({'type': 'error', 'content': 'Daily credits used up. Resets at midnight.', 'error_code': 'insufficient_credits'})}\n\n"
+                        return
+            except Exception as _credit_setup_err:
+                logger.warning("Credit context setup failed: %s", _credit_setup_err)
+
             # Resolve user's preferred LLM provider
             user_provider = get_provider(settings.default_llm_provider)
 
@@ -288,10 +307,12 @@ async def chat_stream(
                     db.commit()
 
             # Generate LLM title for new conversations after streaming completes
+            _credit_title = None
             if is_new_conversation and final_message:
                 try:
                     title = await _generate_title(request.message, final_message)
                     ConversationService.update_title(db, conversation.id, title)
+                    _credit_title = title
                     yield f"data: {json.dumps({'type': 'title', 'content': title})}\n\n"
                 except Exception as title_err:
                     logger.warning(f"Title generation failed: {title_err}")
@@ -309,6 +330,25 @@ async def chat_stream(
                 except Exception as summary_err:
                     logger.warning(f"Summary generation failed: {summary_err}")
 
+            # --- Finalize credit usage (bingo-credits plugin) ---
+            if _credit_ctx is not None:
+                try:
+                    if _credit_token is not None:
+                        from bingo_credits.credit_context import credit_context
+                        credit_context.reset(_credit_token)
+                    if not _credit_ctx.has_own_key and _credit_ctx.total_cost_cents > 0:
+                        from bingo_credits.service import CreditService as _CreditService
+                        _record_title = _credit_title or request.message[:80]
+                        _CreditService.record_usage(
+                            db,
+                            user_id=current_user.id,
+                            credits_used=_credit_ctx.total_cost_cents,
+                            title=_record_title,
+                            conversation_id=conversation.id,
+                        )
+                except Exception as _credit_err:
+                    logger.warning("Credit usage recording failed: %s", _credit_err)
+
             # Clear streaming flag on successful completion
             if active_thread_id:
                 try:
@@ -317,6 +357,13 @@ async def chat_stream(
                     pass
 
         except Exception as e:
+            # Clean up credit context on error
+            if _credit_ctx is not None and _credit_token is not None:
+                try:
+                    from bingo_credits.credit_context import credit_context
+                    credit_context.reset(_credit_token)
+                except Exception:
+                    pass
             # Clear streaming flag on error
             if active_thread_id:
                 try:

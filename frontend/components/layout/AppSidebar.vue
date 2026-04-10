@@ -172,7 +172,7 @@
         </div>
         <div class="ml-3 flex-1 min-w-0">
           <p class="text-sm font-light text-gray-900 truncate">{{ authStore.user?.email }}</p>
-          <p class="text-xs text-gray-500">View settings</p>
+          <p class="text-xs text-gray-400 tabular-nums">{{ Math.round(remaining) }}/{{ dailyLimit }} credits</p>
         </div>
         <component :is="Settings" class="h-4 w-4 text-gray-400" />
       </div>
@@ -187,6 +187,7 @@ import type { Conversation } from '~/stores/chat'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
+const { remaining, dailyLimit } = useCreditBalance()
 const layoutStore = useLayoutStore()
 const chat = useChat()
 const router = useRouter()
