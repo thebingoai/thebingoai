@@ -89,6 +89,8 @@ class ConnectorTypeResponse(BaseModel):
     description: str
     default_port: int
     badge_variant: str
+    version: str | None = None
+    card_meta_items: list[str]
 
 
 class ConnectionTestResponse(BaseModel):

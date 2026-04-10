@@ -50,7 +50,7 @@
             <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
-              <div class="flex items-center gap-1 mt-0.5">
+              <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
                 <span class="text-[11px] text-gray-400">v{{ getConnectorType(connection.db_type)?.version }}</span>
                 <button
                   @click.stop="openChangelog(connection.db_type)"

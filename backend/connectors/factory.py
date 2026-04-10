@@ -29,6 +29,8 @@ def get_available_types() -> list[dict]:
             "description": reg.description,
             "default_port": reg.default_port,
             "badge_variant": reg.badge_variant,
+            "version": reg.version,
+            "card_meta_items": reg.card_meta_items or [],
         }
         for reg in _CONNECTORS.values()
     ]
@@ -114,6 +116,7 @@ register_connector(ConnectorRegistration(
     default_port=5432,
     badge_variant="info",
     connector_class=PostgresConnector,
+    card_meta_items=["ssl", "table_count", "schema_date"],
 ))
 
 register_connector(ConnectorRegistration(
@@ -123,6 +126,7 @@ register_connector(ConnectorRegistration(
     default_port=3306,
     badge_variant="warning",
     connector_class=MySQLConnector,
+    card_meta_items=["ssl", "table_count", "schema_date"],
 ))
 
 
@@ -151,6 +155,7 @@ register_connector(ConnectorRegistration(
     on_delete=_delete_sqlite_file,
     on_test=_check_sqlite_health,
     skip_schema_refresh=False,
+    card_meta_items=["table_count", "schema_date"],
     sql_dialect_hint=(
         "SQLite dialect: use strftime() for dates, LIKE instead of ILIKE, "
         "no :: type casting — use CAST() instead. "
