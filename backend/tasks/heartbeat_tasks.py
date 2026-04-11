@@ -99,8 +99,28 @@ def execute_heartbeat_job(job_id: str):
 
         logger.info(f"Executing heartbeat job {job_id} (run {run.id})")
 
-        # Run the orchestrator synchronously (Celery workers are sync)
-        response = asyncio.run(_run_orchestrator_for_job(job, user))
+        # --- Credit tracking (bingo-credits plugin) ---
+        _credit_mgr = None
+        try:
+            from backend.plugins.loader import get_loaded_plugins
+            if "bingo-credits" in get_loaded_plugins():
+                from bingo_credits.credit_context import CreditContextManager
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=job.user_id,
+                    title=f"Heartbeat: {job.prompt[:60]}",
+                    provider_name=None,
+                    conversation_id=None,
+                    block_on_insufficient=False,
+                )
+        except Exception as _credit_err:
+            logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
+            _credit_mgr = None
+
+        # Sync context manager propagates ContextVar into asyncio.run()
+        from contextlib import nullcontext
+        with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+            response = asyncio.run(_run_orchestrator_for_job(job, user))
 
         completed_at = datetime.utcnow()
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -251,9 +271,29 @@ def execute_agent_heartbeat_job(job_id: str):
 
         logger.info(f"Executing agent heartbeat job {job_id} (type={job.agent_type}, run={run.id})")
 
-        response = asyncio.run(
-            _run_agent_for_job(job, user)
-        )
+        # --- Credit tracking (bingo-credits plugin) ---
+        _credit_mgr = None
+        try:
+            from backend.plugins.loader import get_loaded_plugins
+            if "bingo-credits" in get_loaded_plugins():
+                from bingo_credits.credit_context import CreditContextManager
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=job.user_id,
+                    title=f"Heartbeat: {job.prompt[:60]}",
+                    provider_name=None,
+                    conversation_id=None,
+                    block_on_insufficient=False,
+                )
+        except Exception as _credit_err:
+            logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
+            _credit_mgr = None
+
+        from contextlib import nullcontext
+        with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+            response = asyncio.run(
+                _run_agent_for_job(job, user)
+            )
 
         completed_at = datetime.utcnow()
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
