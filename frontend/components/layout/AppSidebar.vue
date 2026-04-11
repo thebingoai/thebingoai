@@ -7,11 +7,9 @@
     }"
   >
     <!-- Logo -->
-    <div class="flex h-16 items-center border-b border-gray-200 px-6">
-      <component :is="MessageSquare" class="h-6 w-6 text-gray-900" />
-      <span class="ml-3 text-lg font-normal text-gray-900">
-        {{ chatStore.permanentConversation?.title || 'Bingo AI' }}
-      </span>
+    <div class="flex h-16 items-center border-b border-gray-200 pl-[14px] pr-4">
+      <img src="/logo/Bingo_BL.png" alt="Bingo" class="h-16 w-auto dark:hidden" />
+      <img src="/logo/Bingo_WH.png" alt="Bingo" class="h-16 w-auto hidden dark:block" />
     </div>
 
     <!-- Permanent conversation (pinned) -->
@@ -181,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { MessageSquare, Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard, Archive as ArchiveIcon, ArchiveRestore } from 'lucide-vue-next'
+import { Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard, Archive as ArchiveIcon, ArchiveRestore } from 'lucide-vue-next'
 import { formatDateLabel } from '~/utils/format'
 import type { Conversation } from '~/stores/chat'
 
