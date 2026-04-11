@@ -202,7 +202,10 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
   }
 
   function updateChart() {
-    if (!chartInstance) return
+    if (!chartInstance) {
+      createChart()
+      return
+    }
 
     const config = configRef.value
     const sorted = sortChartData(config)
@@ -239,7 +242,7 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
     } else {
       updateChart()
     }
-  }, { deep: true })
+  }, { deep: true, flush: 'post' })
 
   onBeforeUnmount(() => {
     destroyChart()

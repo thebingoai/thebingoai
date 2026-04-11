@@ -18,7 +18,7 @@
           <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-300"
-              :class="usedPercent >= 90 ? 'bg-red-500' : usedPercent >= 70 ? 'bg-amber-500' : 'bg-emerald-500'"
+              :class="usedPercent >= 90 ? 'bg-red-500' : 'bar-orange-flow'"
               :style="{ width: `${usedPercent}%` }"
             />
           </div>
@@ -243,3 +243,16 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 </script>
+
+<style scoped>
+.bar-orange-flow {
+  background: linear-gradient(90deg, #f97316, #fb923c, #fdba74, #fb923c, #f97316);
+  background-size: 200% 100%;
+  animation: bar-glow-sweep 2s ease-in-out infinite;
+}
+
+@keyframes bar-glow-sweep {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+</style>

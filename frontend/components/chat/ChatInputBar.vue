@@ -57,13 +57,7 @@
         @keydown="handleKeydown"
       />
       <div class="flex items-center justify-between gap-1.5 px-3 pb-3">
-        <!-- Credit badge -->
-        <span
-          v-if="dailyLimit > 0"
-          class="text-xs text-gray-400 tabular-nums"
-          :title="`${remaining} / ${dailyLimit} credits remaining today`"
-        >{{ Math.round(remaining) }}/{{ dailyLimit }}</span>
-        <span v-else class="flex-1" />
+        <span class="flex-1" />
 
         <div class="flex gap-1.5">
         <!-- New Topic button — only visible on permanent conversation -->
