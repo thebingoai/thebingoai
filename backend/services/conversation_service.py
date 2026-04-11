@@ -1,3 +1,4 @@
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 from backend.models.conversation import Conversation
 from backend.models.message import Message
@@ -104,11 +105,18 @@ class ConversationService:
 
     @staticmethod
     def list_conversations(db: Session, user_id: str, limit: int = 50, archived: bool = False) -> List[Conversation]:
-        """List conversations for a user, filtered by archive status."""
+        """List conversations for a user, filtered by archive status.
+
+        The permanent conversation is always sorted first so it is never
+        pushed out of the result by the limit, regardless of its age.
+        """
         return db.query(Conversation).filter(
             Conversation.user_id == user_id,
             Conversation.is_archived == archived,
-        ).order_by(Conversation.updated_at.desc()).limit(limit).all()
+        ).order_by(
+            case((Conversation.type == "permanent", 0), else_=1),
+            Conversation.updated_at.desc(),
+        ).limit(limit).all()
 
     @staticmethod
     def archive_conversation(db: Session, thread_id: str, user_id: str, archived: bool = True) -> Conversation:
