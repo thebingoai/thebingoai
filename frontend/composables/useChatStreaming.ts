@@ -5,6 +5,7 @@ import { useChatFileUpload } from './useChatFileUpload'
 export const useChatStreaming = () => {
   const chatStore = useChatStore()
   const ws = useWebSocket()
+  const { refresh: refreshCredits } = useCreditBalance()
 
   const sendMessage = async (message: string, fileIds: string[] = [], options?: { source?: Message['source'] }) => {
     chatStore.isStreaming = true
@@ -290,7 +291,7 @@ export const useChatStreaming = () => {
         }
 
         // Refresh credit balance after each turn so the badge stays current
-        useCreditBalance().refresh()
+        refreshCredits()
 
         cleanup()
       })

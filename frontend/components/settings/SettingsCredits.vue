@@ -12,7 +12,7 @@
           <h3 class="text-base font-medium text-gray-900">Daily Credits</h3>
           <div class="flex items-center justify-between text-sm text-gray-600">
             <span>{{ Math.round(usedToday) }} used</span>
-            <span>{{ dailyLimit }} daily limit</span>
+            <span>{{ Math.round(remaining) }} credits remaining</span>
           </div>
           <!-- Progress bar -->
           <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
@@ -22,7 +22,7 @@
               :style="{ width: `${usedPercent}%` }"
             />
           </div>
-          <p class="text-xs text-gray-400">{{ Math.round(remaining) }} credits remaining today. Resets at midnight.</p>
+          <p class="text-xs text-gray-400">{{ dailyLimit }} credits will be reset at midnight.</p>
         </div>
 
         <!-- Daily Consumption Chart -->
@@ -137,7 +137,7 @@
         <tbody class="divide-y divide-gray-50">
           <tr v-for="item in historyItems" :key="item.id" class="py-2">
             <td class="py-2 text-gray-700 truncate max-w-xs">{{ item.title }}</td>
-            <td class="py-2 text-right tabular-nums text-gray-600">{{ item.credits_used.toFixed(4) }}</td>
+            <td class="py-2 text-right tabular-nums text-gray-600">{{ item.credits_used }}</td>
             <td class="py-2 text-right text-gray-400 whitespace-nowrap">{{ formatDate(item.created_at) }}</td>
           </tr>
         </tbody>
