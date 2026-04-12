@@ -38,6 +38,27 @@ const DATASET_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ])
 
+// Extension-to-MIME fallback for drag-and-drop where browsers may report
+// incorrect or empty MIME types (e.g. CSV as 'text/plain' or '').
+const EXTENSION_TO_MIME: Record<string, string> = {
+  csv: 'text/csv',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+}
+
+function resolveFileType(file: File): string | null {
+  if (ACCEPTED_TYPES.has(file.type)) return file.type
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if (ext && ext in EXTENSION_TO_MIME) return EXTENSION_TO_MIME[ext]
+  return null
+}
+
 // Module-level singleton state (shared across all callers)
 const attachedFiles = ref<UploadingFile[]>([])
 
@@ -72,6 +93,7 @@ export const useChatFileUpload = () => {
   const addFiles = async (files: File[]): Promise<FileRejection[]> => {
     const rejections: FileRejection[] = []
     const validFiles: File[] = []
+    const resolvedTypes = new Map<File, string>()
 
     // Check count limit first
     const currentCount = attachedFiles.value.length
@@ -86,7 +108,8 @@ export const useChatFileUpload = () => {
         continue
       }
 
-      if (!ACCEPTED_TYPES.has(file.type)) {
+      const resolvedType = resolveFileType(file)
+      if (!resolvedType) {
         rejections.push({ name: file.name, error: 'Unsupported file type' })
         continue
       }
@@ -96,6 +119,7 @@ export const useChatFileUpload = () => {
         continue
       }
 
+      resolvedTypes.set(file, resolvedType)
       validFiles.push(file)
     }
 
@@ -104,15 +128,15 @@ export const useChatFileUpload = () => {
     }
 
     // Split files: datasets (CSV/Excel) use connections API, others use chat files API
-    const datasetFiles = validFiles.filter(f => DATASET_TYPES.has(f.type))
-    const otherFiles = validFiles.filter(f => !DATASET_TYPES.has(f.type))
+    const datasetFiles = validFiles.filter(f => DATASET_TYPES.has(resolvedTypes.get(f)!))
+    const otherFiles = validFiles.filter(f => !DATASET_TYPES.has(resolvedTypes.get(f)!))
 
     // Build attachment objects with initial status and preview URLs
     const newAttachments: UploadingFile[] = validFiles.map(file => ({
       file,
       file_id: null,
       connection_id: null,
-      preview_url: IMAGE_TYPES.has(file.type) ? URL.createObjectURL(file) : null,
+      preview_url: IMAGE_TYPES.has(resolvedTypes.get(file)!) ? URL.createObjectURL(file) : null,
       status: 'uploading' as const,
       progress: 0,
     }))

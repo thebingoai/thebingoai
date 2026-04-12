@@ -111,4 +111,63 @@ describe('useChatFileUpload', () => {
       'existing-thread'
     )
   })
+
+  describe('drag-and-drop MIME type fallback', () => {
+    it('accepts CSV file with empty MIME type (drag-and-drop)', async () => {
+      mockCreateConversation.mockResolvedValue({ thread_id: 'thread-1' })
+      mockUploadDataset.mockResolvedValue({ id: 10, name: 'data', row_count: 5 })
+
+      const { addFiles, attachedFiles } = useChatFileUpload()
+      // Browsers sometimes report empty type for dragged CSV files
+      const file = new File(['a,b\n1,2'], 'data.csv', { type: '' })
+      const rejections = await addFiles([file])
+
+      expect(rejections).toHaveLength(0)
+      expect(mockUploadDataset).toHaveBeenCalled()
+      expect(attachedFiles.value[0].status).toBe('ready')
+    })
+
+    it('accepts CSV file reported as text/plain (drag-and-drop)', async () => {
+      mockCreateConversation.mockResolvedValue({ thread_id: 'thread-2' })
+      mockUploadDataset.mockResolvedValue({ id: 11, name: 'data', row_count: 5 })
+
+      const { addFiles } = useChatFileUpload()
+      const file = new File(['a,b\n1,2'], 'report.csv', { type: 'text/plain' })
+      const rejections = await addFiles([file])
+
+      expect(rejections).toHaveLength(0)
+      expect(mockUploadDataset).toHaveBeenCalled()
+    })
+
+    it('accepts XLSX file reported as application/octet-stream (drag-and-drop)', async () => {
+      mockCreateConversation.mockResolvedValue({ thread_id: 'thread-3' })
+      mockUploadDataset.mockResolvedValue({ id: 12, name: 'sheet', row_count: 100 })
+
+      const { addFiles } = useChatFileUpload()
+      const file = new File([new ArrayBuffer(100)], 'sheet.xlsx', { type: 'application/octet-stream' })
+      const rejections = await addFiles([file])
+
+      expect(rejections).toHaveLength(0)
+      expect(mockUploadDataset).toHaveBeenCalled()
+    })
+
+    it('rejects file with unrecognized extension and wrong MIME type', async () => {
+      const { addFiles } = useChatFileUpload()
+      const file = new File(['data'], 'archive.zip', { type: 'application/zip' })
+      const rejections = await addFiles([file])
+
+      expect(rejections).toHaveLength(1)
+      expect(rejections[0].error).toBe('Unsupported file type')
+      expect(mockUploadDataset).not.toHaveBeenCalled()
+    })
+
+    it('rejects file with no extension and unknown MIME type', async () => {
+      const { addFiles } = useChatFileUpload()
+      const file = new File(['data'], 'unknownfile', { type: '' })
+      const rejections = await addFiles([file])
+
+      expect(rejections).toHaveLength(1)
+      expect(rejections[0].error).toBe('Unsupported file type')
+    })
+  })
 })
