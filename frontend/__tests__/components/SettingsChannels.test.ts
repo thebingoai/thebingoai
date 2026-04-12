@@ -25,6 +25,7 @@ vi.stubGlobal('useApi', () => ({
     getStatus: mockGetStatus,
     setupBot: mockSetupBot,
     disconnect: mockDisconnect,
+    getInfo: vi.fn().mockResolvedValue(null),
   },
 }))
 
@@ -59,6 +60,11 @@ describe('SettingsChannels', () => {
     it('shows token input and Connect button', async () => {
       mockGetStatus.mockResolvedValue({ connected: false, bot_username: null, is_active: false })
       const wrapper = mount(SettingsChannels, { global: { stubs } })
+      await flushPromises()
+
+      // The input lives inside the connect dialog — open it first
+      const connectBtn = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('connect'))
+      await connectBtn!.trigger('click')
       await flushPromises()
 
       expect(wrapper.find('input').exists()).toBe(true)
@@ -109,14 +115,22 @@ describe('SettingsChannels', () => {
       const wrapper = mount(SettingsChannels, { global: { stubs } })
       await flushPromises()
 
-      const input = wrapper.find('input')
-      await input.setValue('123456:TEST-TOKEN')
+      // Open the connect dialog via the card's Connect button
+      await wrapper.find('.ui-card button').trigger('click')
+      await flushPromises()
 
-      const connectBtn = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('connect'))
+      // Fill inputs inside the dialog
+      const dialog = wrapper.find('.ui-dialog')
+      const inputs = dialog.findAll('input')
+      await inputs[0].setValue('123456:TEST-TOKEN')
+      await inputs[1].setValue('99887766')
+
+      // Click Connect inside the dialog
+      const connectBtn = dialog.findAll('button').find(b => b.text() === 'Connect')
       await connectBtn!.trigger('click')
       await flushPromises()
 
-      expect(mockSetupBot).toHaveBeenCalledWith('123456:TEST-TOKEN')
+      expect(mockSetupBot).toHaveBeenCalledWith('123456:TEST-TOKEN', '99887766')
       expect(wrapper.text()).toContain('@new_bot')
     })
 
@@ -127,10 +141,18 @@ describe('SettingsChannels', () => {
       const wrapper = mount(SettingsChannels, { global: { stubs } })
       await flushPromises()
 
-      const input = wrapper.find('input')
-      await input.setValue('bad-token')
+      // Open the connect dialog via the card's Connect button
+      await wrapper.find('.ui-card button').trigger('click')
+      await flushPromises()
 
-      const connectBtn = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('connect'))
+      // Fill inputs inside the dialog
+      const dialog = wrapper.find('.ui-dialog')
+      const inputs = dialog.findAll('input')
+      await inputs[0].setValue('bad-token')
+      await inputs[1].setValue('99887766')
+
+      // Click Connect inside the dialog
+      const connectBtn = dialog.findAll('button').find(b => b.text() === 'Connect')
       await connectBtn!.trigger('click')
       await flushPromises()
 

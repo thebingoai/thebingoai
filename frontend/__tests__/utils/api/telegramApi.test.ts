@@ -28,10 +28,10 @@ describe('createTelegramApi', () => {
   describe('setupBot', () => {
     it('calls POST /api/telegram/bot/setup with bot_token in body', async () => {
       fetchWithRefresh.mockResolvedValue({ status: 'connected', bot_username: 'mybot', webhook_url: 'https://example.com/webhook' })
-      const result = await api.setupBot('123456:ABC-TOKEN')
+      const result = await api.setupBot('123456:ABC-TOKEN', '99887766')
       expect(fetchWithRefresh).toHaveBeenCalledWith('/api/telegram/bot/setup', {
         method: 'POST',
-        body: { bot_token: '123456:ABC-TOKEN' },
+        body: { bot_token: '123456:ABC-TOKEN', telegram_chat_id: 99887766 },
       })
       expect(result.status).toBe('connected')
       expect(result.bot_username).toBe('mybot')
