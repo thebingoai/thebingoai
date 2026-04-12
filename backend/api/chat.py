@@ -379,18 +379,31 @@ async def chat_stream(
 async def list_conversations(
     archived: bool = Query(False),
     summary: bool = Query(False),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(199, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List conversations for the current user, optionally filtered by archive status.
     Use summary=true for a lightweight response without message content (sidebar listing).
+    Returns paginated task conversations plus the permanent conversation on the first page.
     """
     if not archived:
         ConversationService.get_or_create_permanent_conversation(db, current_user.id)
-    conversations = ConversationService.list_conversations(db, current_user.id, archived=archived)
+
+    conversations, has_more = ConversationService.list_conversations(
+        db, current_user.id, limit=limit, offset=offset, archived=archived
+    )
+
+    # Always include the permanent conversation on the first page of non-archived results
+    if not archived and offset == 0:
+        permanent = ConversationService.get_permanent_conversation(db, current_user.id)
+        if permanent:
+            conversations = [permanent] + conversations
+
     if summary:
-        return ConversationListSummaryResponse(conversations=conversations)
-    return ConversationListResponse(conversations=conversations)
+        return ConversationListSummaryResponse(conversations=conversations, has_more=has_more)
+    return ConversationListResponse(conversations=conversations, has_more=has_more)
 
 
 @router.get("/conversations/{thread_id}", response_model=ConversationResponse)

@@ -183,11 +183,11 @@ class TestListConversations:
     """Tests for list_conversations."""
 
     def test_returns_user_conversations(self, conv_db, user):
-        """list_conversations returns conversations belonging to the user."""
+        """list_conversations returns task conversations belonging to the user."""
         ConversationService.create_conversation(conv_db, user.id, title="A")
         ConversationService.create_conversation(conv_db, user.id, title="B")
 
-        convs = ConversationService.list_conversations(conv_db, user.id)
+        convs, _ = ConversationService.list_conversations(conv_db, user.id)
         assert len(convs) == 2
 
     def test_excludes_archived_by_default(self, conv_db, user):
@@ -195,7 +195,7 @@ class TestListConversations:
         conv = ConversationService.create_conversation(conv_db, user.id, title="Will Archive")
         ConversationService.archive_conversation(conv_db, conv.thread_id, user.id)
 
-        convs = ConversationService.list_conversations(conv_db, user.id)
+        convs, _ = ConversationService.list_conversations(conv_db, user.id)
         assert len(convs) == 0
 
     def test_includes_archived_when_requested(self, conv_db, user):
@@ -203,8 +203,70 @@ class TestListConversations:
         conv = ConversationService.create_conversation(conv_db, user.id, title="Archived")
         ConversationService.archive_conversation(conv_db, conv.thread_id, user.id)
 
-        convs = ConversationService.list_conversations(conv_db, user.id, archived=True)
+        convs, _ = ConversationService.list_conversations(conv_db, user.id, archived=True)
         assert len(convs) == 1
+
+    def test_excludes_permanent_from_list(self, conv_db, user):
+        """list_conversations never includes the permanent conversation."""
+        ConversationService.create_conversation(conv_db, user.id, conv_type="permanent")
+        ConversationService.create_conversation(conv_db, user.id, title="Task A")
+        ConversationService.create_conversation(conv_db, user.id, title="Task B")
+
+        convs, _ = ConversationService.list_conversations(conv_db, user.id)
+        assert len(convs) == 2
+        assert all(c.type == "task" for c in convs)
+
+    def test_returns_has_more_false_when_under_limit(self, conv_db, user):
+        """has_more is False when fewer rows exist than the limit."""
+        for i in range(3):
+            ConversationService.create_conversation(conv_db, user.id, title=f"T{i}")
+
+        convs, has_more = ConversationService.list_conversations(conv_db, user.id, limit=5)
+        assert len(convs) == 3
+        assert has_more is False
+
+    def test_returns_has_more_true_when_over_limit(self, conv_db, user):
+        """has_more is True when more rows exist than the limit."""
+        for i in range(5):
+            ConversationService.create_conversation(conv_db, user.id, title=f"T{i}")
+
+        convs, has_more = ConversationService.list_conversations(conv_db, user.id, limit=3)
+        assert len(convs) == 3
+        assert has_more is True
+
+    def test_offset_skips_conversations(self, conv_db, user):
+        """offset skips the specified number of rows."""
+        for i in range(5):
+            ConversationService.create_conversation(conv_db, user.id, title=f"T{i}")
+
+        convs, _ = ConversationService.list_conversations(conv_db, user.id, limit=10, offset=2)
+        assert len(convs) == 3
+
+    def test_offset_and_limit_paginate(self, conv_db, user):
+        """offset + limit produce correct pages across the full dataset."""
+        for i in range(10):
+            ConversationService.create_conversation(conv_db, user.id, title=f"T{i}")
+
+        page1, has_more1 = ConversationService.list_conversations(conv_db, user.id, limit=3, offset=0)
+        assert len(page1) == 3
+        assert has_more1 is True
+
+        page2, has_more2 = ConversationService.list_conversations(conv_db, user.id, limit=3, offset=3)
+        assert len(page2) == 3
+        assert has_more2 is True
+
+        page4, has_more4 = ConversationService.list_conversations(conv_db, user.id, limit=3, offset=9)
+        assert len(page4) == 1
+        assert has_more4 is False
+
+    def test_default_limit_is_199(self, conv_db, user):
+        """Default limit is 199 — basic smoke test that it doesn't crash."""
+        ConversationService.create_conversation(conv_db, user.id, title="A")
+        ConversationService.create_conversation(conv_db, user.id, title="B")
+
+        convs, has_more = ConversationService.list_conversations(conv_db, user.id)
+        assert len(convs) == 2
+        assert has_more is False
 
 
 # ---------------------------------------------------------------------------

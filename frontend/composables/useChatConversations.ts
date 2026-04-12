@@ -153,18 +153,23 @@ export const useChatConversations = () => {
     }
   }
 
+  const mapConversation = (conv: any) => ({
+    id: conv.thread_id,
+    title: conv.title || 'Untitled',
+    type: conv.type || 'task',
+    created_at: conv.created_at,
+    updated_at: conv.updated_at,
+    message_count: conv.messages?.length || 0
+  })
+
   const loadConversations = async () => {
     try {
+      chatStore.resetConversationPagination()
       const response = await api.chat.getConversations() as any
-      const conversations = (response.conversations || []).map((conv: any) => ({
-        id: conv.thread_id,
-        title: conv.title || 'Untitled',
-        type: conv.type || 'task',
-        created_at: conv.created_at,
-        updated_at: conv.updated_at,
-        message_count: conv.messages?.length || 0
-      }))
+      const conversations = (response.conversations || []).map(mapConversation)
       chatStore.setConversations(conversations)
+      chatStore.conversationHasMore = response.has_more ?? false
+      chatStore.conversationOffset = conversations.filter((c: any) => c.type === 'task').length
 
       // If hydrated thread exists and matches a known conversation, restore it
       if (chatStore.currentThreadId) {
@@ -182,6 +187,22 @@ export const useChatConversations = () => {
       }
     } catch (error) {
       console.error('Failed to load conversations:', error)
+    }
+  }
+
+  const loadMoreConversations = async () => {
+    if (!chatStore.conversationHasMore || chatStore.isLoadingMoreConversations) return
+    chatStore.isLoadingMoreConversations = true
+    try {
+      const response = await api.chat.getConversations(false, true, chatStore.conversationOffset, 200) as any
+      const conversations = (response.conversations || []).map(mapConversation)
+      chatStore.appendConversations(conversations)
+      chatStore.conversationHasMore = response.has_more ?? false
+      chatStore.conversationOffset += conversations.filter((c: any) => c.type === 'task').length
+    } catch (error) {
+      console.error('Failed to load more conversations:', error)
+    } finally {
+      chatStore.isLoadingMoreConversations = false
     }
   }
 
@@ -238,19 +259,12 @@ export const useChatConversations = () => {
   const loadArchivedConversations = async () => {
     try {
       const response = await api.chat.getConversations(true) as any
-      const conversations = (response.conversations || []).map((conv: any) => ({
-        id: conv.thread_id,
-        title: conv.title || 'Untitled',
-        type: conv.type || 'task',
-        created_at: conv.created_at,
-        updated_at: conv.updated_at,
-        message_count: conv.messages?.length || 0
-      }))
+      const conversations = (response.conversations || []).map(mapConversation)
       chatStore.setArchivedConversations(conversations)
     } catch (error) {
       console.error('Failed to load archived conversations:', error)
     }
   }
 
-  return { loadConversations, loadMessages, generateSummary, loadConversationSummary, renameConversation, archiveConversation, unarchiveConversation, loadArchivedConversations }
+  return { loadConversations, loadMoreConversations, loadMessages, generateSummary, loadConversationSummary, renameConversation, archiveConversation, unarchiveConversation, loadArchivedConversations }
 }

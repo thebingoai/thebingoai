@@ -84,7 +84,10 @@ export const useChatStore = defineStore('chat', {
       skills: true,
       reasoning: false,
     } as Record<string, boolean>,
-    rateLimitRetryAfter: 0
+    rateLimitRetryAfter: 0,
+    conversationHasMore: false,
+    conversationOffset: 0,
+    isLoadingMoreConversations: false,
   }),
 
   getters: {
@@ -187,6 +190,18 @@ export const useChatStore = defineStore('chat', {
       this.conversationsLoaded = true
     },
 
+    appendConversations(conversations: Conversation[]) {
+      const existingIds = new Set(this.conversations.map(c => c.id))
+      const newConvs = conversations.filter(c => !existingIds.has(c.id))
+      this.conversations.push(...newConvs)
+    },
+
+    resetConversationPagination() {
+      this.conversationHasMore = false
+      this.conversationOffset = 0
+      this.isLoadingMoreConversations = false
+    },
+
     addConversation(conversation: Conversation) {
       this.conversations.unshift(conversation)
     },
@@ -204,6 +219,7 @@ export const useChatStore = defineStore('chat', {
       if (conv) {
         this.conversations = this.conversations.filter(c => c.id !== threadId)
         this.archivedConversations.unshift(conv)
+        if (this.conversationOffset > 0) this.conversationOffset--
       }
     },
 
@@ -320,6 +336,9 @@ export const useChatStore = defineStore('chat', {
       this.expandedThinking.clear()
       this.selectedMessageId = null
       this.conversationSummary = null
+      this.conversationHasMore = false
+      this.conversationOffset = 0
+      this.isLoadingMoreConversations = false
       localStorage.removeItem('chat_currentThreadId')
     }
   }

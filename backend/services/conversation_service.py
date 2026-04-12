@@ -103,12 +103,28 @@ class ConversationService:
         ).order_by(Message.timestamp).all()
 
     @staticmethod
-    def list_conversations(db: Session, user_id: str, limit: int = 50, archived: bool = False) -> List[Conversation]:
-        """List conversations for a user, filtered by archive status."""
-        return db.query(Conversation).filter(
+    def list_conversations(
+        db: Session,
+        user_id: str,
+        limit: int = 199,
+        offset: int = 0,
+        archived: bool = False,
+    ) -> tuple[List[Conversation], bool]:
+        """List task conversations for a user with pagination.
+
+        The permanent conversation is excluded — it is always returned separately
+        by the API endpoint on the first page.
+
+        Returns a (conversations, has_more) tuple.
+        """
+        rows = db.query(Conversation).filter(
             Conversation.user_id == user_id,
             Conversation.is_archived == archived,
-        ).order_by(Conversation.updated_at.desc()).limit(limit).all()
+            Conversation.type == "task",
+        ).order_by(Conversation.updated_at.desc()).offset(offset).limit(limit + 1).all()
+
+        has_more = len(rows) > limit
+        return rows[:limit], has_more
 
     @staticmethod
     def archive_conversation(db: Session, thread_id: str, user_id: str, archived: bool = True) -> Conversation:

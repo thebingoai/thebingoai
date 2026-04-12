@@ -2,10 +2,12 @@ import { xhrUpload, withAuthRetry } from './xhrUpload'
 
 export function createChatApi(fetchWithRefresh: Function, authStore: any, router: any) {
   return {
-    async getConversations(archived = false, summary = true) {
+    async getConversations(archived = false, summary = true, offset = 0, limit = 199) {
       const params = new URLSearchParams()
       if (archived) params.set('archived', 'true')
       if (summary) params.set('summary', 'true')
+      if (offset > 0) params.set('offset', String(offset))
+      if (limit !== 199) params.set('limit', String(limit))
       const qs = params.toString()
       return fetchWithRefresh(`/api/chat/conversations${qs ? `?${qs}` : ''}`, {})
     },
