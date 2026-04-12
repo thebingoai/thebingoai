@@ -55,6 +55,7 @@
         <SettingsMemory v-else-if="currentSection === 'memory'" key="memory" />
         <SettingsProfile v-else-if="currentSection === 'profile'" key="profile" />
         <SettingsCredits v-else-if="currentSection === 'credits'" key="credits" />
+        <SettingsAdmin v-else-if="currentSection === 'admin' && isAdmin" key="admin" />
         <div v-else key="default" class="p-6">
           <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
           <p class="text-gray-500">This section is under construction.</p>
@@ -69,23 +70,38 @@ import { X } from 'lucide-vue-next'
 
 const router = useRouter()
 const { isMobile } = useIsMobile()
+const authStore = useAuthStore()
+const { config: featureConfig } = useFeatureConfig()
 
 const { data: appInfo } = useLazyFetch('/api/info')
 
-const sections = [
-  { id: 'connections', name: 'Connections' },
-  { id: 'skills', name: 'Skills' },
-  { id: 'jobs', name: 'Jobs' },
-  { id: 'memory', name: 'Memory' },
-  { id: 'credits', name: 'Credits & API Keys' },
-  { id: 'profile', name: 'Profile' }
-]
+const isAdmin = computed(() =>
+  authStore.user?.role === 'admin' && featureConfig.value?.admin_enabled === true
+)
+
+const sections = computed(() => {
+  const base = [
+    { id: 'connections', name: 'Connections' },
+    { id: 'skills', name: 'Skills' },
+    { id: 'jobs', name: 'Jobs' },
+    { id: 'memory', name: 'Memory' },
+    { id: 'credits', name: 'Credits & API Keys' },
+    { id: 'profile', name: 'Profile' },
+  ]
+  if (isAdmin.value) {
+    base.push({ id: 'admin', name: 'Admin' })
+  }
+  return base
+})
 
 const route = useRoute()
-const currentSection = ref((route.query.tab as string) || 'connections')
+const initialTab = (route.query.tab as string) || 'connections'
+const currentSection = ref(
+  sections.value.some(s => s.id === initialTab) ? initialTab : 'connections'
+)
 
 const currentSectionName = computed(() => {
-  return sections.find(s => s.id === currentSection.value)?.name || ''
+  return sections.value.find(s => s.id === currentSection.value)?.name || ''
 })
 
 definePageMeta({

@@ -61,24 +61,6 @@
       </button>
     </div>
 
-    <!-- Admin link -->
-    <div v-if="isAdmin">
-      <button
-        @click="router.push('/admin'); closeSidebarOnMobile()"
-        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-        :class="route.path === '/admin' ? 'bg-gray-100' : ''"
-      >
-        <span class="relative flex h-7 w-7 items-center justify-center rounded-full">
-          <span
-            class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
-            :class="route.path === '/admin' ? 'opacity-100' : 'opacity-0'"
-          />
-          <Shield class="relative h-3.5 w-3.5 text-gray-900" />
-        </span>
-        <span :class="route.path === '/admin' ? 'font-bold text-glow-orange' : ''">Admin</span>
-      </button>
-    </div>
-
     <!-- New Task Button -->
     <div>
       <button
@@ -202,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard, Archive as ArchiveIcon, ArchiveRestore, Shield } from 'lucide-vue-next'
+import { Settings, Plus, ChevronDown, ChevronRight, Sparkles, LayoutDashboard, Archive as ArchiveIcon, ArchiveRestore } from 'lucide-vue-next'
 import { formatDateLabel } from '~/utils/format'
 import type { Conversation } from '~/stores/chat'
 
@@ -212,9 +194,6 @@ const { remaining, dailyLimit } = useCreditBalance()
 const { config: featureConfig } = useFeatureConfig()
 const layoutStore = useLayoutStore()
 
-const isAdmin = computed(() =>
-  authStore.user?.role === 'admin' && featureConfig.value?.admin_enabled === true
-)
 const chat = useChat()
 const router = useRouter()
 const route = useRoute()
