@@ -75,13 +75,12 @@
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
 import type { AdminUser, AdminUserDetail } from '~/utils/api/adminApi'
-import { useToast } from 'vue-sonner'
+import { toast } from 'vue-sonner'
 
 const props = defineProps<{ user: AdminUser | null }>()
 const emit = defineEmits<{ close: []; updated: [user: Partial<AdminUser>] }>()
 
 const api = useApi()
-const { toast } = useToast()
 
 const detail = ref<AdminUserDetail | null>(null)
 const loadingDetail = ref(false)

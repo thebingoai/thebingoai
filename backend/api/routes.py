@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files, sqlite_upload
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
+from backend.api import feature_config
 from backend.auth.webhooks import router as webhook_router
 from backend.api import query_results, agent_sessions
 
@@ -53,6 +54,9 @@ router.include_router(dashboard_schedule.router)
 
 # Agent Sessions (Mesh)
 router.include_router(agent_sessions.router)
+
+# Feature Config
+router.include_router(feature_config.router)
 
 # Query Result Fetch (schema-only side-channel)
 router.include_router(query_results.router)
