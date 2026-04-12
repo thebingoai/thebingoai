@@ -117,6 +117,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
+    backend_url: Optional[str] = None  # Public URL for external callbacks (e.g. Telegram webhooks)
 
     # Logging
     log_level: str = "INFO"
