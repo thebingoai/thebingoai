@@ -240,9 +240,25 @@ const scrollToBottom = () => {
   }
 }
 
+// Track whether the user is near the bottom of the scroll container.
+// Auto-scroll is suppressed when the user has scrolled up to read earlier messages.
+const SCROLL_THRESHOLD = 80
+const isNearBottom = ref(true)
+
+const onScroll = () => {
+  if (!threadRef.value) return
+  const { scrollTop, scrollHeight, clientHeight } = threadRef.value
+  isNearBottom.value = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD
+}
+
 // Scroll to bottom on initial mount (handles pre-existing messages)
 onMounted(() => {
   nextTick(() => scrollToBottom())
+  threadRef.value?.addEventListener('scroll', onScroll, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  threadRef.value?.removeEventListener('scroll', onScroll)
 })
 
 // Throttled scroll for streaming content updates (leading + trailing edge)
@@ -263,21 +279,28 @@ const throttledScroll = () => {
   }
 }
 
-// Auto-scroll to bottom when new message arrives (immediate)
+// Auto-scroll to bottom when new message arrives (immediate).
+// Always scroll for user messages (they just sent it); otherwise respect scroll position.
 watch(() => chatStore.messages.length, () => {
-  nextTick(() => {
-    scrollToBottom()
-  })
+  const lastMessage = chatStore.messages[chatStore.messages.length - 1]
+  const isUserMessage = lastMessage?.role === 'user'
+  if (isUserMessage || isNearBottom.value) {
+    nextTick(() => {
+      isNearBottom.value = true
+      scrollToBottom()
+    })
+  }
 })
 
-// Auto-scroll during streaming content updates and tool step additions (throttled)
+// Auto-scroll during streaming content updates and tool step additions (throttled).
+// Only fires when user hasn't scrolled away from the bottom.
 watch(
   () => {
     const lastMessage = chatStore.messages[chatStore.messages.length - 1]
     return (lastMessage?.content || '') + (lastMessage?.agent_steps?.length || 0)
   },
   () => {
-    if (chatStore.isStreaming) {
+    if (chatStore.isStreaming && isNearBottom.value) {
       nextTick(() => {
         throttledScroll()
       })
@@ -285,9 +308,10 @@ watch(
   }
 )
 
-// Scroll once more when streaming ends to catch the final word-buffer flush
+// Scroll once more when streaming ends to catch the final word-buffer flush.
+// Only fires when user hasn't scrolled away from the bottom.
 watch(() => chatStore.isStreaming, (streaming, wasStreaming) => {
-  if (wasStreaming && !streaming) {
+  if (wasStreaming && !streaming && isNearBottom.value) {
     nextTick(() => scrollToBottom())
   }
 })

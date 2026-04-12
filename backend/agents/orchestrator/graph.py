@@ -19,6 +19,7 @@ from backend.config import settings
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
 import json
 import logging
+import re as _re
 import time
 
 if TYPE_CHECKING:
@@ -54,6 +55,23 @@ def _friendly_error(e: Exception) -> str:
         return "⚠️ The request required too many steps. Try a simpler request."
     # Unknown error — keep message but strip raw dict noise
     return f"⚠️ Something went wrong: {msg}"
+
+
+_CONNECTION_ID_PATTERN = _re.compile(r'connection[\s_]*id[:\s]*\d+', _re.IGNORECASE)
+
+
+async def _rewrite_without_connection_ids(text: str, provider) -> str:
+    """Ask the LLM to rewrite the response without connection ID references."""
+    llm = provider.get_langchain_llm()
+    result = await llm.ainvoke([
+        HumanMessage(content=(
+            "Rewrite the following response exactly as-is, but remove any mention of "
+            "connection IDs, database connection numbers, or internal identifiers. "
+            "Keep everything else unchanged. Do not add any preamble.\n\n"
+            f"{text}"
+        ))
+    ])
+    return result.content
 
 
 def build_user_message(user_question: str, file_contents: list = None) -> HumanMessage:
@@ -585,6 +603,9 @@ async def run_orchestrator(
                 final_answer = msg.content
                 break
 
+        if final_answer and _CONNECTION_ID_PATTERN.search(final_answer):
+            final_answer = await _rewrite_without_connection_ids(final_answer, provider)
+
         return {
             "success": True,
             "message": final_answer or "Query completed successfully",
@@ -828,12 +849,17 @@ async def stream_orchestrator(
         if reasoning_buffer:
             # Tell frontend to reclaim the streaming reasoning step as the final answer
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
-            for token in reasoning_buffer:
-                yield {"type": "token", "content": token}
+            full_text = "".join(reasoning_buffer)
+            if _CONNECTION_ID_PATTERN.search(full_text):
+                full_text = await _rewrite_without_connection_ids(full_text, provider)
+            yield {"type": "token", "content": full_text}
             reasoning_buffer.clear()
 
-        for token in token_buffer:
-            yield {"type": "token", "content": token}
+        if token_buffer:
+            full_text = "".join(token_buffer)
+            if _CONNECTION_ID_PATTERN.search(full_text):
+                full_text = await _rewrite_without_connection_ids(full_text, provider)
+            yield {"type": "token", "content": full_text}
 
         yield {
             "type": "done",
