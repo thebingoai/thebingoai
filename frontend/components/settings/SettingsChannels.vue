@@ -40,22 +40,35 @@
               Connect a Telegram bot to let users message your AI assistant directly.
               Create a bot via <span class="font-medium text-gray-700">@BotFather</span> on Telegram and paste the token below.
             </p>
-            <div class="flex items-center gap-2">
-              <UiInput
-                v-model="botToken"
-                placeholder="123456:ABC-DEF1234ghIkl..."
-                class="flex-1"
-                :disabled="connecting"
-              />
-              <UiButton
-                variant="primary"
-                size="sm"
-                :loading="connecting"
-                :disabled="!botToken.trim()"
-                @click="handleConnect"
-              >
-                Connect
-              </UiButton>
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center gap-2">
+                <UiInput
+                  v-model="botToken"
+                  placeholder="123456:ABC-DEF1234ghIkl..."
+                  class="flex-1"
+                  :disabled="connecting"
+                />
+                <UiButton
+                  variant="primary"
+                  size="sm"
+                  :loading="connecting"
+                  :disabled="!botToken.trim()"
+                  @click="handleConnect"
+                >
+                  Connect
+                </UiButton>
+              </div>
+              <div class="flex items-center gap-2">
+                <UiInput
+                  v-model="telegramChatId"
+                  placeholder="Your Telegram chat ID (optional)"
+                  class="flex-1"
+                  :disabled="connecting"
+                />
+                <p class="text-xs text-gray-400 whitespace-nowrap">
+                  Send <span class="font-mono">/start</span> to @userinfobot to find yours
+                </p>
+              </div>
             </div>
           </template>
 
@@ -99,6 +112,7 @@ const loading = ref(true)
 const connecting = ref(false)
 const disconnecting = ref(false)
 const botToken = ref('')
+const telegramChatId = ref('')
 const status = ref<TelegramBotStatus | null>(null)
 const showDisconnectDialog = ref(false)
 
@@ -117,9 +131,10 @@ const handleConnect = async () => {
   if (!token) return
   connecting.value = true
   try {
-    await telegram.setupBot(token)
+    await telegram.setupBot(token, telegramChatId.value.trim() || undefined)
     status.value = await telegram.getStatus()
     botToken.value = ''
+    telegramChatId.value = ''
     toast.success('Telegram bot connected')
   } catch (err: any) {
     toast.error(err?.data?.detail || 'Failed to connect bot. Check your token and try again.')
