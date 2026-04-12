@@ -2,6 +2,7 @@ interface FeatureConfig {
   governance_enabled: boolean
   credits_enabled: boolean
   admin_enabled: boolean
+  telegram_enabled: boolean
 }
 
 export const useFeatureConfig = () => {

@@ -23,6 +23,18 @@
         </div>
         <!-- Info panel toggle + archive area -->
         <div class="flex items-center gap-1 shrink-0 ml-2">
+          <!-- Telegram connection indicator (permanent chat + plugin enabled) -->
+          <button
+            v-if="isTelegramEnabled && chatStore.currentConversation?.type === 'permanent'"
+            @click="router.push('/settings?tab=channels')"
+            class="w-7 h-7 flex items-center justify-center rounded-md transition-colors hover:bg-gray-100"
+            :class="telegramConnected ? 'text-green-500' : 'text-gray-400'"
+            :title="telegramConnected ? 'Telegram connected' : 'Connect Telegram'"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/>
+            </svg>
+          </button>
           <button
             @click="chatStore.toggleInfoPanel()"
             class="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
@@ -95,6 +107,23 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const chat = useChat()
+const router = useRouter()
+const { config: featureConfig } = useFeatureConfig()
+const { telegram } = useApi()
+
+const isTelegramEnabled = computed(() => featureConfig.value?.telegram_enabled === true)
+const telegramConnected = ref(false)
+
+onMounted(async () => {
+  if (isTelegramEnabled.value && chatStore.currentConversation?.type === 'permanent') {
+    try {
+      const status = await telegram.getStatus()
+      telegramConnected.value = status.connected
+    } catch {
+      // silently ignore — icon stays gray
+    }
+  }
+})
 
 const shouldShowActions = (message: Message, index: number): boolean => {
   if (message.role !== 'assistant') return false
