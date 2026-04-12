@@ -99,5 +99,50 @@ export const useChatWsHandlers = () => {
     })
   }
 
-  return { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, registerSkillSuggestionsHandler, resetContext }
+  // Handle incoming Telegram messages and context resets pushed via WebSocket
+  const registerTelegramHandler = () => {
+    const unsubMsg = ws.on('telegram.message', (data: any) => {
+      const threadId: string = data.thread_id
+      const msg = data.message
+      if (!msg) return
+
+      const frontendMsg: Message = {
+        id: String(msg.id),
+        role: msg.role,
+        content: msg.content,
+        source: 'telegram',
+        created_at: msg.timestamp,
+        agent_steps: [],
+        thinking_steps: [],
+      }
+
+      if (chatStore.currentThreadId === threadId) {
+        chatStore.addMessage(frontendMsg)
+      }
+
+      // Increment unread count so the conversation bubble updates
+      if (msg.role === 'assistant') {
+        chatStore.incrementUnread(threadId)
+      }
+    })
+
+    const unsubReset = ws.on('telegram.reset', (data: any) => {
+      const threadId: string = data.thread_id
+      if (chatStore.currentThreadId === threadId) {
+        chatStore.addMessage({
+          id: String(data.message_id),
+          role: 'system' as const,
+          content: '',
+          source: 'context_reset',
+          created_at: data.timestamp,
+          agent_steps: [],
+          thinking_steps: [],
+        })
+      }
+    })
+
+    return () => { unsubMsg(); unsubReset() }
+  }
+
+  return { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, registerSkillSuggestionsHandler, registerTelegramHandler, resetContext }
 }
