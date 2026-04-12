@@ -18,12 +18,12 @@ export function createTelegramApi(fetchWithRefresh: Function) {
       return fetchWithRefresh('/api/telegram/bot/status', { method: 'GET' })
     },
 
-    async setupBot(botToken: string, telegramChatId?: string): Promise<TelegramBotSetupResponse> {
+    async setupBot(botToken: string, telegramChatId: string): Promise<TelegramBotSetupResponse> {
       return fetchWithRefresh('/api/telegram/bot/setup', {
         method: 'POST',
         body: {
           bot_token: botToken,
-          ...(telegramChatId ? { telegram_chat_id: parseInt(telegramChatId, 10) } : {}),
+          telegram_chat_id: parseInt(telegramChatId, 10),
         },
       })
     },
