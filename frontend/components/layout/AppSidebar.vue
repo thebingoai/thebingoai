@@ -249,6 +249,7 @@ onMounted(() => {
   chat.registerSummaryHandler()
   chat.registerHeartbeatHandler()
   chat.registerSkillSuggestionsHandler()
+  chat.registerTelegramHandler()
 
   // Fetch pending skill suggestions for side panel (catches missed WS pushes)
   const api = useApi()

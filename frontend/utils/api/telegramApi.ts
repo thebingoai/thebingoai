@@ -12,10 +12,25 @@ export interface TelegramBotSetupResponse {
   webhook_url: string
 }
 
+export interface TelegramChangelogEntry {
+  version: string
+  date: string
+  changes: string[]
+}
+
+export interface TelegramBotInfo {
+  version: string
+  changelog: TelegramChangelogEntry[]
+}
+
 export function createTelegramApi(fetchWithRefresh: Function) {
   return {
     async getStatus(): Promise<TelegramBotStatus> {
       return fetchWithRefresh('/api/telegram/bot/status', { method: 'GET' })
+    },
+
+    async getInfo(): Promise<TelegramBotInfo> {
+      return fetchWithRefresh('/api/telegram/bot/info', { method: 'GET' })
     },
 
     async setupBot(botToken: string, telegramChatId: string): Promise<TelegramBotSetupResponse> {
