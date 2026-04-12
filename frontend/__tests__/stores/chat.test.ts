@@ -226,4 +226,78 @@ describe('chat store', () => {
     store.clearUnread('thread-1')
     expect(store.conversations[0].unread_count).toBe(0)
   })
+
+  // ── appendConversations ───────────────────────────────────────────
+  it('appendConversations adds new conversations', () => {
+    const store = useChatStore()
+    store.setConversations([makeConversation({ id: 'c1' })])
+
+    store.appendConversations([makeConversation({ id: 'c2' }), makeConversation({ id: 'c3' })])
+
+    expect(store.conversations).toHaveLength(3)
+    expect(store.conversations.map(c => c.id)).toContain('c2')
+    expect(store.conversations.map(c => c.id)).toContain('c3')
+  })
+
+  it('appendConversations deduplicates by id', () => {
+    const store = useChatStore()
+    store.setConversations([makeConversation({ id: 'c1' }), makeConversation({ id: 'c2' })])
+
+    // c2 already exists, c3 is new
+    store.appendConversations([makeConversation({ id: 'c2' }), makeConversation({ id: 'c3' })])
+
+    expect(store.conversations).toHaveLength(3)
+    expect(store.conversations.filter(c => c.id === 'c2')).toHaveLength(1)
+  })
+
+  // ── resetConversationPagination ───────────────────────────────────
+  it('resetConversationPagination resets all pagination state', () => {
+    const store = useChatStore()
+    store.conversationHasMore = true
+    store.conversationOffset = 50
+    store.isLoadingMoreConversations = true
+
+    store.resetConversationPagination()
+
+    expect(store.conversationHasMore).toBe(false)
+    expect(store.conversationOffset).toBe(0)
+    expect(store.isLoadingMoreConversations).toBe(false)
+  })
+
+  // ── reset clears pagination ───────────────────────────────────────
+  it('reset clears pagination state', () => {
+    const store = useChatStore()
+    store.conversationHasMore = true
+    store.conversationOffset = 199
+    store.isLoadingMoreConversations = true
+
+    store.reset()
+
+    expect(store.conversationHasMore).toBe(false)
+    expect(store.conversationOffset).toBe(0)
+    expect(store.isLoadingMoreConversations).toBe(false)
+  })
+
+  // ── moveToArchived decrements offset ──────────────────────────────
+  it('moveToArchived decrements conversationOffset', () => {
+    const store = useChatStore()
+    const conv = makeConversation({ id: 'thread-1' })
+    store.setConversations([conv])
+    store.conversationOffset = 10
+
+    store.moveToArchived('thread-1')
+
+    expect(store.conversationOffset).toBe(9)
+  })
+
+  it('moveToArchived does not decrement offset below 0', () => {
+    const store = useChatStore()
+    const conv = makeConversation({ id: 'thread-1' })
+    store.setConversations([conv])
+    store.conversationOffset = 0
+
+    store.moveToArchived('thread-1')
+
+    expect(store.conversationOffset).toBe(0)
+  })
 })

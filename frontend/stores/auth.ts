@@ -7,6 +7,7 @@ export interface User {
   sso_id: string | null
   auth_provider: string
   created_at: string
+  role?: 'admin' | 'user' | null
 }
 
 export interface AuthConfig {

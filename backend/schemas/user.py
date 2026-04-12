@@ -14,6 +14,7 @@ class UserResponse(UserBase):
     auth_provider: str = "sso"
     created_at: datetime
     updated_at: datetime
+    role: Optional[str] = None  # "admin" | "user" | None (when plugin not loaded)
 
     class Config:
         from_attributes = True

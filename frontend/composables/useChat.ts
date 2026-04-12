@@ -4,13 +4,14 @@ import { useChatWsHandlers } from './useChatWsHandlers'
 
 export const useChat = () => {
   const { sendMessage, newChat } = useChatStreaming()
-  const { loadConversations, loadMessages, generateSummary, loadConversationSummary, renameConversation, archiveConversation, unarchiveConversation, loadArchivedConversations } = useChatConversations()
+  const { loadConversations, loadMoreConversations, loadMessages, generateSummary, loadConversationSummary, renameConversation, archiveConversation, unarchiveConversation, loadArchivedConversations } = useChatConversations()
   const { registerTitleHandler, registerSummaryHandler, registerHeartbeatHandler, registerSkillSuggestionsHandler, resetContext } = useChatWsHandlers()
 
   return {
     sendMessage,
     newChat,
     loadConversations,
+    loadMoreConversations,
     loadMessages,
     renameConversation,
     registerTitleHandler,

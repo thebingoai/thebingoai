@@ -70,10 +70,12 @@ class ConversationListItem(BaseModel):
 
 class ConversationListResponse(BaseModel):
     conversations: List[ConversationResponse]
+    has_more: bool = False
 
 
 class ConversationListSummaryResponse(BaseModel):
     conversations: List[ConversationListItem]
+    has_more: bool = False
 
 
 class AgentStepResponse(BaseModel):

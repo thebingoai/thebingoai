@@ -80,7 +80,7 @@
     </div>
 
     <!-- Task conversation list -->
-    <div class="flex-1 overflow-y-auto">
+    <div ref="taskListRef" class="flex-1 overflow-y-auto" @scroll="onTaskListScroll">
       <!-- Recent tasks section header -->
       <button
         @click="isRecentExpanded = !isRecentExpanded"
@@ -112,6 +112,11 @@
             ><span class="marquee-inner"><span>{{ conv.title }}</span><span class="marquee-spacer">&nbsp;&mdash;&nbsp;</span><span>{{ conv.title }}</span></span></div>
           </button>
         </template>
+
+        <!-- Loading indicator for infinite scroll -->
+        <div v-if="chatStore.isLoadingMoreConversations" class="px-4 py-3 text-center text-xs text-gray-400">
+          Loading more...
+        </div>
       </div>
 
     </div>
@@ -186,7 +191,9 @@ import type { Conversation } from '~/stores/chat'
 const authStore = useAuthStore()
 const chatStore = useChatStore()
 const { remaining, dailyLimit } = useCreditBalance()
+const { config: featureConfig } = useFeatureConfig()
 const layoutStore = useLayoutStore()
+
 const chat = useChat()
 const router = useRouter()
 const route = useRoute()
@@ -216,6 +223,15 @@ const groupedTasks = computed(() => {
 const isRecentExpanded = ref(true)
 const isArchivedExpanded = ref(false)
 const archivedLoaded = ref(false)
+const taskListRef = ref<HTMLElement | null>(null)
+
+const onTaskListScroll = () => {
+  const el = taskListRef.value
+  if (!el) return
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 100) {
+    chat.loadMoreConversations()
+  }
+}
 
 const userInitial = computed(() => {
   const email = authStore.user?.email || ''

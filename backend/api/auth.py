@@ -25,13 +25,24 @@ async def get_auth_config():
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """
-    Get current authenticated user information.
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get current authenticated user. Includes role if bingo-admin plugin is loaded."""
+    from backend.plugins.loader import get_loaded_plugins
+    role = None
+    if "bingo-admin" in get_loaded_plugins():
+        try:
+            from bingo_admin.models import UserRole
+            role_row = db.query(UserRole).filter_by(user_id=current_user.id).first()
+            role = role_row.role if role_row else "user"
+        except Exception:
+            pass  # plugin not fully initialized — return None role
 
-    Requires: Bearer token in Authorization header
-    """
-    return current_user
+    response = UserResponse.model_validate(current_user)
+    response.role = role
+    return response
 
 
 @router.post("/logout")
