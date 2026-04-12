@@ -149,6 +149,7 @@ import { computed, ref, toRef } from 'vue'
 import { GripVertical, X, RefreshCw, Code, Copy, Download } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useWidgetData } from '~/composables/useWidgetData'
+import { parseUtcDate } from '~/utils/format'
 
 const props = defineProps<{
   widget: DashboardWidget
@@ -181,7 +182,7 @@ const widgetDisplayName = computed(() =>
 )
 
 function formatRelativeTime(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime()
+  const diff = Date.now() - parseUtcDate(isoString).getTime()
   const minutes = Math.floor(diff / 60_000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes}m ago`

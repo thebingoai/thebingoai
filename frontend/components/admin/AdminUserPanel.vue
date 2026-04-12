@@ -16,7 +16,7 @@
         </div>
         <p class="text-sm font-medium text-gray-900 truncate mt-2">{{ user.email }}</p>
         <p class="text-xs text-gray-400">
-          Joined {{ user.created_at ? new Date(user.created_at).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' }) : 'unknown' }}
+          Joined {{ user.created_at ? parseUtcDate(user.created_at).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' }) : 'unknown' }}
         </p>
       </div>
 
@@ -74,6 +74,7 @@
 
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
+import { parseUtcDate } from '~/utils/format'
 import type { AdminUser, AdminUserDetail } from '~/utils/api/adminApi'
 import { toast } from 'vue-sonner'
 

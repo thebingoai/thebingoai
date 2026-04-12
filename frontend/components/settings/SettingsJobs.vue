@@ -494,6 +494,7 @@ import { toast } from 'vue-sonner'
 import type { HeartbeatJob, HeartbeatJobRun, HeartbeatJobRunListResponse } from '~/types/heartbeat'
 import type { Dashboard, DashboardRefreshRun } from '~/types/dashboard'
 import { PRESET_OPTIONS } from '~/types/heartbeat'
+import { parseUtcDate } from '~/utils/format'
 import { useDashboardStore } from '~/stores/dashboard'
 
 const api = useApi()
@@ -820,7 +821,7 @@ async function loadDashboardRuns(page: number) {
 
 // ── Formatting ─────────────────────────────────────────────────────────────
 function formatRelative(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = parseUtcDate(dateStr)
   const now = new Date()
   const diffMs = date.getTime() - now.getTime()
   const absDiff = Math.abs(diffMs)
@@ -840,6 +841,6 @@ function formatRelative(dateStr: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString()
+  return parseUtcDate(dateStr).toLocaleString()
 }
 </script>

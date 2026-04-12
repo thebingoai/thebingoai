@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { formatDateLabel, isSameDay } from '~/utils/format'
+import { formatDateLabel, isSameDay, parseUtcDate } from '~/utils/format'
 import type { Message } from '~/stores/chat'
 
 const emit = defineEmits<{
@@ -221,13 +221,13 @@ const cancelEdit = () => {
 
 // Returns the date label to show above a message, or null if no label needed
 const getDateLabel = (message: Message, index: number): string | null => {
-  const messageDate = new Date(message.created_at)
+  const messageDate = parseUtcDate(message.created_at)
   if (index === 0) return formatDateLabel(messageDate)
   // Find the previous non-context-reset message's date
   for (let i = index - 1; i >= 0; i--) {
     const prev = chatStore.messages[i]
     if (prev.source !== 'context_reset') {
-      return isSameDay(messageDate, new Date(prev.created_at)) ? null : formatDateLabel(messageDate)
+      return isSameDay(messageDate, parseUtcDate(prev.created_at)) ? null : formatDateLabel(messageDate)
     }
   }
   return formatDateLabel(messageDate)

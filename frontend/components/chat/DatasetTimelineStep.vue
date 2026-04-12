@@ -46,6 +46,7 @@
 </template>
 
 <script setup lang="ts">
+import { parseUtcDate } from '~/utils/format'
 type StepState = 'completed' | 'active' | 'pending' | 'failed'
 
 const props = defineProps<{
@@ -99,7 +100,7 @@ const connectorClasses = computed(() => {
 const formattedTime = computed(() => {
   if (!props.timestamp) return null
   try {
-    const date = new Date(props.timestamp)
+    const date = parseUtcDate(props.timestamp)
     return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
   } catch {
     return null

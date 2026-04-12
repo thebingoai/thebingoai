@@ -62,6 +62,7 @@
 
 <script setup lang="ts">
 import type { AgentStep } from '~/stores/chat'
+import { parseUtcDate } from '~/utils/format'
 
 const props = withDefaults(defineProps<{
   fullHeight?: boolean
@@ -128,7 +129,7 @@ const formatDuration = (ms: number): string => {
 }
 
 const formatTimestamp = (step: AgentStep): string => {
-  const ts = step.started_at ?? (step.created_at ? new Date(step.created_at).getTime() : undefined)
+  const ts = step.started_at ?? (step.created_at ? parseUtcDate(step.created_at).getTime() : undefined)
   if (!ts) return ''
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
@@ -254,9 +255,9 @@ const treeNodes = computed((): TreeNode => {
       for (const subStep of (step.content?.sub_steps || [])) {
         let subTs: string | undefined
         if (subStep.started_at) {
-          subTs = new Date(subStep.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          subTs = parseUtcDate(subStep.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         } else if (subStep.created_at) {
-          subTs = new Date(subStep.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          subTs = parseUtcDate(subStep.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         }
         agentNode.children.push({
           type: 'action',
