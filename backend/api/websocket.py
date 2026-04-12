@@ -113,6 +113,85 @@ async def _resolve_conversation(
     return conversation, is_new
 
 
+def _build_dataset_file_content(db: Session, user: User, connection_id: int) -> Optional[dict]:
+    """Build a synthetic file_contents entry from a DatabaseConnection record.
+
+    Dataset files uploaded via the connections API are not stored in Redis, so
+    _resolve_attachments cannot find them with a normal chat_file_service lookup.
+    This helper reconstructs the data that build_user_message() needs.
+    """
+    conn = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == user.id,
+    ).first()
+    if conn is None:
+        logger.warning("_build_dataset_file_content: connection %d not found for user %s", connection_id, user.id)
+        return None
+
+    file_data: dict = {
+        "file_id": f"connection:{connection_id}",
+        "original_name": conn.source_filename or conn.name,
+        "mime_type": "text/csv",
+        "size": 0,
+        "content_type": "text",
+    }
+
+    if conn.profiling_status == "ready" and conn.data_context_path:
+        try:
+            from backend.services.connection_context import load_context_file
+            context = load_context_file(connection_id)
+            profile_lines = [f"=== Dataset Profile: {conn.source_filename or conn.name} ==="]
+            profile_lines.append(f"Connection ID: {connection_id} (queryable via SQL)")
+            tables = context.get("tables", {})
+            for table_name, table_info in tables.items():
+                profile_lines.append(f"\nTable: {table_name}")
+                row_count = table_info.get("row_count")
+                if row_count is not None:
+                    profile_lines.append(f"Row count: {row_count:,}")
+                columns = table_info.get("columns", {})
+                if columns:
+                    profile_lines.append("Columns:")
+                    for col_name, col_info in list(columns.items())[:50]:
+                        col_type = col_info.get("type", "")
+                        role = col_info.get("role", "")
+                        profile_lines.append(f"  - {col_name} ({col_type}, {role})")
+            profile_text = "\n".join(profile_lines)
+            file_data["profile_text"] = profile_text
+            file_data["truncated_text"] = profile_text
+            file_data["profile_status"] = "ready"
+        except (FileNotFoundError, Exception):
+            file_data.update(_build_schema_fallback(conn, connection_id))
+    elif conn.profiling_status in ("pending", "in_progress"):
+        file_data["profile_status"] = "processing"
+        file_data["truncated_text"] = _build_schema_fallback(conn, connection_id)["truncated_text"]
+    else:
+        file_data.update(_build_schema_fallback(conn, connection_id))
+
+    return file_data
+
+
+def _build_schema_fallback(conn, connection_id: int) -> dict:
+    """Build minimal dataset info from schema JSON when profiling isn't complete."""
+    lines = [f"=== Dataset: {conn.source_filename or conn.name} ==="]
+    lines.append(f"Connection ID: {connection_id} (queryable via SQL)")
+    try:
+        from backend.services.schema_discovery import load_schema_file
+        schema = load_schema_file(connection_id)
+        for schema_name, schema_data in schema.get("schemas", {}).items():
+            for table_name, table_data in schema_data.get("tables", {}).items():
+                columns = table_data.get("columns", [])
+                row_count = table_data.get("row_count")
+                lines.append(f"\nTable: {table_name}")
+                if row_count is not None:
+                    lines.append(f"Row count: {row_count:,}")
+                if columns:
+                    col_names = [c.get("name", "") for c in columns]
+                    lines.append(f"Columns: {', '.join(col_names)}")
+    except (FileNotFoundError, Exception):
+        pass
+    return {"truncated_text": "\n".join(lines), "profile_status": "ready"}
+
+
 async def _inject_conversation_datasets(
     db: Session, user: User, thread_id: str,
     agent_context, file_contents: list, chat_file_service,
@@ -122,6 +201,7 @@ async def _inject_conversation_datasets(
     into the orchestrator context.
     """
     from backend.models.database_connection import DatabaseConnection
+    from backend.agents.context import ConnectionInfo
 
     ephemeral_connections = (
         db.query(DatabaseConnection)
@@ -136,17 +216,35 @@ async def _inject_conversation_datasets(
     for conn in ephemeral_connections:
         if conn.profiling_status == "ready" and conn.id not in agent_context.available_connections:
             agent_context.available_connections.append(conn.id)
+            agent_context.connection_metadata.append(
+                ConnectionInfo(id=conn.id, name=conn.name, db_type=conn.db_type, database=conn.database)
+            )
 
 
-async def _resolve_attachments(file_ids, chat_file_service):
+async def _resolve_attachments(file_ids, chat_file_service, db: Session = None, user: User = None):
     """Resolve file_ids to file contents and attachment metadata.
-    Returns (file_contents, attachments)."""
+
+    Handles two file ID formats:
+    - Regular UUIDs (e.g. "abc-123"): looked up in Redis via chat_file_service
+    - Connection references (e.g. "connection:42"): looked up in PostgreSQL as DatabaseConnection
+
+    Returns (file_contents, attachments).
+    """
     file_contents = []
     if file_ids:
         for fid in file_ids:
-            file_data = chat_file_service.get_file(fid)
-            if file_data is not None:
-                file_contents.append(file_data)
+            if fid.startswith("connection:") and db is not None and user is not None:
+                try:
+                    connection_id = int(fid.split(":", 1)[1])
+                    file_data = _build_dataset_file_content(db, user, connection_id)
+                    if file_data is not None:
+                        file_contents.append(file_data)
+                except (ValueError, Exception) as exc:
+                    logger.warning("_resolve_attachments: failed to resolve %s: %s", fid, exc)
+            else:
+                file_data = chat_file_service.get_file(fid)
+                if file_data is not None:
+                    file_contents.append(file_data)
 
     attachments = [
         {
@@ -294,7 +392,7 @@ async def _handle_chat_send(
                 break
 
         # Resolve attachments
-        file_contents, attachments = await _resolve_attachments(file_ids, chat_file_service)
+        file_contents, attachments = await _resolve_attachments(file_ids, chat_file_service, db=db, user=user)
 
         # Discover conversation datasets (auto-created from uploads)
         await _inject_conversation_datasets(

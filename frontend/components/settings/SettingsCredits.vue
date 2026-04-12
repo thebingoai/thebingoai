@@ -167,6 +167,7 @@
 </template>
 
 <script setup lang="ts">
+import { parseUtcDate } from '~/utils/format'
 const {
   dailyLimit, usedToday, remaining, usedPercent,
   historyItems, historyTotal, historyPage, historyTotalPages, historyLoading, nextPage, prevPage,
@@ -240,7 +241,7 @@ async function handleDeleteKey(provider: string) {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return parseUtcDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 

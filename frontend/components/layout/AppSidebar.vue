@@ -8,8 +8,7 @@
   >
     <!-- Logo -->
     <div class="flex h-16 items-center border-b border-gray-200 pl-[14px] pr-4">
-      <img src="/logo/Bingo_BL.png" alt="Bingo" class="h-16 w-auto dark:hidden" />
-      <img src="/logo/Bingo_WH.png" alt="Bingo" class="h-16 w-auto hidden dark:block" />
+      <img src="/logo/Bingo_BL.png" alt="Bingo" class="h-16 w-auto" />
     </div>
 
     <!-- Permanent conversation (pinned) -->
@@ -209,7 +208,7 @@ const groupedTasks = computed(() => {
   const groups: { label: string; conversations: Conversation[] }[] = []
   let currentLabel = ''
   for (const conv of chatStore.taskConversations) {
-    const label = formatDateLabel(new Date(conv.updated_at))
+    const label = formatDateLabel(conv.updated_at)
     if (label !== currentLabel) {
       groups.push({ label, conversations: [conv] })
       currentLabel = label

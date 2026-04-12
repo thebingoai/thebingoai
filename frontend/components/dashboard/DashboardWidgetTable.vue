@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { TableWidgetConfig, TableColumn } from '~/types/dashboard'
+import { parseUtcDate } from '~/utils/format'
 
 const props = defineProps<{
   config: TableWidgetConfig
@@ -165,7 +166,7 @@ function formatCell(value: any, col: TableColumn): string {
       return (num > 0 ? '+' : '') + formatted + '%'
     }
     case 'date':
-      return new Date(value).toLocaleDateString()
+      return parseUtcDate(value).toLocaleDateString()
     default:
       return String(value)
   }

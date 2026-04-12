@@ -26,6 +26,13 @@
               >
                 v{{ pluginInfo.version }}
               </span>
+              <button
+                v-if="pluginInfo?.changelog?.length"
+                @click.stop="showChangelog = true"
+                class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
+              >
+                <Info class="h-2 w-2" />
+              </button>
             </div>
             <!-- Connected badge -->
             <span v-if="status?.connected" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 mt-0.5">
@@ -38,22 +45,9 @@
           </div>
         </div>
 
-        <!-- Connected: bot username + latest changelog -->
+        <!-- Connected: bot username -->
         <template v-if="status?.connected">
           <p class="text-xs text-gray-500 mt-2.5 font-medium truncate">@{{ status.bot_username }}</p>
-          <div v-if="latestEntry" class="mt-2 flex-1 overflow-hidden">
-            <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">What's new · v{{ latestEntry.version }}</p>
-            <ul class="space-y-0.5 overflow-hidden">
-              <li
-                v-for="(change, i) in latestEntry.changes"
-                :key="i"
-                class="flex items-start gap-1.5 text-[10px] text-gray-500 leading-relaxed"
-              >
-                <span class="mt-[3px] w-1 h-1 rounded-full bg-gray-300 shrink-0" />
-                <span class="line-clamp-1">{{ change }}</span>
-              </li>
-            </ul>
-          </div>
         </template>
 
         <!-- Not connected: short description -->
@@ -142,10 +136,41 @@
         </div>
       </div>
     </UiDialog>
+
+    <!-- Changelog Bottom Sheet -->
+    <UiBottomSheet
+      :open="showChangelog"
+      @update:open="showChangelog = $event"
+      title="Telegram Bot Changelog"
+    >
+      <div class="divide-y divide-gray-100">
+        <div
+          v-for="entry in pluginInfo?.changelog"
+          :key="entry.version"
+          class="py-4 first:pt-0"
+        >
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-semibold text-gray-900">v{{ entry.version }}</span>
+            <span class="text-xs text-gray-400">{{ entry.date }}</span>
+          </div>
+          <ul class="space-y-1">
+            <li
+              v-for="(change, i) in entry.changes"
+              :key="i"
+              class="flex items-start gap-2 text-sm text-gray-600"
+            >
+              <span class="mt-1.5 w-1 h-1 rounded-full bg-gray-400 shrink-0" />
+              <span>{{ change }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </UiBottomSheet>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Info } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { TelegramBotStatus, TelegramBotInfo } from '~/utils/api/telegramApi'
 
@@ -160,8 +185,7 @@ const status = ref<TelegramBotStatus | null>(null)
 const pluginInfo = ref<TelegramBotInfo | null>(null)
 const showConnectDialog = ref(false)
 const showDisconnectDialog = ref(false)
-
-const latestEntry = computed(() => pluginInfo.value?.changelog?.[0] ?? null)
+const showChangelog = ref(false)
 
 onMounted(async () => {
   try {

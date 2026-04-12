@@ -137,6 +137,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useDashboardStore } from '~/stores/dashboard'
 import { useApi } from '~/composables/useApi'
+import { parseUtcDate } from '~/utils/format'
 
 const props = defineProps<{ dashboardId: number }>()
 
@@ -183,7 +184,7 @@ function selectPreset(value: string) {
 }
 
 function formatRelative(isoStr: string): string {
-  const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000)
+  const diff = Math.floor((Date.now() - parseUtcDate(isoStr).getTime()) / 1000)
   if (diff < 0) {
     const future = Math.abs(diff)
     if (future < 60) return `in ${future}s`

@@ -25,12 +25,14 @@
 </template>
 
 <script setup lang="ts">
+import { parseUtcDate } from '~/utils/format'
+
 const authStore = useAuthStore()
 const router = useRouter()
 
 const formatDate = (dateString?: string) => {
   if (!dateString) return 'Unknown'
-  return new Date(dateString).toLocaleDateString()
+  return parseUtcDate(dateString).toLocaleDateString()
 }
 
 const handleLogout = () => {

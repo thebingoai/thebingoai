@@ -285,6 +285,7 @@ const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image
 const isImageType = (mimeType: string) => IMAGE_MIME_TYPES.has(mimeType)
 
 const formatAttachmentSize = (bytes: number) => {
+  if (!bytes) return ''
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`

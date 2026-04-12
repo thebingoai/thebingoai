@@ -43,6 +43,14 @@ export interface HeartbeatJobUpdateRequest {
   schedule_value?: string
 }
 
+function utcHourToLocalLabel(utcHour: number): string {
+  const d = new Date()
+  d.setUTCHours(utcHour, 0, 0, 0)
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+const _9amLocal = utcHourToLocalLabel(9)
+
 export const PRESET_OPTIONS = [
   { label: 'Every 5 minutes', value: '5m' },
   { label: 'Every 15 minutes', value: '15m' },
@@ -51,7 +59,7 @@ export const PRESET_OPTIONS = [
   { label: 'Every 2 hours', value: '2h' },
   { label: 'Every 6 hours', value: '6h' },
   { label: 'Every 12 hours', value: '12h' },
-  { label: 'Daily (9am UTC)', value: 'daily' },
-  { label: 'Weekly (Monday 9am UTC)', value: 'weekly' },
-  { label: 'Weekdays (Mon-Fri 9am UTC)', value: 'weekdays' },
+  { label: `Daily (${_9amLocal})`, value: 'daily' },
+  { label: `Weekly (Monday ${_9amLocal})`, value: 'weekly' },
+  { label: `Weekdays (Mon-Fri ${_9amLocal})`, value: 'weekdays' },
 ]

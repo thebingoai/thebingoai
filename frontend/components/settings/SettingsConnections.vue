@@ -858,6 +858,7 @@
 import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen, Info, Loader2, Lock, Clock, Activity, FileText, User } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
+import { parseUtcDate } from '~/utils/format'
 
 const api = useApi()
 
@@ -1098,7 +1099,7 @@ const isFileUploadConnection = computed(() => {
 function formatFbConnectedAt(sourceFilename: string): string {
   try {
     const data = JSON.parse(sourceFilename)
-    return new Date(data.token_refreshed_at).toLocaleString()
+    return parseUtcDate(data.token_refreshed_at).toLocaleString()
   } catch {
     return 'Unknown'
   }
@@ -1658,7 +1659,7 @@ async function confirmDelete() {
 }
 
 function formatRelativeDate(dateString: string): string {
-  const date = new Date(dateString)
+  const date = parseUtcDate(dateString)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / 60000)

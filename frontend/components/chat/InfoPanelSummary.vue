@@ -66,6 +66,8 @@
 </template>
 
 <script setup lang="ts">
+import { parseUtcDate } from '~/utils/format'
+
 const chatStore = useChatStore()
 const chat = useChat()
 
@@ -111,7 +113,7 @@ onUnmounted(() => clearInterval(interval))
 const timeAgo = computed(() => {
   const updatedAt = chatStore.conversationSummary?.updated_at
   if (!updatedAt) return ''
-  const diff = now.value - new Date(updatedAt).getTime()
+  const diff = now.value - parseUtcDate(updatedAt).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins}m ago`

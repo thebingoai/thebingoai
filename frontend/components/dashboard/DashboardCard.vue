@@ -47,6 +47,7 @@
 <script setup lang="ts">
 import { BarChart3, LineChart, TrendingUp, Table2, FileText, SlidersHorizontal, Copy } from 'lucide-vue-next'
 import type { DashboardListItem, WidgetType } from '~/types/dashboard'
+import { parseUtcDate } from '~/utils/format'
 
 const props = defineProps<{
   dashboard: DashboardListItem
@@ -71,7 +72,7 @@ const widgetTypeIcons = computed(() =>
 
 const formattedDate = computed(() => {
   if (!props.dashboard.createdAt) return ''
-  const date = new Date(props.dashboard.createdAt)
+  const date = parseUtcDate(props.dashboard.createdAt)
   if (isNaN(date.getTime())) return ''
   const now = new Date()
   const sameYear = date.getFullYear() === now.getFullYear()
