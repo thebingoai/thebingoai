@@ -98,6 +98,7 @@
 </template>
 
 <script setup lang="ts">
+import { onBeforeUnmount } from 'vue'
 import { formatDateLabel, isSameDay, parseUtcDate } from '~/utils/format'
 import type { Message } from '~/stores/chat'
 
