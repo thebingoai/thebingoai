@@ -422,11 +422,13 @@ async def websocket_endpoint(ws: WebSocket):
     """
     token = ws.query_params.get("token")
     if not token:
+        await ws.accept()
         await ws.close(code=4001, reason="Missing token")
         return
 
     user = await _get_user_from_token(token)
     if not user:
+        await ws.accept()
         await ws.close(code=4003, reason="Unauthorized")
         return
 
