@@ -32,8 +32,27 @@ def generate_daily_memories():
                 continue
             try:
                 logger.info(f"Generating memory for user {user.id}")
+                # --- Credit context (bingo-credits plugin) ---
+                _credit_mgr = None
+                try:
+                    from backend.plugins.loader import get_loaded_plugins
+                    if "bingo-credits" in get_loaded_plugins():
+                        from bingo_credits.credit_context import CreditContextManager
+                        _credit_mgr = CreditContextManager(
+                            db=db,
+                            user_id=user.id,
+                            title=f"Memory generation: {yesterday.date()}",
+                            provider_name=None,
+                            conversation_id=None,
+                            block_on_insufficient=False,
+                        )
+                except Exception as _credit_err:
+                    logger.warning("Credit context setup failed for memory generation: %s", _credit_err)
+                    _credit_mgr = None
+                from contextlib import nullcontext
                 # Use sync wrapper for Celery task
-                summary = generator.generate_daily_memory_sync(db, user.id, yesterday)
+                with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+                    summary = generator.generate_daily_memory_sync(db, user.id, yesterday)
                 if "memory_id" in summary:
                     logger.info(f"Memory generated: {summary['memory_id']}")
                 else:
@@ -62,8 +81,27 @@ def generate_user_memory(user_id: str, date_str: str):
 
     try:
         date = datetime.fromisoformat(date_str)
+        # --- Credit context (bingo-credits plugin) ---
+        _credit_mgr = None
+        try:
+            from backend.plugins.loader import get_loaded_plugins
+            if "bingo-credits" in get_loaded_plugins():
+                from bingo_credits.credit_context import CreditContextManager
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=user_id,
+                    title=f"Memory generation: {date_str}",
+                    provider_name=None,
+                    conversation_id=None,
+                    block_on_insufficient=False,
+                )
+        except Exception as _credit_err:
+            logger.warning("Credit context setup failed for memory generation: %s", _credit_err)
+            _credit_mgr = None
+        from contextlib import nullcontext
         # Use sync wrapper for Celery task
-        summary = generator.generate_daily_memory_sync(db, user_id, date)
+        with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+            summary = generator.generate_daily_memory_sync(db, user_id, date)
         return summary
     finally:
         db.close()

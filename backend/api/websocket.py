@@ -266,6 +266,7 @@ async def _handle_chat_send(
         except Exception:
             pass
 
+    _credit_mgr = None
     try:
         # Resolve conversation and validate connections
         conversation, is_new_conversation = await _resolve_conversation(
@@ -315,6 +316,28 @@ async def _handle_chat_send(
         streaming_key = f"streaming:{conversation.thread_id}"
         redis_client.setex(streaming_key, 300, request_id)
 
+        # --- Credit context setup (bingo-credits plugin) ---
+        _InsufficientCreditsError = None
+        try:
+            from backend.plugins.loader import get_loaded_plugins
+            if "bingo-credits" in get_loaded_plugins():
+                from bingo_credits.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=user.id,
+                    title=message[:80],
+                    provider_name=settings.default_llm_provider,
+                    conversation_id=conversation.id,
+                    block_on_insufficient=True,
+                )
+                await _credit_mgr.__aenter__()
+        except Exception as _credit_setup_err:
+            if _InsufficientCreditsError and isinstance(_credit_setup_err, _InsufficientCreditsError):
+                await send({"type": "chat.error", "request_id": request_id, "thread_id": conversation.thread_id, "content": "Daily credits used up. Resets at midnight.", "error_code": "insufficient_credits"})
+                return
+            logger.warning("Credit context setup failed: %s", _credit_setup_err)
+            _credit_mgr = None
+
         # Stream orchestrator
         from backend.database.session import SessionLocal as _SF
         final_message = ""
@@ -358,7 +381,19 @@ async def _handle_chat_send(
             collected_steps, send, request_id, user, active_thread_id,
         )
 
+        # --- Finalize credit usage (bingo-credits plugin) ---
+        if _credit_mgr is not None:
+            try:
+                await _credit_mgr.__aexit__(None, None, None)
+            except Exception as _credit_err:
+                logger.warning("Credit usage recording failed: %s", _credit_err)
+
     except Exception as e:
+        if _credit_mgr is not None:
+            try:
+                await _credit_mgr.__aexit__(type(e), e, e.__traceback__)
+            except Exception:
+                pass
         logger.exception(f"chat.send error: {e}")
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:

@@ -247,23 +247,27 @@ async def chat_stream(
             redis_client.setex(f"streaming:{active_thread_id}", 300, "sse")
 
             # --- Credit context setup (bingo-credits plugin) ---
-            _credit_ctx = None
-            _credit_token = None
-            _credit_title = None
+            _credit_mgr = None
+            _InsufficientCreditsError = None
             try:
                 from backend.plugins.loader import get_loaded_plugins
                 if "bingo-credits" in get_loaded_plugins():
-                    from bingo_credits.credit_context import CreditContext, credit_context, InsufficientCreditsError as _InsufficientCreditsError
-                    from bingo_credits.service import CreditService as _CreditService
-                    _remaining = _CreditService.get_remaining_credits(db, current_user.id)
-                    _has_own_key = _CreditService.get_decrypted_key(db, current_user.id, settings.default_llm_provider) is not None
-                    _credit_ctx = CreditContext(user_id=current_user.id, has_own_key=_has_own_key)
-                    _credit_token = credit_context.set(_credit_ctx)
-                    if not _has_own_key and _remaining < 0.5:
-                        yield f"data: {json.dumps({'type': 'error', 'content': 'Daily credits used up. Resets at midnight.', 'error_code': 'insufficient_credits'})}\n\n"
-                        return
+                    from bingo_credits.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+                    _credit_mgr = CreditContextManager(
+                        db=db,
+                        user_id=current_user.id,
+                        title=request.message[:80],
+                        provider_name=settings.default_llm_provider,
+                        conversation_id=conversation.id,
+                        block_on_insufficient=True,
+                    )
+                    await _credit_mgr.__aenter__()
             except Exception as _credit_setup_err:
+                if _InsufficientCreditsError and isinstance(_credit_setup_err, _InsufficientCreditsError):
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'Daily credits used up. Resets at midnight.', 'error_code': 'insufficient_credits'})}\n\n"
+                    return
                 logger.warning("Credit context setup failed: %s", _credit_setup_err)
+                _credit_mgr = None
 
             # Resolve user's preferred LLM provider
             user_provider = get_provider(settings.default_llm_provider)
@@ -331,21 +335,11 @@ async def chat_stream(
                     logger.warning(f"Summary generation failed: {summary_err}")
 
             # --- Finalize credit usage (bingo-credits plugin) ---
-            if _credit_ctx is not None:
+            if _credit_mgr is not None:
                 try:
-                    if _credit_token is not None:
-                        from bingo_credits.credit_context import credit_context
-                        credit_context.reset(_credit_token)
-                    if not _credit_ctx.has_own_key and _credit_ctx.total_cost_cents > 0:
-                        from bingo_credits.service import CreditService as _CreditService
-                        _record_title = _credit_title or request.message[:80]
-                        _CreditService.record_usage(
-                            db,
-                            user_id=current_user.id,
-                            credits_used=_credit_ctx.total_cost_cents,
-                            title=_record_title,
-                            conversation_id=conversation.id,
-                        )
+                    if _credit_title:
+                        _credit_mgr.title = _credit_title
+                    await _credit_mgr.__aexit__(None, None, None)
                 except Exception as _credit_err:
                     logger.warning("Credit usage recording failed: %s", _credit_err)
 
@@ -358,10 +352,9 @@ async def chat_stream(
 
         except Exception as e:
             # Clean up credit context on error
-            if _credit_ctx is not None and _credit_token is not None:
+            if _credit_mgr is not None:
                 try:
-                    from bingo_credits.credit_context import credit_context
-                    credit_context.reset(_credit_token)
+                    await _credit_mgr.__aexit__(type(e), e, e.__traceback__)
                 except Exception:
                     pass
             # Clear streaming flag on error

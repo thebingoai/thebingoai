@@ -92,11 +92,12 @@ describe('useCreditSettings', () => {
     mockFetch
       .mockResolvedValueOnce(makeBalance())
       .mockResolvedValueOnce(makeHistory([], 1, 40))
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])                      // dailyTotals
+      .mockResolvedValueOnce([])                      // api-keys
       .mockResolvedValueOnce(makeHistory([], 2, 40))  // page 2
 
     const { nextPage, historyPage } = useCreditSettings()
-    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 4)
 
     await nextPage()
     expect(historyPage.value).toBe(2)
@@ -106,11 +107,12 @@ describe('useCreditSettings', () => {
     mockFetch
       .mockResolvedValueOnce(makeBalance())
       .mockResolvedValueOnce(makeHistory([], 2, 40))
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])                      // dailyTotals
+      .mockResolvedValueOnce([])                      // api-keys
       .mockResolvedValueOnce(makeHistory([], 1, 40))  // page 1
 
     const { prevPage, historyPage } = useCreditSettings()
-    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 4)
 
     await prevPage()
     expect(historyPage.value).toBe(1)
@@ -120,10 +122,11 @@ describe('useCreditSettings', () => {
     mockFetch
       .mockResolvedValueOnce(makeBalance())
       .mockResolvedValueOnce(makeHistory())
+      .mockResolvedValueOnce([])                               // dailyTotals
       .mockResolvedValueOnce([makeKey('openai', 'sk-...456789')])
 
     const { apiKeys } = useCreditSettings()
-    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 4)
 
     expect(apiKeys.value).toHaveLength(1)
     expect(apiKeys.value[0].provider).toBe('openai')
@@ -136,12 +139,13 @@ describe('useCreditSettings', () => {
     mockFetch
       .mockResolvedValueOnce(makeBalance())
       .mockResolvedValueOnce(makeHistory())
+      .mockResolvedValueOnce([])          // dailyTotals
       .mockResolvedValueOnce([])          // initial keys
       .mockResolvedValueOnce(undefined)   // POST save
       .mockResolvedValueOnce([makeKey()]) // refreshed keys
 
     const { apiKeys, saveApiKey } = useCreditSettings()
-    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 4)
 
     await saveApiKey('openai', 'sk-real-key')
 
@@ -156,12 +160,13 @@ describe('useCreditSettings', () => {
     mockFetch
       .mockResolvedValueOnce(makeBalance())
       .mockResolvedValueOnce(makeHistory())
-      .mockResolvedValueOnce([makeKey('openai')])  // initial
-      .mockResolvedValueOnce(undefined)              // DELETE
-      .mockResolvedValueOnce([])                     // refreshed
+      .mockResolvedValueOnce([])                      // dailyTotals
+      .mockResolvedValueOnce([makeKey('openai')])     // initial keys
+      .mockResolvedValueOnce(undefined)               // DELETE
+      .mockResolvedValueOnce([])                      // refreshed
 
     const { apiKeys, deleteApiKey } = useCreditSettings()
-    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 4)
 
     await deleteApiKey('openai')
 

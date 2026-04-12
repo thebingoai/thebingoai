@@ -272,7 +272,27 @@ def _process_user(db, user, cutoff: datetime):
                 temperature=0.3,
             )
 
-        response = asyncio.run(_analyze())
+        # --- Credit context setup (bingo-credits plugin) ---
+        _credit_mgr = None
+        try:
+            from backend.plugins.loader import get_loaded_plugins
+            if "bingo-credits" in get_loaded_plugins():
+                from bingo_credits.credit_context import CreditContextManager
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=user.id,
+                    title=f"Skill detection: {user.id}",
+                    provider_name=settings.default_llm_provider,
+                    conversation_id=None,
+                    block_on_insufficient=False,
+                )
+        except Exception as _credit_err:
+            logger.warning("Credit context setup failed for skill detection: %s", _credit_err)
+            _credit_mgr = None
+
+        from contextlib import nullcontext
+        with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+            response = asyncio.run(_analyze())
     except Exception as e:
         logger.error(f"LLM analysis failed for user {user.id}: {e}")
         return
