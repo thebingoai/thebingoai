@@ -6,6 +6,7 @@ import { createDashboardsApi } from '~/utils/api/dashboardsApi'
 import { createResourcesApi } from '~/utils/api/resourcesApi'
 import { createFacebookAdsApi } from '~/utils/api/facebookAdsApi'
 import { createAdminApi } from '~/utils/api/adminApi'
+import { createTelegramApi } from '~/utils/api/telegramApi'
 
 export const useApi = () => {
   const authStore = useAuthStore()
@@ -22,5 +23,6 @@ export const useApi = () => {
     dashboards: createDashboardsApi(fetchWithRefresh),
     facebookAds: createFacebookAdsApi(fetchWithRefresh),
     admin: createAdminApi(fetchWithRefresh),
+    telegram: createTelegramApi(fetchWithRefresh),
   }
 }

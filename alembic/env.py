@@ -19,6 +19,12 @@ from backend.models import (
     agent_profile,
 )
 
+# Import plugin models so Alembic autogenerate detects their tables
+try:
+    from bingo_telegram import models as _telegram_models  # noqa: F401
+except ImportError:
+    pass
+
 config = context.config
 # Use direct connection URL if available (bypasses PgBouncer for migrations)
 db_url = getattr(settings, 'database_url_direct', None) or settings.database_url

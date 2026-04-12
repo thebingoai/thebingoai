@@ -56,6 +56,7 @@
         <SettingsProfile v-else-if="currentSection === 'profile'" key="profile" />
         <SettingsCredits v-else-if="currentSection === 'credits'" key="credits" />
         <SettingsAdmin v-else-if="currentSection === 'admin' && isAdmin" key="admin" />
+        <SettingsChannels v-else-if="currentSection === 'channels'" key="channels" />
         <div v-else key="default" class="p-6">
           <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
           <p class="text-gray-500">This section is under construction.</p>
@@ -90,6 +91,9 @@ const sections = computed(() => {
   ]
   if (isAdmin.value) {
     base.push({ id: 'admin', name: 'Admin' })
+  }
+  if (featureConfig.value?.telegram_enabled) {
+    base.push({ id: 'channels', name: 'Channels' })
   }
   return base
 })
