@@ -257,6 +257,32 @@ async def test_unsaved_connection(
         return ConnectionTestResponse(success=False, message=str(e))
 
 
+@router.post("/test-connection-write", response_model=ConnectionTestResponse)
+async def test_unsaved_write_access(
+    request: ConnectionCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Test write access (roles/bigquery.dataEditor) for an unsaved BigQuery connection."""
+    try:
+        connector = get_connector(
+            db_type=request.db_type,
+            host=request.host,
+            port=request.port,
+            database=request.database,
+            username=request.username,
+            password=request.password,
+            ssl_enabled=request.ssl_enabled,
+            ssl_ca_cert=request.ssl_ca_cert
+        )
+        has_write = connector.test_write_access()
+        connector.close()
+        if has_write:
+            return ConnectionTestResponse(success=True, message="Write access granted")
+        return ConnectionTestResponse(success=False, message="roles/bigquery.dataEditor not granted on this project or dataset")
+    except Exception as e:
+        return ConnectionTestResponse(success=False, message=str(e))
+
+
 @router.get("/{connection_id}", response_model=ConnectionResponse)
 async def get_connection(
     connection_id: int,
@@ -383,6 +409,41 @@ async def test_connection(
         connector.close()
 
         return ConnectionTestResponse(success=True, message="Connection successful")
+    except Exception as e:
+        return ConnectionTestResponse(success=False, message=str(e))
+
+
+@router.post("/{connection_id}/test-write", response_model=ConnectionTestResponse)
+async def test_write_access(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Test write access (roles/bigquery.dataEditor) for a saved connection."""
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    try:
+        connector = get_connector(
+            db_type=connection.db_type,
+            host=connection.host,
+            port=connection.port,
+            database=connection.database,
+            username=connection.username,
+            password=connection.password,
+            ssl_enabled=connection.ssl_enabled,
+            ssl_ca_cert=connection.ssl_ca_cert
+        )
+        has_write = connector.test_write_access()
+        connector.close()
+        if has_write:
+            return ConnectionTestResponse(success=True, message="Write access granted")
+        return ConnectionTestResponse(success=False, message="roles/bigquery.dataEditor not granted on this project or dataset")
     except Exception as e:
         return ConnectionTestResponse(success=False, message=str(e))
 
