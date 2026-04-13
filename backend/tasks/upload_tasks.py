@@ -72,7 +72,11 @@ def on_celeryd_init(**kwargs):
 
 @worker_process_init.connect
 def on_worker_process_init(**kwargs):
-    """Load plugins so plugin-registered connectors and tasks are available in workers."""
+    """Dispose inherited DB connections, then load plugins."""
+    from backend.database import engine
+    engine.dispose()
+    logger.info("Celery worker process: disposed inherited DB connections")
+
     from backend.plugins.loader import discover_and_load_plugins, import_plugin_celery_tasks
     discover_and_load_plugins()
     imported = import_plugin_celery_tasks()
