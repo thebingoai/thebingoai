@@ -47,7 +47,10 @@ export const useChatStreaming = () => {
 
     const requestId = crypto.randomUUID()
     let accumulatedContent = ''
-    let wordBuffer = ''
+    let displayedContent = ''
+    let dripTimer: ReturnType<typeof setInterval> | null = null
+    const DRIP_INTERVAL = 20 // ms per tick
+    const CHARS_PER_TICK = 1 // characters revealed per tick (~50 chars/sec)
     const thinkingSteps: Array<{ step: string; description: string }> = []
     const agentSteps: AgentStep[] = []
     let currentReasoningText = ''
@@ -108,21 +111,33 @@ export const useChatStreaming = () => {
 
     return new Promise<void>((resolve) => {
       const cleanup = () => {
+        flushContentDrip()
         unsubs.forEach(fn => fn())
         chatStore.isStreaming = false
         resolve()
       }
 
-      onEvent('chat.token', (data) => {
-        const content = data.content || ''
-        wordBuffer += content
-        accumulatedContent += content
-        const hasCompleteWord = /[\s\n.,!?;:]/.test(content)
-        if (hasCompleteWord) {
-          // Collapse steps_log when final answer starts streaming
-          chatStore.updateLastMessage({ content: accumulatedContent, steps_log_expanded: false })
-          wordBuffer = ''
+      // Drip buffer — release characters at a readable pace instead of raw streaming speed
+      const startContentDrip = () => {
+        if (dripTimer) return
+        dripTimer = setInterval(() => {
+          if (displayedContent.length >= accumulatedContent.length) return
+          displayedContent = accumulatedContent.slice(0, displayedContent.length + CHARS_PER_TICK)
+          chatStore.updateLastMessage({ content: displayedContent, steps_log_expanded: false })
+        }, DRIP_INTERVAL)
+      }
+
+      const flushContentDrip = () => {
+        if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
+        if (displayedContent !== accumulatedContent) {
+          displayedContent = accumulatedContent
+          chatStore.updateLastMessage({ content: displayedContent })
         }
+      }
+
+      onEvent('chat.token', (data) => {
+        accumulatedContent += (data.content || '')
+        startContentDrip()
       })
 
       onEvent('chat.reasoning_token', (data) => {
@@ -265,10 +280,7 @@ export const useChatStreaming = () => {
       })
 
       onEvent('chat.done', (data) => {
-        if (wordBuffer) {
-          chatStore.updateLastMessage({ content: accumulatedContent })
-          wordBuffer = ''
-        }
+        flushContentDrip()
 
         // Finalize any leftover streaming reasoning step
         const lastStep = agentSteps[agentSteps.length - 1]

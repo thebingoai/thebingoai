@@ -234,22 +234,43 @@ const getDateLabel = (message: Message, index: number): string | null => {
   return formatDateLabel(messageDate)
 }
 
-// Scroll function
-const scrollToBottom = () => {
-  if (threadRef.value) {
-    threadRef.value.scrollTop = threadRef.value.scrollHeight
-  }
+// Scroll function — smooth for streaming, instant for navigation
+const scrollToBottom = (smooth = false) => {
+  if (!threadRef.value) return
+  threadRef.value.scrollTo({
+    top: threadRef.value.scrollHeight,
+    behavior: smooth ? 'smooth' : 'instant',
+  })
 }
 
 // Track whether the user is near the bottom of the scroll container.
-// Auto-scroll is suppressed when the user has scrolled up to read earlier messages.
+// Auto-scroll is suppressed when the user scrolls up during streaming.
 const SCROLL_THRESHOLD = 80
 const isNearBottom = ref(true)
+let prevScrollTop = 0
+let userScrolledDuringStream = false
+let userScrollUpTimestamp = 0
+const SCROLL_RESUME_DELAY = 1500 // ms before allowing auto-scroll to resume after user scrolls up
 
 const onScroll = () => {
   if (!threadRef.value) return
   const { scrollTop, scrollHeight, clientHeight } = threadRef.value
-  isNearBottom.value = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+  // User scrolled up during streaming — stop auto-scroll
+  if (chatStore.isStreaming && scrollTop < prevScrollTop - 2) {
+    userScrolledDuringStream = true
+    userScrollUpTimestamp = Date.now()
+  }
+
+  // Resume auto-scroll only if user manually scrolled back to bottom
+  // AND enough time has passed (so the smooth animation itself doesn't trigger resume)
+  if (userScrolledDuringStream && distanceFromBottom < SCROLL_THRESHOLD && Date.now() - userScrollUpTimestamp > SCROLL_RESUME_DELAY) {
+    userScrolledDuringStream = false
+  }
+
+  isNearBottom.value = distanceFromBottom < SCROLL_THRESHOLD && !userScrolledDuringStream
+  prevScrollTop = scrollTop
 }
 
 // Scroll to bottom on initial mount (handles pre-existing messages)
@@ -262,19 +283,19 @@ onBeforeUnmount(() => {
   threadRef.value?.removeEventListener('scroll', onScroll)
 })
 
-// Throttled scroll for streaming content updates (leading + trailing edge)
+// Throttled smooth scroll for streaming content updates (leading + trailing edge)
 let scrollThrottleTimer: NodeJS.Timeout | null = null
 let pendingScroll = false
 const throttledScroll = () => {
   if (!scrollThrottleTimer) {
-    scrollToBottom()
+    scrollToBottom(true)
     scrollThrottleTimer = setTimeout(() => {
       scrollThrottleTimer = null
       if (pendingScroll) {
         pendingScroll = false
-        scrollToBottom()
+        scrollToBottom(true)
       }
-    }, 100)
+    }, 300)
   } else {
     pendingScroll = true
   }
@@ -309,11 +330,13 @@ watch(
   }
 )
 
-// Scroll once more when streaming ends to catch the final word-buffer flush.
-// Only fires when user hasn't scrolled away from the bottom.
+// Reset scroll tracking on stream start; smooth-scroll on stream end.
 watch(() => chatStore.isStreaming, (streaming, wasStreaming) => {
+  if (streaming) {
+    userScrolledDuringStream = false
+  }
   if (wasStreaming && !streaming && isNearBottom.value) {
-    nextTick(() => scrollToBottom())
+    nextTick(() => scrollToBottom(true))
   }
 })
 </script>
