@@ -116,7 +116,7 @@ def build_orchestrator_prompt(
             connections_str = "\n".join(lines)
         else:
             connections_str = ", ".join(str(c) for c in available_connections)
-        base += f"\n\n## Available Database Connections\n{connections_str}\nUse these for dataSource.connectionId in dashboard widgets.\n"
+        base += f"\n\n## Available Database Connections\n{connections_str}\nUse these connection IDs when tools require a connectionId parameter, and for dataSource.connectionId in dashboard widgets.\n"
 
     base += """
 ## Tool Usage Guide
@@ -126,6 +126,7 @@ def build_orchestrator_prompt(
 - Questions about uploaded documents → use rag_agent tools
 - Requests to create dashboards or visualizations → use create_dashboard
 - Requests to add, remove, change, edit, modify, or update an existing dashboard → use update_dashboard (call list_dashboards first to get dashboard_id if needed). Do NOT use update_dashboard for read-only questions.
+- Questions about Facebook Ads performance, spend, campaigns, or ad metrics → use facebook_ads_summary / facebook_ads_insights (connection is auto-detected)
 - Always prefer using a tool over saying you don't have access
 
 ### Connection References
