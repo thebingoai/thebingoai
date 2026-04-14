@@ -241,9 +241,14 @@ def build_dashboard_agent_prompt(
         except FileNotFoundError:
             pass
 
-    # Conditionally append SQLite dialect hints when CSV plugin is loaded
-    from backend.agents.profile_defaults import _csv_plugin_loaded, SQLITE_DIALECT_HINTS
+    # Conditionally append dialect hints based on which plugins are loaded
+    from backend.agents.profile_defaults import (
+        _csv_plugin_loaded, SQLITE_DIALECT_HINTS,
+        _bigquery_plugin_loaded, BIGQUERY_DIALECT_HINTS,
+    )
     if _csv_plugin_loaded():
         prompt += SQLITE_DIALECT_HINTS
+    if _bigquery_plugin_loaded():
+        prompt += BIGQUERY_DIALECT_HINTS
 
     return prompt

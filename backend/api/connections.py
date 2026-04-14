@@ -25,6 +25,18 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+def _schema_item_count(db_type: str, schema_data: dict) -> int:
+    """Return the appropriate count to store in table_count for a given connector type.
+
+    Connectors that expose 'dataset_count' in their card_meta_items (e.g. BigQuery)
+    should display the number of top-level schemas (datasets), not the total table count.
+    """
+    reg = get_connector_registration(db_type)
+    if reg and "dataset_count" in (reg.card_meta_items or []):
+        return len(schema_data.get("schemas", {}))
+    return len(schema_data.get("table_names", []))
+
+
 def _invalidate_dashboard_caches_for_connection(
     connection_id: int, user_id: str, db: Session,
 ) -> int:
@@ -131,7 +143,7 @@ async def create_connection(
             # Update connection with schema info
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
-            connection.table_count = len(schema_data["table_names"])
+            connection.table_count = _schema_item_count(connection.db_type, schema_data)
             db.commit()
             db.refresh(connection)
 
@@ -508,7 +520,7 @@ async def refresh_connection_schema(
             # Update connection timestamp and table count
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
-            connection.table_count = len(schema_json["table_names"])
+            connection.table_count = _schema_item_count(connection.db_type, schema_json)
 
             # Re-trigger profiling since schema changed
             from backend.tasks.profiling_tasks import profile_connection

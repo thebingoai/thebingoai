@@ -34,6 +34,40 @@ def _csv_plugin_loaded() -> bool:
     from backend.agents.tool_registry import get_plugin_tool_builders
     return "create_dataset_from_upload" in get_plugin_tool_builders()
 
+
+# ---------------------------------------------------------------------------
+# BigQuery dialect hints — appended only when the BigQuery connector plugin is loaded
+# ---------------------------------------------------------------------------
+BIGQUERY_DIALECT_HINTS = """
+
+## BigQuery SQL Dialect (for BigQuery connections)
+
+When generating SQL for a BigQuery connection, apply these rules:
+
+**Partitioned tables** — a column whose `type` is `PARTITION_KEY(col)` or `RANGE_PARTITION_KEY(col)` is the partition field. Always filter on it to avoid full-table scans.
+- Example: `WHERE event_date >= '2024-01-01' AND event_date < '2024-02-01'`
+
+**Ingestion-time partitioned tables** — schema includes `_PARTITIONTIME` (TIMESTAMP) and `_PARTITIONDATE` (DATE) pseudo-columns.
+- Filter via `WHERE _PARTITIONDATE = '2024-01-01'` or `WHERE DATE(_PARTITIONTIME) BETWEEN '2024-01-01' AND '2024-01-31'`
+
+**Sharded tables** — table name ends with `_*` (e.g., `events_*`). Use wildcard table syntax and filter with `_TABLE_SUFFIX`.
+- Example: `` SELECT * FROM `dataset.events_*` WHERE _TABLE_SUFFIX BETWEEN '20240101' AND '20240131' ``
+- Do NOT query individual shard tables directly.
+
+**General BigQuery rules:**
+- Prefer `dataset.table` over fully-qualified names unless cross-project queries are needed
+- `LIMIT` goes at the end of the query
+- Use `SAFE_DIVIDE`, `SAFE_CAST` for null-safe math/casting"""
+
+
+def _bigquery_plugin_loaded() -> bool:
+    """Check if the BigQuery connector plugin is registered."""
+    try:
+        from backend.connectors.factory import get_connector_registration
+        return get_connector_registration("bigquery") is not None
+    except Exception:
+        return False
+
 # ---------------------------------------------------------------------------
 # Section type constants
 # ---------------------------------------------------------------------------
@@ -642,7 +676,10 @@ def get_default_section(agent_type: str, section: str) -> Optional[str]:
     """Get the default content for a specific agent type and section."""
     agent_defaults = DEFAULTS.get(agent_type, {})
     content = agent_defaults.get(section)
-    # Conditionally append SQLite dialect hints for dashboard agent tools
-    if content and agent_type == "dashboard_agent" and section == "tools" and _csv_plugin_loaded():
-        content += SQLITE_DIALECT_HINTS
+    # Conditionally append dialect hints for dashboard agent tools
+    if content and agent_type == "dashboard_agent" and section == "tools":
+        if _csv_plugin_loaded():
+            content += SQLITE_DIALECT_HINTS
+        if _bigquery_plugin_loaded():
+            content += BIGQUERY_DIALECT_HINTS
     return content
