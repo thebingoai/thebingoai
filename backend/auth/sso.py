@@ -74,10 +74,7 @@ async def validate_token(access_token: str) -> Optional[AuthUser]:
     try:
         client = _get_http_client()
         headers = {"Authorization": f"Bearer {access_token}"}
-        # X-API-Key: uses sso_secret_key (enterprise) or sso_publishable_key/app name (community)
-        if settings.sso_secret_key:
-            headers["X-API-Key"] = settings.sso_secret_key
-        elif settings.sso_publishable_key:
+        if settings.sso_publishable_key:
             headers["X-API-Key"] = settings.sso_publishable_key
 
         response = await client.get("/api/v1/auth/me", headers=headers)
@@ -127,11 +124,8 @@ async def logout(access_token: str, refresh_token: str) -> bool:
     # Tell SSO to blacklist the refresh token
     try:
         client = _get_http_client()
-        # X-API-Key: uses sso_secret_key (enterprise) or sso_publishable_key/app name (community)
         headers = {}
-        if settings.sso_secret_key:
-            headers["X-API-Key"] = settings.sso_secret_key
-        elif settings.sso_publishable_key:
+        if settings.sso_publishable_key:
             headers["X-API-Key"] = settings.sso_publishable_key
 
         response = await client.post(
