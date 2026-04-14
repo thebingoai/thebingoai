@@ -179,7 +179,7 @@ async def test_validate_token_community_app_name(mock_redis, mock_http):
 
 @pytest.mark.asyncio
 async def test_validate_token_with_api_key(mock_redis, mock_http):
-    """validate_token() includes X-API-Key header when sso_secret_key is set (enterprise)."""
+    """validate_token() includes X-API-Key header using sso_publishable_key."""
     mock_redis.get = AsyncMock(return_value=None)
 
     response = MagicMock()
@@ -194,14 +194,14 @@ async def test_validate_token_with_api_key(mock_redis, mock_http):
         patch("backend.auth.sso._get_http_client", return_value=mock_http),
         patch("backend.auth.sso.settings") as mock_settings,
     ):
-        mock_settings.sso_secret_key = "sk_enterprise_key"
+        mock_settings.sso_publishable_key = "pk_test_key"
         mock_settings.sso_token_cache_ttl = 300
         from backend.auth.sso import validate_token
         result = await validate_token("tok_enterprise")
 
     call_kwargs = mock_http.get.call_args
     headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
-    assert headers.get("X-API-Key") == "sk_enterprise_key"
+    assert headers.get("X-API-Key") == "pk_test_key"
 
 
 # ---------------------------------------------------------------------------
