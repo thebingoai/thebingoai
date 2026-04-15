@@ -41,10 +41,15 @@ class SqliteFileConnector:
         DO Spaces), the connection's ``health_status`` is set to ``"unhealthy"``
         before the error is raised.
         """
+        do_spaces_key = connection.dataset_table_name
+
+        # Local file (e.g., bundled sample data) — absolute paths are local
+        if do_spaces_key and os.path.isabs(do_spaces_key) and os.path.isfile(do_spaces_key):
+            return cls(do_spaces_key)
+
         from backend.services import object_storage
         from backend.config import settings
 
-        do_spaces_key = connection.dataset_table_name
         cache_dir = settings.dataset_cache_dir
         cache_path = os.path.join(cache_dir, f"{connection.id}.sqlite")
 

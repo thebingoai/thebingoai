@@ -131,16 +131,20 @@ register_connector(ConnectorRegistration(
 
 
 def _delete_sqlite_file(connection) -> None:
-    """Delete a SQLite file from DO Spaces."""
-    if connection.dataset_table_name:
+    """Delete a SQLite file from DO Spaces (skip local/bundled files)."""
+    import os
+    if connection.dataset_table_name and not os.path.isabs(connection.dataset_table_name):
         from backend.services import object_storage
         object_storage.delete_object(connection.dataset_table_name)
 
 
 def _check_sqlite_health(connection) -> bool:
-    """Check whether a SQLite connection's file exists in DO Spaces."""
+    """Check whether a SQLite connection's file exists (local or DO Spaces)."""
+    import os
     if not connection.dataset_table_name:
         return False
+    if os.path.isabs(connection.dataset_table_name):
+        return os.path.isfile(connection.dataset_table_name)
     from backend.services import object_storage
     return object_storage.object_exists(connection.dataset_table_name)
 

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -7,6 +9,8 @@ from backend.database.session import get_db
 from backend.models.user import User
 from backend.models.team_membership import TeamMembership, MemberRole
 from backend.config import settings
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ORG_ID = 'org-default-00000000-0000-0000-0000'
 DEFAULT_TEAM_ID = 'team-default-00000000-0000-0000-0000'
@@ -98,6 +102,14 @@ def _create_user(db: Session, sso_user) -> User:
 
         db.commit()
         db.refresh(user)
+
+        # Seed sample connections for new user
+        try:
+            from backend.services.seed import seed_sample_connections
+            seed_sample_connections(user.id, db)
+        except Exception:
+            logger.warning("Sample connection seeding failed for user %s", user.id, exc_info=True)
+
         return user
     except IntegrityError:
         # Race condition: another request created the user simultaneously

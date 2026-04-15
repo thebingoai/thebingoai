@@ -90,7 +90,9 @@ docker-compose.override.yml
 
 # Project specific
 # Cached database schemas (generated per-environment)
-data/
+data/*
+!data/sample/
+!data/sample/*.sqlite
 
 # Keep test_data samples but ignore large files
 test_data/*.pdf
