@@ -14,8 +14,7 @@
   </div>
 
   <!-- Confirmation dialog -->
-  <UiDialog v-if="showConfirm" @close="showConfirm = false">
-    <template #title>Promote to Admin?</template>
+  <UiDialog v-model:open="showConfirm" title="Promote to Admin?" size="sm">
     <p class="text-sm text-gray-600">
       This will give <strong>{{ userEmail }}</strong> full admin access, including the ability to manage other users.
     </p>
