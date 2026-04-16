@@ -158,9 +158,8 @@ export const useChatStreaming = () => {
           })
         }
 
-        // Show reasoning as temporary reply in chat bubble
         acknowledgeText = currentReasoningText
-        chatStore.updateLastMessage({ content: currentReasoningText, agent_steps: [...agentSteps] })
+        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
       })
 
       onEvent('chat.tool_call', (data) => {
@@ -292,8 +291,7 @@ export const useChatStreaming = () => {
             agentSteps.pop()
           }
           currentReasoningText = ''
-          // Clear the temporary reasoning text from bubble — final answer tokens will fill it
-          chatStore.updateLastMessage({ content: '', steps_log_expanded: false, agent_steps: [...agentSteps] })
+          chatStore.updateLastMessage({ steps_log_expanded: false, agent_steps: [...agentSteps] })
         }
       })
 
