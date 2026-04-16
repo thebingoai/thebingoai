@@ -11,6 +11,7 @@ from backend.services.token_tracking_service import TokenTrackingService
 from backend.models.token_usage import OperationType
 from backend.config import settings
 from backend.llm.factory import get_provider
+import asyncio
 import json
 import logging
 
@@ -78,6 +79,18 @@ def _enrich_query_steps(steps: list, user_id: str) -> None:
             sub_steps = step.get("content", {}).get("result", {}).get("steps", [])
             for sub in sub_steps:
                 _enrich(sub)
+
+
+async def _fire_chat_response_plugins(user_id, thread_id, user_message, assistant_message):
+    """Fire plugin on_chat_response hooks. Runs as a background task."""
+    try:
+        from backend.plugins.loader import fire_chat_response_hooks
+        await fire_chat_response_hooks(
+            user_id=str(user_id), thread_id=thread_id,
+            user_message=user_message, assistant_message=assistant_message,
+        )
+    except Exception as exc:
+        logger.warning("fire_chat_response_plugins error: %s", exc)
 
 
 @router.post("", response_model=ChatResponse)
@@ -373,6 +386,13 @@ async def chat_stream(
                     yield f"data: {json.dumps({'type': 'summary', 'content': {'text': summary.summary_text, 'updated_at': summary.updated_at.isoformat(), 'token_count': token_count, 'token_limit': token_limit}})}\n\n"
                 except Exception as summary_err:
                     logger.warning(f"Summary generation failed: {summary_err}")
+
+            # Fire plugin hooks (non-blocking)
+            if final_message:
+                asyncio.create_task(_fire_chat_response_plugins(
+                    str(current_user.id), conversation.thread_id,
+                    request.message, final_message,
+                ))
 
             # --- Finalize credit usage (bingo-credits plugin) ---
             if _credit_mgr is not None:

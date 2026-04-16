@@ -260,6 +260,18 @@ async def _resolve_attachments(file_ids, chat_file_service, db: Session = None, 
     return file_contents, attachments
 
 
+async def _fire_chat_response_plugins(user_id, thread_id, user_message, assistant_message):
+    """Fire plugin on_chat_response hooks. Runs as a background task."""
+    try:
+        from backend.plugins.loader import fire_chat_response_hooks
+        await fire_chat_response_hooks(
+            user_id=str(user_id), thread_id=thread_id,
+            user_message=user_message, assistant_message=assistant_message,
+        )
+    except Exception as exc:
+        logger.warning("fire_chat_response_plugins error: %s", exc)
+
+
 async def _persist_and_postprocess(
     db: Session,
     conversation,
@@ -334,6 +346,12 @@ async def _persist_and_postprocess(
         "type": "chat.stream_complete",
         "thread_id": active_thread_id,
     })
+
+    # Fire plugin hooks (non-blocking)
+    if final_message:
+        asyncio.create_task(_fire_chat_response_plugins(
+            user.id, conversation.thread_id, user_message, final_message,
+        ))
 
 
 async def _handle_chat_send(

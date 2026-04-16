@@ -74,7 +74,9 @@ async def test_ready_ephemeral_datasets_added_to_available_connections(ws_db, st
 
 
 @pytest.mark.asyncio
-async def test_pending_datasets_not_added(ws_db, stub_user):
+async def test_pending_datasets_are_added(ws_db, stub_user):
+    """Pending ephemeral datasets inject immediately after upload; profiling
+    status is no longer gated (see commit d2ad352)."""
     from backend.api.websocket import _inject_conversation_datasets
 
     conn = DatabaseConnection(
@@ -96,7 +98,7 @@ async def test_pending_datasets_not_added(ws_db, stub_user):
         agent_ctx, file_contents, None,
     )
 
-    assert len(agent_ctx.available_connections) == 0
+    assert len(agent_ctx.available_connections) == 1
 
 
 @pytest.mark.asyncio
