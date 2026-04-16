@@ -62,3 +62,7 @@ class BingoPlugin(ABC):
 
     def on_shutdown(self) -> None:
         pass
+
+    async def on_chat_response(self, *, user_id: str, thread_id: str, user_message: str, assistant_message: str) -> None:
+        """Called after a web chat response is persisted. Override to react."""
+        pass

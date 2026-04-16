@@ -112,6 +112,28 @@ def detection_db():
     # UserSkill has JSONB too — create manually
     with engine.connect() as conn:
         conn.execute(text("""
+            CREATE TABLE user_credit_balances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id VARCHAR NOT NULL REFERENCES users(id),
+                daily_limit INTEGER NOT NULL DEFAULT 180,
+                created_at DATETIME NOT NULL,
+                UNIQUE (user_id)
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE credit_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id VARCHAR NOT NULL REFERENCES users(id),
+                conversation_id INTEGER REFERENCES conversations(id),
+                title VARCHAR(83) NOT NULL,
+                credits_used INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                date DATE NOT NULL,
+                created_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS user_skills (
                 id VARCHAR PRIMARY KEY,
                 user_id VARCHAR NOT NULL REFERENCES users(id),

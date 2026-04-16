@@ -123,6 +123,22 @@ def get_plugin_for_connector(type_id: str) -> Optional[BingoPlugin]:
     return None
 
 
+async def fire_chat_response_hooks(
+    *, user_id: str, thread_id: str, user_message: str, assistant_message: str,
+) -> None:
+    """Fire on_chat_response on all loaded plugins. Errors are logged, not raised."""
+    for plugin in _loaded_plugins.values():
+        try:
+            await plugin.on_chat_response(
+                user_id=user_id,
+                thread_id=thread_id,
+                user_message=user_message,
+                assistant_message=assistant_message,
+            )
+        except Exception as exc:
+            logger.warning("Plugin %s on_chat_response error: %s", plugin.name, exc)
+
+
 def shutdown_plugins() -> None:
     """Call on_shutdown for all loaded plugins."""
     for plugin in _loaded_plugins.values():
