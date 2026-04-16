@@ -774,6 +774,7 @@ async def stream_orchestrator(
 
             elif kind == "on_tool_end":
                 active_stream_run_id = None
+                reasoning_buffer.clear()  # discard sub-agent leaked tokens
                 tool_name = event.get("name")
                 tool_output = event.get("data", {}).get("output", None)
 
