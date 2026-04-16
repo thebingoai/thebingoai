@@ -176,9 +176,11 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 store_query_result(result_ref, context.user_id, full_result)
                 publish_query_result(context.user_id, result_ref, full_result)
 
-                # Return only metadata to the LLM — no actual data values
+                # Return metadata + first rows so the LLM can format tables
+                preview_rows = [list(row) for row in result.rows[:20]]
                 return {
                     "columns": result.columns,
+                    "rows": preview_rows,
                     "row_count": result.row_count,
                     "execution_time_ms": result.execution_time_ms,
                     "result_ref": result_ref,

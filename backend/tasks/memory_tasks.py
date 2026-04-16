@@ -36,8 +36,10 @@ def generate_daily_memories():
                 _credit_mgr = None
                 try:
                     from backend.plugins.loader import get_loaded_plugins
-                    if "bingo-credits" in get_loaded_plugins():
-                        from bingo_credits.credit_context import CreditContextManager
+                    if "bingo-admin" in get_loaded_plugins():
+                        from bingo_admin.credit_context import CreditContextManager
+                    else:
+                        from backend.services.token_tracking_service import CreditContextManager
                         _credit_mgr = CreditContextManager(
                             db=db,
                             user_id=user.id,
@@ -85,8 +87,10 @@ def generate_user_memory(user_id: str, date_str: str):
         _credit_mgr = None
         try:
             from backend.plugins.loader import get_loaded_plugins
-            if "bingo-credits" in get_loaded_plugins():
-                from bingo_credits.credit_context import CreditContextManager
+            if "bingo-admin" in get_loaded_plugins():
+                from bingo_admin.credit_context import CreditContextManager
+            else:
+                from backend.services.token_tracking_service import CreditContextManager
                 _credit_mgr = CreditContextManager(
                     db=db,
                     user_id=user_id,

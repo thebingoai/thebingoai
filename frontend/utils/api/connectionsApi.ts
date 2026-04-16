@@ -30,6 +30,17 @@ export function createConnectionsApi(fetchWithRefresh: Function, authStore: any,
         method: 'POST',
       })
     },
+    async testWrite(id: string) {
+      return fetchWithRefresh(`/api/connections/${id}/test-write`, {
+        method: 'POST',
+      })
+    },
+    async testWriteUnsaved(data: any) {
+      return fetchWithRefresh('/api/connections/test-connection-write', {
+        method: 'POST',
+        body: data
+      })
+    },
     async refreshSchema(id: string) {
       return fetchWithRefresh(`/api/connections/${id}/refresh-schema`, {
         method: 'POST',

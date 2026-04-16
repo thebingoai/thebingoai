@@ -5,6 +5,7 @@ from backend.agents.dashboard_agent.tools import build_dashboard_agent_tools
 from backend.agents.dashboard_agent.prompts import build_dashboard_agent_prompt
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.context import AgentContext
+from backend.agents.data_agent.graph import _make_loop_detector
 from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import Dict, Any, Callable, List
@@ -109,6 +110,7 @@ async def invoke_dashboard_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
         prompt=_resolve_dashboard_agent_prompt(context, db_session_factory, target_connection_id),
+        pre_model_hook=_make_loop_detector(max_repeats=2, max_same_tool=15, max_total_calls=40),
     )
 
     try:
