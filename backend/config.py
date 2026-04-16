@@ -135,7 +135,7 @@ class Settings(BaseSettings):
     sso_redis_url: str = "redis://localhost:6379/3"  # DB 3: SSO token cache
 
     # Feature flags
-    enable_governance: bool = True
+    enable_governance: bool = False
     agent_mesh_enabled: bool = False
 
     # Agent mesh settings (Redis DB 4)
