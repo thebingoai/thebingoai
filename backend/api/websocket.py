@@ -423,15 +423,15 @@ async def _handle_chat_send(
                 from bingo_admin.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
             else:
                 from backend.services.token_tracking_service import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
-            _credit_mgr = CreditContextManager(
-                db=db,
-                user_id=user.id,
-                title=message[:80],
-                provider_name=settings.default_llm_provider,
-                conversation_id=conversation.id,
-                block_on_insufficient=True,
-            )
-            await _credit_mgr.__aenter__()
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=user.id,
+                    title=message[:80],
+                    provider_name=settings.default_llm_provider,
+                    conversation_id=conversation.id,
+                    block_on_insufficient=True,
+                )
+                await _credit_mgr.__aenter__()
         except Exception as _credit_setup_err:
             if _InsufficientCreditsError and isinstance(_credit_setup_err, _InsufficientCreditsError):
                 await send({"type": "chat.error", "request_id": request_id, "thread_id": conversation.thread_id, "content": "Daily credits used up. Resets at midnight.", "error_code": "insufficient_credits"})

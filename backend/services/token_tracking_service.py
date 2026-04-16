@@ -260,7 +260,6 @@ class CreditContextManager:
                 {"uid": self.user_id, "limit": self.DEFAULT_DAILY_LIMIT, "now": datetime.utcnow()},
             )
             self.db.commit()
-            credit_logger.info("[credit] user %s: no balance row found — created with daily_limit=%d", self.user_id, self.DEFAULT_DAILY_LIMIT)
             return self.DEFAULT_DAILY_LIMIT
         return int(row[0])
 
@@ -277,23 +276,13 @@ class CreditContextManager:
 
     def _check(self):
         daily_limit = self._ensure_balance_row()
-        used = self._today_usage()
-        credit_logger.info(
-            "[credit] user %s: daily_limit=%d, used_today=%d, block_on_insufficient=%s",
-            self.user_id, daily_limit, used, self.block_on_insufficient,
-        )
-        if daily_limit == 0 or used >= daily_limit:
-            credit_logger.warning(
-                "[credit] user %s: daily limit %d reached (used=%d), block=%s",
-                self.user_id, daily_limit, used, self.block_on_insufficient,
-            )
+        if daily_limit == 0 or self._today_usage() >= daily_limit:
             if self.block_on_insufficient:
                 raise InsufficientCreditsError(
                     f"Daily credit limit of {daily_limit} reached."
                 )
 
     def _record(self):
-        today = date.today()
         self.db.execute(
             text(
                 "INSERT INTO credit_usage "
@@ -304,15 +293,11 @@ class CreditContextManager:
                 "uid": self.user_id,
                 "cid": self.conversation_id,
                 "title": self.title,
-                "today": today,
+                "today": date.today(),
                 "now": datetime.utcnow(),
             },
         )
         self.db.commit()
-        credit_logger.info(
-            "[credit] user %s: recorded 1 credit — title=%r, date=%s",
-            self.user_id, self.title, today,
-        )
 
     # ------------------------------------------------------------------
     # Async context manager (FastAPI / chat / websocket)
