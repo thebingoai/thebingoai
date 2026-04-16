@@ -214,7 +214,7 @@ async def _inject_conversation_datasets(
     )
 
     for conn in ephemeral_connections:
-        if conn.profiling_status == "ready" and conn.id not in agent_context.available_connections:
+        if conn.id not in agent_context.available_connections:
             agent_context.available_connections.append(conn.id)
             agent_context.connection_metadata.append(
                 ConnectionInfo(id=conn.id, name=conn.name, db_type=conn.db_type, database=conn.database)
