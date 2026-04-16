@@ -63,11 +63,17 @@ class MemoryGenerator:
         start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = start_of_day + timedelta(days=1)
 
-        conversations = ConversationService.list_conversations(db, user_id, limit=100)
+        conversations, _ = ConversationService.list_conversations(db, user_id, limit=100)
+
+        # Also include the permanent conversation
+        permanent = ConversationService.get_or_create_permanent_conversation(db, user_id)
+        all_convs = list(conversations)
+        if permanent:
+            all_convs.append(permanent)
 
         # Filter to conversations from the target date
         daily_conversations = [
-            conv for conv in conversations
+            conv for conv in all_convs
             if start_of_day <= conv.created_at < end_of_day
         ]
 

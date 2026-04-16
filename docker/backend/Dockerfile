@@ -11,6 +11,7 @@ COPY --from=builder /install /usr/local
 COPY backend/ ./backend/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
+COPY data/sample/ ./data/sample/
 RUN useradd -m -u 1000 appuser \
     && mkdir -p /app/data/schemas /app/data/contexts \
     && chown -R appuser:appuser /app
