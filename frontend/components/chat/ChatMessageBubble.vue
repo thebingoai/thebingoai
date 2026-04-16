@@ -109,54 +109,6 @@
         </div>
       </div>
 
-      <!-- SQL Query (collapsible) -->
-      <div v-if="message.sql" class="mt-3">
-        <button
-          @click="sqlExpanded = !sqlExpanded"
-          class="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <svg
-            class="w-3 h-3 transition-transform"
-            :class="{ 'rotate-90': sqlExpanded }"
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-          ><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-          SQL Query
-        </button>
-        <div v-if="sqlExpanded" class="mt-1.5 rounded-lg bg-gray-50 p-4">
-          <pre class="text-sm whitespace-pre-wrap"><code>{{ message.sql }}</code></pre>
-        </div>
-      </div>
-
-      <!-- Results Table -->
-      <div v-if="message.results && message.results.length > 0" class="mt-3 overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
-          <thead class="bg-gray-50">
-            <tr>
-              <th
-                v-for="(value, key) in message.results[0]"
-                :key="key"
-                class="px-4 py-2 text-left text-xs font-normal text-gray-700"
-              >
-                {{ key }}
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-200 bg-white">
-            <tr v-for="(row, idx) in message.results.slice(0, 50)" :key="idx">
-              <td
-                v-for="(value, key) in row"
-                :key="key"
-                class="px-4 py-2 text-sm text-gray-900"
-              >
-                {{ value }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-if="message.results.length > 50" class="mt-2 text-sm text-gray-500">
-          Showing 50 of {{ message.results.length }} rows
-        </p>
-      </div>
 
       <!-- Agent steps / reasoning toggle (hidden when steps_log is present) -->
       <div v-if="hasSteps && !message.steps_log?.length" class="mt-3">
@@ -238,7 +190,6 @@ const emit = defineEmits<{
 const chatStore = useChatStore()
 const dashboardStore = useDashboardStore()
 const api = useApi()
-const sqlExpanded = ref(false)
 
 const pendingSuggestions = computed(() =>
   (props.message.skillSuggestions ?? []).filter(s => chatStore.skillSuggestions.some(ss => ss.id === s.id))
@@ -264,9 +215,11 @@ const hasSteps = computed(() =>
   !!(props.message.agent_steps?.length || props.message.thinking_steps?.length)
 )
 
-const stepCount = computed(() =>
-  props.message.agent_steps?.length || props.message.thinking_steps?.length || 0
-)
+const stepCount = computed(() => {
+  const steps = props.message.agent_steps
+  if (steps?.length) return steps.filter(s => s.step_type !== 'tool_result').length
+  return props.message.thinking_steps?.length || 0
+})
 
 const openReasoning = () => {
   chatStore.selectMessageForReasoning(props.message.id)

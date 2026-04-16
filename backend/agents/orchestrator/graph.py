@@ -10,6 +10,7 @@ from backend.agents.orchestrator.memory_tools import build_memory_tools
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.orchestrator.pre_steps import run_pre_steps, PreStepContext
 from backend.agents.data_agent import invoke_data_agent
+from backend.agents.data_agent.graph import _make_loop_detector
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
@@ -467,6 +468,7 @@ def _build_dynamic_tools(
                 model=provider.get_langchain_llm(),
                 tools=_tools,
                 prompt=_system_prompt,
+                pre_model_hook=_make_loop_detector(max_repeats=2, max_total_calls=25),
             )
             try:
                 result = await sub_agent.ainvoke(
@@ -728,9 +730,7 @@ async def stream_orchestrator(
         collected_steps = []
         step_number = 0
         step_start_times: Dict[str, float] = {}
-        token_buffer = []
         reasoning_buffer = []
-        in_tool_execution = False
         active_stream_run_id = None
 
         async for event in orchestrator.astream_events(
@@ -754,8 +754,6 @@ async def stream_orchestrator(
                     yield {"type": "reasoning", "content": {"text": reasoning_text}}
                     reasoning_buffer.clear()
 
-                in_tool_execution = True
-                token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
                 tool_input = event.get("data", {}).get("input", {})
@@ -775,8 +773,6 @@ async def stream_orchestrator(
                 }
 
             elif kind == "on_tool_end":
-                in_tool_execution = False
-                token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
                 tool_output = event.get("data", {}).get("output", None)
@@ -836,12 +832,8 @@ async def stream_orchestrator(
                 if chunk and hasattr(chunk, "content"):
                     content = chunk.content
                     if content:
-                        if not in_tool_execution:
-                            # Stream as reasoning tokens (may be intermediate reasoning or final answer)
-                            reasoning_buffer.append(content)
-                            yield {"type": "reasoning_token", "content": content}
-                        else:
-                            token_buffer.append(content)
+                        reasoning_buffer.append(content)
+                        yield {"type": "reasoning_token", "content": content}
 
         # After the loop: if reasoning_buffer is non-empty, the last LLM turn
         # had no tool call — this is the final answer, not reasoning.
@@ -855,11 +847,6 @@ async def stream_orchestrator(
             yield {"type": "token", "content": full_text}
             reasoning_buffer.clear()
 
-        if token_buffer:
-            full_text = "".join(token_buffer)
-            if _CONNECTION_ID_PATTERN.search(full_text):
-                full_text = await _rewrite_without_connection_ids(full_text, provider)
-            yield {"type": "token", "content": full_text}
 
         yield {
             "type": "done",

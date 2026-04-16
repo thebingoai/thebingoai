@@ -1,6 +1,43 @@
 import { useChatStore } from '~/stores/chat'
 import type { Message, AgentStep } from '~/stores/chat'
 
+/** Extract the best query result from persisted agent steps. */
+function _extractQueryData(steps: AgentStep[]): { sql?: string; results: Record<string, any>[] } | null {
+  let best: { sql?: string; columns: string[]; rows: any[][] } | null = null
+
+  const check = (s: AgentStep) => {
+    if (s.tool_name === 'execute_query' && s.step_type === 'tool_result') {
+      const qd = s.content?.result?.query_data
+      if (qd?.columns && qd?.rows) {
+        if (!best || qd.rows.length >= best.rows.length) {
+          best = { sql: qd.sql, columns: qd.columns, rows: qd.rows }
+        }
+      }
+    }
+  }
+
+  for (const step of steps) {
+    check(step)
+    // Check nested steps inside data_agent tool results
+    if (step.tool_name === 'data_agent' && step.step_type === 'tool_result') {
+      for (const sub of step.content?.result?.steps || []) {
+        check(sub as AgentStep)
+      }
+    }
+  }
+
+  if (!best) return null
+
+  // Transform {columns, rows} → [{col: val}] for ChatMessageBubble
+  const results = best.rows.map((row: any[]) => {
+    const obj: Record<string, any> = {}
+    best!.columns.forEach((col, i) => { obj[col] = row[i] ?? null })
+    return obj
+  })
+
+  return { sql: best.sql, results }
+}
+
 export const useChatConversations = () => {
   const chatStore = useChatStore()
   const api = useApi()
@@ -135,6 +172,13 @@ export const useChatConversations = () => {
               const msgInStore = chatStore.messages.find(m => m.id === msg.id)
               if (msgInStore) {
                 msgInStore.agent_steps = agentSteps
+
+                // Reconstruct sql + results from persisted execute_query steps
+                const qd = _extractQueryData(agentSteps)
+                if (qd) {
+                  msgInStore.sql = qd.sql
+                  msgInStore.results = qd.results
+                }
               }
             }
           } catch {

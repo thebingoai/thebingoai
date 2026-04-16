@@ -14,13 +14,14 @@ import json
 logger = logging.getLogger(__name__)
 
 
-def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 10):
+def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 10, max_total_calls: int = 25):
     """pre_model_hook that detects repeated tool calls and injects a stop message.
 
-    Catches two patterns:
-    1. Identical consecutive calls (same tool + same args) — existing behaviour.
+    Catches three patterns:
+    1. Identical consecutive calls (same tool + same args).
     2. Same tool called many times with different args (e.g. varied SQL against
-       sqlite_master) — new, prevents the LLM from trying slight variations.
+       sqlite_master) — prevents the LLM from trying slight variations.
+    3. Absolute total tool-call cap — hard limit regardless of interleaving.
     """
     limit = max(max_repeats, max_same_tool)
 
@@ -59,6 +60,20 @@ def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 10):
                     "but no useful result. The information is not available through this approach. "
                     "Report this to the user and move on. Do NOT try more variations."
                 ))]}
+        # Check 3: absolute total tool-call cap
+        if max_total_calls:
+            total = sum(
+                len(msg.tool_calls)
+                for msg in messages
+                if hasattr(msg, "tool_calls") and msg.tool_calls
+            )
+            if total >= max_total_calls:
+                logger.warning(f"Tool-call budget exhausted: {total}/{max_total_calls} calls used, injecting stop")
+                return {"messages": [SystemMessage(content=(
+                    f"[Budget exhausted] You have used {total} of {max_total_calls} allowed tool calls. "
+                    "You MUST stop calling tools NOW. Summarize all findings so far and respond to the user immediately."
+                ))]}
+
         return {}
     return detect_loop
 
@@ -148,7 +163,7 @@ async def invoke_data_agent(
         model=provider.get_langchain_llm(),
         tools=tools,
         prompt=_resolve_data_agent_prompt(context),
-        pre_model_hook=_make_loop_detector(max_repeats=2),
+        pre_model_hook=_make_loop_detector(max_repeats=2, max_total_calls=25),
     )
 
     try:

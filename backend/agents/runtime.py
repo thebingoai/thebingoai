@@ -117,7 +117,10 @@ class AgentRuntime:
         messages.append(HumanMessage(content=full_message))
 
         try:
-            result = await agent.ainvoke({"messages": messages})
+            result = await agent.ainvoke(
+                {"messages": messages},
+                config={"recursion_limit": settings.agent_recursion_limit},
+            )
 
             # Extract final answer
             result_messages = result.get("messages", [])
