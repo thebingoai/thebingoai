@@ -3,7 +3,7 @@
 from typing import AsyncGenerator, Optional
 
 try:
-    from anthropic import AsyncAnthropic, RateLimitError, APIError
+    from anthropic import AsyncAnthropic, RateLimitError, APIError, NotFoundError
     from langchain_anthropic import ChatAnthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
@@ -20,6 +20,8 @@ class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider for chat completions."""
 
     AVAILABLE_MODELS = [
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
         "claude-sonnet-4-20250514",
         "claude-3-5-sonnet-20241022",
         "claude-3-5-haiku-20241022",
@@ -129,13 +131,20 @@ class AnthropicProvider(BaseLLMProvider):
 
         system_msg, chat_messages = self._convert_messages(messages)
 
-        response = await client.messages.create(
-            model=model,
-            messages=chat_messages,
-            system=system_msg,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+        try:
+            response = await client.messages.create(
+                model=model,
+                messages=chat_messages,
+                system=system_msg,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+        except NotFoundError:
+            raise ValueError(
+                f"Anthropic model '{model}' not found. "
+                f"Check DEFAULT_LLM_MODEL in your .env file. "
+                f"Known models: {', '.join(self.AVAILABLE_MODELS)}"
+            )
         return response.content[0].text
 
     async def chat_stream(
@@ -165,15 +174,22 @@ class AnthropicProvider(BaseLLMProvider):
 
         system_msg, chat_messages = self._convert_messages(messages)
 
-        async with client.messages.stream(
-            model=model,
-            messages=chat_messages,
-            system=system_msg,
-            temperature=temperature,
-            max_tokens=max_tokens
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+        try:
+            async with client.messages.stream(
+                model=model,
+                messages=chat_messages,
+                system=system_msg,
+                temperature=temperature,
+                max_tokens=max_tokens
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
+        except NotFoundError:
+            raise ValueError(
+                f"Anthropic model '{model}' not found. "
+                f"Check DEFAULT_LLM_MODEL in your .env file. "
+                f"Known models: {', '.join(self.AVAILABLE_MODELS)}"
+            )
 
     def get_langchain_llm(self) -> "ChatAnthropic":
         """
@@ -188,7 +204,16 @@ class AnthropicProvider(BaseLLMProvider):
         if not ANTHROPIC_AVAILABLE:
             raise ImportError("langchain_anthropic package not installed. Run: pip install langchain-anthropic")
 
+        if not self.api_key:
+            raise ValueError("Anthropic API key not configured. Set ANTHROPIC_API_KEY in your .env file.")
+
         model = self.model or self.get_default_model()
+        if model not in self.AVAILABLE_MODELS:
+            logger.warning(
+                "Anthropic model '%s' is not in the known models list %s. "
+                "This may cause a model-not-found error. Check DEFAULT_LLM_MODEL in your .env file.",
+                model, self.AVAILABLE_MODELS
+            )
         return ChatAnthropic(
             model=model,
             api_key=self.api_key,

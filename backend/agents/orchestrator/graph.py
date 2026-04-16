@@ -52,6 +52,11 @@ def _friendly_error(e: Exception) -> str:
             "⚠️ The AI service API key is invalid or missing. "
             "Please check your configuration."
         )
+    if "not_found_error" in msg or ("404" in msg and "model" in msg.lower()):
+        return (
+            "⚠️ The configured AI model was not found. "
+            "Please check DEFAULT_LLM_MODEL / ANTHROPIC_DEFAULT_MODEL in your .env file."
+        )
     if "recursion limit" in msg.lower():
         return "⚠️ The request required too many steps. Try a simpler request."
     # Unknown error — keep message but strip raw dict noise
@@ -72,7 +77,13 @@ async def _rewrite_without_connection_ids(text: str, provider) -> str:
             f"{text}"
         ))
     ])
-    return result.content
+    content = result.content
+    if isinstance(content, list):
+        content = "".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    return content
 
 
 def build_user_message(user_question: str, file_contents: list = None) -> HumanMessage:
@@ -832,6 +843,13 @@ async def stream_orchestrator(
                 chunk = event.get("data", {}).get("chunk")
                 if chunk and hasattr(chunk, "content"):
                     content = chunk.content
+                    # Anthropic returns content as list of blocks e.g. [{"type": "text", "text": "..."}]
+                    # Normalize to plain string so buffer joins don't fail
+                    if isinstance(content, list):
+                        content = "".join(
+                            block.get("text", "") if isinstance(block, dict) else str(block)
+                            for block in content
+                        )
                     if content:
                         reasoning_buffer.append(content)
                         yield {"type": "reasoning_token", "content": content}

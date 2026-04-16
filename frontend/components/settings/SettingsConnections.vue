@@ -92,6 +92,10 @@
                 <Table2 class="h-3.5 w-3.5 text-gray-500" />
                 <span class="text-[10px] text-gray-500">{{ connection.table_count }} tables</span>
               </div>
+              <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} datasets`">
+                <Database class="h-3.5 w-3.5 text-gray-500" />
+                <span class="text-[10px] text-gray-500">{{ connection.table_count }} datasets</span>
+              </div>
               <div v-if="item === 'schema_date' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Schema refreshed ${formatRelativeDate(connection.schema_generated_at)}`">
                 <Clock class="h-3.5 w-3.5 text-gray-500" />
                 <span class="text-[10px] text-gray-500">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
@@ -239,7 +243,7 @@
               Refresh Schema
             </UiButton>
             <UiButton
-              v-if="editingConnection"
+              v-if="editingConnection && !isBigQueryConnection"
               variant="outline"
               size="sm"
               :loading="reprofilingId === editingConnection.id"
@@ -534,6 +538,114 @@
             </div>
           </template>
 
+          <!-- BigQuery connection form (creating new bigquery connection) -->
+          <template v-else-if="isBigQueryConnection && !editingConnection">
+            <form @submit.prevent="handleFormSubmit" class="space-y-4">
+              <div>
+                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Service Account JSON</label>
+                <div
+                  class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
+                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
+                  @dragover.prevent="bigqueryJsonDragOver = true"
+                  @dragleave.prevent="bigqueryJsonDragOver = false"
+                  @drop.prevent="handleBigQueryJsonDrop"
+                >
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    ref="bigqueryJsonFileInputRef"
+                    @change="handleBigQueryJsonFileChange"
+                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div v-if="!bigqueryJsonFile">
+                    <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p class="text-sm text-gray-600">Drop your service account JSON here</p>
+                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 mt-1">.json — GCP service account key</p>
+                  </div>
+                  <div v-else class="flex items-center gap-3 justify-center">
+                    <Database class="h-5 w-5 text-blue-500 shrink-0" />
+                    <div class="text-left min-w-0">
+                      <p class="text-sm font-medium text-gray-900 truncate">{{ bigqueryJsonFile.name }}</p>
+                      <p class="text-xs text-gray-500">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
+                    </div>
+                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
+                      <component :is="X" class="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <p v-if="bigqueryFormErrors.json" class="text-xs text-red-500 mt-1">{{ bigqueryFormErrors.json }}</p>
+              </div>
+
+              <!-- Auto-populated info preview -->
+              <div v-if="bigquerySaInfo" class="bg-gray-50 rounded-lg px-3 py-2 space-y-1">
+                <p class="text-xs text-gray-500">
+                  Connection name: <span class="font-medium text-gray-700">{{ form.name || '—' }}</span>
+                </p>
+                <p class="text-xs text-gray-500">
+                  Project: <span class="font-mono text-gray-700">{{ bigquerySaInfo.project_id || '—' }}</span>
+                </p>
+              </div>
+
+            </form>
+          </template>
+
+          <!-- BigQuery view (editing existing BigQuery connection) -->
+          <template v-else-if="isBigQueryConnection && editingConnection">
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Service Account</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.username }}</p>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">GCP Project</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.host }}</p>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Update Service Account JSON (optional)</label>
+                <div
+                  class="relative border-2 border-dashed rounded-lg p-4 text-center transition-colors mt-1.5"
+                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
+                  @dragover.prevent="bigqueryJsonDragOver = true"
+                  @dragleave.prevent="bigqueryJsonDragOver = false"
+                  @drop.prevent="handleBigQueryJsonDrop"
+                >
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    ref="bigqueryJsonFileInputRef"
+                    @change="handleBigQueryJsonFileChange"
+                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div v-if="!bigqueryJsonFile">
+                    <p class="text-xs text-gray-500">Drop new .json key to replace credentials</p>
+                  </div>
+                  <div v-else class="flex items-center gap-2 justify-center">
+                    <Database class="h-4 w-4 text-blue-500 shrink-0" />
+                    <p class="text-xs font-medium text-gray-900 truncate">{{ bigqueryJsonFile.name }}</p>
+                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
+                      <component :is="X" class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-400 mt-1">Leave blank to keep existing credentials.</p>
+              </div>
+            </div>
+
+            <div class="border-t border-gray-200 pt-4 mt-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Delete this connection</p>
+                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
+                </div>
+                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
+                  <Trash2 class="h-3.5 w-3.5" />
+                  Delete
+                </UiButton>
+              </div>
+            </div>
+          </template>
+
           <!-- Standard database connection form -->
           <template v-else>
           <form @submit.prevent="handleFormSubmit" class="space-y-4">
@@ -646,115 +758,244 @@
 
         <!-- 60% schema panel -->
         <div class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
-          <div v-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400">
+          <!-- BigQuery permission checker: shown during create (no editingConnection yet) -->
+          <template v-if="isBigQueryConnection && !editingConnection">
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                @click="permissionCheckExpanded = !permissionCheckExpanded"
+                class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+              >
+                <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
+                Permission Check
+              </button>
+            </div>
+
+            <!-- Permission Status (collapsible) -->
+            <div v-if="permissionCheckExpanded" class="space-y-3 shrink-0">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-gray-700">Read Access</span>
+                  <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
+                  <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
+                  <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                </div>
+                <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                  <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> to the service account on this project.</p>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-gray-700">Write Access</span>
+                  <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
+                  <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
+                  <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                  <span v-else class="h-4 w-4 shrink-0" />
+                  <button
+                    type="button"
+                    @click="toggleWriteAccess"
+                    class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-auto"
+                    :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
+                  >
+                    <span
+                      class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                      :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
+                    />
+                  </button>
+                </div>
+                <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                  <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Upload to start check -->
+            <div v-if="!bigqueryJsonFile" class="text-center py-4 text-xs text-gray-400 shrink-0">
+              Upload a service account JSON to check permissions
+            </div>
+          </template>
+
+          <!-- Non-BigQuery: no editingConnection yet -->
+          <div v-else-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400">
             <Database class="h-4 w-4" />
             <span v-if="isFileUploadConnection">Upload the file to explore its schema.</span>
             <span v-else>Save the connection to explore its schema.</span>
           </div>
+
+          <!-- editing connection: schema panel for all non-BigQuery, or BigQuery with file drop -->
           <template v-else>
-            <!-- Header -->
-            <div class="flex items-center gap-2 shrink-0">
-              <h3 class="text-sm font-medium text-gray-900">Database Schema</h3>
-              <span v-if="schema" class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                {{ schema.table_names.length }} tables
-              </span>
-            </div>
-
-            <!-- Loading state -->
-            <div v-if="schemaLoading" class="space-y-2 shrink-0">
-              <UiSkeleton class="h-5 w-full" />
-              <UiSkeleton class="h-5 w-5/6" />
-              <UiSkeleton class="h-5 w-4/6" />
-            </div>
-
-            <!-- Error state -->
-            <div v-else-if="schemaError" class="text-sm text-red-500 shrink-0">
-              {{ schemaError }}
-            </div>
-
-            <!-- No schema yet -->
-            <div v-else-if="!schema" class="flex items-center gap-2 text-sm text-gray-400 shrink-0">
-              <Database class="h-4 w-4" />
-              Click "Refresh Schema" to discover database structure.
-            </div>
-
-            <!-- Schema tree -->
-            <template v-else>
-              <!-- Search -->
-              <div class="relative shrink-0">
-                <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                <input
-                  v-model="schemaSearch"
-                  type="text"
-                  placeholder="Filter tables..."
-                  class="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+            <!-- BigQuery with editing connection: permission checker -->
+            <template v-if="isBigQueryConnection">
+              <div class="flex items-center justify-between gap-2 shrink-0">
+                <button
+                  type="button"
+                  @click="permissionCheckExpanded = !permissionCheckExpanded"
+                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+                >
+                  <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
+                  Permission Check
+                </button>
+                <button
+                  type="button"
+                  @click="checkBigQueryPermissionsFromSaved(editingConnection!.id)"
+                  class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                >
+                  <RefreshCw class="h-3 w-3" />
+                  Re-check
+                </button>
               </div>
 
-              <!-- Tree -->
-              <div class="overflow-y-auto flex-1 space-y-1">
-                <div v-for="(schemaData, schemaName) in filteredSchemas" :key="schemaName">
-                  <!-- Schema row -->
-                  <button
-                    @click="toggleSchema(String(schemaName))"
-                    class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
-                  >
-                    <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <Database class="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                    <span class="text-xs font-medium text-gray-700 truncate">{{ schemaName }}</span>
-                    <span class="text-xs text-gray-400 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
-                  </button>
-
-                  <!-- Tables -->
-                  <div v-if="expandedSchemas[String(schemaName)]" class="ml-4 space-y-0.5">
-                    <div v-for="(tableData, tableName) in schemaData.tables" :key="tableName">
-                      <!-- Table row -->
-                      <button
-                        @click="toggleTable(`${schemaName}.${tableName}`)"
-                        class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
-                      >
-                        <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                        <Table2 class="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                        <span class="text-xs text-gray-700 truncate">{{ tableName }}</span>
-                        <span v-if="tableData.row_count != null" class="text-xs text-gray-400 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
-                      </button>
-
-                      <!-- Columns -->
-                      <div v-if="expandedTables[`${schemaName}.${tableName}`]" class="ml-6 space-y-0.5">
-                        <div
-                          v-for="col in tableData.columns"
-                          :key="col.name"
-                          class="flex items-center gap-1.5 py-0.5 px-2 text-xs"
-                        >
-                          <Key v-if="col.primary_key" class="h-3 w-3 text-amber-500 shrink-0" />
-                          <span v-else class="h-3 w-3 shrink-0" />
-                          <span class="text-gray-600 truncate">{{ col.name }}</span>
-                          <span class="text-gray-400 bg-gray-100 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
-                          <span v-if="col.nullable" class="text-gray-400 shrink-0">?</span>
-                        </div>
-                      </div>
-                    </div>
+              <!-- Permission Status (collapsible) -->
+              <div v-if="permissionCheckExpanded" class="space-y-3 shrink-0">
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-700">Read Access</span>
+                    <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
+                    <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
+                    <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                  </div>
+                  <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                    <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> to the service account on this project.</p>
                   </div>
                 </div>
-
-                <!-- Relationships -->
-                <div v-if="schema.relationships.length > 0" class="border-t border-gray-100 pt-3 mt-2">
-                  <h4 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Relationships</h4>
-                  <div class="space-y-1">
-                    <div
-                      v-for="rel in schema.relationships"
-                      :key="`${rel.from}-${rel.to}`"
-                      class="flex items-center gap-1.5 text-xs text-gray-500"
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-700">Write Access</span>
+                    <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
+                    <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
+                    <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                    <span v-else class="h-4 w-4 shrink-0" />
+                    <button
+                      type="button"
+                      @click="toggleWriteAccess"
+                      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-auto"
+                      :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
                     >
-                      <Link2 class="h-3 w-3 shrink-0" />
-                      <span class="font-mono truncate">{{ rel.from }}</span>
-                      <span class="shrink-0">→</span>
-                      <span class="font-mono truncate">{{ rel.to }}</span>
-                    </div>
+                      <span
+                        class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                        :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
+                      />
+                    </button>
+                  </div>
+                  <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                    <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
                   </div>
                 </div>
               </div>
             </template>
+
+            <!-- Divider between permission check and schema for BigQuery -->
+            <div v-if="isBigQueryConnection" class="border-t border-gray-100 shrink-0" />
+
+            <!-- Schema panel for all editing connections (BigQuery + others) -->
+            <!-- Header -->
+            <div class="flex items-center gap-2 shrink-0">
+                <h3 class="text-sm font-medium text-gray-900">Database Schema</h3>
+                <span v-if="schema" class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                  {{ schema.table_names.length }} tables
+                </span>
+              </div>
+
+              <!-- Loading state -->
+              <div v-if="schemaLoading" class="space-y-2 shrink-0">
+                <UiSkeleton class="h-5 w-full" />
+                <UiSkeleton class="h-5 w-5/6" />
+                <UiSkeleton class="h-5 w-4/6" />
+              </div>
+
+              <!-- Error state -->
+              <div v-else-if="schemaError" class="text-sm text-red-500 shrink-0">
+                {{ schemaError }}
+              </div>
+
+              <!-- No schema yet -->
+              <div v-else-if="!schema" class="flex items-center gap-2 text-sm text-gray-400 shrink-0">
+                <Database class="h-4 w-4" />
+                Click "Refresh Schema" to discover database structure.
+              </div>
+
+              <!-- BigQuery: schema loaded but empty (no tables or missing dataViewer) -->
+              <div v-else-if="isBigQueryConnection && !schema.table_names?.length" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 shrink-0">
+                <p class="text-xs text-amber-700 leading-relaxed">No tables found. Either the project or dataset contains no tables, or the service account is missing <code class="bg-amber-100 px-1 rounded">roles/bigquery.dataViewer</code> which is required to list tables.</p>
+              </div>
+
+              <!-- Schema tree -->
+              <template v-else>
+                <!-- Search -->
+                <div class="relative shrink-0">
+                  <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    v-model="schemaSearch"
+                    type="text"
+                    placeholder="Filter tables..."
+                    class="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <!-- Tree -->
+                <div class="overflow-y-auto flex-1 space-y-1">
+                  <div v-for="(schemaData, schemaName) in filteredSchemas" :key="schemaName">
+                    <!-- Schema row -->
+                    <button
+                      @click="toggleSchema(String(schemaName))"
+                      class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
+                    >
+                      <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                      <Database class="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                      <span class="text-xs font-medium text-gray-700 truncate">{{ schemaName }}</span>
+                      <span class="text-xs text-gray-400 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
+                    </button>
+
+                    <!-- Tables -->
+                    <div v-if="expandedSchemas[String(schemaName)]" class="ml-4 space-y-0.5">
+                      <div v-for="(tableData, tableName) in schemaData.tables" :key="tableName">
+                        <!-- Table row -->
+                        <button
+                          @click="toggleTable(`${schemaName}.${tableName}`)"
+                          class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
+                        >
+                          <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          <Table2 class="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <span class="text-xs text-gray-700 truncate">{{ tableName }}</span>
+                          <span v-if="tableData.row_count != null" class="text-xs text-gray-400 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
+                        </button>
+
+                        <!-- Columns -->
+                        <div v-if="expandedTables[`${schemaName}.${tableName}`]" class="ml-6 space-y-0.5">
+                          <div
+                            v-for="col in tableData.columns"
+                            :key="col.name"
+                            class="flex items-center gap-1.5 py-0.5 px-2 text-xs"
+                          >
+                            <Key v-if="col.primary_key" class="h-3 w-3 text-amber-500 shrink-0" />
+                            <span v-else class="h-3 w-3 shrink-0" />
+                            <span class="text-gray-600 truncate">{{ col.name }}</span>
+                            <span class="text-gray-400 bg-gray-100 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
+                            <span v-if="col.nullable" class="text-gray-400 shrink-0">?</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Relationships -->
+                  <div v-if="schema.relationships.length > 0" class="border-t border-gray-100 pt-3 mt-2">
+                    <h4 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Relationships</h4>
+                    <div class="space-y-1">
+                      <div
+                        v-for="rel in schema.relationships"
+                        :key="`${rel.from}-${rel.to}`"
+                        class="flex items-center gap-1.5 text-xs text-gray-500"
+                      >
+                        <Link2 class="h-3 w-3 shrink-0" />
+                        <span class="font-mono truncate">{{ rel.from }}</span>
+                        <span class="shrink-0">→</span>
+                        <span class="font-mono truncate">{{ rel.to }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
           </template>
         </div>
 
@@ -855,7 +1096,7 @@
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen, Info, Loader2, Lock, Clock, Activity, FileText, User } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
@@ -869,6 +1110,7 @@ const connectorIcons: Record<string, string> = {
   dataset: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#6B7280" stroke-width="1.5"/><path d="M3 8h18" stroke="#6B7280" stroke-width="1.5"/><path d="M3 13h18" stroke="#6B7280" stroke-width="1.5"/><path d="M3 18h18" stroke="#6B7280" stroke-width="1.5"/><path d="M8 3v18" stroke="#6B7280" stroke-width="1.5"/><path d="M13 3v18" stroke="#6B7280" stroke-width="1.5"/></svg>`,
   facebook_ads: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.854V15.47H7.078V12h3.047V9.356c0-3.007 1.792-4.668 4.533-4.668 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.875V12h3.328l-.532 3.47h-2.796v8.385C19.612 22.954 24 17.99 24 12" fill="#1877F2"/></svg>`,
   sqlite: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 3.79 5 6v12c0 2.21 3.13 4 7 4s7-1.79 7-4V6c0-2.21-3.13-4-7-4z" stroke="#0F80CC" stroke-width="1.5" fill="none"/><path d="M5 6c0 2.21 3.13 4 7 4s7-1.79 7-4" stroke="#0F80CC" stroke-width="1.5"/><path d="M5 12c0 2.21 3.13 4 7 4s7-1.79 7-4" stroke="#0F80CC" stroke-width="1.5"/></svg>`,
+  bigquery: `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2zm6.5 20.5l-3-3a5.5 5.5 0 1 1 1.5-1.5l3 3-1.5 1.5zM16 20a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="#4285F4"/></svg>`,
 }
 
 // State
@@ -937,6 +1179,18 @@ const uploadingSqlite = ref(false)
 const sqliteForm = ref({ name: '' })
 const sqliteFormErrors = ref<{ name?: string; file?: string }>({})
 const sqliteUploadResult = ref<{ table_count: number; tables: Array<{ name: string; row_count: number; column_count: number }> } | null>(null)
+
+// BigQuery connection state
+const bigqueryJsonContent = ref('')
+const bigqueryJsonFile = ref<File | null>(null)
+const bigqueryJsonDragOver = ref(false)
+const bigqueryJsonFileInputRef = ref<HTMLInputElement | null>(null)
+const bigqueryFormErrors = ref<{ json?: string }>({})
+// Parsed SA info for permission checker
+const bigquerySaInfo = ref<{ project_id?: string; client_email?: string } | null>(null)
+const bigqueryPermissionCheck = ref<{ read: boolean | null; write: boolean | null }>({ read: null, write: null })
+const permissionCheckExpanded = ref(true)
+const bigqueryPermissionError = ref<{ read: string | null; write: string | null }>({ read: null, write: null })
 
 // Dataset grouping state
 const expandedGroups = ref<Record<string, boolean>>({})
@@ -1090,6 +1344,10 @@ const isSqliteConnection = computed(() => {
 
 const isFacebookAdsConnection = computed(() => {
   return form.value.db_type === 'facebook_ads' || editingConnection.value?.db_type === 'facebook_ads'
+})
+
+const isBigQueryConnection = computed(() => {
+  return form.value.db_type === 'bigquery' || editingConnection.value?.db_type === 'bigquery'
 })
 
 const isFileUploadConnection = computed(() => {
@@ -1304,6 +1562,13 @@ function selectConnectorType(typeId: string) {
   clearSqliteFile()
   sqliteForm.value = { name: '' }
   sqliteFormErrors.value = {}
+  bigqueryJsonContent.value = ''
+  bigqueryJsonFile.value = null
+  bigqueryJsonDragOver.value = false
+  bigqueryFormErrors.value = {}
+  bigquerySaInfo.value = null
+  bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
   // Close type picker first to avoid HeadlessUI focus trap conflict
   showTypePicker.value = false
   showFormSheet.value = true
@@ -1317,6 +1582,10 @@ function goBackToTypePicker() {
 function handleFormSheetClose(value: boolean) {
   if (value === false) {
     testSuccess.value = false
+    if (isBigQueryConnection.value) {
+      bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
+    }
     // If creating, go back to type picker
     // If editing, close form sheet
     if (!editingConnection.value) {
@@ -1415,6 +1684,13 @@ function openCreateDialog() {
   clearSqliteFile()
   sqliteForm.value = { name: '' }
   sqliteFormErrors.value = {}
+  bigqueryJsonContent.value = ''
+  bigqueryJsonFile.value = null
+  bigqueryJsonDragOver.value = false
+  bigqueryFormErrors.value = {}
+  bigquerySaInfo.value = null
+  bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
   showTypePicker.value = true
 }
 
@@ -1454,8 +1730,19 @@ function openEditDialog(connection: DatabaseConnection) {
   schemaSearch.value = ''
   expandedSchemas.value = {}
   expandedTables.value = {}
+  // Reset BigQuery state
+  bigqueryJsonFile.value = null
+  bigqueryJsonContent.value = ''
+  bigqueryFormErrors.value = {}
+  bigquerySaInfo.value = null
+  bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
   // Edit skips type picker, opens form sheet directly
   showFormSheet.value = true
+  // For BigQuery, auto-run permission check using saved credentials
+  if (connection.db_type === 'bigquery') {
+    checkBigQueryPermissionsFromSaved(connection.id)
+  }
   // Fetch schema in background
   fetchSchema(connection.id)
 }
@@ -1471,6 +1758,15 @@ function validateForm(): boolean {
 
   // Skip DB-specific validation for dataset connections
   if (form.value.db_type === 'dataset') {
+    return isValid
+  }
+
+  // BigQuery: only JSON is required; other fields auto-populated
+  if (form.value.db_type === 'bigquery') {
+    if (!editingConnection.value && !bigqueryJsonContent.value) {
+      bigqueryFormErrors.value.json = 'Service account JSON is required'
+      isValid = false
+    }
     return isValid
   }
 
@@ -1524,6 +1820,17 @@ async function handleFormSubmit() {
   }
 
   if (!validateForm()) return
+
+  // BigQuery: auto-populate fields from parsed JSON before building payload
+  if (isBigQueryConnection.value && bigqueryJsonContent.value) {
+    const parsed = JSON.parse(bigqueryJsonContent.value)
+    form.value.name = parsed.project_id || parsed.client_email?.split('@')[0] || 'BigQuery Connection'
+    form.value.host = parsed.project_id || ''
+    // database (dataset filter) is user-configurable — do not overwrite
+    form.value.username = 'service-account'
+    form.value.port = 443
+    form.value.password = bigqueryJsonContent.value
+  }
 
   try {
     saving.value = true
@@ -1583,6 +1890,17 @@ async function handleTestConnection() {
       // Use saved connection's stored credentials
       response = await api.connections.test(String(editingConnection.value.id)) as { success: boolean; message: string }
     } else {
+      // BigQuery: auto-populate fields from parsed JSON for unsaved test
+      if (isBigQueryConnection.value && bigqueryJsonContent.value) {
+        const parsed = JSON.parse(bigqueryJsonContent.value)
+        form.value.name = parsed.project_id || parsed.client_email?.split('@')[0] || 'BigQuery Connection'
+        form.value.host = parsed.project_id || ''
+        form.value.database = ''
+        form.value.username = 'service-account'
+        form.value.port = 443
+        form.value.password = bigqueryJsonContent.value
+      }
+
       const payload: any = {
         name: form.value.name,
         db_type: form.value.db_type,
@@ -1810,6 +2128,200 @@ async function handleSqliteUpload() {
   } finally {
     uploadingSqlite.value = false
   }
+}
+
+async function applyBigQueryJsonFile(file: File) {
+  bigqueryJsonFile.value = file
+  bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
+  try {
+    bigqueryJsonContent.value = await file.text()
+    const parsed = JSON.parse(bigqueryJsonContent.value)
+    if (parsed.type !== 'service_account') {
+      bigqueryFormErrors.value.json = 'Not a service account key (expected "type": "service_account")'
+      bigquerySaInfo.value = null
+      return
+    }
+    bigquerySaInfo.value = { project_id: parsed.project_id, client_email: parsed.client_email }
+    bigqueryFormErrors.value.json = undefined
+
+    // Auto-populate form fields
+    form.value.name = parsed.project_id || parsed.client_email?.split('@')[0] || 'BigQuery Connection'
+    form.value.host = parsed.project_id || ''
+    form.value.database = ''
+    form.value.username = 'service-account'
+    form.value.port = 443
+
+    // Trigger permission check
+    await checkBigQueryPermissions()
+  } catch {
+    bigqueryFormErrors.value.json = 'File is not valid JSON'
+    bigqueryJsonContent.value = ''
+    bigquerySaInfo.value = null
+  }
+}
+
+async function runBigQueryCheck(ssl_enabled: boolean): Promise<{ success: boolean; message: string }> {
+  const payload = {
+    name: bigquerySaInfo.value!.project_id || 'BigQuery',
+    db_type: 'bigquery',
+    host: bigquerySaInfo.value!.project_id,
+    port: 443,
+    database: '',
+    username: 'service-account',
+    password: bigqueryJsonContent.value,
+    ssl_enabled
+  }
+  try {
+    return await api.connections.testUnsaved(payload) as { success: boolean; message: string }
+  } catch (e: any) {
+    return { success: false, message: e?.data?.detail || e?.message || 'Connection failed' }
+  }
+}
+
+async function checkBigQueryPermissions() {
+  if (!bigquerySaInfo.value) return
+  bigqueryPermissionCheck.value.read = null
+  bigqueryPermissionError.value.read = null
+  if (form.value.ssl_enabled) {
+    bigqueryPermissionCheck.value.write = null
+    bigqueryPermissionError.value.write = null
+  }
+
+  const readResult = await runBigQueryCheck(false)
+  bigqueryPermissionCheck.value.read = readResult.success
+  if (!readResult.success) bigqueryPermissionError.value.read = readResult.message
+
+  if (form.value.ssl_enabled) {
+    const payload = {
+      name: bigquerySaInfo.value!.project_id || 'BigQuery',
+      db_type: 'bigquery',
+      host: bigquerySaInfo.value!.project_id,
+      port: 443,
+      database: form.value.database || '',
+      username: 'service-account',
+      password: bigqueryJsonContent.value,
+      ssl_enabled: true
+    }
+    try {
+      const writeResult = await api.connections.testWriteUnsaved(payload) as { success: boolean; message: string }
+      bigqueryPermissionCheck.value.write = writeResult.success
+      if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
+    } catch (e: any) {
+      bigqueryPermissionCheck.value.write = false
+      bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
+    }
+  }
+}
+
+async function checkBigQueryPermissionsFromSaved(connectionId: number) {
+  bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
+
+  // Read check
+  try {
+    const result = await api.connections.test(String(connectionId)) as { success: boolean; message: string }
+    bigqueryPermissionCheck.value.read = result.success
+    if (!result.success) bigqueryPermissionError.value.read = result.message
+  } catch (e: any) {
+    bigqueryPermissionCheck.value.read = false
+    bigqueryPermissionError.value.read = e?.data?.detail || e?.message || 'Connection failed'
+  }
+
+  // Write check (independent — tests roles/bigquery.dataEditor)
+  if (form.value.ssl_enabled) {
+    try {
+      const writeResult = await api.connections.testWrite(String(connectionId)) as { success: boolean; message: string }
+      bigqueryPermissionCheck.value.write = writeResult.success
+      if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
+    } catch (e: any) {
+      bigqueryPermissionCheck.value.write = false
+      bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
+    }
+  }
+}
+
+async function toggleWriteAccess() {
+  form.value.ssl_enabled = !form.value.ssl_enabled
+  if (form.value.ssl_enabled) {
+    bigqueryPermissionCheck.value.write = null
+    bigqueryPermissionError.value.write = null
+    if (bigquerySaInfo.value) {
+      // Create mode — use uploaded JSON
+      const payload = {
+        name: bigquerySaInfo.value.project_id || 'BigQuery',
+        db_type: 'bigquery',
+        host: bigquerySaInfo.value.project_id,
+        port: 443,
+        database: form.value.database || '',
+        username: 'service-account',
+        password: bigqueryJsonContent.value,
+        ssl_enabled: true
+      }
+      try {
+        const writeResult = await api.connections.testWriteUnsaved(payload) as { success: boolean; message: string }
+        bigqueryPermissionCheck.value.write = writeResult.success
+        if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
+      } catch (e: any) {
+        bigqueryPermissionCheck.value.write = false
+        bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
+      }
+    } else if (editingConnection.value) {
+      // Edit mode — use saved credentials
+      try {
+        const writeResult = await api.connections.testWrite(String(editingConnection.value.id)) as { success: boolean; message: string }
+        bigqueryPermissionCheck.value.write = writeResult.success
+        if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
+      } catch (e: any) {
+        bigqueryPermissionCheck.value.write = false
+        bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
+      }
+    }
+  } else {
+    bigqueryPermissionCheck.value.write = null
+    bigqueryPermissionError.value.write = null
+  }
+
+  // Auto-persist the toggle when editing an existing connection
+  if (editingConnection.value) {
+    try {
+      await api.connections.update(String(editingConnection.value.id), { ssl_enabled: form.value.ssl_enabled })
+      // Update local connection record so re-opening the dialog reflects the saved state
+      const idx = connections.value.findIndex(c => c.id === editingConnection.value!.id)
+      if (idx >= 0) connections.value[idx] = { ...connections.value[idx], ssl_enabled: form.value.ssl_enabled }
+    } catch {
+      // Non-fatal: the user can still save manually
+    }
+  }
+}
+
+function clearBigQueryJson() {
+  bigqueryJsonFile.value = null
+  bigqueryJsonContent.value = ''
+  bigqueryFormErrors.value.json = undefined
+  bigquerySaInfo.value = null
+  bigqueryPermissionCheck.value = { read: null, write: null }
+  bigqueryPermissionError.value = { read: null, write: null }
+  if (bigqueryJsonFileInputRef.value) {
+    bigqueryJsonFileInputRef.value.value = ''
+  }
+}
+
+function handleBigQueryJsonFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) applyBigQueryJsonFile(file)
+}
+
+function handleBigQueryJsonDrop(event: DragEvent) {
+  bigqueryJsonDragOver.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (!file) return
+  if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+    toast.error('Only .json service account key files are accepted')
+    return
+  }
+  applyBigQueryJsonFile(file)
 }
 
 async function handleDatasetUpload() {

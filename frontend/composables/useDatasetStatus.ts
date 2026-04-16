@@ -186,8 +186,20 @@ export const useDatasetStatus = () => {
     }
 
     // Source 2: Message attachments + agent steps (existing logic for active sessions)
+    // Only scan messages after the last context_reset to avoid leaking
+    // old dataset references past a "New Topic" boundary.
+    const allMessages = chatStore.messages
+    let resetIdx = -1
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      if ((allMessages[i] as any).source === 'context_reset') {
+        resetIdx = i
+        break
+      }
+    }
+    const postResetMessages = resetIdx >= 0 ? allMessages.slice(resetIdx + 1) : allMessages
+
     const allSteps: AgentStep[] = []
-    for (const msg of chatStore.messages) {
+    for (const msg of postResetMessages) {
       if (msg.agent_steps?.length) {
         allSteps.push(...msg.agent_steps)
       }
@@ -197,7 +209,7 @@ export const useDatasetStatus = () => {
       s => s.tool_name === 'create_dataset_from_upload' && s.step_type === 'tool_call'
     )
 
-    for (const msg of chatStore.messages) {
+    for (const msg of postResetMessages) {
       if (!msg.attachments?.length) continue
 
       for (const att of msg.attachments) {

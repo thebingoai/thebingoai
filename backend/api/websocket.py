@@ -214,7 +214,7 @@ async def _inject_conversation_datasets(
     )
 
     for conn in ephemeral_connections:
-        if conn.profiling_status == "ready" and conn.id not in agent_context.available_connections:
+        if conn.id not in agent_context.available_connections:
             agent_context.available_connections.append(conn.id)
             agent_context.connection_metadata.append(
                 ConnectionInfo(id=conn.id, name=conn.name, db_type=conn.db_type, database=conn.database)
@@ -415,20 +415,23 @@ async def _handle_chat_send(
         redis_client.setex(streaming_key, 300, request_id)
 
         # --- Credit context setup (bingo-credits plugin) ---
+        _credit_mgr = None
         _InsufficientCreditsError = None
         try:
             from backend.plugins.loader import get_loaded_plugins
-            if "bingo-credits" in get_loaded_plugins():
-                from bingo_credits.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
-                _credit_mgr = CreditContextManager(
-                    db=db,
-                    user_id=user.id,
-                    title=message[:80],
-                    provider_name=settings.default_llm_provider,
-                    conversation_id=conversation.id,
-                    block_on_insufficient=True,
-                )
-                await _credit_mgr.__aenter__()
+            if "bingo-admin" in get_loaded_plugins():
+                from bingo_admin.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+            else:
+                from backend.services.token_tracking_service import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+            _credit_mgr = CreditContextManager(
+                db=db,
+                user_id=user.id,
+                title=message[:80],
+                provider_name=settings.default_llm_provider,
+                conversation_id=conversation.id,
+                block_on_insufficient=True,
+            )
+            await _credit_mgr.__aenter__()
         except Exception as _credit_setup_err:
             if _InsufficientCreditsError and isinstance(_credit_setup_err, _InsufficientCreditsError):
                 await send({"type": "chat.error", "request_id": request_id, "thread_id": conversation.thread_id, "content": "Daily credits used up. Resets at midnight.", "error_code": "insufficient_credits"})
