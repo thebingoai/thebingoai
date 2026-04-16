@@ -415,11 +415,14 @@ async def _handle_chat_send(
         redis_client.setex(streaming_key, 300, request_id)
 
         # --- Credit context setup (bingo-credits plugin) ---
+        _credit_mgr = None
         _InsufficientCreditsError = None
         try:
             from backend.plugins.loader import get_loaded_plugins
-            if "bingo-credits" in get_loaded_plugins():
-                from bingo_credits.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+            if "bingo-admin" in get_loaded_plugins():
+                from bingo_admin.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+            else:
+                from backend.services.token_tracking_service import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
                 _credit_mgr = CreditContextManager(
                     db=db,
                     user_id=user.id,

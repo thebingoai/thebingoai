@@ -103,8 +103,10 @@ def execute_heartbeat_job(job_id: str):
         _credit_mgr = None
         try:
             from backend.plugins.loader import get_loaded_plugins
-            if "bingo-credits" in get_loaded_plugins():
-                from bingo_credits.credit_context import CreditContextManager
+            if "bingo-admin" in get_loaded_plugins():
+                from bingo_admin.credit_context import CreditContextManager
+            else:
+                from backend.services.token_tracking_service import CreditContextManager
                 _credit_mgr = CreditContextManager(
                     db=db,
                     user_id=job.user_id,
@@ -275,8 +277,10 @@ def execute_agent_heartbeat_job(job_id: str):
         _credit_mgr = None
         try:
             from backend.plugins.loader import get_loaded_plugins
-            if "bingo-credits" in get_loaded_plugins():
-                from bingo_credits.credit_context import CreditContextManager
+            if "bingo-admin" in get_loaded_plugins():
+                from bingo_admin.credit_context import CreditContextManager
+            else:
+                from backend.services.token_tracking_service import CreditContextManager
                 _credit_mgr = CreditContextManager(
                     db=db,
                     user_id=job.user_id,
