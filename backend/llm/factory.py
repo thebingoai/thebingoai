@@ -50,6 +50,16 @@ def get_provider(name: str, model: Optional[str] = None) -> BaseLLMProvider:
         raise ValueError(f"Unknown provider '{name}'. Available: {available}")
 
     provider = provider_class(model=model)
+
+    if not provider.is_available():
+        hints = {
+            "anthropic": "Set ANTHROPIC_API_KEY in your .env file.",
+            "openai": "Set OPENAI_API_KEY in your .env file.",
+            "ollama": "Ensure Ollama is running and OLLAMA_BASE_URL is reachable.",
+        }
+        hint = hints.get(name.lower(), "Check your .env configuration.")
+        raise ValueError(f"Provider '{name}' is not available. {hint}")
+
     for wrapper in _provider_wrappers:
         provider = wrapper(provider)
     return provider
