@@ -261,6 +261,28 @@ export const useChatStreaming = () => {
         })
       })
 
+      onEvent('query.result', (data) => {
+        const payload = data.data || {}
+        const columns: string[] = payload.columns || []
+        const rawRows: any[][] = payload.rows || []
+
+        // Transform [columns] + [[row]] into [{col: val}] for ChatMessageBubble
+        const results = rawRows.slice(0, 50).map((row: any[]) => {
+          const obj: Record<string, any> = {}
+          columns.forEach((col, i) => { obj[col] = row[i] ?? null })
+          return obj
+        })
+
+        // Keep the result with the most rows when multiple queries run in one turn
+        const lastMsg = chatStore.messages[chatStore.messages.length - 1]
+        if (!lastMsg?.results?.length || results.length >= lastMsg.results.length) {
+          chatStore.updateLastMessage({
+            sql: payload.sql || undefined,
+            results,
+          })
+        }
+      })
+
       onEvent('chat.reasoning_end', (data) => {
         // The last reasoning block turned out to be the final answer, not reasoning.
         // Remove the streaming reasoning step so it doesn't appear in the panel.

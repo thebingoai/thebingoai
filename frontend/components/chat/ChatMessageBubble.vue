@@ -109,10 +109,21 @@
         </div>
       </div>
 
-      <!-- SQL Query -->
+      <!-- SQL Query (collapsible) -->
       <div v-if="message.sql" class="mt-3">
-        <div class="rounded-lg bg-gray-50 p-4">
-          <pre class="text-sm"><code>{{ message.sql }}</code></pre>
+        <button
+          @click="sqlExpanded = !sqlExpanded"
+          class="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg
+            class="w-3 h-3 transition-transform"
+            :class="{ 'rotate-90': sqlExpanded }"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+          ><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+          SQL Query
+        </button>
+        <div v-if="sqlExpanded" class="mt-1.5 rounded-lg bg-gray-50 p-4">
+          <pre class="text-sm whitespace-pre-wrap"><code>{{ message.sql }}</code></pre>
         </div>
       </div>
 
@@ -227,6 +238,7 @@ const emit = defineEmits<{
 const chatStore = useChatStore()
 const dashboardStore = useDashboardStore()
 const api = useApi()
+const sqlExpanded = ref(false)
 
 const pendingSuggestions = computed(() =>
   (props.message.skillSuggestions ?? []).filter(s => chatStore.skillSuggestions.some(ss => ss.id === s.id))
