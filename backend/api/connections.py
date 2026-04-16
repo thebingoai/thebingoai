@@ -25,6 +25,18 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+def _schema_item_count(db_type: str, schema_data: dict) -> int:
+    """Return the appropriate count to store in table_count for a given connector type.
+
+    Connectors that expose 'dataset_count' in their card_meta_items (e.g. BigQuery)
+    should display the number of top-level schemas (datasets), not the total table count.
+    """
+    reg = get_connector_registration(db_type)
+    if reg and "dataset_count" in (reg.card_meta_items or []):
+        return len(schema_data.get("schemas", {}))
+    return len(schema_data.get("table_names", []))
+
+
 def _invalidate_dashboard_caches_for_connection(
     connection_id: int, user_id: str, db: Session,
 ) -> int:
@@ -131,7 +143,7 @@ async def create_connection(
             # Update connection with schema info
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
-            connection.table_count = len(schema_data["table_names"])
+            connection.table_count = _schema_item_count(connection.db_type, schema_data)
             db.commit()
             db.refresh(connection)
 
@@ -253,6 +265,32 @@ async def test_unsaved_connection(
         connector.test_connection()
         connector.close()
         return ConnectionTestResponse(success=True, message="Connection successful")
+    except Exception as e:
+        return ConnectionTestResponse(success=False, message=str(e))
+
+
+@router.post("/test-connection-write", response_model=ConnectionTestResponse)
+async def test_unsaved_write_access(
+    request: ConnectionCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Test write access (roles/bigquery.dataEditor) for an unsaved BigQuery connection."""
+    try:
+        connector = get_connector(
+            db_type=request.db_type,
+            host=request.host,
+            port=request.port,
+            database=request.database,
+            username=request.username,
+            password=request.password,
+            ssl_enabled=request.ssl_enabled,
+            ssl_ca_cert=request.ssl_ca_cert
+        )
+        has_write = connector.test_write_access()
+        connector.close()
+        if has_write:
+            return ConnectionTestResponse(success=True, message="Write access granted")
+        return ConnectionTestResponse(success=False, message="roles/bigquery.dataEditor not granted on this project or dataset")
     except Exception as e:
         return ConnectionTestResponse(success=False, message=str(e))
 
@@ -387,6 +425,41 @@ async def test_connection(
         return ConnectionTestResponse(success=False, message=str(e))
 
 
+@router.post("/{connection_id}/test-write", response_model=ConnectionTestResponse)
+async def test_write_access(
+    connection_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Test write access (roles/bigquery.dataEditor) for a saved connection."""
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
+
+    if not connection:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    try:
+        connector = get_connector(
+            db_type=connection.db_type,
+            host=connection.host,
+            port=connection.port,
+            database=connection.database,
+            username=connection.username,
+            password=connection.password,
+            ssl_enabled=connection.ssl_enabled,
+            ssl_ca_cert=connection.ssl_ca_cert
+        )
+        has_write = connector.test_write_access()
+        connector.close()
+        if has_write:
+            return ConnectionTestResponse(success=True, message="Write access granted")
+        return ConnectionTestResponse(success=False, message="roles/bigquery.dataEditor not granted on this project or dataset")
+    except Exception as e:
+        return ConnectionTestResponse(success=False, message=str(e))
+
+
 @router.post("/{connection_id}/refresh-schema", response_model=SchemaRefreshResponse)
 async def refresh_connection_schema(
     connection_id: int,
@@ -447,7 +520,7 @@ async def refresh_connection_schema(
             # Update connection timestamp and table count
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
-            connection.table_count = len(schema_json["table_names"])
+            connection.table_count = _schema_item_count(connection.db_type, schema_json)
 
             # Re-trigger profiling since schema changed
             from backend.tasks.profiling_tasks import profile_connection
