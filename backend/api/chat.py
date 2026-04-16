@@ -283,8 +283,10 @@ async def chat_stream(
             _InsufficientCreditsError = None
             try:
                 from backend.plugins.loader import get_loaded_plugins
-                if "bingo-credits" in get_loaded_plugins():
-                    from bingo_credits.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+                if "bingo-admin" in get_loaded_plugins():
+                    from bingo_admin.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+                else:
+                    from backend.services.token_tracking_service import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
                     _credit_mgr = CreditContextManager(
                         db=db,
                         user_id=current_user.id,
