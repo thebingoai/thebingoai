@@ -100,9 +100,9 @@ const selectedMessage = computed(() => {
 const steps = computed((): AgentStep[] => selectedMessage.value?.agent_steps || [])
 
 const stepCount = computed(() => {
-  // Show count from selected or latest assistant message
-  const msg = selectedMessage.value
-  return msg?.agent_steps?.length || 0
+  const steps = selectedMessage.value?.agent_steps
+  if (!steps?.length) return 0
+  return steps.filter(s => s.step_type !== 'tool_result').length
 })
 
 // Auto-scroll to bottom when tree content updates during streaming

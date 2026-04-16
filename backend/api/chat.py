@@ -48,6 +48,38 @@ async def _generate_title(user_message: str, assistant_response: str) -> str:
     return title or "Untitled"
 
 
+def _enrich_query_steps(steps: list, user_id: str) -> None:
+    """Embed actual query result data into execute_query steps before DB save.
+
+    Fetches rows from Redis (still warm at save time) and adds them to
+    step content so they persist in PostgreSQL and survive page refresh.
+    """
+    from backend.services.query_result_store import get_query_result
+
+    MAX_ROWS = 50
+
+    def _enrich(step: dict) -> None:
+        if step.get("tool_name") == "execute_query" and step.get("step_type") == "tool_result":
+            result = step.get("content", {}).get("result", {})
+            ref = result.get("result_ref")
+            if ref and "query_data" not in result:
+                data = get_query_result(ref, user_id)
+                if data:
+                    result["query_data"] = {
+                        "sql": data.get("sql"),
+                        "columns": data.get("columns", []),
+                        "rows": data.get("rows", [])[:MAX_ROWS],
+                    }
+
+    for step in steps:
+        _enrich(step)
+        # Also enrich nested steps inside data_agent tool results
+        if step.get("tool_name") == "data_agent" and step.get("step_type") == "tool_result":
+            sub_steps = step.get("content", {}).get("result", {}).get("steps", [])
+            for sub in sub_steps:
+                _enrich(sub)
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
@@ -296,6 +328,12 @@ async def chat_stream(
 
                 # Save agent steps
                 if collected_steps:
+                    # Enrich execute_query results with actual data from Redis
+                    # before persisting, so they survive page refresh
+                    from backend.services.query_result_store import get_query_result
+                    user_id_str = str(current_user.id)
+                    _enrich_query_steps(collected_steps, user_id_str)
+
                     from backend.models.agent_step import AgentStep
                     for i, step in enumerate(collected_steps):
                         agent_step = AgentStep(

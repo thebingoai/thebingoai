@@ -730,7 +730,7 @@ async def stream_orchestrator(
         step_start_times: Dict[str, float] = {}
         token_buffer = []
         reasoning_buffer = []
-        in_tool_execution = False
+        tool_depth = 0
         active_stream_run_id = None
 
         async for event in orchestrator.astream_events(
@@ -741,6 +741,10 @@ async def stream_orchestrator(
             kind = event.get("event")
 
             if kind == "on_tool_start":
+                tool_depth += 1
+                if tool_depth > 1:
+                    continue  # Sub-agent internal tool — skip
+
                 # Flush reasoning buffer as a completed reasoning step
                 if reasoning_buffer:
                     reasoning_text = "".join(reasoning_buffer)
@@ -754,7 +758,6 @@ async def stream_orchestrator(
                     yield {"type": "reasoning", "content": {"text": reasoning_text}}
                     reasoning_buffer.clear()
 
-                in_tool_execution = True
                 token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
@@ -775,7 +778,10 @@ async def stream_orchestrator(
                 }
 
             elif kind == "on_tool_end":
-                in_tool_execution = False
+                tool_depth -= 1
+                if tool_depth > 0:
+                    continue  # Sub-agent internal tool — skip
+
                 token_buffer.clear()
                 active_stream_run_id = None
                 tool_name = event.get("name")
@@ -836,7 +842,7 @@ async def stream_orchestrator(
                 if chunk and hasattr(chunk, "content"):
                     content = chunk.content
                     if content:
-                        if not in_tool_execution:
+                        if tool_depth == 0:
                             # Stream as reasoning tokens (may be intermediate reasoning or final answer)
                             reasoning_buffer.append(content)
                             yield {"type": "reasoning_token", "content": content}

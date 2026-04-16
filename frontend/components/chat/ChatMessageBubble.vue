@@ -264,9 +264,11 @@ const hasSteps = computed(() =>
   !!(props.message.agent_steps?.length || props.message.thinking_steps?.length)
 )
 
-const stepCount = computed(() =>
-  props.message.agent_steps?.length || props.message.thinking_steps?.length || 0
-)
+const stepCount = computed(() => {
+  const steps = props.message.agent_steps
+  if (steps?.length) return steps.filter(s => s.step_type !== 'tool_result').length
+  return props.message.thinking_steps?.length || 0
+})
 
 const openReasoning = () => {
   chatStore.selectMessageForReasoning(props.message.id)
