@@ -283,17 +283,19 @@ async def chat_stream(
             _InsufficientCreditsError = None
             try:
                 from backend.plugins.loader import get_loaded_plugins
-                if "bingo-credits" in get_loaded_plugins():
-                    from bingo_credits.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
-                    _credit_mgr = CreditContextManager(
-                        db=db,
-                        user_id=current_user.id,
-                        title=request.message[:80],
-                        provider_name=settings.default_llm_provider,
-                        conversation_id=conversation.id,
-                        block_on_insufficient=True,
-                    )
-                    await _credit_mgr.__aenter__()
+                if "bingo-admin" in get_loaded_plugins():
+                    from bingo_admin.credit_context import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+                else:
+                    from backend.services.token_tracking_service import CreditContextManager, InsufficientCreditsError as _InsufficientCreditsError
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=current_user.id,
+                    title=request.message[:80],
+                    provider_name=settings.default_llm_provider,
+                    conversation_id=conversation.id,
+                    block_on_insufficient=True,
+                )
+                await _credit_mgr.__aenter__()
             except Exception as _credit_setup_err:
                 if _InsufficientCreditsError and isinstance(_credit_setup_err, _InsufficientCreditsError):
                     yield f"data: {json.dumps({'type': 'error', 'content': 'Daily credits used up. Resets at midnight.', 'error_code': 'insufficient_credits'})}\n\n"
