@@ -780,8 +780,12 @@
                   <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
                   <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
                 </div>
+                <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
+                  <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
+                </div>
                 <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                  <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> to the service account on this project.</p>
+                  <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
                 </div>
               </div>
               <div class="space-y-1">
@@ -802,6 +806,9 @@
                       :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
                     />
                   </button>
+                </div>
+                <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
                 </div>
                 <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
                   <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
@@ -854,8 +861,12 @@
                     <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
                     <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
                   </div>
+                  <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
+                    <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
+                  </div>
                   <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                    <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> to the service account on this project.</p>
+                    <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
                   </div>
                 </div>
                 <div class="space-y-1">
@@ -876,6 +887,9 @@
                         :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
                       />
                     </button>
+                  </div>
+                  <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
                   </div>
                   <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
                     <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
