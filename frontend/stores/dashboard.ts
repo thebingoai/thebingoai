@@ -348,7 +348,7 @@ export const useDashboardStore = defineStore('dashboard', {
         await Promise.all(sqlWidgets.map(async (widget) => {
           if (!widget.dataSource) return
           try {
-            const chartType = widget.widget?.config?.type
+            const chartType = widget.widget?.type
             const mapping = chartType
               ? { ...widget.dataSource.mapping, chartType }
               : widget.dataSource.mapping
