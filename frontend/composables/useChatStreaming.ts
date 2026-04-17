@@ -374,13 +374,18 @@ export const useChatStreaming = () => {
         .filter(d => d.step === 'ready' && d.connectionId)
         .map(d => d.connectionId!)
 
+      // Merge any connection IDs from @mentions in the message text
+      const { extractMentionConnectionIds } = useMentions()
+      const mentionIds = extractMentionConnectionIds(message)
+      const allConnectionIds = [...new Set([...readyConnectionIds, ...mentionIds])]
+
       // Send via WebSocket
       ws.send({
         type: 'chat.send',
         request_id: requestId,
         thread_id: chatStore.currentThreadId || null,
         message,
-        connection_ids: readyConnectionIds,
+        connection_ids: allConnectionIds,
         file_ids: fileIds
       })
     })
