@@ -89,6 +89,7 @@
             :show-actions="shouldShowActions(message, index)"
             :action-type="getActionType(message)"
             :following-user-content="getFollowingUserContent(index)"
+            :is-last="index === chatStore.messages.length - 1"
             @send-action="(text: string, source?: string) => emit('send-action', text, source as any)"
           />
         </template>
