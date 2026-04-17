@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex h-screen bg-white">
+  <div class="relative flex h-screen bg-white dark:bg-neutral-900">
     <!-- Mobile backdrop overlay (shown when sidebar visible on mobile) -->
     <div
       v-if="isMobile && !layoutStore.isMainExpanded"
@@ -12,7 +12,7 @@
 
     <!-- Main content panel - expands leftward over sidebar -->
     <main
-      class="absolute inset-y-0 right-0 z-20 flex flex-col overflow-hidden bg-white shadow-2xl transition-[width] duration-300 ease-in-out"
+      class="absolute inset-y-0 right-0 z-20 flex flex-col overflow-hidden bg-white dark:bg-neutral-900 shadow-2xl transition-[width] duration-300 ease-in-out"
       :class="layoutStore.isMainExpanded || isMobile ? 'w-full' : 'w-[calc(100%-250px)]'"
     >
       <!-- Toggle button inside main, top-left -->

@@ -185,6 +185,13 @@ export const useChatStore = defineStore('chat', {
       }
     },
 
+    updateMessageById(id: string, updates: Partial<Message>) {
+      const msg = this.messages.find(m => m.id === id)
+      if (msg) {
+        Object.assign(msg, updates)
+      }
+    },
+
     setConversations(conversations: Conversation[]) {
       this.conversations = conversations
       this.conversationsLoaded = true
