@@ -853,6 +853,7 @@ async def stream_orchestrator(
                     if content:
                         reasoning_buffer.append(content)
                         yield {"type": "reasoning_token", "content": content}
+                        yield {"type": "token", "content": content}
 
         # After the loop: if reasoning_buffer is non-empty, the last LLM turn
         # had no tool call — this is the final answer, not reasoning.
@@ -862,8 +863,8 @@ async def stream_orchestrator(
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
             full_text = "".join(reasoning_buffer)
             if _CONNECTION_ID_PATTERN.search(full_text):
-                full_text = await _rewrite_without_connection_ids(full_text, provider)
-            yield {"type": "token", "content": full_text}
+                cleaned = await _rewrite_without_connection_ids(full_text, provider)
+                yield {"type": "token", "content": cleaned, "replace": True}
             reasoning_buffer.clear()
 
 
