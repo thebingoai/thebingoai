@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files, sqlite_upload
+from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files, sqlite_upload, credits
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
 from backend.api import feature_config
 from backend.auth.webhooks import router as webhook_router
@@ -33,6 +33,9 @@ router.include_router(memory.router)
 
 # Usage Tracking (Phase 07)
 router.include_router(usage.router)
+
+# Credits Balance
+router.include_router(credits.router)
 
 # Enterprise: Custom Agent Registry (Phase 3)
 router.include_router(custom_agents.router)

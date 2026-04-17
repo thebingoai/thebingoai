@@ -182,6 +182,52 @@
   }
 }
 
+/* Dark mode overrides */
+.dark .grid-stack-item-content {
+  @apply bg-neutral-800 border-neutral-700;
+}
+
+.dark .grid-stack-placeholder > .placeholder-content {
+  @apply border-neutral-600 bg-neutral-800;
+}
+
+.dark ::-webkit-scrollbar-track {
+  @apply bg-neutral-800;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-neutral-600;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  @apply bg-neutral-500;
+}
+
+.dark .prose-chat {
+  @apply text-neutral-200;
+}
+
+.dark .prose-chat code {
+  @apply bg-neutral-800 text-neutral-200;
+}
+
+.dark .prose-chat pre {
+  @apply bg-neutral-900;
+}
+
+.dark .prose-chat th {
+  @apply bg-neutral-800;
+}
+
+.dark .prose-chat th,
+.dark .prose-chat td {
+  @apply border-neutral-700;
+}
+
+.dark .prose-chat blockquote {
+  @apply border-neutral-600;
+}
+
 /* Mobile slide-up transition for overlay panels */
 .slide-up-enter-active {
   transition: transform 0.3s ease-out;
