@@ -44,18 +44,23 @@ export const useChatStreaming = () => {
       created_at: new Date().toISOString()
     }
     chatStore.addMessage(assistantMessage)
+    const assistantMsgId = assistantMessage.id
 
     const requestId = crypto.randomUUID()
     let accumulatedContent = ''
-    let displayedContent = ''
-    let dripTimer: ReturnType<typeof setInterval> | null = null
-    const DRIP_INTERVAL = 20 // ms per tick
-    const CHARS_PER_TICK = 1 // characters revealed per tick (~50 chars/sec)
     const thinkingSteps: Array<{ step: string; description: string }> = []
     const agentSteps: AgentStep[] = []
     let currentReasoningText = ''
     let acknowledgeText = ''
     const stepsLog: string[] = []
+
+    // Decouple display cadence from backend token arrival rate so the bubble
+    // drips at a steady ~40 chars/sec instead of bursting at LLM token speed.
+    let displayedContent = ''
+    let dripTimer: ReturnType<typeof setInterval> | null = null
+    const DRIP_INTERVAL_MS = 25
+    const CHARS_PER_TICK = 1
+    const CATCHUP_BACKLOG = 400
 
     /** Extract compact arg summary for the steps log (skip connection_id, show key value). */
     const compactArg = (args: Record<string, any>): string => {
@@ -76,7 +81,31 @@ export const useChatStreaming = () => {
 
     /** Push steps_log to the message so ChatMessageBubble can render it. */
     const syncStepsLog = () => {
-      chatStore.updateLastMessage({ steps_log: [...stepsLog] })
+      chatStore.updateMessageById(assistantMsgId, { steps_log: [...stepsLog] })
+    }
+
+    const startContentDrip = () => {
+      if (dripTimer) return
+      dripTimer = setInterval(() => {
+        const backlog = accumulatedContent.length - displayedContent.length
+        if (backlog <= 0) return
+        const step = backlog > CATCHUP_BACKLOG ? Math.ceil(backlog / 50) : CHARS_PER_TICK
+        displayedContent = accumulatedContent.slice(0, displayedContent.length + step)
+        chatStore.updateMessageById(assistantMsgId, { content: displayedContent, steps_log_expanded: false })
+      }, DRIP_INTERVAL_MS)
+    }
+
+    const flushContentDrip = () => {
+      if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
+      if (displayedContent !== accumulatedContent) {
+        displayedContent = accumulatedContent
+        chatStore.updateMessageById(assistantMsgId, { content: displayedContent })
+      }
+    }
+
+    const resetContentDrip = () => {
+      if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
+      displayedContent = ''
     }
 
     // Register one-time handlers scoped to this request_id
@@ -103,7 +132,7 @@ export const useChatStreaming = () => {
           const unsub = ws.on('connected', () => { unsub(); clearTimeout(timeout); resolve() })
         })
       } catch (err: any) {
-        chatStore.updateLastMessage({ content: `Error: ${err.message}. Please log in again.` })
+        chatStore.updateMessageById(assistantMsgId, { content: `Error: ${err.message}. Please log in again.` })
         chatStore.isStreaming = false
         return
       }
@@ -111,32 +140,20 @@ export const useChatStreaming = () => {
 
     return new Promise<void>((resolve) => {
       const cleanup = () => {
-        flushContentDrip()
+        if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
         unsubs.forEach(fn => fn())
         chatStore.isStreaming = false
         resolve()
       }
 
-      // Drip buffer — release characters at a readable pace instead of raw streaming speed
-      const startContentDrip = () => {
-        if (dripTimer) return
-        dripTimer = setInterval(() => {
-          if (displayedContent.length >= accumulatedContent.length) return
-          displayedContent = accumulatedContent.slice(0, displayedContent.length + CHARS_PER_TICK)
-          chatStore.updateLastMessage({ content: displayedContent, steps_log_expanded: false })
-        }, DRIP_INTERVAL)
-      }
-
-      const flushContentDrip = () => {
-        if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
-        if (displayedContent !== accumulatedContent) {
-          displayedContent = accumulatedContent
-          chatStore.updateLastMessage({ content: displayedContent })
-        }
-      }
-
       onEvent('chat.token', (data) => {
-        accumulatedContent += (data.content || '')
+        if (data.replace) {
+          accumulatedContent = data.content || ''
+          displayedContent = ''
+          chatStore.updateMessageById(assistantMsgId, { content: '', steps_log_expanded: false })
+        } else {
+          accumulatedContent += (data.content || '')
+        }
         startContentDrip()
       })
 
@@ -159,12 +176,17 @@ export const useChatStreaming = () => {
         }
 
         acknowledgeText = currentReasoningText
-        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+        chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
       })
 
       onEvent('chat.tool_call', (data) => {
         const toolName = data.content?.tool || data.tool || 'Tool'
         const args = data.content?.args || {}
+
+        // This LLM call turned out not to be the final answer — wipe any
+        // tokens that streamed tentatively into the bubble.
+        accumulatedContent = ''
+        resetContentDrip()
 
         // Finalize any streaming reasoning step and add to steps log
         const lastStep = agentSteps[agentSteps.length - 1]
@@ -195,7 +217,8 @@ export const useChatStreaming = () => {
         stepsLog.push(argSummary ? `${ts}  › ${label} — ${argSummary}` : `${ts}  › ${label}`)
         syncStepsLog()
 
-        chatStore.updateLastMessage({
+        chatStore.updateMessageById(assistantMsgId, {
+          content: '',
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
         })
@@ -217,7 +240,7 @@ export const useChatStreaming = () => {
           })
         }
         currentReasoningText = ''
-        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+        chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
       })
 
       onEvent('chat.tool_result', (data) => {
@@ -254,7 +277,7 @@ export const useChatStreaming = () => {
           syncStepsLog()
         }
 
-        chatStore.updateLastMessage({
+        chatStore.updateMessageById(assistantMsgId, {
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
         })
@@ -273,9 +296,9 @@ export const useChatStreaming = () => {
         })
 
         // Keep the result with the most rows when multiple queries run in one turn
-        const lastMsg = chatStore.messages[chatStore.messages.length - 1]
-        if (!lastMsg?.results?.length || results.length >= lastMsg.results.length) {
-          chatStore.updateLastMessage({
+        const targetMsg = chatStore.messages.find(m => m.id === assistantMsgId)
+        if (!targetMsg?.results?.length || results.length >= (targetMsg.results?.length || 0)) {
+          chatStore.updateMessageById(assistantMsgId, {
             sql: payload.sql || undefined,
             results,
           })
@@ -291,7 +314,7 @@ export const useChatStreaming = () => {
             agentSteps.pop()
           }
           currentReasoningText = ''
-          chatStore.updateLastMessage({ steps_log_expanded: false, agent_steps: [...agentSteps] })
+          chatStore.updateMessageById(assistantMsgId, { steps_log_expanded: false, agent_steps: [...agentSteps] })
         }
       })
 
@@ -300,13 +323,11 @@ export const useChatStreaming = () => {
       })
 
       onEvent('chat.done', (data) => {
-        flushContentDrip()
-
         // Finalize any leftover streaming reasoning step
         const lastStep = agentSteps[agentSteps.length - 1]
         if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
           lastStep.status = 'completed'
-          chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+          chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
         }
 
         const threadId: string = data.thread_id
@@ -325,6 +346,7 @@ export const useChatStreaming = () => {
         // Refresh credit balance after each turn so the badge stays current
         refreshCredits()
 
+        flushContentDrip()
         cleanup()
       })
 
@@ -334,13 +356,15 @@ export const useChatStreaming = () => {
         if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
           lastStep.status = 'completed'
         }
-        chatStore.updateLastMessage({ content: `Error: ${data.content}`, agent_steps: [...agentSteps] })
+        resetContentDrip()
+        chatStore.updateMessageById(assistantMsgId, { content: `Error: ${data.content}`, agent_steps: [...agentSteps] })
         cleanup()
       })
 
       onEvent('chat.rate_limited', (data) => {
         chatStore.rateLimitRetryAfter = data.retry_after || 0
-        chatStore.updateLastMessage({ content: 'You\'ve reached your free tier limit. Please wait or add your own API key in Settings.' })
+        resetContentDrip()
+        chatStore.updateMessageById(assistantMsgId, { content: 'You\'ve reached your free tier limit. Please wait or add your own API key in Settings.' })
         cleanup()
       })
 
@@ -350,13 +374,18 @@ export const useChatStreaming = () => {
         .filter(d => d.step === 'ready' && d.connectionId)
         .map(d => d.connectionId!)
 
+      // Merge any connection IDs from @mentions in the message text
+      const { extractMentionConnectionIds } = useMentions()
+      const mentionIds = extractMentionConnectionIds(message)
+      const allConnectionIds = [...new Set([...readyConnectionIds, ...mentionIds])]
+
       // Send via WebSocket
       ws.send({
         type: 'chat.send',
         request_id: requestId,
         thread_id: chatStore.currentThreadId || null,
         message,
-        connection_ids: readyConnectionIds,
+        connection_ids: allConnectionIds,
         file_ids: fileIds
       })
     })

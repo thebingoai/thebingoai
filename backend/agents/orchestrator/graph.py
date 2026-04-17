@@ -63,27 +63,35 @@ def _friendly_error(e: Exception) -> str:
     return f"⚠️ Something went wrong: {msg}"
 
 
-_CONNECTION_ID_PATTERN = _re.compile(r'connection[\s_]*id[:\s]*\d+', _re.IGNORECASE)
+# Parentheticals like "(connection id: 5)" are stripped whole so we don't leave
+# "(the database)" behind; remaining phrasings are replaced with "the database".
+_CONNECTION_ID_PARENTHETICAL = _re.compile(
+    r'\s*[\(\[][^)\]]*\bconnection[^)\]]*\d+[^)\]]*[\)\]]',
+    _re.IGNORECASE,
+)
+_CONNECTION_ID_PATTERN = _re.compile(
+    r'\bconnection(?:s|[_\s-]*(?:id|number))?[\s:=#]*#?\s*\d+\b',
+    _re.IGNORECASE,
+)
+_ARTICLE_DUPLICATE = _re.compile(r'\b(?:the|a|an)\s+the\b', _re.IGNORECASE)
+_SPACE_BEFORE_PUNCT = _re.compile(r'\s+([.,;:!?])')
+_MULTI_SPACE = _re.compile(r' {2,}')
 
 
-async def _rewrite_without_connection_ids(text: str, provider) -> str:
-    """Ask the LLM to rewrite the response without connection ID references."""
-    llm = provider.get_langchain_llm()
-    result = await llm.ainvoke([
-        HumanMessage(content=(
-            "Rewrite the following response exactly as-is, but remove any mention of "
-            "connection IDs, database connection numbers, or internal identifiers. "
-            "Keep everything else unchanged. Do not add any preamble.\n\n"
-            f"{text}"
-        ))
-    ])
-    content = result.content
-    if isinstance(content, list):
-        content = "".join(
-            block.get("text", "") if isinstance(block, dict) else str(block)
-            for block in content
-        )
-    return content
+def _redact_connection_ids(text: str) -> str:
+    """Strip internal connection identifiers from user-facing text.
+
+    Handles "connection 5", "connection_id=3", "(connection id: 1)",
+    "connection #2", "connections 1". No-op on text without matches.
+    """
+    if not text:
+        return text
+    cleaned = _CONNECTION_ID_PARENTHETICAL.sub("", text)
+    cleaned = _CONNECTION_ID_PATTERN.sub("the database", cleaned)
+    cleaned = _ARTICLE_DUPLICATE.sub("the", cleaned)
+    cleaned = _SPACE_BEFORE_PUNCT.sub(r"\1", cleaned)
+    cleaned = _MULTI_SPACE.sub(" ", cleaned)
+    return cleaned
 
 
 def build_user_message(user_question: str, file_contents: list = None) -> HumanMessage:
@@ -616,8 +624,8 @@ async def run_orchestrator(
                 final_answer = msg.content
                 break
 
-        if final_answer and _CONNECTION_ID_PATTERN.search(final_answer):
-            final_answer = await _rewrite_without_connection_ids(final_answer, provider)
+        if final_answer:
+            final_answer = _redact_connection_ids(final_answer)
 
         return {
             "success": True,
@@ -853,6 +861,7 @@ async def stream_orchestrator(
                     if content:
                         reasoning_buffer.append(content)
                         yield {"type": "reasoning_token", "content": content}
+                        yield {"type": "token", "content": content}
 
         # After the loop: if reasoning_buffer is non-empty, the last LLM turn
         # had no tool call — this is the final answer, not reasoning.
@@ -861,9 +870,9 @@ async def stream_orchestrator(
             # Tell frontend to reclaim the streaming reasoning step as the final answer
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
             full_text = "".join(reasoning_buffer)
-            if _CONNECTION_ID_PATTERN.search(full_text):
-                full_text = await _rewrite_without_connection_ids(full_text, provider)
-            yield {"type": "token", "content": full_text}
+            cleaned = _redact_connection_ids(full_text)
+            if cleaned != full_text:
+                yield {"type": "token", "content": cleaned, "replace": True}
             reasoning_buffer.clear()
 
 

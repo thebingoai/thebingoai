@@ -20,34 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-_TITLE_MODELS = {
-    "openai": "gpt-4o-mini",
-    "anthropic": "claude-haiku-4-5-20251001",
-}
-
-
-async def _generate_title(user_message: str, assistant_response: str) -> str:
-    """Generate a concise title using a lightweight LLM call."""
-    from backend.llm.factory import get_provider
-    provider_name = settings.default_llm_provider or "openai"
-    model = _TITLE_MODELS.get(provider_name)
-    provider = get_provider(provider_name, model=model)
-
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                f"User: {user_message}\n\n"
-                f"Assistant: {assistant_response[:500]}\n\n"
-                "Generate a concise title (3-8 words) for this conversation. "
-                "Return ONLY the title text."
-            )
-        }
-    ]
-    raw = await provider.chat(messages, temperature=0.3, max_tokens=30)
-    title = raw.strip().strip('"\'').rstrip('.,!?;:')[:80]
-    return title or "Untitled"
-
 
 def _enrich_query_steps(steps: list, user_id: str) -> None:
     """Embed actual query result data into execute_query steps before DB save.
@@ -367,7 +339,8 @@ async def chat_stream(
             _credit_title = None
             if is_new_conversation and final_message:
                 try:
-                    title = await _generate_title(request.message, final_message)
+                    from backend.services.title_service import generate_title
+                    title = await generate_title(request.message, final_message)
                     ConversationService.update_title(db, conversation.id, title)
                     _credit_title = title
                     yield f"data: {json.dumps({'type': 'title', 'content': title})}\n\n"

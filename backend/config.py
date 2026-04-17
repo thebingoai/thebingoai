@@ -5,11 +5,6 @@ from typing import Optional
 class Settings(BaseSettings):
     # Required API keys
     openai_api_key: str
-    pinecone_api_key: Optional[str] = None
-
-    # Pinecone settings
-    pinecone_index_name: str = "llm-md-index"
-    pinecone_environment: str = "us-east-1"
 
     # Optional LLM providers
     anthropic_api_key: Optional[str] = None
@@ -34,11 +29,6 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 3072
     embedding_batch_size: int = 100
     embedding_max_retries: int = 3
-
-    # Pinecone settings (additional)
-    pinecone_upsert_batch_size: int = 100
-    pinecone_similarity_metric: str = "cosine"
-    pinecone_cloud_provider: str = "aws"
 
     # Qdrant settings (for memory system)
     qdrant_url: str = "http://localhost:6333"

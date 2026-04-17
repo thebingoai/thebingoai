@@ -1,22 +1,22 @@
 <template>
   <aside
-    class="flex w-sidebar flex-col border-r border-gray-200 bg-white transition-transform duration-300"
+    class="flex w-sidebar flex-col border-r border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-300"
     :class="{
       'fixed inset-y-0 left-0 z-40': isMobile,
       '-translate-x-full pointer-events-none': isMobile && layoutStore.isMainExpanded,
     }"
   >
     <!-- Logo -->
-    <div class="flex h-16 items-center border-b border-gray-200 pl-[14px] pr-4">
+    <div class="flex h-16 items-center border-b border-gray-200 dark:border-neutral-800 pl-[14px] pr-4">
       <img src="/logo/Bingo_BL.png" alt="Bingo" class="h-16 w-auto" />
     </div>
 
     <!-- Permanent conversation (pinned) -->
-    <div v-if="chatStore.permanentConversation" class="border-b border-gray-100">
+    <div v-if="chatStore.permanentConversation" class="border-b border-gray-100 dark:border-neutral-800">
       <button
         @click="handleSelectConversation(chatStore.permanentConversation!.id)"
-        class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200"
-        :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'bg-gray-100' : ''"
+        class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors duration-200"
+        :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'bg-gray-100 dark:bg-neutral-800' : ''"
       >
         <span class="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full">
           <span
@@ -27,7 +27,7 @@
         </span>
         <span
           class="sidebar-title flex-1 min-w-0 text-sm"
-          :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'font-bold text-glow-orange' : 'font-light text-gray-900'"
+          :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation.id ? 'font-bold text-glow-orange' : 'font-light text-gray-900 dark:text-neutral-200'"
 
         >
           <span class="marquee-inner"><span>{{ chatStore.permanentConversation.title || 'Bingo AI' }}</span><span class="marquee-spacer">&nbsp;&mdash;&nbsp;</span><span>{{ chatStore.permanentConversation.title || 'Bingo AI' }}</span></span>
@@ -46,8 +46,8 @@
     <div>
       <button
         @click="router.push('/dashboard'); closeSidebarOnMobile()"
-        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-        :class="route.path === '/dashboard' ? 'bg-gray-100' : ''"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors duration-200"
+        :class="route.path === '/dashboard' ? 'bg-gray-100 dark:bg-neutral-800' : ''"
       >
         <span class="relative flex h-7 w-7 items-center justify-center rounded-full">
           <span
@@ -64,8 +64,8 @@
     <div>
       <button
         @click="handleNewTask"
-        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-        :class="route.path === '/chat' && !chatStore.currentThreadId ? 'bg-gray-100' : ''"
+        class="flex w-full items-center gap-3 px-4 py-3 text-sm font-extralight text-gray-700 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors duration-200"
+        :class="route.path === '/chat' && !chatStore.currentThreadId ? 'bg-gray-100 dark:bg-neutral-800' : ''"
       >
         <span class="relative flex h-7 w-7 items-center justify-center rounded-full">
           <span
@@ -83,7 +83,7 @@
       <!-- Recent tasks section header -->
       <button
         @click="isRecentExpanded = !isRecentExpanded"
-        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 hover:text-gray-600"
+        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-400"
       >
         <ChevronDown v-if="isRecentExpanded" class="h-3.5 w-3.5" />
         <ChevronRight v-else class="h-3.5 w-3.5" />
@@ -92,17 +92,17 @@
 
       <!-- Task list (collapsible) -->
       <div v-show="isRecentExpanded">
-        <div v-if="chatStore.taskConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
+        <div v-if="chatStore.taskConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500 dark:text-neutral-500">
           No tasks yet
         </div>
         <template v-for="group in groupedTasks" :key="group.label">
-          <div class="px-4 pt-4 text-[11px] text-gray-800">{{ group.label }}</div>
+          <div class="px-4 pt-4 text-[11px] text-gray-800 dark:text-neutral-400">{{ group.label }}</div>
           <button
             v-for="conv in group.conversations"
             :key="conv.id"
             @click="handleSelectConversation(conv.id)"
-            class="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
-            :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50' : ''"
+            class="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+            :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50 dark:bg-neutral-800' : ''"
           >
             <div
               class="sidebar-title"
@@ -113,7 +113,7 @@
         </template>
 
         <!-- Loading indicator for infinite scroll -->
-        <div v-if="chatStore.isLoadingMoreConversations" class="px-4 py-3 text-center text-xs text-gray-400">
+        <div v-if="chatStore.isLoadingMoreConversations" class="px-4 py-3 text-center text-xs text-gray-400 dark:text-neutral-500">
           Loading more...
         </div>
       </div>
@@ -121,10 +121,10 @@
     </div>
 
     <!-- Archived section (pinned above user button) -->
-    <div class="border-t border-gray-100">
+    <div class="border-t border-gray-100 dark:border-neutral-800">
       <button
         @click="handleToggleArchived"
-        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 hover:text-gray-600"
+        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-400"
       >
         <ChevronDown v-if="isArchivedExpanded" class="h-3.5 w-3.5" />
         <ChevronRight v-else class="h-3.5 w-3.5" />
@@ -133,14 +133,14 @@
       </button>
 
       <div v-show="isArchivedExpanded" class="max-h-48 overflow-y-auto">
-        <div v-if="chatStore.archivedConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500">
+        <div v-if="chatStore.archivedConversations.length === 0" class="px-4 py-4 text-center text-sm text-gray-500 dark:text-neutral-500">
           No archived tasks
         </div>
         <div
           v-for="conv in chatStore.archivedConversations"
           :key="conv.id"
-          class="group flex w-full items-center px-4 py-2 text-left text-sm hover:bg-gray-50"
-          :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50' : ''"
+          class="group flex w-full items-center px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-neutral-800"
+          :class="chatStore.currentThreadId === conv.id ? 'bg-gray-50 dark:bg-neutral-800' : ''"
         >
           <button
             @click="handleSelectConversation(conv.id)"
@@ -154,7 +154,7 @@
           </button>
           <button
             @click.stop="handleUnarchive(conv.id)"
-            class="ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-200"
+            class="ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700"
             aria-label="Unarchive conversation"
           >
             <ArchiveRestore class="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
@@ -166,15 +166,15 @@
     <!-- User account button -->
     <button
       @click="router.push('/settings'); closeSidebarOnMobile()"
-      class="border-t border-gray-200 px-4 pb-6 pt-5 hover:bg-gray-50 transition-colors w-full text-left"
+      class="border-t border-gray-200 dark:border-neutral-800 px-4 pb-6 pt-5 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors w-full text-left"
     >
       <div class="flex items-center">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-white text-sm font-light">
           {{ userInitial }}
         </div>
         <div class="ml-3 flex-1 min-w-0">
-          <p class="text-sm font-light text-gray-900 truncate">{{ authStore.user?.email }}</p>
-          <p class="text-xs text-gray-400 tabular-nums">{{ Math.round(remaining) }} credits</p>
+          <p class="text-sm font-light text-gray-900 dark:text-neutral-200 truncate">{{ authStore.user?.email }}</p>
+          <p class="text-xs text-gray-400 dark:text-neutral-500 tabular-nums">{{ Math.round(remaining) }} credits</p>
         </div>
         <component :is="Settings" class="h-4 w-4 text-gray-400" />
       </div>
