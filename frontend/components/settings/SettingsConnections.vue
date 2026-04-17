@@ -1,7 +1,8 @@
 <template>
+  <div>
   <div class="p-4 md:p-6">
     <div class="mb-6">
-      <h2 class="text-2xl font-medium text-gray-900">Connections</h2>
+      <h2 class="text-2xl font-medium text-gray-900 dark:text-neutral-100">Connections</h2>
     </div>
 
     <!-- Loading State -->
@@ -25,8 +26,9 @@
       </template>
     </UiEmptyState>
 
+
     <!-- Connections Grid -->
-    <div v-else class="flex flex-wrap gap-4">
+    <div v-if="!loading && connections.length > 0" class="flex flex-wrap gap-4">
       <!-- Ungrouped connections (non-dataset or unique fingerprint datasets) -->
       <UiCard
         v-for="connection in ungroupedConnections"
@@ -49,7 +51,7 @@
             />
             <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-gray-900 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
               <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
                 <span class="text-[11px] text-gray-400">v{{ getConnectorType(connection.db_type)?.version }}</span>
                 <button
@@ -76,7 +78,7 @@
             <span class="text-[11px] text-gray-400 truncate">{{ connection.source_filename }}</span>
           </div>
           <!-- Bottom metadata row -->
-          <div class="mt-auto border-t border-gray-100 pt-2.5 flex items-end gap-4">
+          <div class="mt-auto border-t border-gray-100 dark:border-neutral-700 pt-2.5 flex items-end gap-4">
             <!-- Profiling status (always first) -->
             <div class="flex flex-col items-center gap-1" :title="getProfilingTitle(connection)">
               <Activity class="h-3.5 w-3.5" :class="getProfilingIconClass(connection)" />
@@ -85,28 +87,28 @@
             <!-- Dynamic meta items from connector type -->
             <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
               <div v-if="item === 'ssl' && connection.ssl_enabled" class="flex flex-col items-center gap-1" title="SSL Enabled">
-                <Lock class="h-3.5 w-3.5 text-gray-500" />
-                <span class="text-[10px] text-gray-500">SSL</span>
+                <Lock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
+                <span class="text-[10px] text-gray-500 dark:text-neutral-400">SSL</span>
               </div>
               <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} tables`">
-                <Table2 class="h-3.5 w-3.5 text-gray-500" />
-                <span class="text-[10px] text-gray-500">{{ connection.table_count }} tables</span>
+                <Table2 class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
+                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ connection.table_count }} tables</span>
               </div>
               <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} datasets`">
-                <Database class="h-3.5 w-3.5 text-gray-500" />
-                <span class="text-[10px] text-gray-500">{{ connection.table_count }} datasets</span>
+                <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
+                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ connection.table_count }} datasets</span>
               </div>
               <div v-if="item === 'schema_date' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Schema refreshed ${formatRelativeDate(connection.schema_generated_at)}`">
-                <Clock class="h-3.5 w-3.5 text-gray-500" />
-                <span class="text-[10px] text-gray-500">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+                <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
+                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
               </div>
               <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1" title="Lookback window">
-                <Clock class="h-3.5 w-3.5 text-gray-500" />
-                <span class="text-[10px] text-gray-500">{{ parseLookbackDays(connection) }}d lookback</span>
+                <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
+                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ parseLookbackDays(connection) }}d lookback</span>
               </div>
               <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Last synced ${formatRelativeDate(connection.schema_generated_at)}`">
-                <RefreshCw class="h-3.5 w-3.5 text-gray-500" />
-                <span class="text-[10px] text-gray-500">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+                <RefreshCw class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
+                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
               </div>
             </template>
           </div>
@@ -117,8 +119,7 @@
       <UiCard
         v-for="group in datasetGroups"
         :key="group.fingerprint"
-        class="relative overflow-hidden px-4 py-5 w-56 max-md:w-full hover:shadow-lg transition-shadow"
-        :class="{ 'h-56': !expandedGroups[group.fingerprint] }"
+        :class="`relative overflow-hidden px-4 py-5 w-56 max-md:w-full hover:shadow-lg transition-shadow${!expandedGroups[group.fingerprint] ? ' h-56' : ''}`"
       >
         <div class="absolute top-0 left-0 right-0 h-[3px] bg-green-500" />
         <div class="flex flex-col h-full">
@@ -128,7 +129,7 @@
           >
             <div class="h-8 w-8 shrink-0" v-html="connectorIcons['dataset']" />
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-gray-900 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
               <div class="flex items-center gap-1 mt-0.5">
                 <span class="text-[11px] text-gray-400">v{{ getConnectorType('dataset')?.version }}</span>
                 <button
@@ -141,18 +142,18 @@
             </div>
             <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 shrink-0 mt-1" />
           </button>
-          <p class="text-[13px] text-gray-500 mt-2.5">{{ group.connections.length }} datasets</p>
+          <p class="text-[13px] text-gray-500 dark:text-neutral-400 mt-2.5">{{ group.connections.length }} datasets</p>
           <!-- Expanded: list individual datasets -->
-          <div v-if="expandedGroups[group.fingerprint]" class="mt-3 space-y-2 border-t border-gray-100 pt-3">
+          <div v-if="expandedGroups[group.fingerprint]" class="mt-3 space-y-2 border-t border-gray-100 dark:border-neutral-700 pt-3">
             <div
               v-for="conn in group.connections"
               :key="conn.id"
-              class="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+              class="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer"
               @click="openEditDialog(conn)"
             >
               <div class="min-w-0 flex-1">
-                <p class="text-xs font-medium text-gray-700 truncate">{{ conn.name }}</p>
-                <p v-if="conn.source_filename" class="text-xs text-gray-400 truncate">{{ conn.source_filename }}</p>
+                <p class="text-xs font-medium text-gray-700 dark:text-neutral-200 truncate">{{ conn.name }}</p>
+                <p v-if="conn.source_filename" class="text-xs text-gray-400 dark:text-neutral-500 truncate">{{ conn.source_filename }}</p>
               </div>
               <button
                 @click.stop="openDeleteDialog(conn)"
@@ -190,13 +191,13 @@
           v-for="type in connectorTypes"
           :key="type.id"
           @click="selectConnectorType(type.id)"
-          class="flex flex-col items-center justify-center gap-2 rounded-lg border border-gray-200 p-4 h-56 w-56 max-md:w-full overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+          class="flex flex-col items-center justify-center gap-2 rounded-lg border border-gray-200 p-4 h-56 w-56 max-md:w-full overflow-hidden hover:shadow-md transition-shadow cursor-pointer dark:border-neutral-700 dark:bg-neutral-800/50 dark:hover:bg-neutral-700/50"
         >
           <div v-if="connectorIcons[type.id]" class="h-10 w-10" v-html="connectorIcons[type.id]" />
           <component v-else :is="Database" class="h-10 w-10 text-gray-400" />
           <div class="text-center">
-            <h3 class="text-xs font-normal text-gray-900">{{ type.display_name }}</h3>
-            <p class="text-xs text-gray-600 line-clamp-2">{{ type.description }}</p>
+            <h3 class="text-xs font-normal text-gray-900 dark:text-neutral-100">{{ type.display_name }}</h3>
+            <p class="text-xs text-gray-600 dark:text-neutral-400 line-clamp-2">{{ type.description }}</p>
           </div>
         </button>
       </div>
@@ -215,11 +216,11 @@
             <button
               v-if="!editingConnection"
               @click="goBackToTypePicker"
-              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
             >
               <ArrowLeft class="h-5 w-5" />
             </button>
-            <span class="text-lg font-normal text-gray-900">{{ getFormTitle() }}</span>
+            <span class="text-lg font-normal text-gray-900 dark:text-neutral-100">{{ getFormTitle() }}</span>
             <div v-if="testSuccess" class="flex items-center justify-center w-6 h-6 rounded-full bg-green-500">
               <Check class="h-3.5 w-3.5 text-white" />
             </div>
@@ -274,7 +275,7 @@
             </template>
             <button
               @click="handleFormSheetClose(false)"
-              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
             >
               <component :is="X" class="h-5 w-5" />
             </button>
@@ -703,14 +704,14 @@
             </div>
 
             <!-- SSL Configuration -->
-            <div class="border-t pt-4">
+            <div class="border-t border-gray-200 dark:border-neutral-700 pt-4">
               <div class="flex items-center justify-between mb-3">
-                <label class="text-sm font-normal text-gray-900">SSL Connection</label>
+                <label class="text-sm font-normal text-gray-900 dark:text-neutral-200">SSL Connection</label>
                 <button
                   type="button"
                   @click="form.ssl_enabled = !form.ssl_enabled"
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                  :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
+                  :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-neutral-600'"
                 >
                   <span
                     class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -721,14 +722,14 @@
 
               <div v-if="form.ssl_enabled" class="space-y-3">
                 <div>
-                  <label class="text-sm text-gray-600 mb-1 block">CA Certificate (PEM)</label>
+                  <label class="text-sm text-gray-600 dark:text-neutral-400 mb-1 block">CA Certificate (PEM)</label>
                   <textarea
                     v-model="form.ssl_ca_cert"
                     placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
                     rows="6"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500"
                   />
-                  <p class="text-xs text-gray-500 mt-1">
+                  <p class="text-xs text-gray-500 dark:text-neutral-500 mt-1">
                     <template v-if="editingConnection && editingConnection.has_ssl_ca_cert">
                       A CA certificate is already stored. Leave blank to keep current, or paste a new one to replace it.
                     </template>
@@ -757,7 +758,7 @@
         </div>
 
         <!-- 60% schema panel -->
-        <div class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
+        <div class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
           <!-- BigQuery permission checker: shown during create (no editingConnection yet) -->
           <template v-if="isBigQueryConnection && !editingConnection">
             <div class="flex items-center gap-2 shrink-0">
@@ -823,7 +824,7 @@
           </template>
 
           <!-- Non-BigQuery: no editingConnection yet -->
-          <div v-else-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400">
+          <div v-else-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400">
             <Database class="h-4 w-4" />
             <span v-if="isFileUploadConnection">Upload the file to explore its schema.</span>
             <span v-else>Save the connection to explore its schema.</span>
@@ -904,8 +905,8 @@
             <!-- Schema panel for all editing connections (BigQuery + others) -->
             <!-- Header -->
             <div class="flex items-center gap-2 shrink-0">
-                <h3 class="text-sm font-medium text-gray-900">Database Schema</h3>
-                <span v-if="schema" class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Database Schema</h3>
+                <span v-if="schema" class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full dark:bg-neutral-700 dark:text-neutral-400">
                   {{ schema.table_names.length }} tables
                 </span>
               </div>
@@ -923,7 +924,7 @@
               </div>
 
               <!-- No schema yet -->
-              <div v-else-if="!schema" class="flex items-center gap-2 text-sm text-gray-400 shrink-0">
+              <div v-else-if="!schema" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400 shrink-0">
                 <Database class="h-4 w-4" />
                 Click "Refresh Schema" to discover database structure.
               </div>
@@ -1107,10 +1108,71 @@
       <pre v-else class="text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">{{ changelogContent }}</pre>
     </UiBottomSheet>
   </div>
+
+  <!-- Connection notifications -->
+  <Teleport to="body">
+    <div aria-live="assertive" class="pointer-events-none fixed inset-0 flex items-end px-4 py-6 sm:items-start sm:p-6 z-50">
+      <div class="flex w-full flex-col items-center space-y-4 sm:items-end">
+        <Transition
+          enter-active-class="transform ease-out duration-300 transition"
+          enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+          enter-to-class="translate-y-0 sm:translate-x-0"
+          leave-active-class="transition ease-in duration-100"
+          leave-to-class="opacity-0"
+        >
+          <div v-if="connectionSuccessMessage" class="pointer-events-auto w-full max-w-sm rounded-lg bg-white shadow-lg outline-1 outline-black/5 dark:bg-gray-800 dark:-outline-offset-1 dark:outline-white/10">
+            <div class="p-4">
+              <div class="flex items-start">
+                <div class="shrink-0">
+                  <CheckCircle2 class="size-6 text-green-400" aria-hidden="true" />
+                </div>
+                <div class="ml-3 w-0 flex-1 pt-0.5">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ connectionSuccessMessage }}</p>
+                </div>
+                <div class="ml-4 flex shrink-0">
+                  <button type="button" @click="connectionSuccessMessage = ''" class="inline-flex rounded-md text-gray-400 hover:text-gray-500 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:hover:text-white dark:focus:outline-indigo-500">
+                    <span class="sr-only">Close</span>
+                    <X class="size-5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+        <Transition
+          enter-active-class="transform ease-out duration-300 transition"
+          enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+          enter-to-class="translate-y-0 sm:translate-x-0"
+          leave-active-class="transition ease-in duration-100"
+          leave-to-class="opacity-0"
+        >
+          <div v-if="connectionFailedMessage" class="pointer-events-auto w-full max-w-sm rounded-lg bg-white shadow-lg outline-1 outline-black/5 dark:bg-gray-800 dark:-outline-offset-1 dark:outline-white/10">
+            <div class="p-4">
+              <div class="flex items-start">
+                <div class="shrink-0">
+                  <XCircle class="size-6 text-red-400" aria-hidden="true" />
+                </div>
+                <div class="ml-3 w-0 flex-1 pt-0.5">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ connectionFailedMessage }}</p>
+                </div>
+                <div class="ml-4 flex shrink-0">
+                  <button type="button" @click="connectionFailedMessage = ''" class="inline-flex rounded-md text-gray-400 hover:text-gray-500 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:hover:text-white dark:focus:outline-indigo-500">
+                    <span class="sr-only">Close</span>
+                    <X class="size-5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </div>
+  </Teleport>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, FolderOpen, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
@@ -1155,6 +1217,8 @@ const form = ref<ConnectionFormData>({
 })
 const formErrors = ref<Partial<Record<keyof ConnectionFormData, string>>>({})
 const saving = ref(false)
+const connectionSuccessMessage = ref('')
+const connectionFailedMessage = ref('')
 const showDeleteDialog = ref(false)
 const deletingConnection = ref<DatabaseConnection | null>(null)
 const deleting = ref(false)
@@ -1875,10 +1939,14 @@ async function handleFormSubmit() {
     if (editingConnection.value) {
       await api.connections.update(String(editingConnection.value.id), payload)
       toast.success('Connection updated successfully')
+      connectionSuccessMessage.value = 'Connection updated successfully'
     } else {
       await api.connections.create(payload)
       toast.success('Connection created successfully')
+      connectionSuccessMessage.value = 'Connection created successfully'
     }
+
+    setTimeout(() => { connectionSuccessMessage.value = '' }, 4000)
 
     // Close both sheets
     showFormSheet.value = false
@@ -1937,11 +2005,13 @@ async function handleTestConnection() {
       testSuccess.value = true
       toast.success(response.message || 'Connection test successful')
     } else {
-      toast.error(response.message || 'Connection test failed')
+      connectionFailedMessage.value = response.message || 'Connection test failed'
+      setTimeout(() => { connectionFailedMessage.value = '' }, 4000)
     }
   } catch (err: any) {
     const errorMessage = err?.data?.detail || err?.message || 'Connection test failed'
-    toast.error(errorMessage)
+    connectionFailedMessage.value = errorMessage
+    setTimeout(() => { connectionFailedMessage.value = '' }, 4000)
   } finally {
     testing.value = false
   }
