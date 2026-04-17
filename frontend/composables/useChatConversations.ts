@@ -55,6 +55,21 @@ export const useChatConversations = () => {
         // Backend is still streaming — show indicator and wait for completion
         chatStore.isStreaming = true
 
+        // Add a blank placeholder so the typing indicator renders correctly
+        const hasAssistantPlaceholder = chatStore.messages.some(
+          m => m.role === 'assistant' && !m.content
+        )
+        if (!hasAssistantPlaceholder) {
+          chatStore.addMessage({
+            id: `streaming-placeholder-${Date.now()}`,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+            agent_steps: [],
+            thinking_steps: [],
+          })
+        }
+
         const unsubComplete = ws.on('chat.stream_complete', (evt: any) => {
           if (evt.thread_id !== threadId) return
           unsubComplete()

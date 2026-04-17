@@ -44,6 +44,7 @@ export const useChatStreaming = () => {
       created_at: new Date().toISOString()
     }
     chatStore.addMessage(assistantMessage)
+    const assistantMsgId = assistantMessage.id
 
     const requestId = crypto.randomUUID()
     let accumulatedContent = ''
@@ -76,7 +77,7 @@ export const useChatStreaming = () => {
 
     /** Push steps_log to the message so ChatMessageBubble can render it. */
     const syncStepsLog = () => {
-      chatStore.updateLastMessage({ steps_log: [...stepsLog] })
+      chatStore.updateMessageById(assistantMsgId, { steps_log: [...stepsLog] })
     }
 
     // Register one-time handlers scoped to this request_id
@@ -103,7 +104,7 @@ export const useChatStreaming = () => {
           const unsub = ws.on('connected', () => { unsub(); clearTimeout(timeout); resolve() })
         })
       } catch (err: any) {
-        chatStore.updateLastMessage({ content: `Error: ${err.message}. Please log in again.` })
+        chatStore.updateMessageById(assistantMsgId, { content: `Error: ${err.message}. Please log in again.` })
         chatStore.isStreaming = false
         return
       }
@@ -123,7 +124,7 @@ export const useChatStreaming = () => {
         dripTimer = setInterval(() => {
           if (displayedContent.length >= accumulatedContent.length) return
           displayedContent = accumulatedContent.slice(0, displayedContent.length + CHARS_PER_TICK)
-          chatStore.updateLastMessage({ content: displayedContent, steps_log_expanded: false })
+          chatStore.updateMessageById(assistantMsgId, { content: displayedContent, steps_log_expanded: false })
         }, DRIP_INTERVAL)
       }
 
@@ -131,7 +132,7 @@ export const useChatStreaming = () => {
         if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
         if (displayedContent !== accumulatedContent) {
           displayedContent = accumulatedContent
-          chatStore.updateLastMessage({ content: displayedContent })
+          chatStore.updateMessageById(assistantMsgId, { content: displayedContent })
         }
       }
 
@@ -159,7 +160,7 @@ export const useChatStreaming = () => {
         }
 
         acknowledgeText = currentReasoningText
-        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+        chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
       })
 
       onEvent('chat.tool_call', (data) => {
@@ -195,7 +196,7 @@ export const useChatStreaming = () => {
         stepsLog.push(argSummary ? `${ts}  › ${label} — ${argSummary}` : `${ts}  › ${label}`)
         syncStepsLog()
 
-        chatStore.updateLastMessage({
+        chatStore.updateMessageById(assistantMsgId, {
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
         })
@@ -217,7 +218,7 @@ export const useChatStreaming = () => {
           })
         }
         currentReasoningText = ''
-        chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+        chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
       })
 
       onEvent('chat.tool_result', (data) => {
@@ -254,7 +255,7 @@ export const useChatStreaming = () => {
           syncStepsLog()
         }
 
-        chatStore.updateLastMessage({
+        chatStore.updateMessageById(assistantMsgId, {
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
         })
@@ -273,9 +274,9 @@ export const useChatStreaming = () => {
         })
 
         // Keep the result with the most rows when multiple queries run in one turn
-        const lastMsg = chatStore.messages[chatStore.messages.length - 1]
-        if (!lastMsg?.results?.length || results.length >= lastMsg.results.length) {
-          chatStore.updateLastMessage({
+        const targetMsg = chatStore.messages.find(m => m.id === assistantMsgId)
+        if (!targetMsg?.results?.length || results.length >= (targetMsg.results?.length || 0)) {
+          chatStore.updateMessageById(assistantMsgId, {
             sql: payload.sql || undefined,
             results,
           })
@@ -291,7 +292,7 @@ export const useChatStreaming = () => {
             agentSteps.pop()
           }
           currentReasoningText = ''
-          chatStore.updateLastMessage({ steps_log_expanded: false, agent_steps: [...agentSteps] })
+          chatStore.updateMessageById(assistantMsgId, { steps_log_expanded: false, agent_steps: [...agentSteps] })
         }
       })
 
@@ -306,7 +307,7 @@ export const useChatStreaming = () => {
         const lastStep = agentSteps[agentSteps.length - 1]
         if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
           lastStep.status = 'completed'
-          chatStore.updateLastMessage({ agent_steps: [...agentSteps] })
+          chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
         }
 
         const threadId: string = data.thread_id
@@ -334,13 +335,13 @@ export const useChatStreaming = () => {
         if (lastStep?.step_type === 'reasoning' && lastStep.status === 'streaming') {
           lastStep.status = 'completed'
         }
-        chatStore.updateLastMessage({ content: `Error: ${data.content}`, agent_steps: [...agentSteps] })
+        chatStore.updateMessageById(assistantMsgId, { content: `Error: ${data.content}`, agent_steps: [...agentSteps] })
         cleanup()
       })
 
       onEvent('chat.rate_limited', (data) => {
         chatStore.rateLimitRetryAfter = data.retry_after || 0
-        chatStore.updateLastMessage({ content: 'You\'ve reached your free tier limit. Please wait or add your own API key in Settings.' })
+        chatStore.updateMessageById(assistantMsgId, { content: 'You\'ve reached your free tier limit. Please wait or add your own API key in Settings.' })
         cleanup()
       })
 
