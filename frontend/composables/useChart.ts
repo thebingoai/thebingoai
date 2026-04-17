@@ -113,9 +113,25 @@ function sortChartData(config: ChartConfig): { labels: string[]; datasets: Chart
   }
 }
 
+function isDarkMode(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.documentElement.classList.contains('dark')
+}
+
+function getChartColors() {
+  const dark = isDarkMode()
+  return {
+    tickColor: dark ? '#a3a3a3' : '#6b7280',
+    gridColor: dark ? 'rgba(163,163,163,0.15)' : 'rgba(0,0,0,0.08)',
+    legendColor: dark ? '#a3a3a3' : '#374151',
+    datalabelColor: dark ? '#e5e5e5' : '#374151',
+  }
+}
+
 function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): ChartJsOptions {
   const opts = config.options ?? {}
   const isPieOrDoughnut = config.type === 'pie' || config.type === 'doughnut'
+  const colors = getChartColors()
 
   const options: ChartJsOptions = {
     responsive: opts.responsive ?? true,
@@ -130,13 +146,14 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
       legend: {
         display: opts.showLegend ?? true,
         position: opts.legendPosition ?? 'top',
+        labels: { color: colors.legendColor },
       },
       tooltip: {
         enabled: opts.showTooltips ?? true,
       },
       datalabels: {
         display: opts.showValues ?? false,
-        color: isPieOrDoughnut ? '#fff' : '#374151',
+        color: isPieOrDoughnut ? '#fff' : colors.datalabelColor,
         font: { size: 11, weight: 'bold' as const },
         anchor: isPieOrDoughnut ? 'center' : 'end',
         align: isPieOrDoughnut ? 'center' : 'top',
@@ -153,13 +170,15 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
   if (!isPieOrDoughnut) {
     ;(options as any).scales = {
       x: {
-        grid: { display: opts.showGrid ?? true },
+        grid: { display: opts.showGrid ?? true, color: colors.gridColor },
         stacked: opts.stacked ?? false,
+        ticks: { color: colors.tickColor },
       },
       y: {
-        grid: { display: opts.showGrid ?? true },
+        grid: { display: opts.showGrid ?? true, color: colors.gridColor },
         stacked: opts.stacked ?? false,
         grace: opts.showValues ? '20%' : undefined,
+        ticks: { color: colors.tickColor },
       },
     }
     if (opts.indexAxis) {
@@ -177,6 +196,7 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
 export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Ref<ChartConfig>) {
   let chartInstance: Chart | null = null
   let currentChartJsType: string | null = null
+  let darkModeObserver: MutationObserver | null = null
 
   function createChart() {
     const canvas = canvasRef.value
@@ -231,6 +251,11 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
     } catch (e) {
       console.warn('[useChart] Failed to create chart:', e)
     }
+
+    if (typeof document !== 'undefined') {
+      darkModeObserver = new MutationObserver(() => updateChart())
+      darkModeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    }
   })
 
   watch(configRef, () => {
@@ -245,6 +270,7 @@ export function useChart(canvasRef: Ref<HTMLCanvasElement | null>, configRef: Re
   }, { deep: true, flush: 'post' })
 
   onBeforeUnmount(() => {
+    darkModeObserver?.disconnect()
     destroyChart()
   })
 }

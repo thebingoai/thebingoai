@@ -2,7 +2,7 @@
   <div class="mb-6">
     <!-- User message: left-aligned chat bubble -->
     <div v-if="message.role === 'user'">
-      <div class="inline-block bg-gray-900 text-white rounded-2xl px-4 py-2.5 max-w-[80%] whitespace-pre-wrap">
+      <div class="inline-block bg-gray-900 text-white rounded-2xl px-4 py-2.5 max-w-[80%] whitespace-pre-wrap dark:bg-neutral-700 dark:text-neutral-100">
         {{ message.content }}
       </div>
 
