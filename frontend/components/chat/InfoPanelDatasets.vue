@@ -1,13 +1,13 @@
 <template>
-  <div class="border-b border-gray-100">
+  <div class="border-b border-gray-100 dark:border-neutral-800">
     <!-- Header -->
     <button
       @click="chatStore.toggleInfoSection('datasets')"
-      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
     >
       <div class="flex items-center gap-1.5">
         <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Datasets</span>
-        <span v-if="datasets.length" class="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-px rounded-full">
+        <span v-if="datasets.length" class="text-[9px] bg-gray-100 dark:bg-neutral-700 text-gray-500 dark:text-neutral-300 px-1.5 py-px rounded-full">
           {{ datasets.length }}
         </span>
       </div>

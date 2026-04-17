@@ -1,5 +1,5 @@
 <template>
-  <div class="border-b border-gray-100">
+  <div class="border-b border-gray-100 dark:border-neutral-800">
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3">
       <button
@@ -25,7 +25,7 @@
         v-if="chatStore.infoPanelSections.summary && chatStore.currentThreadId"
         @click.stop="handleGenerate"
         :disabled="generating"
-        class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-300 hover:text-gray-500"
+        class="ml-2 p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors text-gray-300 hover:text-gray-500"
         :class="{ 'animate-spin': generating }"
         title="Generate summary"
       >
@@ -50,7 +50,7 @@
 
       <!-- Token bar -->
       <div class="flex items-center gap-2">
-        <div class="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+        <div class="flex-1 h-1 bg-gray-100 dark:bg-neutral-700 rounded-full overflow-hidden">
           <div
             class="h-full rounded-full transition-all duration-500"
             :class="tokenBarColor"

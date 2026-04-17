@@ -21,8 +21,8 @@
     <!-- Settings Navigation -->
     <div
       :class="isMobile
-        ? 'flex items-center gap-2 overflow-x-auto px-4 pb-3 border-b border-gray-200 shrink-0'
-        : 'w-56 border-r border-gray-200 p-4 flex flex-col justify-between'"
+        ? 'flex items-center gap-2 overflow-x-auto px-4 pb-3 border-b border-gray-200 dark:border-neutral-700 shrink-0'
+        : 'w-56 border-r border-gray-200 dark:border-neutral-700 p-4 flex flex-col justify-between'"
     >
       <nav :class="isMobile ? 'flex gap-1' : 'space-y-1'">
         <button
@@ -33,14 +33,14 @@
             isMobile
               ? 'whitespace-nowrap px-3 py-1.5 text-xs rounded-full'
               : 'w-full rounded-lg px-3 py-2 text-left text-sm font-light',
-            currentSection === section.id ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'
+            currentSection === section.id ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-800'
           ]"
         >
           {{ section.name }}
         </button>
       </nav>
 
-      <div v-if="!isMobile" class="pt-4 border-t border-gray-200 text-xs text-gray-400 space-y-1">
+      <div v-if="!isMobile" class="pt-4 border-t border-gray-200 dark:border-neutral-700 text-xs text-gray-400 dark:text-gray-300 space-y-1">
         <p>{{ appInfo?.edition || 'Community' }} Edition</p>
         <p>v{{ appInfo?.version || '1.0.0' }}</p>
       </div>
@@ -48,20 +48,18 @@
 
     <!-- Settings Content -->
     <div class="flex-1 overflow-y-auto">
-      <Transition name="page-fade-slide" mode="out-in">
-        <SettingsConnections v-if="currentSection === 'connections'" key="connections" />
-        <SettingsSkills v-else-if="currentSection === 'skills'" key="skills" />
-        <SettingsJobs v-else-if="currentSection === 'jobs'" key="jobs" />
-        <SettingsMemory v-else-if="currentSection === 'memory'" key="memory" />
-        <SettingsProfile v-else-if="currentSection === 'profile'" key="profile" />
-        <SettingsCredits v-else-if="currentSection === 'credits'" key="credits" />
-        <SettingsAdmin v-else-if="currentSection === 'admin' && isAdmin" key="admin" />
-        <SettingsChannels v-else-if="currentSection === 'channels'" key="channels" />
-        <div v-else key="default" class="p-6">
-          <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
-          <p class="text-gray-500">This section is under construction.</p>
-        </div>
-      </Transition>
+      <SettingsConnections v-if="currentSection === 'connections'" />
+      <SettingsSkills v-else-if="currentSection === 'skills'" />
+      <SettingsJobs v-else-if="currentSection === 'jobs'" />
+      <SettingsMemory v-else-if="currentSection === 'memory'" />
+      <SettingsProfile v-else-if="currentSection === 'profile'" />
+      <SettingsCredits v-else-if="currentSection === 'credits'" />
+      <SettingsAdmin v-else-if="currentSection === 'admin' && isAdmin" />
+      <SettingsChannels v-else-if="currentSection === 'channels'" />
+      <div v-else class="p-6">
+        <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
+        <p class="text-gray-500">This section is under construction.</p>
+      </div>
     </div>
   </div>
 </template>

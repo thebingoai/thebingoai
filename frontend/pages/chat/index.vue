@@ -10,7 +10,7 @@
     <div
       v-if="!isMobile"
       class="shrink-0 overflow-hidden transition-all duration-300 ease-in-out"
-      :class="chatStore.infoPanelOpen ? 'w-[440px] border-l border-gray-200' : 'w-0'"
+      :class="chatStore.infoPanelOpen ? 'w-[440px] border-l border-gray-200 dark:border-neutral-700' : 'w-0'"
     >
       <ConversationInfoPanel v-if="chatStore.infoPanelOpen" class="w-[440px]" />
     </div>
@@ -19,11 +19,11 @@
     <Transition name="slide-up">
       <div
         v-if="isMobile && chatStore.infoPanelOpen"
-        class="fixed inset-0 z-50 bg-white flex flex-col"
+        class="fixed inset-0 z-50 bg-white dark:bg-neutral-900 flex flex-col"
       >
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <span class="text-sm font-medium text-gray-900">Conversation Info</span>
-          <button @click="chatStore.toggleInfoPanel()" class="p-1 rounded hover:bg-gray-100">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-neutral-700">
+          <span class="text-sm font-medium text-gray-900 dark:text-white">Conversation Info</span>
+          <button @click="chatStore.toggleInfoPanel()" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800">
             <X class="h-5 w-5 text-gray-500" />
           </button>
         </div>
