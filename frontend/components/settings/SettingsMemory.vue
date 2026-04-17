@@ -143,21 +143,21 @@
     >
       <div class="space-y-3">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Content</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Content</label>
           <textarea
             v-model="entryForm.content"
             rows="3"
             placeholder="e.g. Always respond in bullet points"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Category <span class="text-gray-400 font-normal">(optional)</span></label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Category <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional)</span></label>
           <input
             v-model="entryForm.category"
             type="text"
             placeholder="e.g. Formatting, Background, Preferences"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
       </div>
