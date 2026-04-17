@@ -196,7 +196,6 @@ Copy `.env.example` to `.env` and configure:
 | `DATABASE_URL` | PostgreSQL connection string |
 | `REDIS_URL` | Redis connection string |
 | `QDRANT_URL` | Qdrant connection string |
-| `PINECONE_API_KEY` | Pinecone API key (legacy RAG support) |
 
 See `.env.example` for the full list of configuration options.
 

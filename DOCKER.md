@@ -8,8 +8,7 @@ Edit `.env` and add your API keys:
 
 ```bash
 OPENAI_API_KEY=sk-your-actual-key-here
-PINECONE_API_KEY=your-pinecone-key-here
-PINECONE_INDEX_NAME=your-index-name
+QDRANT_URL=http://qdrant:6333
 ```
 
 ### 2. Start Services
@@ -118,10 +117,10 @@ docker-compose logs redis
 docker-compose restart redis
 ```
 
-### Pinecone errors
-- Verify `PINECONE_API_KEY` in `.env`
-- Check index exists in Pinecone console
-- Ensure index uses correct dimensions (1536 for OpenAI embeddings)
+### Qdrant errors
+- Verify `QDRANT_URL` in `.env`
+- Check Qdrant container is healthy: `docker-compose ps qdrant`
+- Ensure vector size matches embeddings (3072 for text-embedding-3-large)
 
 ### OpenAI errors
 - Verify `OPENAI_API_KEY` in `.env`

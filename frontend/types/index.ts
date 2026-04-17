@@ -119,8 +119,7 @@ export interface DetailedHealthResponse {
   checks: {
     api: string
     redis: string
-    pinecone: string
-    pinecone_vectors?: number
+    qdrant: string
   }
 }
 

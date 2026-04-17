@@ -26,8 +26,8 @@ def validate_config():
         warnings.append("OPENAI_API_KEY not set (required for OpenAI features)")
 
     # Vector database check
-    if not settings.pinecone_api_key and not settings.qdrant_url:
-        warnings.append("Neither PINECONE_API_KEY nor QDRANT_URL is set (vector storage needed for RAG)")
+    if not settings.qdrant_url:
+        warnings.append("QDRANT_URL is not set (vector storage needed for RAG)")
 
     # Check embedding dimensions match
     if settings.embedding_dimensions != 3072 and settings.embedding_model == "text-embedding-3-large":
