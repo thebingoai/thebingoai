@@ -436,6 +436,8 @@ async def _handle_chat_send(
         from backend.database.session import SessionLocal as _SF
         final_message = ""
         collected_steps = []
+        collected_retry_succeeded = None
+        collected_judge_metadata = None
 
         async for event in stream_orchestrator(
             message,
@@ -456,6 +458,13 @@ async def _handle_chat_send(
             event_type = event.get("type", "")
             ws_type = f"chat.{event_type}" if event_type else "chat.unknown"
 
+            # Capture Layer-4 metadata from done event before forwarding
+            if event_type == "done":
+                if "steps" in event:
+                    collected_steps = event.get("steps", [])
+                collected_retry_succeeded = event.pop("retry_succeeded", None)
+                collected_judge_metadata = event.pop("judge_metadata", None)
+
             await send({
                 "type": ws_type,
                 "request_id": request_id,
@@ -466,14 +475,40 @@ async def _handle_chat_send(
 
             if event_type == "token":
                 final_message += event.get("content", "")
-            if event_type == "done" and "steps" in event:
-                collected_steps = event.get("steps", [])
 
         # Persist message, steps, generate title/summary, broadcast completion
         await _persist_and_postprocess(
             db, conversation, is_new_conversation, message, final_message,
             collected_steps, send, request_id, user, active_thread_id,
         )
+
+        # Layer 5: void credit + capture failure case if Layer-4 retry still failed
+        if collected_retry_succeeded is False:
+            if _credit_mgr is not None and hasattr(_credit_mgr, "void"):
+                try:
+                    _credit_mgr.void("layer4_retry_failed")
+                except Exception as _void_err:
+                    logger.warning("Credit void failed: %s", _void_err)
+            if collected_judge_metadata:
+                try:
+                    from backend.services.agent_failure_capture import capture_failure
+                    capture_failure(
+                        db=db,
+                        user_id=user.id,
+                        conversation_id=conversation.id,
+                        thread_id=conversation.thread_id,
+                        user_question=message,
+                        response_initial=collected_judge_metadata.get("initial_response", ""),
+                        response_after_retry=collected_judge_metadata.get("retry_response", ""),
+                        judge_reason_initial=collected_judge_metadata.get("judge_reason_initial", ""),
+                        judge_reason_retry=collected_judge_metadata.get("judge_reason_retry", ""),
+                        judge_directive=collected_judge_metadata.get("judge_directive", ""),
+                        model=settings.default_llm_model or settings.default_llm_provider,
+                        judge_model=collected_judge_metadata.get("judge_model", ""),
+                        orchestrator_steps=collected_steps or None,
+                    )
+                except Exception as _capture_err:
+                    logger.warning("Layer-4 capture failed: %s", _capture_err)
 
         # --- Finalize credit usage (bingo-credits plugin) ---
         if _credit_mgr is not None:

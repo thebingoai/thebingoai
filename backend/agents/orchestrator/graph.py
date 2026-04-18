@@ -9,6 +9,7 @@ from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashb
 from backend.agents.orchestrator.memory_tools import build_memory_tools
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.orchestrator.pre_steps import run_pre_steps, PreStepContext
+from backend.agents.orchestrator.response_judge import judge_response, JudgeVerdict
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.data_agent.graph import _make_loop_detector
 from backend.agents.rag_agent import invoke_rag_agent
@@ -18,6 +19,7 @@ from backend.llm.factory import get_provider
 from backend.llm.base import BaseLLMProvider
 from backend.config import settings
 from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
+import asyncio
 import json
 import logging
 import re as _re
@@ -92,6 +94,41 @@ def _redact_connection_ids(text: str) -> str:
     cleaned = _SPACE_BEFORE_PUNCT.sub(r"\1", cleaned)
     cleaned = _MULTI_SPACE.sub(" ", cleaned)
     return cleaned
+
+
+_TRACEBACK_BLOCK = _re.compile(
+    r"Traceback \(most recent call last\):(?:\n.+)+?(?=\n\n|\n[A-Z]|\Z)",
+    _re.MULTILINE,
+)
+_DB_EXCEPTION_LINE = _re.compile(
+    r"^(?:sqlite3|psycopg2|asyncpg|pymysql|MySQLdb|pymongo|clickhouse_driver)\.[A-Za-z]+Error:.*$",
+    _re.MULTILINE,
+)
+_GENERIC_EXCEPTION_LINE = _re.compile(
+    r"^(?:OperationalError|ProgrammingError|IntegrityError|DataError|InterfaceError|SyntaxError|ValueError|TypeError|KeyError): .*$",
+    _re.MULTILINE,
+)
+_DECIMAL_LEAK = _re.compile(
+    r"(?:Object of type )?Decimal is not JSON serializable\.?",
+    _re.IGNORECASE,
+)
+_COLLAPSE_BLANK_LINES = _re.compile(r"\n{3,}")
+
+
+def _sanitize_technical_errors(text: str) -> str:
+    """Strip leaked tracebacks, exception lines, and raw serialization errors.
+
+    Last-mile guard: Layer 1 (prompt) and Layer 4 (judge) should prevent these,
+    but if technical jargon still reaches the output, scrub it here.
+    """
+    if not text:
+        return text
+    cleaned = _TRACEBACK_BLOCK.sub("", text)
+    cleaned = _DB_EXCEPTION_LINE.sub("", cleaned)
+    cleaned = _GENERIC_EXCEPTION_LINE.sub("", cleaned)
+    cleaned = _DECIMAL_LEAK.sub("", cleaned)
+    cleaned = _COLLAPSE_BLANK_LINES.sub("\n\n", cleaned)
+    return cleaned.strip()
 
 
 def build_user_message(user_question: str, file_contents: list = None) -> HumanMessage:
@@ -592,6 +629,7 @@ async def run_orchestrator(
         model=provider.get_langchain_llm(),
         tools=tools,
         prompt=prompt,
+        pre_model_hook=_make_loop_detector(max_repeats=2, max_same_tool=5, max_total_calls=20),
     )
 
     try:
@@ -626,11 +664,84 @@ async def run_orchestrator(
 
         if final_answer:
             final_answer = _redact_connection_ids(final_answer)
+            final_answer = _sanitize_technical_errors(final_answer)
+
+        # Layer 4: judge the response, retry once if unresolved.
+        retry_succeeded: Optional[bool] = None
+        judge_metadata: Optional[Dict[str, Any]] = None
+        if settings.judge_enabled and final_answer:
+            initial_answer = final_answer
+            verdict = await judge_response(user_question, final_answer)
+            if not verdict.resolved:
+                logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
+                retry_directive = (
+                    "Your previous response did not fully resolve the user's question. "
+                    f"Reason: {verdict.reason}. "
+                    f"Directive: {verdict.suggested_directive or 'Complete the task now using available tools.'} "
+                    "Do NOT ask the user for confirmation on technical recovery. "
+                    "Do NOT leak technical error messages."
+                )
+                try:
+                    retry_messages = messages + [
+                        AIMessage(content=initial_answer),
+                        HumanMessage(content=retry_directive),
+                    ]
+                    retry_result = await orchestrator.ainvoke(
+                        {"messages": retry_messages},
+                        config={"recursion_limit": settings.agent_recursion_limit},
+                    )
+                    retry_messages = retry_result.get("messages", [])
+                    retry_answer = None
+                    for msg in reversed(retry_messages):
+                        if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
+                            retry_answer = msg.content
+                            break
+                    if retry_answer:
+                        retry_answer = _redact_connection_ids(retry_answer)
+                        retry_answer = _sanitize_technical_errors(retry_answer)
+                        retry_verdict = await judge_response(user_question, retry_answer)
+                        retry_succeeded = retry_verdict.resolved
+                        if retry_verdict.resolved:
+                            final_answer = retry_answer
+                        else:
+                            logger.warning("Layer-4 retry still unresolved: %s", retry_verdict.reason)
+                            final_answer = retry_answer
+                        judge_metadata = {
+                            "initial_response": initial_answer,
+                            "retry_response": retry_answer,
+                            "judge_reason_initial": verdict.reason,
+                            "judge_reason_retry": retry_verdict.reason,
+                            "judge_directive": verdict.suggested_directive,
+                            "judge_model": settings.judge_llm_model,
+                        }
+                    else:
+                        retry_succeeded = False
+                        judge_metadata = {
+                            "initial_response": initial_answer,
+                            "retry_response": "",
+                            "judge_reason_initial": verdict.reason,
+                            "judge_reason_retry": "retry produced no answer",
+                            "judge_directive": verdict.suggested_directive,
+                            "judge_model": settings.judge_llm_model,
+                        }
+                except Exception as retry_exc:
+                    logger.warning("Layer-4 retry orchestrator call failed: %s", retry_exc)
+                    retry_succeeded = False
+                    judge_metadata = {
+                        "initial_response": initial_answer,
+                        "retry_response": "",
+                        "judge_reason_initial": verdict.reason,
+                        "judge_reason_retry": f"retry errored: {type(retry_exc).__name__}",
+                        "judge_directive": verdict.suggested_directive,
+                        "judge_model": settings.judge_llm_model,
+                    }
 
         return {
             "success": True,
             "message": final_answer or "Query completed successfully",
-            "thread_id": context.thread_id
+            "thread_id": context.thread_id,
+            "retry_succeeded": retry_succeeded,
+            "judge_metadata": judge_metadata,
         }
 
     except Exception as e:
@@ -728,6 +839,7 @@ async def stream_orchestrator(
             model=provider.get_langchain_llm(),
             tools=tools,
             prompt=prompt,
+            pre_model_hook=_make_loop_detector(max_repeats=2, max_same_tool=5, max_total_calls=20),
         )
 
         messages = []
@@ -860,27 +972,105 @@ async def stream_orchestrator(
                         )
                     if content:
                         reasoning_buffer.append(content)
+                        # Feed the reasoning panel live. The chat bubble stays empty
+                        # until after the Layer-4 judge; we emit one token event
+                        # with the final text just before `done`.
                         yield {"type": "reasoning_token", "content": content}
-                        yield {"type": "token", "content": content}
 
         # After the loop: if reasoning_buffer is non-empty, the last LLM turn
         # had no tool call — this is the final answer, not reasoning.
-        # Re-yield as token events so it renders in the chat bubble.
+        # Buffer it, sanitize, then let the Layer-4 judge decide below.
+        final_answer_text = ""
         if reasoning_buffer:
             # Tell frontend to reclaim the streaming reasoning step as the final answer
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
             full_text = "".join(reasoning_buffer)
-            cleaned = _redact_connection_ids(full_text)
-            if cleaned != full_text:
-                yield {"type": "token", "content": cleaned, "replace": True}
+            final_answer_text = _sanitize_technical_errors(_redact_connection_ids(full_text))
             reasoning_buffer.clear()
 
+        # Layer 4: judge the streamed answer and retry once if unresolved.
+        retry_succeeded: Optional[bool] = None
+        judge_metadata: Optional[Dict[str, Any]] = None
+        if settings.judge_enabled and final_answer_text:
+            initial_answer = final_answer_text
+            verdict = await judge_response(user_question, final_answer_text)
+            if not verdict.resolved:
+                logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
+                yield {"type": "status", "content": "Refining response..."}
+                retry_directive = (
+                    "Your previous response did not fully resolve the user's question. "
+                    f"Reason: {verdict.reason}. "
+                    f"Directive: {verdict.suggested_directive or 'Complete the task now using available tools.'} "
+                    "Do NOT ask the user for confirmation on technical recovery. "
+                    "Do NOT leak technical error messages."
+                )
+                try:
+                    retry_messages = messages + [
+                        AIMessage(content=initial_answer),
+                        HumanMessage(content=retry_directive),
+                    ]
+                    retry_result = await orchestrator.ainvoke(
+                        {"messages": retry_messages},
+                        config={"recursion_limit": settings.agent_recursion_limit},
+                    )
+                    retry_msgs = retry_result.get("messages", [])
+                    retry_answer = None
+                    for msg in reversed(retry_msgs):
+                        if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
+                            retry_answer = msg.content
+                            break
+                    if retry_answer:
+                        retry_answer = _sanitize_technical_errors(_redact_connection_ids(retry_answer))
+                        retry_verdict = await judge_response(user_question, retry_answer)
+                        retry_succeeded = retry_verdict.resolved
+                        # Swap in the retry answer locally. The single token emit
+                        # before `done` carries it to the bubble — no replace flag.
+                        final_answer_text = retry_answer
+                        judge_metadata = {
+                            "initial_response": initial_answer,
+                            "retry_response": retry_answer,
+                            "judge_reason_initial": verdict.reason,
+                            "judge_reason_retry": retry_verdict.reason,
+                            "judge_directive": verdict.suggested_directive,
+                            "judge_model": settings.judge_llm_model,
+                        }
+                    else:
+                        retry_succeeded = False
+                        judge_metadata = {
+                            "initial_response": initial_answer,
+                            "retry_response": "",
+                            "judge_reason_initial": verdict.reason,
+                            "judge_reason_retry": "retry produced no answer",
+                            "judge_directive": verdict.suggested_directive,
+                            "judge_model": settings.judge_llm_model,
+                        }
+                except Exception as retry_exc:
+                    logger.warning("Layer-4 retry orchestrator call failed: %s", retry_exc)
+                    retry_succeeded = False
+                    judge_metadata = {
+                        "initial_response": initial_answer,
+                        "retry_response": "",
+                        "judge_reason_initial": verdict.reason,
+                        "judge_reason_retry": f"retry errored: {type(retry_exc).__name__}",
+                        "judge_directive": verdict.suggested_directive,
+                        "judge_model": settings.judge_llm_model,
+                    }
+
+        # Re-stream the judge-approved answer as paced word-chunks so the
+        # frontend drip ticker renders it word-by-word (Claude-Desktop feel)
+        # instead of filling instantly via catch-up.
+        if final_answer_text:
+            for chunk in _re.findall(r"\S+\s*|\s+", final_answer_text):
+                yield {"type": "token", "content": chunk}
+                await asyncio.sleep(0.025)
 
         yield {
             "type": "done",
             "content": "Orchestrator completed",
             "thread_id": context.thread_id,
-            "steps": collected_steps
+            "steps": collected_steps,
+            "retry_succeeded": retry_succeeded,
+            "judge_metadata": judge_metadata,
         }
 
     except Exception as e:

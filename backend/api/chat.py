@@ -296,7 +296,17 @@ async def chat_stream(
             logger.info("chat_stream: ctx.profile=%s (id=%s)", ctx.profile, getattr(ctx.profile, 'id', 'NONE'))
             final_message = ""
             collected_steps = []
+            collected_retry_succeeded = None
+            collected_judge_metadata = None
             async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt, profile=ctx.profile, llm_provider=user_provider):
+                # Capture steps + Layer-4 metadata from done event BEFORE forwarding
+                if event.get("type") == "done":
+                    if "steps" in event:
+                        collected_steps = event.get("steps", [])
+                    # Strip server-only fields before forwarding to client
+                    collected_retry_succeeded = event.pop("retry_succeeded", None)
+                    collected_judge_metadata = event.pop("judge_metadata", None)
+
                 # Forward event to client
                 yield f"data: {json.dumps(event)}\n\n"
 
@@ -304,9 +314,33 @@ async def chat_stream(
                 if event.get("type") == "token":
                     final_message += event.get("content", "")
 
-                # Capture steps from done event
-                if event.get("type") == "done" and "steps" in event:
-                    collected_steps = event.get("steps", [])
+            # Layer 5: void credit + capture failure case if Layer-4 retry still failed
+            if collected_retry_succeeded is False:
+                if _credit_mgr is not None and hasattr(_credit_mgr, "void"):
+                    try:
+                        _credit_mgr.void("layer4_retry_failed")
+                    except Exception as _void_err:
+                        logger.warning("Credit void failed: %s", _void_err)
+                if collected_judge_metadata:
+                    try:
+                        from backend.services.agent_failure_capture import capture_failure
+                        capture_failure(
+                            db=db,
+                            user_id=current_user.id,
+                            conversation_id=conversation.id,
+                            thread_id=conversation.thread_id,
+                            user_question=request.message,
+                            response_initial=collected_judge_metadata.get("initial_response", ""),
+                            response_after_retry=collected_judge_metadata.get("retry_response", ""),
+                            judge_reason_initial=collected_judge_metadata.get("judge_reason_initial", ""),
+                            judge_reason_retry=collected_judge_metadata.get("judge_reason_retry", ""),
+                            judge_directive=collected_judge_metadata.get("judge_directive", ""),
+                            model=settings.default_llm_model or settings.default_llm_provider,
+                            judge_model=collected_judge_metadata.get("judge_model", ""),
+                            orchestrator_steps=collected_steps or None,
+                        )
+                    except Exception as _capture_err:
+                        logger.warning("Layer-4 capture failed: %s", _capture_err)
 
             # Save assistant message (save even if empty — tool-only turns
             # like ask_user_question still need steps persisted)

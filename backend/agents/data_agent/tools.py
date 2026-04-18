@@ -1,5 +1,8 @@
 from langchain_core.tools import tool
 from typing import List, Dict, Any, Callable
+from decimal import Decimal
+from datetime import date, datetime
+from uuid import UUID
 from backend.services.schema_discovery import load_schema_file
 from backend.connectors.factory import get_connector_for_connection
 from backend.database.session import SessionLocal
@@ -11,6 +14,18 @@ import uuid
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def build_data_agent_tools(context: AgentContext) -> List[Callable]:
@@ -163,7 +178,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 # Build full result payload for frontend delivery
                 full_result = {
                     "columns": result.columns,
-                    "rows": [list(row) for row in result.rows],
+                    "rows": [[_coerce(v) for v in row] for row in result.rows],
                     "row_count": result.row_count,
                     "execution_time_ms": result.execution_time_ms,
                     "truncated": result.truncated,
@@ -177,7 +192,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 publish_query_result(context.user_id, result_ref, full_result)
 
                 # Return metadata + first rows so the LLM can format tables
-                preview_rows = [list(row) for row in result.rows[:20]]
+                preview_rows = [[_coerce(v) for v in row] for row in result.rows[:20]]
                 return {
                     "columns": result.columns,
                     "rows": preview_rows,

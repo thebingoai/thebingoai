@@ -128,16 +128,20 @@ class OpenAIProvider(BaseLLMProvider):
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
-    def get_langchain_llm(self) -> ChatOpenAI:
+    def get_langchain_llm(self, model: Optional[str] = None) -> ChatOpenAI:
         """
         Get LangChain-compatible ChatOpenAI instance.
+
+        Args:
+            model: Optional per-call override (e.g. judge model). Falls back
+                to self.model, then settings.openai_default_model.
 
         Returns:
             ChatOpenAI instance configured for this provider
         """
-        model = self.model or self.get_default_model()
+        resolved = model or self.model or self.get_default_model()
         return ChatOpenAI(
-            model=model,
+            model=resolved,
             api_key=self.api_key,
             temperature=0
         )
