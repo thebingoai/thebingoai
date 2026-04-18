@@ -81,7 +81,7 @@
       </div>
 
       <!-- Typing indicator when assistant message is empty during streaming -->
-      <div v-if="!message.content && chatStore.isStreaming" class="typing-indicator">
+      <div v-if="!message.content && chatStore.isStreaming && props.isLast" class="typing-indicator">
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
@@ -103,7 +103,7 @@
           {{ message.steps_log.length }} steps
         </button>
         <div v-if="message.steps_log_expanded" class="mt-1.5 whitespace-pre-wrap">{{ message.steps_log.join('\n') }}
-          <div v-if="chatStore.isStreaming" class="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">
+          <div v-if="chatStore.isStreaming && props.isLast" class="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">
             <span class="text-[10px] text-glow-orange">working...</span>
           </div>
         </div>
@@ -181,6 +181,7 @@ const props = defineProps<{
   showActions?: boolean
   actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | 'user_question' | null
   followingUserContent?: string
+  isLast?: boolean
 }>()
 
 const emit = defineEmits<{
