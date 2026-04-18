@@ -1938,11 +1938,9 @@ async function handleFormSubmit() {
 
     if (editingConnection.value) {
       await api.connections.update(String(editingConnection.value.id), payload)
-      toast.success('Connection updated successfully')
       connectionSuccessMessage.value = 'Connection updated successfully'
     } else {
       await api.connections.create(payload)
-      toast.success('Connection created successfully')
       connectionSuccessMessage.value = 'Connection created successfully'
     }
 
