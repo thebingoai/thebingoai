@@ -9,13 +9,13 @@
     <!-- Content overlay -->
     <div class="relative flex h-full flex-col justify-between p-4 z-10">
       <!-- Label -->
-      <div class="text-xs font-medium text-gray-400 uppercase tracking-wide">{{ config.label }}</div>
+      <div class="text-xs font-medium text-gray-400 dark:text-neutral-400 uppercase tracking-wide">{{ config.label }}</div>
 
       <!-- Main value -->
       <div class="flex items-baseline gap-1 mt-2">
-        <span v-if="config.prefix" class="text-sm font-medium text-gray-500">{{ config.prefix }}</span>
-        <span class="text-2xl font-semibold text-gray-900 tabular-nums">{{ formattedValue }}</span>
-        <span v-if="config.suffix" class="text-sm font-medium text-gray-500">{{ config.suffix }}</span>
+        <span v-if="config.prefix" class="text-sm font-medium text-gray-500 dark:text-neutral-400">{{ config.prefix }}</span>
+        <span class="text-2xl font-semibold text-gray-900 dark:text-neutral-100 tabular-nums">{{ formattedValue }}</span>
+        <span v-if="config.suffix" class="text-sm font-medium text-gray-500 dark:text-neutral-400">{{ config.suffix }}</span>
       </div>
 
       <!-- Trend row -->
@@ -28,7 +28,7 @@
         <span class="text-xs font-medium tabular-nums" :class="trendColor">
           {{ config.trend.value }}%
         </span>
-        <span v-if="config.trend.period" class="text-xs text-gray-400">{{ config.trend.period }}</span>
+        <span v-if="config.trend.period" class="text-xs text-gray-400 dark:text-neutral-500">{{ config.trend.period }}</span>
       </div>
     </div>
   </div>

@@ -191,9 +191,13 @@ class AnthropicProvider(BaseLLMProvider):
                 f"Known models: {', '.join(self.AVAILABLE_MODELS)}"
             )
 
-    def get_langchain_llm(self) -> "ChatAnthropic":
+    def get_langchain_llm(self, model: Optional[str] = None) -> "ChatAnthropic":
         """
         Get LangChain-compatible ChatAnthropic instance.
+
+        Args:
+            model: Optional per-call override (e.g. judge model). Falls back
+                to self.model, then settings.anthropic_default_model.
 
         Returns:
             ChatAnthropic instance configured for this provider
@@ -207,15 +211,15 @@ class AnthropicProvider(BaseLLMProvider):
         if not self.api_key:
             raise ValueError("Anthropic API key not configured. Set ANTHROPIC_API_KEY in your .env file.")
 
-        model = self.model or self.get_default_model()
-        if model not in self.AVAILABLE_MODELS:
+        resolved = model or self.model or self.get_default_model()
+        if resolved not in self.AVAILABLE_MODELS:
             logger.warning(
                 "Anthropic model '%s' is not in the known models list %s. "
                 "This may cause a model-not-found error. Check DEFAULT_LLM_MODEL in your .env file.",
-                model, self.AVAILABLE_MODELS
+                resolved, self.AVAILABLE_MODELS
             )
         return ChatAnthropic(
-            model=model,
+            model=resolved,
             api_key=self.api_key,
             temperature=0,
             max_tokens=settings.anthropic_default_max_tokens

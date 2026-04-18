@@ -25,15 +25,15 @@
             leave-to="opacity-0 scale-95"
           >
             <DialogPanel :class="panelClasses">
-              <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                <DialogTitle v-if="title" class="text-lg font-normal text-gray-900">
+              <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 dark:border-neutral-700 px-6 py-4">
+                <DialogTitle v-if="title" class="text-lg font-normal text-gray-900 dark:text-neutral-100">
                   {{ title }}
                 </DialogTitle>
                 <slot v-else name="header" />
                 <button
                   v-if="closable"
                   @click="$emit('update:open', false)"
-                  class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
                 >
                   <component :is="X" class="h-5 w-5" />
                 </button>
@@ -43,7 +43,7 @@
                 <slot />
               </div>
 
-              <div v-if="$slots.footer" class="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4">
+              <div v-if="$slots.footer" class="flex items-center justify-end gap-3 border-t border-gray-200 dark:border-neutral-700 px-6 py-4">
                 <slot name="footer" />
               </div>
             </DialogPanel>
@@ -85,7 +85,7 @@ const sizeClasses = {
 
 const panelClasses = computed(() =>
   cn(
-    'w-full transform overflow-hidden rounded-lg bg-white text-left align-middle shadow-xl',
+    'w-full transform overflow-hidden rounded-lg bg-white dark:bg-neutral-800 text-left align-middle shadow-xl',
     sizeClasses[props.size]
   )
 )

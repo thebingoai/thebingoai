@@ -9,6 +9,7 @@ from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashb
 from backend.agents.orchestrator.memory_tools import build_memory_tools
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.orchestrator.pre_steps import run_pre_steps, PreStepContext
+from backend.agents.orchestrator.response_judge import judge_response, JudgeVerdict
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.data_agent.graph import _make_loop_detector
 from backend.agents.rag_agent import invoke_rag_agent
@@ -17,7 +18,8 @@ from backend.agents.tool_registry import build_tools_for_keys
 from backend.llm.factory import get_provider
 from backend.llm.base import BaseLLMProvider
 from backend.config import settings
-from typing import Dict, Any, List, Optional, Callable, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Tuple, Callable, TYPE_CHECKING
+import asyncio
 import json
 import logging
 import re as _re
@@ -94,6 +96,41 @@ def _redact_connection_ids(text: str) -> str:
     return cleaned
 
 
+_TRACEBACK_BLOCK = _re.compile(
+    r"Traceback \(most recent call last\):(?:\n.+)+?(?=\n\n|\n[A-Z]|\Z)",
+    _re.MULTILINE,
+)
+_DB_EXCEPTION_LINE = _re.compile(
+    r"^(?:sqlite3|psycopg2|asyncpg|pymysql|MySQLdb|pymongo|clickhouse_driver)\.[A-Za-z]+Error:.*$",
+    _re.MULTILINE,
+)
+_GENERIC_EXCEPTION_LINE = _re.compile(
+    r"^(?:OperationalError|ProgrammingError|IntegrityError|DataError|InterfaceError|SyntaxError|ValueError|TypeError|KeyError): .*$",
+    _re.MULTILINE,
+)
+_DECIMAL_LEAK = _re.compile(
+    r"(?:Object of type )?Decimal is not JSON serializable\.?",
+    _re.IGNORECASE,
+)
+_COLLAPSE_BLANK_LINES = _re.compile(r"\n{3,}")
+
+
+def _sanitize_technical_errors(text: str) -> str:
+    """Strip leaked tracebacks, exception lines, and raw serialization errors.
+
+    Last-mile guard: Layer 1 (prompt) and Layer 4 (judge) should prevent these,
+    but if technical jargon still reaches the output, scrub it here.
+    """
+    if not text:
+        return text
+    cleaned = _TRACEBACK_BLOCK.sub("", text)
+    cleaned = _DB_EXCEPTION_LINE.sub("", cleaned)
+    cleaned = _GENERIC_EXCEPTION_LINE.sub("", cleaned)
+    cleaned = _DECIMAL_LEAK.sub("", cleaned)
+    cleaned = _COLLAPSE_BLANK_LINES.sub("\n\n", cleaned)
+    return cleaned.strip()
+
+
 def build_user_message(user_question: str, file_contents: list = None) -> HumanMessage:
     """Build a LangChain HumanMessage with optional multi-modal file content blocks."""
     if not file_contents:
@@ -130,6 +167,200 @@ def build_user_message(user_question: str, file_contents: list = None) -> HumanM
                 })
     blocks.append({"type": "text", "text": user_question})
     return HumanMessage(content=blocks)
+
+
+def _load_profile_if_missing(
+    profile: Optional[object],
+    user_id: str,
+    db_session_factory: Optional[Callable],
+    log_prefix: str,
+) -> Optional[object]:
+    """Self-load the orchestrator AgentProfile if the caller didn't pass one."""
+    if profile is not None or db_session_factory is None:
+        return profile
+    try:
+        _db = db_session_factory()
+        from backend.models.agent_profile import AgentProfile as _AP
+        loaded = _db.query(_AP).filter(
+            _AP.user_id == user_id,
+            _AP.agent_type == "orchestrator",
+            _AP.is_active.is_(True),
+        ).first()
+        _db.close()
+        return loaded
+    except Exception as _exc:
+        logger.warning("%s: profile self-load failed: %s", log_prefix, _exc)
+        return profile
+
+
+async def _render_orchestrator_prompt(
+    profile: Optional[object],
+    user_question: str,
+    context: AgentContext,
+    custom_agents: Optional[List["CustomAgent"]],
+    user_skills: Optional[List["UserSkill"]],
+    skill_suggestions: Optional[list],
+    user_memories_context: str,
+    memory_context: str,
+    soul_prompt: str,
+    db_session_factory: Optional[Callable],
+    log_prefix: str,
+) -> str:
+    """Render profile-driven prompt (with pre-steps) or legacy fallback."""
+    if profile:
+        pre_ctx = PreStepContext(
+            user_id=context.user_id,
+            query=user_question,
+            profile=profile,
+            user_memories_context=user_memories_context,
+            db_session_factory=db_session_factory,
+        )
+        await run_pre_steps(pre_ctx)
+        rt_ctx = RuntimeContext(
+            custom_agents=custom_agents or [],
+            user_skills=user_skills or [],
+            skill_suggestions=skill_suggestions or [],
+            user_memories_context=user_memories_context,
+            memory_context=memory_context,
+            available_connections=context.available_connections,
+            connection_metadata=context.connection_metadata,
+            mesh_enabled=settings.agent_mesh_enabled,
+        )
+        return ProfileRenderer.render(profile, rt_ctx)
+    logger.info("%s: using LEGACY hardcoded prompt (no profile)", log_prefix)
+    return build_orchestrator_prompt(
+        custom_agents,
+        memory_context=memory_context,
+        user_skills=user_skills,
+        user_memories_context=user_memories_context,
+        skill_suggestions=skill_suggestions,
+        soul_prompt=soul_prompt,
+        available_connections=context.available_connections,
+        connection_metadata=context.connection_metadata,
+    )
+
+
+def _build_messages(
+    user_question: str,
+    history: Optional[list],
+    file_contents: Optional[list],
+) -> list:
+    """Build the LangChain messages list from history + current user question."""
+    messages: list = []
+    if history:
+        for msg in history:
+            if msg.role == "user":
+                content = msg.content
+                if getattr(msg, "attachments", None):
+                    attachment_lines = [
+                        f"[File: {att['name']} (file_id: {att['file_id']})]"
+                        for att in msg.attachments
+                    ]
+                    content = "\n".join(attachment_lines) + "\n" + content
+                messages.append(HumanMessage(content=content))
+            elif msg.role == "assistant":
+                messages.append(AIMessage(content=msg.content))
+    messages.append(build_user_message(user_question, file_contents))
+    return messages
+
+
+def _create_orchestrator_agent(
+    tools: list,
+    prompt: str,
+    llm_provider: Optional[BaseLLMProvider],
+):
+    """Build the LangGraph ReactAgent with the shared loop-detector config."""
+    provider = llm_provider or get_provider(settings.default_llm_provider)
+    return create_react_agent(
+        model=provider.get_langchain_llm(),
+        tools=tools,
+        prompt=prompt,
+        pre_model_hook=_make_loop_detector(max_repeats=2, max_same_tool=5, max_total_calls=20),
+    )
+
+
+def _extract_final_answer(messages: list) -> Optional[str]:
+    """Return the last AIMessage content without tool calls — the assistant's final textual answer."""
+    for msg in reversed(messages):
+        if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
+            return msg.content
+    return None
+
+
+async def _run_judge_retry(
+    user_question: str,
+    initial_answer: str,
+    initial_verdict: JudgeVerdict,
+    orchestrator,
+    base_messages: list,
+) -> Tuple[str, bool, Dict[str, Any]]:
+    """Execute Layer-4 one-shot retry after the judge rejected the initial answer.
+
+    Called only when `initial_verdict.resolved` is False. Returns
+    (final_answer, retry_succeeded, judge_metadata). On retry error or empty
+    retry output, returns the initial_answer as final with retry_succeeded=False.
+    Caller is responsible for emitting any UX status event before invoking.
+    """
+    retry_directive = (
+        "Your previous response did not fully resolve the user's question. "
+        f"Reason: {initial_verdict.reason}. "
+        f"Directive: {initial_verdict.suggested_directive or 'Complete the task now using available tools.'} "
+        "Do NOT ask the user for confirmation on technical recovery. "
+        "Do NOT leak technical error messages."
+    )
+    try:
+        retry_messages = base_messages + [
+            AIMessage(content=initial_answer),
+            HumanMessage(content=retry_directive),
+        ]
+        retry_result = await orchestrator.ainvoke(
+            {"messages": retry_messages},
+            config={"recursion_limit": settings.agent_recursion_limit},
+        )
+        retry_answer = _extract_final_answer(retry_result.get("messages", []))
+        if retry_answer:
+            retry_answer = _sanitize_technical_errors(_redact_connection_ids(retry_answer))
+            retry_verdict = await judge_response(user_question, retry_answer)
+            if not retry_verdict.resolved:
+                logger.warning("Layer-4 retry still unresolved: %s", retry_verdict.reason)
+            return (
+                retry_answer,
+                retry_verdict.resolved,
+                {
+                    "initial_response": initial_answer,
+                    "retry_response": retry_answer,
+                    "judge_reason_initial": initial_verdict.reason,
+                    "judge_reason_retry": retry_verdict.reason,
+                    "judge_directive": initial_verdict.suggested_directive,
+                    "judge_model": settings.judge_llm_model,
+                },
+            )
+        return (
+            initial_answer,
+            False,
+            {
+                "initial_response": initial_answer,
+                "retry_response": "",
+                "judge_reason_initial": initial_verdict.reason,
+                "judge_reason_retry": "retry produced no answer",
+                "judge_directive": initial_verdict.suggested_directive,
+                "judge_model": settings.judge_llm_model,
+            },
+        )
+    except Exception as retry_exc:
+        logger.warning("Layer-4 retry orchestrator call failed: %s", retry_exc)
+        return (
+            initial_answer,
+            False,
+            {
+                "initial_response": initial_answer,
+                "retry_response": "",
+                "judge_reason_initial": initial_verdict.reason,
+                "judge_reason_retry": f"retry errored: {type(retry_exc).__name__}",
+                "judge_directive": initial_verdict.suggested_directive,
+                "judge_model": settings.judge_llm_model,
+            },
+        )
 
 
 def build_orchestrator_tools(
@@ -545,92 +776,41 @@ async def run_orchestrator(
     """
     tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills, llm_provider=llm_provider)
 
-    # Profile-driven prompt rendering (new path) or legacy fallback
-    # Load profile directly if not passed (workaround for pass-through issue)
-    if profile is None and db_session_factory:
-        try:
-            _db = db_session_factory()
-            from backend.models.agent_profile import AgentProfile as _AP
-            profile = _db.query(_AP).filter(
-                _AP.user_id == context.user_id,
-                _AP.agent_type == "orchestrator",
-                _AP.is_active.is_(True),
-            ).first()
-            _db.close()
-        except Exception as _exc:
-            logger.warning("run_orchestrator: profile self-load failed: %s", _exc)
-
-    if profile:
-        # Run deterministic pre-steps before prompt rendering
-        pre_ctx = PreStepContext(
-            user_id=context.user_id,
-            query=user_question,
-            profile=profile,
-            user_memories_context=user_memories_context,
-            db_session_factory=db_session_factory,
-        )
-        await run_pre_steps(pre_ctx)
-
-        rt_ctx = RuntimeContext(
-            custom_agents=custom_agents or [],
-            user_skills=user_skills or [],
-            skill_suggestions=skill_suggestions or [],
-            user_memories_context=user_memories_context,
-            memory_context=memory_context,
-            available_connections=context.available_connections,
-            connection_metadata=context.connection_metadata,
-            mesh_enabled=settings.agent_mesh_enabled,
-        )
-        prompt = ProfileRenderer.render(profile, rt_ctx)
-    else:
-        logger.info("run_orchestrator: using LEGACY hardcoded prompt (no profile)")
-        prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections, connection_metadata=context.connection_metadata)
-
-    provider = llm_provider or get_provider(settings.default_llm_provider)
-
-    orchestrator = create_react_agent(
-        model=provider.get_langchain_llm(),
-        tools=tools,
-        prompt=prompt,
+    profile = _load_profile_if_missing(profile, context.user_id, db_session_factory, "run_orchestrator")
+    prompt = await _render_orchestrator_prompt(
+        profile, user_question, context,
+        custom_agents, user_skills, skill_suggestions,
+        user_memories_context, memory_context, soul_prompt,
+        db_session_factory, "run_orchestrator",
     )
+    orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
 
     try:
-        messages = []
-        if history:
-            for msg in history:
-                if msg.role == "user":
-                    content = msg.content
-                    if getattr(msg, "attachments", None):
-                        attachment_lines = [
-                            f"[File: {att['name']} (file_id: {att['file_id']})]"
-                            for att in msg.attachments
-                        ]
-                        content = "\n".join(attachment_lines) + "\n" + content
-                    messages.append(HumanMessage(content=content))
-                elif msg.role == "assistant":
-                    messages.append(AIMessage(content=msg.content))
-        messages.append(build_user_message(user_question, file_contents))
-
+        messages = _build_messages(user_question, history, file_contents)
         result = await orchestrator.ainvoke(
             {"messages": messages},
             config={"recursion_limit": settings.agent_recursion_limit},
         )
-
-        result_messages = result.get("messages", [])
-
-        final_answer = None
-        for msg in reversed(result_messages):
-            if hasattr(msg, "type") and msg.type == "ai" and not getattr(msg, "tool_calls", None):
-                final_answer = msg.content
-                break
-
+        final_answer = _extract_final_answer(result.get("messages", []))
         if final_answer:
-            final_answer = _redact_connection_ids(final_answer)
+            final_answer = _sanitize_technical_errors(_redact_connection_ids(final_answer))
+
+        retry_succeeded: Optional[bool] = None
+        judge_metadata: Optional[Dict[str, Any]] = None
+        if settings.judge_enabled and final_answer:
+            verdict = await judge_response(user_question, final_answer)
+            if not verdict.resolved:
+                logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
+                final_answer, retry_succeeded, judge_metadata = await _run_judge_retry(
+                    user_question, final_answer, verdict, orchestrator, messages,
+                )
 
         return {
             "success": True,
             "message": final_answer or "Query completed successfully",
-            "thread_id": context.thread_id
+            "thread_id": context.thread_id,
+            "retry_succeeded": retry_succeeded,
+            "judge_metadata": judge_metadata,
         }
 
     except Exception as e:
@@ -680,71 +860,16 @@ async def stream_orchestrator(
 
         tools = build_orchestrator_tools(context, custom_agents, db_session_factory, user_skills, llm_provider=llm_provider)
 
-        # Profile-driven prompt rendering (new path) or legacy fallback
-        # Load profile directly if not passed (workaround for pass-through issue)
-        if profile is None and db_session_factory:
-            try:
-                _db = db_session_factory()
-                from backend.models.agent_profile import AgentProfile as _AP
-                profile = _db.query(_AP).filter(
-                    _AP.user_id == context.user_id,
-                    _AP.agent_type == "orchestrator",
-                    _AP.is_active.is_(True),
-                ).first()
-                _db.close()
-            except Exception as _exc:
-                logger.warning("stream_orchestrator: profile self-load failed: %s", _exc)
-
+        profile = _load_profile_if_missing(profile, context.user_id, db_session_factory, "stream_orchestrator")
         logger.info("stream_orchestrator: profile = %s", "LOADED" if profile else "NONE")
-        if profile is not None:
-            # Run deterministic pre-steps before prompt rendering
-            pre_ctx = PreStepContext(
-                user_id=context.user_id,
-                query=user_question,
-                profile=profile,
-                user_memories_context=user_memories_context,
-                db_session_factory=db_session_factory,
-            )
-            await run_pre_steps(pre_ctx)
-
-            rt_ctx = RuntimeContext(
-                custom_agents=custom_agents or [],
-                user_skills=user_skills or [],
-                skill_suggestions=skill_suggestions or [],
-                user_memories_context=user_memories_context,
-                memory_context=memory_context,
-                available_connections=context.available_connections,
-                connection_metadata=context.connection_metadata,
-                mesh_enabled=settings.agent_mesh_enabled,
-            )
-            prompt = ProfileRenderer.render(profile, rt_ctx)
-        else:
-            logger.info("stream_orchestrator: using LEGACY hardcoded prompt (no profile)")
-            prompt = build_orchestrator_prompt(custom_agents, memory_context=memory_context, user_skills=user_skills, user_memories_context=user_memories_context, skill_suggestions=skill_suggestions, soul_prompt=soul_prompt, available_connections=context.available_connections, connection_metadata=context.connection_metadata)
-
-        provider = llm_provider or get_provider(settings.default_llm_provider)
-
-        orchestrator = create_react_agent(
-            model=provider.get_langchain_llm(),
-            tools=tools,
-            prompt=prompt,
+        prompt = await _render_orchestrator_prompt(
+            profile, user_question, context,
+            custom_agents, user_skills, skill_suggestions,
+            user_memories_context, memory_context, soul_prompt,
+            db_session_factory, "stream_orchestrator",
         )
-
-        messages = []
-        if history:
-            for msg in history:
-                if msg.role == "user":
-                    content = msg.content
-                    if getattr(msg, "attachments", None):
-                        attachment_lines = [
-                            f"[File: {att['name']} (file_id: {att['file_id']})]"
-                            for att in msg.attachments
-                        ]
-                        content = "\n".join(attachment_lines) + "\n" + content
-                    messages.append(HumanMessage(content=content))
-                elif msg.role == "assistant":
-                    messages.append(AIMessage(content=msg.content))
-        messages.append(build_user_message(user_question, file_contents))
+        orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
+        messages = _build_messages(user_question, history, file_contents)
 
         collected_steps = []
         step_number = 0
@@ -860,27 +985,49 @@ async def stream_orchestrator(
                         )
                     if content:
                         reasoning_buffer.append(content)
+                        # Feed the reasoning panel live. The chat bubble stays empty
+                        # until after the Layer-4 judge; we emit one token event
+                        # with the final text just before `done`.
                         yield {"type": "reasoning_token", "content": content}
-                        yield {"type": "token", "content": content}
 
         # After the loop: if reasoning_buffer is non-empty, the last LLM turn
         # had no tool call — this is the final answer, not reasoning.
-        # Re-yield as token events so it renders in the chat bubble.
+        # Buffer it, sanitize, then let the Layer-4 judge decide below.
+        final_answer_text = ""
         if reasoning_buffer:
             # Tell frontend to reclaim the streaming reasoning step as the final answer
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
             full_text = "".join(reasoning_buffer)
-            cleaned = _redact_connection_ids(full_text)
-            if cleaned != full_text:
-                yield {"type": "token", "content": cleaned, "replace": True}
+            final_answer_text = _sanitize_technical_errors(_redact_connection_ids(full_text))
             reasoning_buffer.clear()
 
+        # Layer 4: judge the streamed answer and retry once if unresolved.
+        retry_succeeded: Optional[bool] = None
+        judge_metadata: Optional[Dict[str, Any]] = None
+        if settings.judge_enabled and final_answer_text:
+            verdict = await judge_response(user_question, final_answer_text)
+            if not verdict.resolved:
+                logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
+                yield {"type": "status", "content": "Refining response..."}
+                final_answer_text, retry_succeeded, judge_metadata = await _run_judge_retry(
+                    user_question, final_answer_text, verdict, orchestrator, messages,
+                )
+
+        # Re-stream the judge-approved answer as paced word-chunks so the
+        # frontend drip ticker renders it word-by-word (Claude-Desktop feel)
+        # instead of filling instantly via catch-up.
+        if final_answer_text:
+            for chunk in _re.findall(r"\S+\s*|\s+", final_answer_text):
+                yield {"type": "token", "content": chunk}
+                await asyncio.sleep(0.025)
 
         yield {
             "type": "done",
             "content": "Orchestrator completed",
             "thread_id": context.thread_id,
-            "steps": collected_steps
+            "steps": collected_steps,
+            "retry_succeeded": retry_succeeded,
+            "judge_metadata": judge_metadata,
         }
 
     except Exception as e:

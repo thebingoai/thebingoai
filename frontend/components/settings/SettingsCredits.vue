@@ -1,6 +1,6 @@
 <template>
   <div class="p-6 space-y-8">
-    <h2 class="text-2xl font-medium text-gray-900">Credits & API Keys</h2>
+    <h2 class="text-2xl font-medium text-gray-900 dark:text-white">Credits & API Keys</h2>
 
     <!-- Two-column row: Credit Meter + API Key Management -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
@@ -8,28 +8,28 @@
       <!-- Left column: Daily Credits + Consumption Chart -->
       <div class="space-y-6">
         <!-- Credit Meter -->
-        <div class="rounded-xl border border-gray-200 p-6 space-y-3">
-          <h3 class="text-base font-medium text-gray-900">Daily Credits</h3>
-          <div class="flex items-center justify-between text-sm text-gray-600">
+        <div class="rounded-xl border border-gray-200 dark:border-neutral-700 p-6 space-y-3">
+          <h3 class="text-base font-medium text-gray-900 dark:text-white">Daily Credits</h3>
+          <div class="flex items-center justify-between text-sm text-gray-600 dark:text-neutral-300">
             <span>{{ Math.round(usedToday) }} used</span>
             <span>{{ Math.round(remaining) }} credits remaining</span>
           </div>
           <!-- Progress bar -->
-          <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+          <div class="h-2 rounded-full bg-gray-100 dark:bg-neutral-700 overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-300"
               :class="usedPercent >= 90 ? 'bg-red-500' : 'bar-orange-flow'"
               :style="{ width: `${usedPercent}%` }"
             />
           </div>
-          <p class="text-xs text-gray-400">{{ dailyLimit }} credits will be reset at midnight.</p>
+          <p class="text-xs text-gray-400 dark:text-neutral-500">{{ dailyLimit }} credits will be reset at midnight.</p>
         </div>
 
         <!-- Daily Consumption Chart -->
-        <div class="rounded-xl border border-gray-200 p-6 space-y-3">
-          <h3 class="text-base font-medium text-gray-900">Daily Consumption</h3>
-          <div v-if="dailyTotalsLoading" class="h-36 rounded-lg bg-gray-100 animate-pulse" />
-          <div v-else-if="dailyTotals.length === 0" class="h-36 flex items-center justify-center text-sm text-gray-400">
+        <div class="rounded-xl border border-gray-200 dark:border-neutral-700 p-6 space-y-3">
+          <h3 class="text-base font-medium text-gray-900 dark:text-white">Daily Consumption</h3>
+          <div v-if="dailyTotalsLoading" class="h-36 rounded-lg bg-gray-100 dark:bg-neutral-700 animate-pulse" />
+          <div v-else-if="dailyTotals.length === 0" class="h-36 flex items-center justify-center text-sm text-gray-400 dark:text-neutral-500">
             No usage data yet.
           </div>
           <div v-else class="h-36">
@@ -39,21 +39,21 @@
       </div>
 
       <!-- API Key Management -->
-      <div class="rounded-xl border border-gray-200 p-6 flex flex-col">
-        <h3 class="text-base font-medium text-gray-900">Bring Your Own API Key</h3>
-        <p class="text-sm text-gray-500 mt-1">Use your own API keys to bypass daily credit limits.</p>
+      <div class="rounded-xl border border-gray-200 dark:border-neutral-700 p-6 flex flex-col">
+        <h3 class="text-base font-medium text-gray-900 dark:text-white">Bring Your Own API Key</h3>
+        <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Use your own API keys to bypass daily credit limits.</p>
 
         <!-- Stored keys -->
         <div class="flex-1 mt-4 space-y-2">
           <div
             v-for="key in apiKeys"
             :key="key.provider"
-            class="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+            class="flex items-center justify-between rounded-lg border border-gray-100 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-700/50 px-4 py-3"
           >
             <div>
-              <p class="text-sm font-medium text-gray-700 capitalize">{{ key.provider }}</p>
-              <p class="text-xs text-gray-400 font-mono">{{ key.masked_key }}</p>
-              <p v-if="key.api_base_url" class="text-xs text-gray-400">{{ key.api_base_url }}</p>
+              <p class="text-sm font-medium text-gray-700 dark:text-neutral-200 capitalize">{{ key.provider }}</p>
+              <p class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ key.masked_key }}</p>
+              <p v-if="key.api_base_url" class="text-xs text-gray-400 dark:text-neutral-500">{{ key.api_base_url }}</p>
             </div>
             <button
               @click="handleDeleteKey(key.provider)"
@@ -62,50 +62,50 @@
               Remove
             </button>
           </div>
-          <div v-if="apiKeys.length === 0" class="flex items-center justify-center text-sm text-gray-400 py-4">
+          <div v-if="apiKeys.length === 0" class="flex items-center justify-center text-sm text-gray-400 dark:text-neutral-500 py-4">
             No API keys configured.
           </div>
         </div>
 
         <!-- Add key form (pinned to bottom) -->
-        <form @submit.prevent="handleSaveKey" class="space-y-3 mt-4 pt-4 border-t border-gray-100">
+        <form @submit.prevent="handleSaveKey" class="space-y-3 mt-4 pt-4 border-t border-gray-100 dark:border-neutral-700">
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">Provider</label>
+              <label class="block text-xs font-medium text-gray-600 dark:text-neutral-300 mb-1">Provider</label>
               <select
                 v-model="newProvider"
-                class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
+                class="w-full rounded-lg border border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 px-3 py-2 text-sm focus:outline-none focus:border-gray-400 dark:[color-scheme:dark]"
               >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
               </select>
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">
-                Base URL <span class="text-gray-400">(optional)</span>
+              <label class="block text-xs font-medium text-gray-600 dark:text-neutral-300 mb-1">
+                Base URL <span class="text-gray-400 dark:text-neutral-500">(optional)</span>
               </label>
               <input
                 v-model="newBaseUrl"
                 type="url"
                 :placeholder="defaultBaseUrls[newProvider]"
-                class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
+                class="w-full rounded-lg border border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 placeholder:text-gray-400 dark:placeholder:text-neutral-500 px-3 py-2 text-sm focus:outline-none focus:border-gray-400 dark:[color-scheme:dark]"
               />
             </div>
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+            <label class="block text-xs font-medium text-gray-600 dark:text-neutral-300 mb-1">API Key</label>
             <input
               v-model="newApiKey"
               type="password"
               placeholder="sk-..."
-              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
+              class="w-full rounded-lg border border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 placeholder:text-gray-400 dark:placeholder:text-neutral-500 px-3 py-2 text-sm focus:outline-none focus:border-gray-400 dark:[color-scheme:dark]"
               required
             />
           </div>
           <button
             type="submit"
             :disabled="!newApiKey || saving"
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-40 hover:bg-gray-700 transition-colors"
+            class="px-4 py-2 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm disabled:opacity-40 hover:bg-gray-700 dark:hover:bg-gray-100 transition-colors"
           >
             {{ saving ? 'Saving...' : 'Save Key' }}
           </button>
@@ -115,30 +115,30 @@
     </div>
 
     <!-- Usage History -->
-    <div class="rounded-xl border border-gray-200 p-6 space-y-4">
-      <h3 class="text-base font-medium text-gray-900">Usage History</h3>
+    <div class="rounded-xl border border-gray-200 dark:border-neutral-700 p-6 space-y-4">
+      <h3 class="text-base font-medium text-gray-900 dark:text-white">Usage History</h3>
 
       <div v-if="historyLoading" class="space-y-2">
-        <div v-for="i in 3" :key="i" class="h-10 rounded-lg bg-gray-100 animate-pulse" />
+        <div v-for="i in 3" :key="i" class="h-10 rounded-lg bg-gray-100 dark:bg-neutral-700 animate-pulse" />
       </div>
 
-      <div v-else-if="historyItems.length === 0" class="text-sm text-gray-400 py-4 text-center">
+      <div v-else-if="historyItems.length === 0" class="text-sm text-gray-400 dark:text-neutral-500 py-4 text-center">
         No usage recorded yet.
       </div>
 
       <table v-else class="w-full text-sm">
         <thead>
-          <tr class="text-left text-xs text-gray-400 border-b border-gray-100">
+          <tr class="text-left text-xs text-gray-400 dark:text-neutral-500 border-b border-gray-100 dark:border-neutral-700">
             <th class="pb-2 font-normal">Title</th>
             <th class="pb-2 font-normal text-right">Credits</th>
             <th class="pb-2 font-normal text-right">Date</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-50">
+        <tbody class="divide-y divide-gray-50 dark:divide-neutral-700/50">
           <tr v-for="item in historyItems" :key="item.id" class="py-2">
-            <td class="py-2 text-gray-700 truncate max-w-xs">{{ item.title }}</td>
-            <td class="py-2 text-right tabular-nums text-gray-600">{{ item.credits_used }}</td>
-            <td class="py-2 text-right text-gray-400 whitespace-nowrap">{{ formatDate(item.created_at) }}</td>
+            <td class="py-2 text-gray-700 dark:text-neutral-300 truncate max-w-xs">{{ item.title }}</td>
+            <td class="py-2 text-right tabular-nums text-gray-600 dark:text-neutral-300">{{ item.credits_used }}</td>
+            <td class="py-2 text-right text-gray-400 dark:text-neutral-500 whitespace-nowrap">{{ formatDate(item.created_at) }}</td>
           </tr>
         </tbody>
       </table>
@@ -148,15 +148,15 @@
         <button
           :disabled="historyPage <= 1"
           @click="prevPage"
-          class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
+          class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
         >
           Previous
         </button>
-        <span class="text-xs text-gray-400">{{ historyPage }} / {{ historyTotalPages }}</span>
+        <span class="text-xs text-gray-400 dark:text-neutral-500">{{ historyPage }} / {{ historyTotalPages }}</span>
         <button
           :disabled="historyPage >= historyTotalPages"
           @click="nextPage"
-          class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
+          class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
         >
           Next
         </button>

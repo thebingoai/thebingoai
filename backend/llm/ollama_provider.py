@@ -157,16 +157,20 @@ class OllamaProvider(BaseLLMProvider):
                     except json.JSONDecodeError:
                         continue
 
-    def get_langchain_llm(self) -> ChatOllama:
+    def get_langchain_llm(self, model: Optional[str] = None) -> ChatOllama:
         """
         Get LangChain-compatible ChatOllama instance.
+
+        Args:
+            model: Optional per-call override (e.g. judge model). Falls back
+                to self.model, then the configured ollama default.
 
         Returns:
             ChatOllama instance configured for this provider
         """
-        model = self.model or self.get_default_model()
+        resolved = model or self.model or self.get_default_model()
         return ChatOllama(
-            model=model,
+            model=resolved,
             base_url=self.base_url,
             temperature=0
         )

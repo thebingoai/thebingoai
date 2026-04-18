@@ -240,6 +240,19 @@ class CreditContextManager:
         self.provider_name = provider_name
         self.conversation_id = conversation_id
         self.block_on_insufficient = block_on_insufficient
+        self._voided = False
+        self._void_reason: str = ""
+
+    def void(self, reason: str = "unresolved") -> None:
+        """Skip credit recording on exit.
+
+        Called by the chat handler when Layer-4 retry still fails the judge —
+        the user isn't charged for a turn that didn't resolve their question.
+        Also usable by future policies (moderation, abuse filters, etc.).
+        """
+        self._voided = True
+        self._void_reason = reason
+        credit_logger.info("[credit] user %s: voided — %s", self.user_id, reason)
 
     # ------------------------------------------------------------------
     # Internal helpers (sync, safe to call from both async and sync paths)
@@ -323,7 +336,7 @@ class CreditContextManager:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:
+        if exc_type is None and not self._voided:
             self._record()
         return False
 
@@ -336,6 +349,6 @@ class CreditContextManager:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:
+        if exc_type is None and not self._voided:
             self._record()
         return False

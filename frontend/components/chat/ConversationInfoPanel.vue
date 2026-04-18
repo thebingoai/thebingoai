@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-white overflow-hidden">
+  <div class="flex flex-col h-full bg-white dark:bg-neutral-900 overflow-hidden">
     <!-- Main body: scrollable top sections + pinned reasoning -->
     <div class="flex-1 flex flex-col min-h-0">
       <!-- Scrollable sections (task conversations) -->

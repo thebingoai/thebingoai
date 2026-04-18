@@ -10,6 +10,7 @@ from backend.models.conversation import Conversation
 from backend.models.message import Message
 from backend.models.agent_step import AgentStep, AgentType, StepType
 from backend.models.token_usage import TokenUsage, OperationType
+from backend.models.agent_failure_case import AgentFailureCase
 
 # Phase 1: Org/Team Foundation
 from backend.models.organization import Organization

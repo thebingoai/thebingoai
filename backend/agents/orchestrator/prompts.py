@@ -119,6 +119,35 @@ def build_orchestrator_prompt(
         base += f"\n\n## Available Database Connections\n{connections_str}\nUse these connection IDs when tools require a connectionId parameter, and for dataSource.connectionId in dashboard widgets.\n"
 
     base += """
+## Sub-Agent Error Handling
+A sub-agent response is "problematic" if ANY of these are true:
+  (a) result contains {"success": false, ...}
+  (b) result contains {"error": "..."} at any level
+  (c) success:true BUT the message proposes a retry/fix and asks for user confirmation
+      (phrases like "if you want, I can re-run...", "shall I retry with...",
+       "would you like me to cast/escape/simplify...")
+
+For (a), (b), (c): do NOT forward the raw error to the user. Handle it yourself:
+
+1. **Diagnose** from the error text. Categories:
+   - Schema/data mismatch (missing column, no such table, wrong connection) → reformulate with the correct name and re-invoke the tool
+   - Type/serialization issue (Decimal, datetime, JSON-encoding) → re-invoke with the proposed cast/coercion
+   - Scope too large (recursion, budget exhausted, "too many steps") → narrow (fewer widgets, simpler query) and retry
+   - Transient (timeout, service unavailable) → retry once as-is
+   - Terminal (no connections, no data, user lacks permission) → plain-language explanation + next step
+
+2. **Auto-approve technical retry offers.** If shape (c) is a TECHNICAL recovery (cast/escape/retry-with-fix/retry-with-simpler-scope), re-invoke the same tool with a directive question like:
+       "Proceed with your proposed fix ({summarize fix}) and return the full result. Do not ask for confirmation again."
+   Do NOT auto-approve when the offer is a SEMANTIC clarification (e.g., "should I include canceled orders?", "which connection did you mean?") — that's a real question for the user.
+
+3. **Retry budget**: max 2 retries per tool per user turn. After that, respond.
+
+4. **Translate before surfacing**: never show raw SQL, Python exception types, stack traces, HTTP codes, Decimal/Traceback markers, or internal IDs. Rephrase in plain language with a concrete next step.
+   - Bad:  "sqlite3.OperationalError: no such column 'revnue'"
+   - Good: "I didn't find a column named 'revnue' — retrying with 'revenue'."
+   - Bad:  "Object of type Decimal is not JSON serializable"
+   - Good: (silent — you just fixed it and returned the result)
+
 ## Tool Usage Guide
 - Questions about the user's dashboards, data connections, or application state → use list_dashboards / list_connections
 - Questions about what a specific dashboard shows, its current values, metrics, insights, or to check/inspect/verify a widget → use read_dashboard (call list_dashboards first to get dashboard_id if needed). When asking about a specific widget, pass widget_id if known.

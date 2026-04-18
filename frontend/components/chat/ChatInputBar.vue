@@ -35,7 +35,7 @@
         @submit.prevent="handleSubmit"
         @dragover.prevent
         @drop.prevent="handleDrop"
-        class="shadow-lg rounded-xl border border-gray-300 flex flex-col focus-within:border-gray-400 transition-colors"
+        class="shadow-lg rounded-xl border border-gray-300 dark:border-neutral-600 flex flex-col focus-within:border-gray-400 dark:focus-within:border-neutral-500 transition-colors dark:bg-neutral-800"
       >
         <!-- Attachment preview strip -->
         <div
@@ -71,7 +71,7 @@
           v-model="chatStore.inputText"
           placeholder="Ask a question about your data…"
           rows="1"
-          class="w-full resize-none px-4 pt-3 pb-2 max-h-48 overflow-y-auto bg-transparent outline-none rounded-t-xl"
+          class="w-full resize-none px-4 pt-3 pb-2 max-h-48 overflow-y-auto bg-transparent outline-none rounded-t-xl text-gray-900 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500"
           :disabled="chatStore.isStreaming"
           @input="handleInput"
           @keydown="handleKeydown"
@@ -110,7 +110,7 @@
           <button
             type="submit"
             :disabled="!chatStore.inputText.trim() || chatStore.isStreaming || (attachedFiles.length > 0 && !allFilesReady)"
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-white disabled:opacity-40 hover:bg-gray-700 transition-colors"
+            class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-white disabled:opacity-40 hover:bg-gray-700 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-white transition-colors"
           >
             <ArrowUp class="h-4 w-4" />
           </button>
@@ -133,6 +133,7 @@
 
 <script setup lang="ts">
 import { Scissors, ArrowUp, Paperclip } from 'lucide-vue-next'
+import { useMentions, type MentionItem } from '~/composables/useMentions'
 
 const chatStore = useChatStore()
 const emit = defineEmits<{
@@ -140,7 +141,7 @@ const emit = defineEmits<{
   reset: []
 }>()
 
-const { remaining, dailyLimit, isExhausted } = useCreditBalance()
+const { isExhausted } = useCreditBalance()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -173,7 +174,8 @@ const handleMentionSelect = (item: MentionItem) => {
   const el = textareaRef.value
   if (!el) return
   const token = `@${item.name} `
-  const anchor = mentionAnchor.value
+  const anchor = mentionAnchor.value ?? -1
+  if (anchor < 0) return
   // Replace from the '@' position up to the current cursor
   const before = el.value.slice(0, anchor)
   const after = el.value.slice(el.selectionStart)

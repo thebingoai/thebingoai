@@ -1,7 +1,7 @@
 <template>
   <div class="relative flex-1 flex flex-col min-h-0">
-    <!-- Header bar — full-width white background keeps scroll content below the toggle button -->
-    <div class="flex-shrink-0 flex items-center h-16 bg-white pl-14 pr-2 md:pr-4 pt-1">
+    <!-- Header bar — full-width background keeps scroll content below the toggle button -->
+    <div class="flex-shrink-0 flex items-center h-16 bg-white dark:bg-neutral-900 pl-14 pr-2 md:pr-4 pt-1">
       <div v-if="chatStore.currentThreadId" class="flex w-full items-center">
         <div class="flex-1 min-w-0 pointer-events-none">
           <input
@@ -11,12 +11,12 @@
             @blur="saveTitle"
             @keydown.enter="saveTitle"
             @keydown.escape="cancelEdit"
-            class="w-full pointer-events-auto text-sm text-gray-700 bg-transparent border-b border-gray-300 outline-none w-48 "
+            class="w-full pointer-events-auto text-sm text-gray-700 dark:text-gray-300 bg-transparent border-b border-gray-300 dark:border-neutral-600 outline-none w-48 "
           />
           <span
             v-else
             @click="startEditTitle"
-            class="pointer-events-auto text-sm text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
+            class="pointer-events-auto text-sm text-gray-700 dark:text-gray-300 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             {{ currentTitle }}
           </span>
@@ -27,7 +27,7 @@
           <button
             v-if="isTelegramEnabled && chatStore.currentConversation?.type === 'permanent'"
             @click="router.push('/settings?tab=channels')"
-            class="w-7 h-7 flex items-center justify-center rounded-md transition-colors hover:bg-gray-100"
+            class="w-7 h-7 flex items-center justify-center rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-neutral-800"
             :class="telegramConnected ? 'text-green-500' : 'text-gray-400'"
             :title="telegramConnected ? 'Telegram connected' : 'Connect Telegram'"
           >
@@ -38,7 +38,7 @@
           <button
             @click="chatStore.toggleInfoPanel()"
             class="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
-            :class="chatStore.infoPanelOpen ? 'bg-orange-50 text-orange-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'"
+            :class="chatStore.infoPanelOpen ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-500' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-neutral-800'"
             title="Toggle info panel"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,13 +53,13 @@
     <div ref="threadRef" class="flex-1 overflow-y-auto pl-4 md:pl-24 pt-6 pb-36">
       <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center">
         <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
-          <h2 class="text-2xl font-medium text-gray-900 mb-2">Welcome to {{ chatStore.permanentConversation?.title || 'Bingo AI' }}</h2>
-          <p class="text-gray-500 mb-4">I'm your personal assistant — you can give me a name, set my personality, and teach me how you like to work.</p>
-          <p class="text-gray-400 text-sm">For one-off data queries, use <span class="font-medium text-gray-500">New Task</span>.</p>
+          <h2 class="text-2xl font-medium text-gray-900 dark:text-white mb-2">Welcome to {{ chatStore.permanentConversation?.title || 'Bingo AI' }}</h2>
+          <p class="text-gray-500 dark:text-gray-400 mb-4">I'm your personal assistant — you can give me a name, set my personality, and teach me how you like to work.</p>
+          <p class="text-gray-400 dark:text-gray-500 text-sm">For one-off data queries, use <span class="font-medium text-gray-500 dark:text-gray-400">New Task</span>.</p>
         </div>
         <div v-else class="text-center">
-          <h2 class="text-2xl font-medium text-gray-900 mb-2">Ask me anything about your data</h2>
-          <p class="text-gray-500">I can write SQL queries and analyze your database</p>
+          <h2 class="text-2xl font-medium text-gray-900 dark:text-white mb-2">Ask me anything about your data</h2>
+          <p class="text-gray-500 dark:text-gray-400">I can write SQL queries and analyze your database</p>
         </div>
       </div>
       <div v-else>
@@ -89,6 +89,7 @@
             :show-actions="shouldShowActions(message, index)"
             :action-type="getActionType(message)"
             :following-user-content="getFollowingUserContent(index)"
+            :is-last="index === chatStore.messages.length - 1"
             @send-action="(text: string, source?: string) => emit('send-action', text, source as any)"
           />
         </template>

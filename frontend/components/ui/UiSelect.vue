@@ -1,6 +1,6 @@
 <template>
   <div class="w-full">
-    <label v-if="label" :for="id" class="mb-1.5 block text-sm font-light text-gray-700">
+    <label v-if="label" :for="id" class="mb-1.5 block text-sm font-light text-gray-700 dark:text-neutral-300">
       {{ label }}
       <span v-if="required" class="text-red-600">*</span>
     </label>
@@ -8,7 +8,7 @@
       <div class="relative">
         <ListboxButton :class="buttonClasses">
           <span class="block truncate text-left">{{ displayValue }}</span>
-          <component :is="ChevronDown" class="h-5 w-5 text-gray-400" />
+          <component :is="ChevronDown" class="h-5 w-5 text-gray-400 dark:text-neutral-500" />
         </ListboxButton>
 
         <Transition
@@ -16,7 +16,7 @@
           leave-from-class="opacity-100"
           leave-to-class="opacity-0"
         >
-          <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg focus:outline-none">
+          <ListboxOptions class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 py-1 shadow-lg focus:outline-none">
             <ListboxOption
               v-for="option in options"
               :key="option.value"
@@ -27,7 +27,7 @@
               <li
                 :class="[
                   'flex items-center justify-between cursor-pointer select-none px-3 pr-10 py-2 text-sm',
-                  active ? 'bg-gray-100 text-gray-900' : 'text-gray-900'
+                  active ? 'bg-gray-100 text-gray-900 dark:bg-neutral-700 dark:text-neutral-100' : 'text-gray-900 dark:text-neutral-200'
                 ]"
               >
                 <span :class="['block truncate', selected ? 'font-normal' : 'font-extralight']">
@@ -36,7 +36,7 @@
                 <component
                   v-if="selected"
                   :is="Check"
-                  class="h-5 w-5 shrink-0 text-gray-900"
+                  class="h-5 w-5 shrink-0 text-gray-900 dark:text-neutral-100"
                 />
               </li>
             </ListboxOption>
@@ -47,7 +47,7 @@
     <p v-if="error" class="mt-1.5 text-sm text-red-600">
       {{ error }}
     </p>
-    <p v-else-if="hint" class="mt-1.5 text-sm text-gray-500">
+    <p v-else-if="hint" class="mt-1.5 text-sm text-gray-500 dark:text-neutral-500">
       {{ hint }}
     </p>
   </div>
@@ -94,8 +94,8 @@ const displayValue = computed(() => {
 
 const baseClasses = 'relative w-full h-10 px-3 pr-10 rounded-lg border focus-ring disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between'
 const stateClasses = computed(() => {
-  if (props.error) return 'border-red-300 bg-red-50'
-  return 'border-gray-300 bg-white text-gray-900'
+  if (props.error) return 'border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-950'
+  return 'border-gray-300 bg-white text-gray-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100'
 })
 
 const buttonClasses = computed(() => cn(baseClasses, stateClasses.value))

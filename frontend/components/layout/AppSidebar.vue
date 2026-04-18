@@ -8,7 +8,8 @@
   >
     <!-- Logo -->
     <div class="flex h-16 items-center border-b border-gray-200 dark:border-neutral-800 pl-[14px] pr-4">
-      <img src="/logo/Bingo_BL.png" alt="Bingo" class="h-16 w-auto" />
+      <img :src="'/logo/Bingo_BL.png'" alt="Bingo" class="h-16 w-auto dark:hidden" />
+      <img :src="'/logo/Bingo_WH.png'" alt="Bingo" class="h-16 w-auto hidden dark:block" />
     </div>
 
     <!-- Permanent conversation (pinned) -->
@@ -83,7 +84,7 @@
       <!-- Recent tasks section header -->
       <button
         @click="isRecentExpanded = !isRecentExpanded"
-        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-400"
+        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 dark:text-neutral-300 hover:text-gray-600 dark:hover:text-neutral-100"
       >
         <ChevronDown v-if="isRecentExpanded" class="h-3.5 w-3.5" />
         <ChevronRight v-else class="h-3.5 w-3.5" />
@@ -96,7 +97,7 @@
           No tasks yet
         </div>
         <template v-for="group in groupedTasks" :key="group.label">
-          <div class="px-4 pt-4 text-[11px] text-gray-800 dark:text-neutral-400">{{ group.label }}</div>
+          <div class="px-4 pt-4 text-[11px] text-gray-800 dark:text-neutral-300">{{ group.label }}</div>
           <button
             v-for="conv in group.conversations"
             :key="conv.id"
@@ -106,7 +107,7 @@
           >
             <div
               class="sidebar-title"
-              :class="chatStore.currentThreadId === conv.id ? 'font-bold text-glow-orange ' : 'font-extralight text-gray-500'"
+              :class="chatStore.currentThreadId === conv.id ? 'font-bold text-glow-orange ' : 'font-extralight text-gray-500 dark:text-neutral-300'"
 
             ><span class="marquee-inner"><span>{{ conv.title }}</span><span class="marquee-spacer">&nbsp;&mdash;&nbsp;</span><span>{{ conv.title }}</span></span></div>
           </button>
@@ -124,7 +125,7 @@
     <div class="border-t border-gray-100 dark:border-neutral-800">
       <button
         @click="handleToggleArchived"
-        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-400"
+        class="flex w-full items-center gap-2 px-4 py-2 text-xs font-extralight uppercase tracking-wider text-gray-400 dark:text-neutral-300 hover:text-gray-600 dark:hover:text-neutral-100"
       >
         <ChevronDown v-if="isArchivedExpanded" class="h-3.5 w-3.5" />
         <ChevronRight v-else class="h-3.5 w-3.5" />

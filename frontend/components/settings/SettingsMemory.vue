@@ -2,16 +2,16 @@
   <div class="p-6 space-y-8">
     <!-- Page header -->
     <div>
-      <h2 class="text-2xl font-medium text-gray-900">Memory</h2>
-      <p class="text-sm text-gray-500 mt-1">Control what the AI remembers about you across conversations.</p>
+      <h2 class="text-2xl font-medium text-gray-900 dark:text-white">Memory</h2>
+      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Control what the AI remembers about you across conversations.</p>
     </div>
 
     <!-- Section 1: Daily Conversation Memory -->
     <UiCard class="p-5">
       <div class="flex items-start justify-between gap-4">
         <div class="space-y-1">
-          <p class="text-sm font-medium text-gray-900">Daily Conversation Memory</p>
-          <p class="text-sm text-gray-500">Automatically summarizes your daily conversations for future context.</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">Daily Conversation Memory</p>
+          <p class="text-sm text-gray-500 dark:text-neutral-400">Automatically summarizes your daily conversations for future context.</p>
         </div>
         <button
           type="button"
@@ -28,7 +28,7 @@
         </button>
       </div>
 
-      <div class="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+      <div class="mt-4 pt-4 border-t border-gray-100 dark:border-neutral-700 flex justify-end">
         <UiButton
           variant="outline"
           size="sm"
@@ -39,10 +39,10 @@
       </div>
 
       <!-- Activity heatmap -->
-      <div class="mt-4 pt-4 border-t border-gray-100">
+      <div class="mt-4 pt-4 border-t border-gray-100 dark:border-neutral-700">
         <div class="flex items-center justify-between mb-3">
-          <p class="text-xs font-medium text-gray-700">Conversation Activity</p>
-          <p v-if="!heatmapLoading && heatmapTotalConversations > 0" class="text-xs text-gray-400">
+          <p class="text-xs font-medium text-gray-700 dark:text-neutral-300">Conversation Activity</p>
+          <p v-if="!heatmapLoading && heatmapTotalConversations > 0" class="text-xs text-gray-400 dark:text-neutral-500">
             {{ heatmapTotalConversations }} conversations · {{ heatmapTotalDays }} days recorded
           </p>
         </div>
@@ -54,8 +54,8 @@
     <div>
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h3 class="text-base font-medium text-gray-900">Custom Memories</h3>
-          <p class="text-sm text-gray-500 mt-0.5">Facts and preferences the AI should always know about you.</p>
+          <h3 class="text-base font-medium text-gray-900 dark:text-white">Custom Memories</h3>
+          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-0.5">Facts and preferences the AI should always know about you.</p>
         </div>
         <UiButton
           size="sm"
@@ -86,7 +86,7 @@
         <div
           v-for="entry in entries"
           :key="entry.id"
-          class="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3"
+          class="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-neutral-700 px-4 py-3"
         >
           <!-- Active toggle -->
           <button
@@ -104,7 +104,7 @@
 
           <!-- Content -->
           <div class="flex-1 min-w-0">
-            <p class="text-sm text-gray-900 truncate" :class="!entry.is_active && 'opacity-50'">{{ entry.content }}</p>
+            <p class="text-sm text-gray-900 dark:text-neutral-200 truncate" :class="!entry.is_active && 'opacity-50'">{{ entry.content }}</p>
             <UiBadge v-if="entry.category" variant="default" size="sm" class="mt-0.5">{{ entry.category }}</UiBadge>
           </div>
 
@@ -143,21 +143,21 @@
     >
       <div class="space-y-3">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Content</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Content</label>
           <textarea
             v-model="entryForm.content"
             rows="3"
             placeholder="e.g. Always respond in bullet points"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Category <span class="text-gray-400 font-normal">(optional)</span></label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Category <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional)</span></label>
           <input
             v-model="entryForm.category"
             type="text"
             placeholder="e.g. Formatting, Background, Preferences"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
       </div>

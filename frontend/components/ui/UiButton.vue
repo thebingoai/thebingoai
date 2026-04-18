@@ -43,10 +43,10 @@ defineEmits<{
 const baseClasses = 'inline-flex items-center justify-center gap-2 rounded-lg font-light disabled:opacity-50 disabled:cursor-not-allowed'
 
 const variantClasses = {
-  primary: 'bg-gray-900 text-white hover:bg-gray-800',
-  secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',
-  outline: 'border border-gray-300 bg-transparent text-gray-700 hover:bg-gray-50',
-  ghost: 'bg-transparent text-gray-700 hover:bg-gray-100',
+  primary: 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100',
+  secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600',
+  outline: 'border border-gray-300 bg-transparent text-gray-700 hover:bg-gray-50 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-700',
+  ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-700',
   danger: 'bg-red-600 text-white hover:bg-red-700'
 }
 

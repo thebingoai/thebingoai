@@ -25,26 +25,26 @@
             leave-to="opacity-0 translate-y-full"
           >
             <DialogPanel
-              class="fixed inset-x-0 bottom-0 w-full transform overflow-hidden rounded-t-2xl bg-white text-left align-middle shadow-xl transition-all max-h-[80vh] flex flex-col"
+              class="fixed inset-x-0 bottom-0 w-full transform overflow-hidden rounded-t-2xl bg-white dark:bg-neutral-800 text-left align-middle shadow-xl transition-all max-h-[80vh] flex flex-col"
               :class="[
                 fullHeight ? 'h-[80vh]' : '',
                 panelClass
               ]"
             >
               <!-- Drag handle -->
-              <div class="flex justify-center py-3 border-b border-gray-200">
-                <div class="w-12 h-1 bg-gray-300 rounded-full" />
+              <div class="flex justify-center py-3 border-b border-gray-200 dark:border-neutral-700">
+                <div class="w-12 h-1 bg-gray-300 dark:bg-neutral-600 rounded-full" />
               </div>
 
-              <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                <DialogTitle v-if="title" class="text-lg font-normal text-gray-900">
+              <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 dark:border-neutral-700 px-6 py-4">
+                <DialogTitle v-if="title" class="text-lg font-normal text-gray-900 dark:text-neutral-100">
                   {{ title }}
                 </DialogTitle>
                 <slot v-else name="header" />
                 <button
                   v-if="closable"
                   @click="$emit('update:open', false)"
-                  class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
                 >
                   <component :is="X" class="h-5 w-5" />
                 </button>

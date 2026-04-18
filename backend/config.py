@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # Agent settings
     agent_recursion_limit: int = 100  # Max LangGraph ReAct loop steps per agent invocation
 
+    # Layer-4 orchestrator response-quality judge (see plan: orchestration error handling)
+    # All env-driven via .env; empty defaults here so config is explicit in ops.
+    judge_llm_provider: str = ""        # empty → falls back to default_llm_provider
+    judge_llm_model: str = ""           # e.g. "gpt-5-mini"; empty → judge disabled (falls open)
+    judge_timeout_seconds: int = 10
+    judge_enabled: bool = True          # kill-switch for the whole layer
+
     # Database
     database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
     database_url_direct: Optional[str] = None  # Direct connection for migrations (bypasses Supabase connection pooler)
