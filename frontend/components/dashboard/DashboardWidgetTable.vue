@@ -2,18 +2,18 @@
   <div class="flex h-full flex-col overflow-hidden">
     <div class="flex-1 overflow-auto">
       <table class="w-full text-sm">
-        <thead class="sticky top-0 bg-white border-b border-gray-100">
+        <thead class="sticky top-0 bg-white border-b border-gray-100 dark:bg-neutral-800 dark:border-neutral-700">
           <tr>
             <th
               v-for="col in config.columns"
               :key="col.key"
-              class="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap"
-              :class="col.sortable ? 'cursor-pointer hover:text-gray-600 select-none' : ''"
+              class="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap dark:text-neutral-400"
+              :class="col.sortable ? 'cursor-pointer hover:text-gray-600 dark:hover:text-neutral-200 select-none' : ''"
               @click="col.sortable && toggleSort(col.key)"
             >
               <div class="flex items-center gap-1">
                 {{ col.label }}
-                <span v-if="col.sortable && sortKey === col.key" class="text-gray-500">
+                <span v-if="col.sortable && sortKey === col.key" class="text-gray-500 dark:text-neutral-400">
                   {{ sortDir === 'asc' ? '↑' : '↓' }}
                 </span>
               </div>
@@ -27,21 +27,21 @@
                 v-model="columnFilters[col.key]"
                 type="text"
                 placeholder="Filter..."
-                class="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 font-normal focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                class="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 font-normal focus:outline-none focus:ring-1 focus:ring-indigo-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-300 dark:placeholder-neutral-500"
               />
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-50">
+        <tbody class="divide-y divide-gray-50 dark:divide-neutral-700">
           <tr
             v-for="(row, i) in displayRows"
             :key="i"
-            class="hover:bg-gray-50 transition-colors"
+            class="hover:bg-gray-50 transition-colors dark:hover:bg-neutral-700/50"
           >
             <td
               v-for="col in config.columns"
               :key="col.key"
-              class="px-4 py-2.5 text-gray-700 whitespace-nowrap"
+              class="px-4 py-2.5 text-gray-700 whitespace-nowrap dark:text-neutral-300"
               :class="col.format === 'currency' || col.format === 'number' || col.format === 'percent' ? 'tabular-nums' : ''"
             >
               <span :class="getCellClass(row[col.key], col.format)">
@@ -56,22 +56,22 @@
     <!-- Pagination controls -->
     <div
       v-if="config.pagination && totalPages > 1"
-      class="flex items-center justify-between flex-shrink-0 border-t border-gray-100 px-4 py-2"
+      class="flex items-center justify-between flex-shrink-0 border-t border-gray-100 px-4 py-2 dark:border-neutral-700"
     >
-      <span class="text-xs text-gray-400">
+      <span class="text-xs text-gray-400 dark:text-neutral-500">
         {{ (currentPage - 1) * rowsPerPage + 1 }}–{{ Math.min(currentPage * rowsPerPage, sortedRows.length) }}
         of {{ sortedRows.length }}
       </span>
       <div class="flex items-center gap-1">
         <button
           :disabled="currentPage <= 1"
-          class="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+          class="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed dark:text-neutral-400 dark:hover:bg-neutral-700"
           @click="currentPage--"
         >Prev</button>
-        <span class="text-xs text-gray-400 px-1">{{ currentPage }} / {{ totalPages }}</span>
+        <span class="text-xs text-gray-400 px-1 dark:text-neutral-500">{{ currentPage }} / {{ totalPages }}</span>
         <button
           :disabled="currentPage >= totalPages"
-          class="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+          class="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed dark:text-neutral-400 dark:hover:bg-neutral-700"
           @click="currentPage++"
         >Next</button>
       </div>

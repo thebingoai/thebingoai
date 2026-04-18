@@ -2,7 +2,7 @@
   <div class="mb-6">
     <!-- User message: left-aligned chat bubble -->
     <div v-if="message.role === 'user'">
-      <div class="inline-block bg-gray-900 text-white rounded-2xl px-4 py-2.5 max-w-[80%] whitespace-pre-wrap">
+      <div class="inline-block bg-gray-900 text-white rounded-2xl px-4 py-2.5 max-w-[80%] whitespace-pre-wrap dark:bg-neutral-700 dark:text-neutral-100">
         {{ message.content }}
       </div>
 
@@ -91,10 +91,10 @@
       <UiMarkdownRenderer v-else :content="message.content" />
 
       <!-- Live steps log (collapses when final answer arrives) -->
-      <div v-if="message.steps_log?.length" class="mt-1 font-mono text-[11px] text-gray-400 bg-gray-50/80 border border-gray-100 rounded-md px-3 py-2 leading-relaxed">
+      <div v-if="message.steps_log?.length" class="mt-1 font-mono text-[11px] text-gray-400 dark:text-neutral-400 bg-gray-50/80 dark:bg-neutral-800/60 border border-gray-100 dark:border-neutral-700 rounded-md px-3 py-2 leading-relaxed">
         <button
           @click="message.steps_log_expanded = !message.steps_log_expanded"
-          class="flex items-center gap-1 cursor-pointer text-gray-400 hover:text-gray-500"
+          class="flex items-center gap-1 cursor-pointer text-gray-400 dark:text-neutral-400 hover:text-gray-500 dark:hover:text-neutral-300"
         >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path v-if="!message.steps_log_expanded" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -103,7 +103,7 @@
           {{ message.steps_log.length }} steps
         </button>
         <div v-if="message.steps_log_expanded" class="mt-1.5 whitespace-pre-wrap">{{ message.steps_log.join('\n') }}
-          <div v-if="chatStore.isStreaming && props.isLast" class="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100">
+          <div v-if="chatStore.isStreaming && props.isLast" class="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-gray-100 dark:border-neutral-700">
             <span class="text-[10px] text-glow-orange">working...</span>
           </div>
         </div>
@@ -146,13 +146,13 @@
       <div v-else-if="showActions && actionType === 'dashboard_created'" class="mt-3">
         <button
           @click="viewDashboard"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors dark:border-neutral-600 dark:text-neutral-200 dark:hover:border-neutral-500 dark:hover:bg-neutral-700"
         >
           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           View Dashboard
-          <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg class="h-3 w-3 text-gray-400 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
           </svg>
         </button>

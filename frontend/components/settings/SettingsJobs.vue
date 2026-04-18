@@ -151,21 +151,21 @@
     >
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Name</label>
           <input
             v-model="form.name"
             type="text"
             placeholder="e.g. Daily standup summary"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
 
         <!-- Schedule only shown when creating (editing uses inline row expansion) -->
         <div v-if="!editingJob">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Schedule</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Schedule</label>
           <select
             v-model="scheduleSelection"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:focus:border-blue-400"
           >
             <option v-for="opt in PRESET_OPTIONS" :key="opt.value" :value="opt.value">
               {{ opt.label }}
@@ -177,17 +177,17 @@
             v-model="form.schedule_value"
             type="text"
             placeholder="e.g. 0 9 * * 1-5"
-            class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Prompt</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Prompt</label>
           <textarea
             v-model="form.prompt"
             rows="6"
             placeholder="What should the AI do when this job runs? e.g. Summarize any new tasks from my database and send me a brief report."
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-100 dark:placeholder-neutral-500 dark:focus:border-blue-400"
           />
         </div>
       </div>

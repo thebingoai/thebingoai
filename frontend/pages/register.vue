@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50">
-    <div class="max-w-md w-full p-8 bg-white rounded-lg shadow-md">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950">
+    <div class="max-w-md w-full p-8 bg-white dark:bg-neutral-900 rounded-lg shadow-md dark:shadow-neutral-950">
       <div class="mb-8">
-        <h2 class="text-3xl font-medium text-center text-gray-900">Sign Up</h2>
+        <h2 class="text-3xl font-medium text-center text-gray-900 dark:text-white">Sign Up</h2>
       </div>
 
-      <div v-if="error" class="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+      <div v-if="error" class="mb-6 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
         {{ error }}
       </div>
 
@@ -40,10 +40,10 @@
       <template v-if="authStore.hasGoogleOAuth">
         <div class="relative my-6">
           <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-gray-200"></div>
+            <div class="w-full border-t border-gray-200 dark:border-neutral-700"></div>
           </div>
           <div class="relative flex justify-center text-sm">
-            <span class="px-2 bg-white text-gray-500">or</span>
+            <span class="px-2 bg-white dark:bg-neutral-900 text-gray-500 dark:text-neutral-400">or</span>
           </div>
         </div>
 
@@ -58,9 +58,9 @@
         </UiButton>
       </template>
 
-      <p class="mt-6 text-center text-sm text-gray-500">
+      <p class="mt-6 text-center text-sm text-gray-500 dark:text-neutral-400">
         Already have an account?
-        <NuxtLink to="/login" class="text-gray-900 hover:underline font-light">Sign in</NuxtLink>
+        <NuxtLink to="/login" class="text-gray-900 dark:text-white hover:underline font-light">Sign in</NuxtLink>
       </p>
     </div>
   </div>

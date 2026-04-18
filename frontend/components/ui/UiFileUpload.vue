@@ -18,16 +18,16 @@
     />
 
     <div class="flex flex-col items-center justify-center gap-3">
-      <div class="rounded-full bg-gray-100 p-3">
-        <component :is="Upload" class="h-6 w-6 text-gray-600" />
+      <div class="rounded-full bg-gray-100 dark:bg-neutral-700 p-3">
+        <component :is="Upload" class="h-6 w-6 text-gray-600 dark:text-neutral-400" />
       </div>
 
       <div class="text-center">
-        <p class="text-sm font-light text-gray-900">
-          <span class="text-gray-600">Click to upload</span>
+        <p class="text-sm font-light text-gray-900 dark:text-neutral-200">
+          <span class="text-gray-600 dark:text-neutral-400">Click to upload</span>
           or drag and drop
         </p>
-        <p v-if="hint" class="mt-1 text-xs text-gray-500">
+        <p v-if="hint" class="mt-1 text-xs text-gray-500 dark:text-neutral-500">
           {{ hint }}
         </p>
       </div>
@@ -61,8 +61,8 @@ const dropzoneClasses = computed(() =>
   cn(
     'relative flex min-h-[200px] cursor-pointer items-center justify-center rounded-lg border-2 border-dashed transition-colors',
     isDragging.value
-      ? 'border-gray-500 bg-gray-50'
-      : 'border-gray-300 hover:border-gray-400'
+      ? 'border-gray-500 bg-gray-50 dark:border-neutral-500 dark:bg-neutral-800'
+      : 'border-gray-300 hover:border-gray-400 dark:border-neutral-600 dark:hover:border-neutral-500'
   )
 )
 

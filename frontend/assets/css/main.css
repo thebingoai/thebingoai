@@ -228,6 +228,17 @@
   @apply border-neutral-600;
 }
 
+/* Dark mode: filter widget multi-select checkbox */
+.dark input[type="checkbox"].rounded {
+  background-color: #404040;
+  border-color: #525252;
+}
+
+/* Dark mode: date input calendar icon */
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
+
 /* Mobile slide-up transition for overlay panels */
 .slide-up-enter-active {
   transition: transform 0.3s ease-out;

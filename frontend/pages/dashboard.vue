@@ -6,11 +6,11 @@
       <!-- List view -->
       <template v-if="!store.currentDashboard">
         <div class="flex-shrink-0 px-3 md:px-6 pt-6 pb-4">
-          <h1 class="text-base font-semibold text-gray-900">Dashboards</h1>
+          <h1 class="text-base font-semibold text-gray-900 dark:text-neutral-100">Dashboards</h1>
         </div>
 
         <!-- Mobile horizontal tabs -->
-        <div v-if="isMobile" class="flex border-b border-gray-200 px-3 pb-1 gap-4 shrink-0">
+        <div v-if="isMobile" class="flex border-b border-gray-200 px-3 pb-1 gap-4 shrink-0 dark:border-neutral-700">
           <button
             v-for="tab in tabs"
             :key="tab.id"
@@ -128,17 +128,17 @@
     </div>
 
     <!-- Right-side vertical tabs (desktop only) -->
-    <div v-if="!store.currentDashboard && !isMobile" class="flex w-14 flex-shrink-0 flex-col border-l border-gray-200 bg-white py-3">
+    <div v-if="!store.currentDashboard && !isMobile" class="flex w-14 flex-shrink-0 flex-col border-l border-gray-200 bg-white py-3 dark:border-neutral-700 dark:bg-neutral-900">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         @click="activeTab = tab.id; if (tab.id !== 'all') store.closeDashboard()"
         class="flex flex-col items-center gap-1 px-1 py-3 transition-colors"
-        :class="activeTab === tab.id ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'"
+        :class="activeTab === tab.id ? 'text-gray-900 dark:text-neutral-100' : 'text-gray-400 hover:text-gray-600 dark:text-neutral-500 dark:hover:text-neutral-300'"
       >
         <div
           class="flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
-          :class="activeTab === tab.id ? 'bg-gray-100' : ''"
+          :class="activeTab === tab.id ? 'bg-gray-100 dark:bg-neutral-700' : ''"
         >
           <component :is="tab.icon" class="h-4 w-4" />
         </div>

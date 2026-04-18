@@ -3,13 +3,13 @@
     <!-- Edit mode controls overlay -->
     <div
       v-if="editMode"
-      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-white/90 px-3 py-1.5 border-b border-gray-100 backdrop-blur-sm"
+      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-white/90 dark:bg-neutral-800/90 px-3 py-1.5 border-b border-gray-100 dark:border-neutral-700 backdrop-blur-sm"
     >
       <!-- Drag handle -->
       <div class="widget-drag-handle flex cursor-grab items-center gap-1.5 active:cursor-grabbing">
         <GripVertical class="h-3.5 w-3.5 text-gray-300" />
-        <span v-if="widget.title" class="text-[11px] font-medium text-gray-500 truncate max-w-[140px]">{{ widget.title }}</span>
-        <span v-else class="text-[11px] text-gray-400">{{ widgetDisplayName }}</span>
+        <span v-if="widget.title" class="text-[11px] font-medium text-gray-500 dark:text-neutral-400 truncate max-w-[140px]">{{ widget.title }}</span>
+        <span v-else class="text-[11px] text-gray-400 dark:text-neutral-500">{{ widgetDisplayName }}</span>
       </div>
       <!-- Edit controls -->
       <div class="flex items-center gap-1">
@@ -53,7 +53,7 @@
     <!-- View mode action bar — only for SQL-backed widgets outside edit mode -->
     <div
       v-if="!editMode && hasDataSource"
-      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-3 py-1 opacity-0 hover:opacity-100 transition-opacity bg-white/80 backdrop-blur-sm border-b border-gray-100"
+      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-3 py-1 opacity-0 hover:opacity-100 transition-opacity bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm border-b border-gray-100 dark:border-neutral-700"
     >
       <span v-if="lastRefreshedAt" class="text-[10px] text-gray-400">
         Updated {{ formatRelativeTime(lastRefreshedAt) }}
@@ -117,7 +117,7 @@
     </div>
 
     <!-- Loading skeleton -->
-    <div v-if="loading" class="absolute inset-0 z-20 bg-white">
+    <div v-if="loading" class="absolute inset-0 z-20 bg-white dark:bg-neutral-800">
       <DashboardWidgetSkeleton :type="widget.widget.type" />
     </div>
 

@@ -1,8 +1,8 @@
 <template>
   <div class="w-full">
     <div v-if="label" class="mb-2 flex items-center justify-between text-sm">
-      <span class="font-light text-gray-700">{{ label }}</span>
-      <span v-if="showPercentage" class="text-gray-500">{{ value }}%</span>
+      <span class="font-light text-gray-700 dark:text-neutral-300">{{ label }}</span>
+      <span v-if="showPercentage" class="text-gray-500 dark:text-neutral-500">{{ value }}%</span>
     </div>
     <div :class="trackClasses">
       <div
@@ -49,7 +49,7 @@ const variantClasses = {
 
 const trackClasses = computed(() =>
   cn(
-    'w-full overflow-hidden rounded-full bg-gray-200',
+    'w-full overflow-hidden rounded-full bg-gray-200 dark:bg-neutral-700',
     sizeClasses[props.size]
   )
 )

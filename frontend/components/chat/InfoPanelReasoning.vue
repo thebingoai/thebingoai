@@ -2,7 +2,7 @@
   <div
     class="shrink-0 flex flex-col"
     :class="[
-      fullHeight ? 'flex-1' : 'border-t border-gray-200 bg-gray-50/50',
+      fullHeight ? 'flex-1' : 'border-t border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-800/30',
       isOpen && !fullHeight ? 'max-h-[60%]' : '',
       isOpen && fullHeight ? 'flex-1' : '',
     ]"
@@ -10,11 +10,11 @@
     <!-- Header -->
     <button
       @click="chatStore.toggleInfoSection('reasoning')"
-      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-100/50 transition-colors shrink-0"
+      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-100/50 dark:hover:bg-neutral-800/50 transition-colors shrink-0"
     >
       <div class="flex items-center gap-1.5">
         <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Log</span>
-        <span v-if="stepCount > 0" class="text-[9px] bg-gray-200/70 text-gray-500 px-1.5 py-px rounded-full">
+        <span v-if="stepCount > 0" class="text-[9px] bg-gray-200/70 dark:bg-neutral-700 text-gray-500 dark:text-neutral-300 px-1.5 py-px rounded-full">
           {{ stepCount }} step{{ stepCount !== 1 ? 's' : '' }}
         </span>
       </div>
@@ -44,7 +44,7 @@
         <!-- Root: Orchestrator -->
         <div class="flex items-center gap-1.5 py-0.5 mb-0.5">
           <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-          <span class="font-medium text-gray-800 font-sans text-[11px]">Orchestrator</span>
+          <span class="font-medium text-gray-800 dark:text-neutral-200 font-sans text-[11px]">Orchestrator</span>
           <span v-if="rootTimestamp" class="ml-auto text-[10px] font-mono text-gray-400">{{ rootTimestamp }}</span>
         </div>
 
