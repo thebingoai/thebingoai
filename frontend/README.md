@@ -1,6 +1,6 @@
-# LLM-MD-CLI Frontend
+# Bingo Frontend
 
-Nuxt 4 + Pinia frontend for the LLM-MD-CLI RAG system.
+Nuxt 4 + Pinia frontend for the Bingo BI platform.
 
 ## Tech Stack
 

@@ -12,7 +12,7 @@ set -e
 COMPOSE_FILE="docker/local/docker-compose.yml"
 COMPOSE_POSTGRES="docker/local/docker-compose.postgres.yml"
 
-echo "Starting LLM-MD-CLI (local dev)..."
+echo "Starting Bingo (local dev)..."
 
 # Ensure .env exists
 if [ ! -f .env ]; then

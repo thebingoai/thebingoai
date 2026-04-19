@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), SSO authentication (via LEAD SSO), and Celery + Redis for async background processing.
+A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI backend and Nuxt 4 frontend. Features RAG via LangGraph, multi-provider LLM support (OpenAI, Anthropic, Ollama), SSO authentication (via Bingo SSO), and Celery + Redis for async background processing.
 
 ## Project Structure
 This is the community edition. It can run standalone or as a git submodule inside the enterprise repo.
@@ -12,13 +12,12 @@ Enterprise extends community via plugins/overlays. Never assume enterprise featu
 When used as a submodule, this repo lives at `bingo-enterprise/bingo/`.
 
 ## Docker
-- Enterprise Docker compose uses overlay files. Always check for `docker-compose.enterprise.yml` or similar overlay patterns.
 - Use `docker compose` (v2), not `docker-compose` (v1).
 - Redis URLs inside Docker network use service names (e.g., `redis://redis:6379`), not `localhost`.
 - Always verify compose file paths before running commands.
 
 ## Git Operations
-- SSH remote URL: `git@github.com:EdmundHee/TheBingo.git`
+- SSH remote URL: `git@github.com:thebingoai/thebingoai.git`
 - Always complete the full commit-and-push cycle in one go; don't stop after staging.
 - Check `git remote -v` before pushing if unsure of remote configuration.
 
@@ -34,7 +33,7 @@ Do not re-read files you have already read in this session. Track what you've ex
 
 ### Local Development (Recommended)
 
-**For enterprise development, use the enterprise repo root as CWD.** See enterprise `CLAUDE.md` for docker commands.
+If you also have the enterprise overlay checked out, see the enterprise `CLAUDE.md` for combined-repo docker commands.
 
 **Community standalone:**
 ```bash
@@ -175,7 +174,7 @@ Vector size must be 3072 to match `text-embedding-3-large` embeddings.
 
 ### Authentication
 
-SSO authentication via LEAD SSO (`backend/auth/`):
+SSO authentication via Bingo SSO (`backend/auth/`):
 - `sso.py`: Core SSO module — `validate_token()`, `logout()`, `get_config()` as plain async functions
 - `dependencies.py`: FastAPI dependency for route protection (`get_current_user`)
 - `webhooks.py`: SSO webhook handler at `/api/webhooks/sso`
@@ -286,7 +285,7 @@ DB_ENCRYPTION_KEY=...           # Required (Fernet key for DB password encryptio
 ### SSO Environment Variables
 
 ```bash
-SSO_BASE_URL=https://sso.thelead.io   # SSO service URL
+SSO_BASE_URL=https://sso.thebingo.ai  # SSO service URL
 SSO_PUBLISHABLE_KEY=pk_...            # Frontend key (enables Google OAuth)
 SSO_SECRET_KEY=sk_...                 # Backend key (enterprise: X-API-Key header)
 SSO_TOKEN_CACHE_TTL=300               # Token cache TTL in seconds

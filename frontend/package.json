@@ -1,6 +1,9 @@
 {
   "name": "bingo-frontend",
-
+  "description": "Nuxt 4 + Pinia frontend for the Bingo BI platform.",
+  "homepage": "https://thebingo.ai",
+  "repository": "https://github.com/thebingoai/thebingoai",
+  "license": "MIT",
   "version": "0.1.23",
   "private": true,
   "type": "module",
@@ -29,6 +32,7 @@
     "gridstack": "^12.4.2",
     "lucide-vue-next": "^0.468.0",
     "markdown-it": "^14.1.0",
+    "markdown-it-mark": "^4.0.0",
     "nuxt": "^3.15.1",
     "pinia": "^3.0.4",
     "pinia-plugin-persistedstate": "^4.2.0",

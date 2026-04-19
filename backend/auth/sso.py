@@ -1,4 +1,4 @@
-"""SSO authentication module — validates tokens against LEAD SSO service."""
+"""SSO authentication module — validates tokens against Bingo SSO service."""
 
 import hashlib
 import logging

@@ -303,13 +303,13 @@ def test_get_config_no_key():
 def test_get_config_community():
     """get_config() returns publishable_key (app name) but no google_oauth_url for community."""
     with patch("backend.auth.sso.settings") as mock_settings:
-        mock_settings.sso_base_url = "https://sso.thelead.io"
+        mock_settings.sso_base_url = "https://sso.thebingo.ai"
         mock_settings.sso_publishable_key = "bingo-community"
         from backend.auth.sso import get_config
         config = get_config()
 
     assert config["provider"] == "sso"
-    assert config["sso_base_url"] == "https://sso.thelead.io"
+    assert config["sso_base_url"] == "https://sso.thebingo.ai"
     assert config["publishable_key"] == "bingo-community"
     assert "google_oauth_url" not in config
 
@@ -317,12 +317,12 @@ def test_get_config_community():
 def test_get_config_enterprise():
     """get_config() returns publishable_key and google_oauth_url when key is set (enterprise)."""
     with patch("backend.auth.sso.settings") as mock_settings:
-        mock_settings.sso_base_url = "https://sso.thelead.io"
+        mock_settings.sso_base_url = "https://sso.thebingo.ai"
         mock_settings.sso_publishable_key = "pk_live_abc123"
         from backend.auth.sso import get_config
         config = get_config()
 
     assert config["provider"] == "sso"
-    assert config["sso_base_url"] == "https://sso.thelead.io"
+    assert config["sso_base_url"] == "https://sso.thebingo.ai"
     assert config["publishable_key"] == "pk_live_abc123"
-    assert config["google_oauth_url"] == "https://sso.thelead.io/api/v1/oauth/google"
+    assert config["google_oauth_url"] == "https://sso.thebingo.ai/api/v1/oauth/google"
