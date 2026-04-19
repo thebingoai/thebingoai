@@ -1,5 +1,7 @@
 # Bingo
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI, Nuxt 4, and LangGraph.
 
 ## Overview
@@ -10,7 +12,7 @@ Bingo provides:
 - **Multi-provider LLM support** (OpenAI, Anthropic, Ollama)
 - **Database connectors** for PostgreSQL and MySQL
 - **AI agent system** with orchestrator, data, dashboard, RAG, and monitor agents
-- **Supabase authentication** with provider abstraction
+- **Bingo SSO authentication**
 - **Background job processing** via Celery with scheduled tasks
 - **Memory system** for persistent conversation context
 
@@ -51,7 +53,7 @@ Bingo provides:
 
 ```bash
 # Clone the repository
-git clone <repo-url> && cd bingo
+git clone https://github.com/thebingoai/thebingoai.git bingo && cd bingo
 
 # Copy and configure environment
 cp .env.example .env
@@ -83,10 +85,6 @@ docker compose -f docker/local/docker-compose.yml down
 # Rebuild after code changes
 docker compose -f docker/local/docker-compose.yml up --build -d
 ```
-
-### Docker Deployment
-
-See [DOCKER.md](DOCKER.md) for detailed Docker deployment instructions.
 
 ## Project Structure
 
@@ -128,7 +126,7 @@ bingo/
 ## API Endpoints
 
 ### Authentication
-- `POST /api/auth/...` — Supabase authentication flows (login, signup, verify, reset password)
+- `POST /api/auth/...` — Bingo SSO authentication flows (login, signup, verify, reset password)
 
 ### Database Connections
 - `/api/connections/...` — Manage database connections (PostgreSQL, MySQL)
@@ -181,14 +179,15 @@ Copy `.env.example` to `.env` and configure:
 | `OLLAMA_BASE_URL` | Ollama endpoint (default: `http://localhost:11434`) |
 | `DEFAULT_LLM_PROVIDER` | `openai` / `anthropic` / `ollama` (default: `openai`) |
 
-### Optional — Supabase Authentication
+### Optional — Bingo SSO
 | Variable | Description |
 |----------|-------------|
-| `AUTH_PROVIDER` | Auth provider type (default: `supabase`) |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Supabase anon/public key |
-| `SUPABASE_JWT_SECRET` | JWT secret for token verification |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (optional, for admin operations) |
+| `SSO_BASE_URL` | SSO service URL (default: `https://sso.thebingo.ai`) |
+| `SSO_PUBLISHABLE_KEY` | App name (community) or `pk_*` publishable key (enterprise) |
+| `SSO_SECRET_KEY` | Backend `sk_*` secret key (enterprise only; adds `X-API-Key` header) |
+| `SSO_TOKEN_CACHE_TTL` | Token cache TTL in seconds (default: `300`) |
+| `SSO_WEBHOOK_SECRET` | Optional webhook signature verification secret |
+| `SSO_REDIS_URL` | Redis URL for token cache (default: `redis://localhost:6379/3`) |
 
 ### Optional — Storage & Infrastructure
 | Variable | Description |
@@ -213,7 +212,7 @@ See `.env.example` for the full list of configuration options.
 - [x] Multi-provider LLM support (OpenAI, Anthropic, Ollama)
 - [x] Database connectors (PostgreSQL, MySQL)
 - [x] AI agent system (orchestrator, data, dashboard, RAG, monitor)
-- [x] Supabase authentication (SSO available via enterprise plugin)
+- [x] Bingo SSO authentication
 - [x] Background job processing with Celery
 - [x] Scheduled tasks with Celery Beat
 - [x] Memory system for persistent context
@@ -222,3 +221,11 @@ See `.env.example` for the full list of configuration options.
 - [x] Docker Compose local development setup
 - [x] Database migrations with Alembic
 - [x] Usage tracking
+
+## Contributing
+
+Issues and PRs welcome. See [LICENSE](./LICENSE) for terms.
+
+## License
+
+Released under the [MIT License](./LICENSE).

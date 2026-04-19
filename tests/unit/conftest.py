@@ -1,4 +1,4 @@
-"""Test configuration and fixtures for LLM-MD-CLI."""
+"""Test configuration and fixtures for Bingo."""
 
 import pytest
 import tempfile
@@ -12,7 +12,7 @@ def sample_markdown_file() -> Generator[Path, None, None]:
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
         f.write("""# Test Document
 
-This is a test document for the llm-md-cli project.
+This is a test document for the bingo project.
 
 ## Features
 

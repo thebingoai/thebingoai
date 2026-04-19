@@ -94,7 +94,7 @@ export default defineNuxtConfig({
     // SSO proxy — routes /sso-api/** to the SSO service
     '/sso-api/**': {
       proxy: {
-        to: `${process.env.NUXT_PUBLIC_SSO_BASE_URL || 'https://sso.thelead.io'}/api/v1/**`
+        to: `${process.env.NUXT_PUBLIC_SSO_BASE_URL || 'https://sso.thebingo.ai'}/api/v1/**`
       }
     }
   },

@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     judge_llm_model: str = ""           # e.g. "gpt-5-mini"; empty → judge disabled (falls open)
     judge_timeout_seconds: int = 10
     judge_enabled: bool = True          # kill-switch for the whole layer
+    judge_highlight_enabled: bool = True  # mark meaningful numbers with ==...== for frontend orange rendering
 
     # Database
     database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
@@ -114,7 +115,6 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
-    backend_url: Optional[str] = None  # Public URL for external callbacks (e.g. Telegram webhooks)
 
     # Logging
     log_level: str = "INFO"
@@ -124,7 +124,7 @@ class Settings(BaseSettings):
     query_timeout_ms: int = 120000
 
     # SSO Authentication
-    sso_base_url: str = "https://sso.thelead.io"
+    sso_base_url: str = "https://sso.thebingo.ai"
     sso_publishable_key: str = "Bingo-Community"   # app name (community) or pk_* key (enterprise)
     sso_secret_key: str = ""           # sk_* key for backend
     sso_token_cache_ttl: int = 300     # seconds (5 min)
