@@ -5,38 +5,38 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: llm-cli-postgres
+    container_name: thebingo-postgres
     environment:
-      POSTGRES_DB: llm_cli
-      POSTGRES_USER: llm_user
-      POSTGRES_PASSWORD: llm_password
+      POSTGRES_DB: thebingo
+      POSTGRES_USER: thebingo_user
+      POSTGRES_PASSWORD: thebingo_password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U llm_user -d llm_cli"]
+      test: ["CMD-SHELL", "pg_isready -U thebingo_user -d thebingo"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
     environment:
-      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
+      - DATABASE_URL=postgresql://thebingo_user:thebingo_password@postgres:5432/thebingo
     depends_on:
       postgres:
         condition: service_healthy
 
   celery-worker:
     environment:
-      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
+      - DATABASE_URL=postgresql://thebingo_user:thebingo_password@postgres:5432/thebingo
     depends_on:
       postgres:
         condition: service_healthy
 
   agent-worker:
     environment:
-      - DATABASE_URL=postgresql://llm_user:llm_password@postgres:5432/llm_cli
+      - DATABASE_URL=postgresql://thebingo_user:thebingo_password@postgres:5432/thebingo
     depends_on:
       postgres:
         condition: service_healthy
