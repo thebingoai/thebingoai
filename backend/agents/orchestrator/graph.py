@@ -287,6 +287,44 @@ def _extract_final_answer(messages: list) -> Optional[str]:
     return None
 
 
+_HIGHLIGHT_TOKEN_RE = _re.compile(r"==(\S+?)==")
+
+
+def _apply_highlights(original: str, highlighted: Optional[str]) -> str:
+    """Transfer the judge's ``==token==`` markers onto the original text.
+
+    The judge is instructed to only wrap whitespace-free numeric tokens and
+    leave all other wording identical. In practice LLMs drift (curly quotes,
+    trailing newlines, escaped ``$``). Instead of dropping every highlight on
+    drift, re-apply each wrapped token to the pristine original by forward
+    scan — dropping only tokens the judge invented or mangled.
+    """
+    if not highlighted:
+        return original
+    tokens = _HIGHLIGHT_TOKEN_RE.findall(highlighted)
+    if not tokens:
+        return original
+    out: list[str] = []
+    cursor = 0
+    applied = 0
+    for token in tokens:
+        idx = original.find(token, cursor)
+        if idx == -1:
+            continue
+        out.append(original[cursor:idx])
+        out.append(f"=={token}==")
+        cursor = idx + len(token)
+        applied += 1
+    out.append(original[cursor:])
+    if applied < len(tokens):
+        logger.debug(
+            "Judge highlight reconciliation skipped %d/%d drifted tokens",
+            len(tokens) - applied,
+            len(tokens),
+        )
+    return "".join(out) if applied else original
+
+
 async def _run_judge_retry(
     user_question: str,
     initial_answer: str,
@@ -333,6 +371,7 @@ async def _run_judge_retry(
                     "judge_reason_retry": retry_verdict.reason,
                     "judge_directive": initial_verdict.suggested_directive,
                     "judge_model": settings.judge_llm_model,
+                    "retry_highlighted_response": retry_verdict.highlighted_response,
                 },
             )
         return (
@@ -797,6 +836,7 @@ async def run_orchestrator(
 
         retry_succeeded: Optional[bool] = None
         judge_metadata: Optional[Dict[str, Any]] = None
+        highlighted_text: Optional[str] = None
         if settings.judge_enabled and final_answer:
             verdict = await judge_response(user_question, final_answer)
             if not verdict.resolved:
@@ -804,6 +844,12 @@ async def run_orchestrator(
                 final_answer, retry_succeeded, judge_metadata = await _run_judge_retry(
                     user_question, final_answer, verdict, orchestrator, messages,
                 )
+                highlighted_text = (judge_metadata or {}).get("retry_highlighted_response")
+            else:
+                highlighted_text = verdict.highlighted_response
+
+        if settings.judge_highlight_enabled and final_answer:
+            final_answer = _apply_highlights(final_answer, highlighted_text)
 
         return {
             "success": True,
@@ -1004,6 +1050,7 @@ async def stream_orchestrator(
         # Layer 4: judge the streamed answer and retry once if unresolved.
         retry_succeeded: Optional[bool] = None
         judge_metadata: Optional[Dict[str, Any]] = None
+        highlighted_text: Optional[str] = None
         if settings.judge_enabled and final_answer_text:
             verdict = await judge_response(user_question, final_answer_text)
             if not verdict.resolved:
@@ -1012,6 +1059,12 @@ async def stream_orchestrator(
                 final_answer_text, retry_succeeded, judge_metadata = await _run_judge_retry(
                     user_question, final_answer_text, verdict, orchestrator, messages,
                 )
+                highlighted_text = (judge_metadata or {}).get("retry_highlighted_response")
+            else:
+                highlighted_text = verdict.highlighted_response
+
+        if settings.judge_highlight_enabled and final_answer_text:
+            final_answer_text = _apply_highlights(final_answer_text, highlighted_text)
 
         # Re-stream the judge-approved answer as paced word-chunks so the
         # frontend drip ticker renders it word-by-word (Claude-Desktop feel)
