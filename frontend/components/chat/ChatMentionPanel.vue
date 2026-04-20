@@ -1,20 +1,20 @@
 <template>
-  <div class="rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+  <div class="rounded-xl border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-lg overflow-hidden">
     <!-- Real search input -->
-    <div class="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
-      <Search class="h-4 w-4 text-gray-400 shrink-0" />
+    <div class="px-3 py-2 border-b border-gray-100 dark:border-neutral-700 flex items-center gap-2">
+      <Search class="h-4 w-4 text-gray-400 dark:text-neutral-500 shrink-0" />
       <input
         ref="searchRef"
         :value="mentionQuery"
         @input="setQuery(($event.target as HTMLInputElement).value)"
         @keydown="handleKeydown"
         placeholder="Search dashboards & connections…"
-        class="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400 min-w-0"
+        class="flex-1 text-sm bg-transparent outline-none text-gray-700 dark:text-neutral-200 placeholder-gray-400 dark:placeholder-neutral-500 min-w-0"
         autocomplete="off"
       />
       <button
         type="button"
-        class="text-gray-400 hover:text-gray-600 transition-colors"
+        class="text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 transition-colors"
         @mousedown.prevent="emit('close')"
       >
         <X class="h-4 w-4" />
@@ -25,7 +25,7 @@
     <div class="max-h-60 overflow-y-auto">
       <!-- Dashboards -->
       <template v-if="props.filteredResults.dashboards.length">
-        <div class="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider select-none">
+        <div class="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-wider select-none">
           Dashboards
         </div>
         <button
@@ -34,19 +34,19 @@
           type="button"
           class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors"
           :class="flatIndex(i, 'dashboard') === activeIndex
-            ? 'bg-gray-100 text-gray-900'
-            : 'text-gray-700 hover:bg-gray-50'"
+            ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white'
+            : 'text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700/50'"
           @mousedown.prevent="emit('select', item)"
         >
           <LayoutDashboard class="h-4 w-4 text-purple-500 shrink-0" />
           <span class="truncate">{{ item.displayName }}</span>
-          <span class="ml-auto text-xs text-gray-400 shrink-0 font-mono">@{{ item.name }}</span>
+          <span class="ml-auto text-xs text-gray-400 dark:text-neutral-500 shrink-0 font-mono">@{{ item.name }}</span>
         </button>
       </template>
 
       <!-- Connections -->
       <template v-if="props.filteredResults.connections.length">
-        <div class="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider select-none">
+        <div class="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-wider select-none">
           Connections
         </div>
         <button
@@ -55,20 +55,20 @@
           type="button"
           class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors"
           :class="flatIndex(i, 'connection') === activeIndex
-            ? 'bg-gray-100 text-gray-900'
-            : 'text-gray-700 hover:bg-gray-50'"
+            ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white'
+            : 'text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700/50'"
           @mousedown.prevent="emit('select', item)"
         >
           <Database class="h-4 w-4 text-blue-500 shrink-0" />
           <span class="truncate">{{ item.displayName }}</span>
-          <span v-if="item.dbType" class="ml-auto text-xs text-gray-400 shrink-0">{{ item.dbType }}</span>
+          <span v-if="item.dbType" class="ml-auto text-xs text-gray-400 dark:text-neutral-500 shrink-0">{{ item.dbType }}</span>
         </button>
       </template>
 
       <!-- Empty state -->
       <div
         v-if="!props.filteredResults.dashboards.length && !props.filteredResults.connections.length"
-        class="px-3 py-5 text-sm text-gray-400 text-center"
+        class="px-3 py-5 text-sm text-gray-400 dark:text-neutral-500 text-center"
       >
         No matches
       </div>

@@ -24,7 +24,7 @@
             class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
             :class="route.path === '/chat' && chatStore.currentThreadId === chatStore.permanentConversation!.id ? 'opacity-100' : 'opacity-0'"
           />
-          <Sparkles class="relative h-3.5 w-3.5 text-gray-900" />
+          <Sparkles class="relative h-3.5 w-3.5 text-gray-900 dark:text-neutral-300" />
         </span>
         <span
           class="sidebar-title flex-1 min-w-0 text-sm"
@@ -55,7 +55,7 @@
             class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
             :class="route.path === '/dashboard' ? 'opacity-100' : 'opacity-0'"
           />
-          <LayoutDashboard class="relative h-3.5 w-3.5 text-gray-900" />
+          <LayoutDashboard class="relative h-3.5 w-3.5 text-gray-900 dark:text-neutral-300" />
         </span>
         <span :class="route.path === '/dashboard' ? 'font-bold text-glow-orange' : ''">Dashboard</span>
       </button>
@@ -73,7 +73,7 @@
             class="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 transition-opacity duration-200"
             :class="route.path === '/chat' && !chatStore.currentThreadId ? 'opacity-100' : 'opacity-0'"
           />
-          <Plus class="relative h-3.5 w-3.5 text-gray-900" />
+          <Plus class="relative h-3.5 w-3.5 text-gray-900 dark:text-neutral-300" />
         </span>
         <span :class="route.path === '/chat' && !chatStore.currentThreadId ? 'font-bold text-glow-orange' : ''">New Task</span>
       </button>

@@ -53,10 +53,10 @@
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
               <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
-                <span class="text-[11px] text-gray-400">v{{ getConnectorType(connection.db_type)?.version }}</span>
+                <span class="text-[11px] text-gray-400 dark:text-neutral-500">v{{ getConnectorType(connection.db_type)?.version }}</span>
                 <button
                   @click.stop="openChangelog(connection.db_type)"
-                  class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
+                  class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-600 inline-flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:border-gray-400 dark:hover:border-neutral-400"
                 >
                   <Info class="h-2 w-2" />
                 </button>
@@ -70,12 +70,12 @@
           </div>
           <!-- Connected account (Facebook Ads) or source filename (file-based connectors) -->
           <div v-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
-            <User class="h-3 w-3 text-gray-400 shrink-0" />
-            <span class="text-[11px] text-gray-400 truncate">Account: {{ connection.name }}</span>
+            <User class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
+            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">Account: {{ connection.name }}</span>
           </div>
           <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
-            <FileText class="h-3 w-3 text-gray-400 shrink-0" />
-            <span class="text-[11px] text-gray-400 truncate">{{ connection.source_filename }}</span>
+            <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
+            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">{{ connection.source_filename }}</span>
           </div>
           <!-- Bottom metadata row -->
           <div class="mt-auto border-t border-gray-100 dark:border-neutral-700 pt-2.5 flex items-end gap-4">
@@ -131,16 +131,16 @@
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
               <div class="flex items-center gap-1 mt-0.5">
-                <span class="text-[11px] text-gray-400">v{{ getConnectorType('dataset')?.version }}</span>
+                <span class="text-[11px] text-gray-400 dark:text-neutral-500">v{{ getConnectorType('dataset')?.version }}</span>
                 <button
                   @click.stop="openChangelog('dataset')"
-                  class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
+                  class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-600 inline-flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:border-gray-400 dark:hover:border-neutral-400"
                 >
                   <Info class="h-2 w-2" />
                 </button>
               </div>
             </div>
-            <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 shrink-0 mt-1" />
+            <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 dark:text-neutral-500 shrink-0 mt-1" />
           </button>
           <p class="text-[13px] text-gray-500 dark:text-neutral-400 mt-2.5">{{ group.connections.length }} datasets</p>
           <!-- Expanded: list individual datasets -->
@@ -164,7 +164,7 @@
             </div>
           </div>
           <div v-else class="mt-auto flex flex-col gap-0.5">
-            <p class="text-xs text-gray-400">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
+            <p class="text-xs text-gray-400 dark:text-neutral-500">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
           </div>
         </div>
       </UiCard>
@@ -172,10 +172,10 @@
       <!-- Add Connection card -->
       <button
         @click="openCreateDialog"
-        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
+        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 dark:border-neutral-600 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 dark:hover:border-neutral-500 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
       >
-        <component :is="Plus" class="h-6 w-6 text-gray-400" />
-        <span class="text-sm text-gray-500">Add Connection</span>
+        <component :is="Plus" class="h-6 w-6 text-gray-400 dark:text-neutral-500" />
+        <span class="text-sm text-gray-500 dark:text-neutral-400">Add Connection</span>
       </button>
     </div>
 
@@ -365,12 +365,12 @@
           <template v-else-if="isSqliteConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Database Name</label>
-                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Database Name</label>
+                <p class="text-sm text-gray-900 dark:text-white mt-0.5">{{ editingConnection.name }}</p>
               </div>
               <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Source File</label>
-                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.source_filename }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Source File</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-200 mt-0.5">{{ editingConnection.source_filename }}</p>
               </div>
             </div>
           </template>
@@ -474,12 +474,12 @@
           <template v-else-if="isDatasetConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Dataset Name</label>
-                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Dataset Name</label>
+                <p class="text-sm text-gray-900 dark:text-white mt-0.5">{{ editingConnection.name }}</p>
               </div>
               <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Source File</label>
-                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.source_filename }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Source File</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-200 mt-0.5 font-mono">{{ editingConnection.source_filename }}</p>
               </div>
             </div>
             <div class="border-t border-gray-200 pt-4 mt-6 hidden md:block">
@@ -953,12 +953,12 @@
                     <!-- Schema row -->
                     <button
                       @click="toggleSchema(String(schemaName))"
-                      class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
+                      class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-neutral-700"
                     >
-                      <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                      <Database class="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                      <span class="text-xs font-medium text-gray-700 truncate">{{ schemaName }}</span>
-                      <span class="text-xs text-gray-400 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
+                      <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-400 shrink-0" />
+                      <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400 shrink-0" />
+                      <span class="text-xs font-medium text-gray-700 dark:text-neutral-200 truncate">{{ schemaName }}</span>
+                      <span class="text-xs text-gray-400 dark:text-neutral-500 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
                     </button>
 
                     <!-- Tables -->
@@ -967,12 +967,12 @@
                         <!-- Table row -->
                         <button
                           @click="toggleTable(`${schemaName}.${tableName}`)"
-                          class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
+                          class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-neutral-700"
                         >
-                          <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-400 shrink-0" />
                           <Table2 class="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                          <span class="text-xs text-gray-700 truncate">{{ tableName }}</span>
-                          <span v-if="tableData.row_count != null" class="text-xs text-gray-400 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
+                          <span class="text-xs text-gray-700 dark:text-neutral-200 truncate">{{ tableName }}</span>
+                          <span v-if="tableData.row_count != null" class="text-xs text-gray-400 dark:text-neutral-500 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
                         </button>
 
                         <!-- Columns -->
@@ -984,9 +984,9 @@
                           >
                             <Key v-if="col.primary_key" class="h-3 w-3 text-amber-500 shrink-0" />
                             <span v-else class="h-3 w-3 shrink-0" />
-                            <span class="text-gray-600 truncate">{{ col.name }}</span>
-                            <span class="text-gray-400 bg-gray-100 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
-                            <span v-if="col.nullable" class="text-gray-400 shrink-0">?</span>
+                            <span class="text-gray-600 dark:text-neutral-300 truncate">{{ col.name }}</span>
+                            <span class="text-gray-600 dark:text-neutral-200 bg-gray-100 dark:bg-neutral-700 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
+                            <span v-if="col.nullable" class="text-gray-400 dark:text-neutral-500 shrink-0">?</span>
                           </div>
                         </div>
                       </div>
