@@ -102,7 +102,7 @@
                 ? 'text-gray-300 opacity-40'
                 : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
             ]"
-            title="Attach files"
+            title="Attach files (max 50 MB)"
           >
             <Paperclip class="h-4 w-4" />
           </button>
