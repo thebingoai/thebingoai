@@ -297,10 +297,10 @@
                 :error="sqliteFormErrors.name"
               />
               <div>
-                <label class="text-sm font-normal text-gray-900 mb-1.5 block">File</label>
+                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">File</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="sqliteDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
+                  :class="sqliteDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
                   @dragover.prevent="sqliteDragOver = true"
                   @dragleave.prevent="sqliteDragOver = false"
                   @drop.prevent="handleSqliteDrop"
@@ -314,17 +314,17 @@
                   />
                   <div v-if="!sqliteFile">
                     <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600">Drop a SQLite database file here</p>
-                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 mt-1">.sqlite or .db — max 50 MB</p>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop a SQLite database file here</p>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">.sqlite or .db — max 50 MB</p>
                   </div>
                   <div v-else class="flex items-center gap-3 justify-center">
                     <Database class="h-5 w-5 text-blue-500 shrink-0" />
                     <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 truncate">{{ sqliteFile.name }}</p>
-                      <p class="text-xs text-gray-500">{{ formatFileSize(sqliteFile.size) }}</p>
+                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ sqliteFile.name }}</p>
+                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(sqliteFile.size) }}</p>
                     </div>
-                    <button type="button" @click.stop="clearSqliteFile" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
+                    <button type="button" @click.stop="clearSqliteFile" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
                       <component :is="X" class="h-4 w-4" />
                     </button>
                   </div>
@@ -334,21 +334,21 @@
 
               <!-- Table preview after upload -->
               <div v-if="sqliteUploadResult">
-                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Tables ({{ sqliteUploadResult.table_count }})</label>
-                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Tables ({{ sqliteUploadResult.table_count }})</label>
+                <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
                   <table class="w-full text-xs">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-50 dark:bg-neutral-800">
                       <tr>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600">Table</th>
-                        <th class="px-3 py-2 text-right font-medium text-gray-600">Rows</th>
-                        <th class="px-3 py-2 text-right font-medium text-gray-600">Columns</th>
+                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Table</th>
+                        <th class="px-3 py-2 text-right font-medium text-gray-600 dark:text-neutral-300">Rows</th>
+                        <th class="px-3 py-2 text-right font-medium text-gray-600 dark:text-neutral-300">Columns</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="t in sqliteUploadResult.tables" :key="t.name" class="border-t border-gray-100">
-                        <td class="px-3 py-1.5 text-gray-700 font-mono">{{ t.name }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 text-right">{{ t.row_count.toLocaleString() }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 text-right">{{ t.column_count }}</td>
+                      <tr v-for="t in sqliteUploadResult.tables" :key="t.name" class="border-t border-gray-100 dark:border-neutral-700/50">
+                        <td class="px-3 py-1.5 text-gray-700 dark:text-neutral-300 font-mono">{{ t.name }}</td>
+                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-right">{{ t.row_count.toLocaleString() }}</td>
+                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-right">{{ t.column_count }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -385,10 +385,10 @@
                 :error="datasetFormErrors.name"
               />
               <div>
-                <label class="text-sm font-normal text-gray-900 mb-1.5 block">File</label>
+                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">File</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="datasetDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
+                  :class="datasetDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
                   @dragover.prevent="datasetDragOver = true"
                   @dragleave.prevent="datasetDragOver = false"
                   @drop.prevent="handleDatasetDrop"
@@ -402,17 +402,17 @@
                   />
                   <div v-if="!datasetFile">
                     <Sheet class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600">Drop a CSV or Excel file here</p>
-                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 mt-1">CSV or .xlsx — max 50 MB, 500K rows</p>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop a CSV or Excel file here</p>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">CSV or .xlsx — max 50 MB, 500K rows</p>
                   </div>
                   <div v-else class="flex items-center gap-3 justify-center">
                     <Sheet class="h-5 w-5 text-blue-500 shrink-0" />
                     <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 truncate">{{ datasetFile.name }}</p>
-                      <p class="text-xs text-gray-500">{{ formatFileSize(datasetFile.size) }}</p>
+                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ datasetFile.name }}</p>
+                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(datasetFile.size) }}</p>
                     </div>
-                    <button type="button" @click.stop="clearDatasetFile" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
+                    <button type="button" @click.stop="clearDatasetFile" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
                       <component :is="X" class="h-4 w-4" />
                     </button>
                   </div>
@@ -422,19 +422,19 @@
 
               <!-- Column preview for CSV -->
               <div v-if="datasetPreviewColumns.length > 0">
-                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Column Preview</label>
-                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Column Preview</label>
+                <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
                   <table class="w-full text-xs">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-50 dark:bg-neutral-800">
                       <tr>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600">Column</th>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600">Detected Type</th>
+                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Column</th>
+                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Detected Type</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="col in datasetPreviewColumns" :key="col.name" class="border-t border-gray-100">
-                        <td class="px-3 py-1.5 text-gray-700 font-mono">{{ col.name }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 bg-gray-50 font-mono">{{ col.type }}</td>
+                      <tr v-for="col in datasetPreviewColumns" :key="col.name" class="border-t border-gray-100 dark:border-neutral-700/50">
+                        <td class="px-3 py-1.5 text-gray-700 dark:text-neutral-300 font-mono">{{ col.name }}</td>
+                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800/50 font-mono">{{ col.type }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -442,7 +442,7 @@
               </div>
 
               <!-- Excel notice -->
-              <div v-else-if="datasetFile && datasetFile.name.endsWith('.xlsx')" class="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+              <div v-else-if="datasetFile && datasetFile.name.endsWith('.xlsx')" class="flex items-center gap-2 text-sm text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
                 <Sheet class="h-4 w-4 shrink-0" />
                 Excel file selected — column preview not available. Upload to inspect schema.
               </div>
@@ -485,7 +485,7 @@
             <div class="border-t border-gray-200 pt-4 mt-6 hidden md:block">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900">Delete this dataset</p>
+                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this dataset</p>
                   <p class="text-xs text-gray-500">This action cannot be undone.</p>
                 </div>
                 <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
@@ -500,20 +500,20 @@
           <template v-else-if="isFacebookAdsConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connection Name</label>
-                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Connection Name</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ editingConnection.name }}</p>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Ad Account ID</label>
-                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.database }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Ad Account ID</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.database }}</p>
               </div>
               <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connected At</label>
-                <p class="text-sm text-gray-900 mt-0.5">{{ formatFbConnectedAt(editingConnection.source_filename) }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Connected At</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ formatFbConnectedAt(editingConnection.source_filename) }}</p>
               </div>
 
               <div class="border-t border-gray-200 pt-4">
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Sync Settings</label>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Sync Settings</label>
                 <UiInput
                   v-model="fbLookbackDays"
                   label="Lookback Days"
@@ -528,8 +528,8 @@
             <div class="border-t border-gray-200 pt-4 mt-6">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900">Delete this connection</p>
-                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
+                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
                 </div>
                 <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
                   <Trash2 class="h-3.5 w-3.5" />
@@ -543,10 +543,10 @@
           <template v-else-if="isBigQueryConnection && !editingConnection">
             <form @submit.prevent="handleFormSubmit" class="space-y-4">
               <div>
-                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Service Account JSON</label>
+                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Service Account JSON</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
+                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
                   @dragover.prevent="bigqueryJsonDragOver = true"
                   @dragleave.prevent="bigqueryJsonDragOver = false"
                   @drop.prevent="handleBigQueryJsonDrop"
@@ -560,17 +560,17 @@
                   />
                   <div v-if="!bigqueryJsonFile">
                     <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600">Drop your service account JSON here</p>
-                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 mt-1">.json — GCP service account key</p>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop your service account JSON here</p>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">.json — GCP service account key</p>
                   </div>
                   <div v-else class="flex items-center gap-3 justify-center">
                     <Database class="h-5 w-5 text-blue-500 shrink-0" />
                     <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 truncate">{{ bigqueryJsonFile.name }}</p>
-                      <p class="text-xs text-gray-500">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
+                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
+                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
                     </div>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
+                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
                       <component :is="X" class="h-4 w-4" />
                     </button>
                   </div>
@@ -579,12 +579,12 @@
               </div>
 
               <!-- Auto-populated info preview -->
-              <div v-if="bigquerySaInfo" class="bg-gray-50 rounded-lg px-3 py-2 space-y-1">
-                <p class="text-xs text-gray-500">
-                  Connection name: <span class="font-medium text-gray-700">{{ form.name || '—' }}</span>
+              <div v-if="bigquerySaInfo" class="bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2 space-y-1">
+                <p class="text-xs text-gray-500 dark:text-neutral-400">
+                  Connection name: <span class="font-medium text-gray-700 dark:text-neutral-200">{{ form.name || '—' }}</span>
                 </p>
-                <p class="text-xs text-gray-500">
-                  Project: <span class="font-mono text-gray-700">{{ bigquerySaInfo.project_id || '—' }}</span>
+                <p class="text-xs text-gray-500 dark:text-neutral-400">
+                  Project: <span class="font-mono text-gray-700 dark:text-neutral-200">{{ bigquerySaInfo.project_id || '—' }}</span>
                 </p>
               </div>
 
@@ -595,18 +595,18 @@
           <template v-else-if="isBigQueryConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Service Account</label>
-                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.username }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Service Account</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.username }}</p>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">GCP Project</label>
-                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.host }}</p>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">GCP Project</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.host }}</p>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Update Service Account JSON (optional)</label>
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Update Service Account JSON (optional)</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-4 text-center transition-colors mt-1.5"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
+                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
                   @dragover.prevent="bigqueryJsonDragOver = true"
                   @dragleave.prevent="bigqueryJsonDragOver = false"
                   @drop.prevent="handleBigQueryJsonDrop"
@@ -623,8 +623,8 @@
                   </div>
                   <div v-else class="flex items-center gap-2 justify-center">
                     <Database class="h-4 w-4 text-blue-500 shrink-0" />
-                    <p class="text-xs font-medium text-gray-900 truncate">{{ bigqueryJsonFile.name }}</p>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
+                    <p class="text-xs font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
+                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
                       <component :is="X" class="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -636,8 +636,8 @@
             <div class="border-t border-gray-200 pt-4 mt-6">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900">Delete this connection</p>
-                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
+                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
                 </div>
                 <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
                   <Trash2 class="h-3.5 w-3.5" />
@@ -745,8 +745,8 @@
           <div v-if="editingConnection" class="border-t border-gray-200 pt-4 mt-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-900">Delete this connection</p>
-                <p class="text-xs text-gray-500">This action cannot be undone.</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+                <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
               </div>
               <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
                 <Trash2 class="h-3.5 w-3.5" />
@@ -765,7 +765,7 @@
               <button
                 type="button"
                 @click="permissionCheckExpanded = !permissionCheckExpanded"
-                class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+                class="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:text-gray-700 dark:hover:text-neutral-300"
               >
                 <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
                 Permission Check
@@ -838,7 +838,7 @@
                 <button
                   type="button"
                   @click="permissionCheckExpanded = !permissionCheckExpanded"
-                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:text-gray-700 dark:hover:text-neutral-300"
                 >
                   <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
                   Permission Check
