@@ -8,7 +8,7 @@
         :value="mentionQuery"
         @input="setQuery(($event.target as HTMLInputElement).value)"
         @keydown="handleKeydown"
-        placeholder="Search dashboards & connections…"
+        placeholder="Search dashboards, connections & Notion pages…"
         class="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400 min-w-0"
         autocomplete="off"
       />
@@ -65,23 +65,52 @@
         </button>
       </template>
 
+      <!-- Notion Pages -->
+      <template v-if="props.filteredResults.notionPages?.length">
+        <div class="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider select-none">
+          Notion Pages
+        </div>
+        <button
+          v-for="(item, i) in props.filteredResults.notionPages"
+          :key="`np-${item.pageId}`"
+          type="button"
+          class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors"
+          :class="flatIndex(i, 'notion_page') === activeIndex
+            ? 'bg-gray-100 text-gray-900'
+            : 'text-gray-700 hover:bg-gray-50'"
+          @mousedown.prevent="emit('select', item)"
+        >
+          <FileText class="h-4 w-4 text-gray-500 shrink-0" />
+          <span class="truncate">{{ item.displayName }}</span>
+          <span class="ml-auto text-xs text-gray-400 shrink-0">Notion</span>
+        </button>
+      </template>
+
       <!-- Empty state -->
       <div
-        v-if="!props.filteredResults.dashboards.length && !props.filteredResults.connections.length"
+        v-if="!props.filteredResults.dashboards.length && !props.filteredResults.connections.length && !props.filteredResults.notionPages?.length"
         class="px-3 py-5 text-sm text-gray-400 text-center"
       >
         No matches
+      </div>
+
+      <!-- Notion sync hint when pages are empty but connection exists -->
+      <div
+        v-if="notionSyncHint && !props.filteredResults.notionPages?.length"
+        class="px-3 pb-3 text-xs text-amber-600 text-center"
+      >
+        {{ notionSyncHint }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Search, X, LayoutDashboard, Database } from 'lucide-vue-next'
+import { Search, X, LayoutDashboard, Database, FileText } from 'lucide-vue-next'
 import type { MentionItem } from '~/composables/useMentions'
 
 const props = defineProps<{
-  filteredResults: { dashboards: MentionItem[]; connections: MentionItem[] }
+  filteredResults: { dashboards: MentionItem[]; connections: MentionItem[]; notionPages: MentionItem[] }
 }>()
 
 const emit = defineEmits<{
@@ -90,7 +119,7 @@ const emit = defineEmits<{
 }>()
 
 const searchRef = ref<HTMLInputElement | null>(null)
-const { mentionQuery, setQuery } = useMentions()
+const { mentionQuery, setQuery, notionSyncHint } = useMentions()
 
 // Active item index across the flat [dashboards..., connections...] list
 const activeIndex = ref(0)
@@ -98,6 +127,7 @@ const activeIndex = ref(0)
 const allItems = computed((): MentionItem[] => [
   ...props.filteredResults.dashboards,
   ...props.filteredResults.connections,
+  ...(props.filteredResults.notionPages ?? []),
 ])
 
 // Reset active index when results change
@@ -107,10 +137,11 @@ watch(() => props.filteredResults, () => { activeIndex.value = 0 })
 onMounted(() => nextTick(() => searchRef.value?.focus()))
 
 // Map per-section index → flat index
-const flatIndex = (sectionIdx: number, type: 'dashboard' | 'connection') =>
-  type === 'dashboard'
-    ? sectionIdx
-    : props.filteredResults.dashboards.length + sectionIdx
+const flatIndex = (sectionIdx: number, type: 'dashboard' | 'connection' | 'notion_page') => {
+  if (type === 'dashboard') return sectionIdx
+  if (type === 'connection') return props.filteredResults.dashboards.length + sectionIdx
+  return props.filteredResults.dashboards.length + props.filteredResults.connections.length + sectionIdx
+}
 
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'ArrowDown') {

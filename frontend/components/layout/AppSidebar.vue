@@ -240,7 +240,13 @@ const userInitial = computed(() => {
 
 // Load conversations on mount and register heartbeat handler
 onMounted(() => {
-  chatStore.hydrateFromStorage()
+  // URL query param takes priority over localStorage for deep-linking
+  const urlId = route.query.id as string | undefined
+  if (urlId) {
+    chatStore.currentThreadId = urlId
+  } else {
+    chatStore.hydrateFromStorage()
+  }
   // Only fetch conversations if not already loaded this session
   if (!chatStore.conversationsLoaded) {
     chat.loadConversations()

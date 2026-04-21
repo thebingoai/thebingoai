@@ -1,10 +1,12 @@
 // @ts-nocheck — ref/computed/useApi are Nuxt auto-imports; .nuxt types only exist inside Docker
 export interface MentionItem {
-  type: 'dashboard' | 'connection'
+  type: 'dashboard' | 'connection' | 'notion_page'
   id: number
   name: string        // slugified token used in @mention text
   displayName: string // original label shown in panel
   dbType?: string     // connections only
+  pageId?: string     // notion_page only: Notion page UUID
+  connectionId?: number // notion_page only: parent connection id
 }
 
 interface MentionsState {
@@ -14,7 +16,9 @@ interface MentionsState {
   resolvedMentions: ReturnType<typeof ref<Map<string, MentionItem>>>
   dashboardsCache: ReturnType<typeof ref<MentionItem[]>>
   connectionsCache: ReturnType<typeof ref<MentionItem[]>>
-  filteredResults: ReturnType<typeof computed<{ dashboards: MentionItem[]; connections: MentionItem[] }>>
+  notionPagesCache: ReturnType<typeof ref<MentionItem[]>>
+  notionSyncHint: ReturnType<typeof ref<string>>
+  filteredResults: ReturnType<typeof computed<{ dashboards: MentionItem[]; connections: MentionItem[]; notionPages: MentionItem[] }>>
 }
 
 // Module-level singleton holder — refs are created lazily inside useMentions()
@@ -52,6 +56,35 @@ async function _doLoad(api: ReturnType<typeof useApi>, state: MentionsState) {
     displayName: c.name || '',
     dbType: c.db_type,
   }))
+
+  // Fetch pages from all Notion connections
+  const notionConnections = connections.filter((c: any) => c.db_type === 'notion')
+  const pageResults = await Promise.all(
+    notionConnections.map((c: any) =>
+      api.notion.listPages(c.id).catch(() => ({ pages: [], synced: false, synced_page_count: 0 }))
+    )
+  )
+  const notionPages: MentionItem[] = []
+  let syncHint = ''
+  notionConnections.forEach((conn: any, i: number) => {
+    const result = pageResults[i]
+    for (const page of result.pages) {
+      if (!page.title) continue
+      notionPages.push({
+        type: 'notion_page' as const,
+        id: conn.id,
+        name: `notion-${slugify(page.title)}`,
+        displayName: page.title,
+        pageId: page.id,
+        connectionId: conn.id,
+      })
+    }
+    if (result.synced && result.pages.length === 0 && !syncHint) {
+      syncHint = 'No Notion pages found — share pages with your integration in Notion, then Sync Now.'
+    }
+  })
+  state.notionPagesCache.value = notionPages
+  state.notionSyncHint.value = syncHint
 }
 
 export const useMentions = () => {
@@ -65,6 +98,8 @@ export const useMentions = () => {
     const resolvedMentions = ref(new Map<string, MentionItem>())
     const dashboardsCache = ref<MentionItem[]>([])
     const connectionsCache = ref<MentionItem[]>([])
+    const notionPagesCache = ref<MentionItem[]>([])
+    const notionSyncHint = ref('')
 
     const filteredResults = computed(() => {
       const q = mentionQuery.value.toLowerCase()
@@ -73,10 +108,11 @@ export const useMentions = () => {
       return {
         dashboards: dashboardsCache.value.filter(matches),
         connections: connectionsCache.value.filter(matches),
+        notionPages: notionPagesCache.value.filter(matches),
       }
     })
 
-    _state = { isMentionOpen, mentionQuery, mentionAnchor, resolvedMentions, dashboardsCache, connectionsCache, filteredResults }
+    _state = { isMentionOpen, mentionQuery, mentionAnchor, resolvedMentions, dashboardsCache, connectionsCache, notionPagesCache, notionSyncHint, filteredResults }
   }
 
   const state = _state
@@ -107,6 +143,7 @@ export const useMentions = () => {
     for (const m of text.matchAll(/@([\w.-]+)/g)) {
       const item = state.resolvedMentions.value.get(m[1])
       if (item?.type === 'connection') ids.push(item.id)
+      else if (item?.type === 'notion_page' && item.connectionId) ids.push(item.connectionId)
     }
     return ids
   }
@@ -120,6 +157,7 @@ export const useMentions = () => {
     mentionQuery: state.mentionQuery,
     mentionAnchor: state.mentionAnchor,
     filteredResults: state.filteredResults,
+    notionSyncHint: state.notionSyncHint,
     openMention,
     closeMention,
     setQuery,
