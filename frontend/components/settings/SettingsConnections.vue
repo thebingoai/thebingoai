@@ -2001,7 +2001,8 @@ async function handleTestConnection() {
 
     if (response.success) {
       testSuccess.value = true
-      toast.success(response.message || 'Connection test successful')
+      connectionSuccessMessage.value = response.message || 'Connection test successful'
+      setTimeout(() => { connectionSuccessMessage.value = '' }, 4000)
     } else {
       connectionFailedMessage.value = response.message || 'Connection test failed'
       setTimeout(() => { connectionFailedMessage.value = '' }, 4000)
