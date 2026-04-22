@@ -16,7 +16,7 @@
             :key="tab.id"
             @click="activeTab = tab.id"
             class="flex items-center gap-1.5 py-2.5 text-xs transition-colors border-b-2"
-            :class="activeTab === tab.id ? 'text-gray-900 border-gray-900' : 'text-gray-400 border-transparent'"
+            :class="activeTab === tab.id ? 'text-gray-900 dark:text-neutral-100 border-gray-900 dark:border-neutral-100' : 'text-gray-400 dark:text-neutral-500 border-transparent'"
           >
             <component :is="tab.icon" class="h-3.5 w-3.5" />
             {{ tab.label }}
