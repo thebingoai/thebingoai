@@ -274,12 +274,6 @@
                 {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
               </UiButton>
             </template>
-            <button
-              @click="handleFormSheetClose(false)"
-              class="hidden md:block rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-            >
-              <component :is="X" class="h-5 w-5" />
-            </button>
           </div>
         </div>
       </template>
