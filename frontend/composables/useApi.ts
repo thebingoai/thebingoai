@@ -7,6 +7,7 @@ import { createResourcesApi } from '~/utils/api/resourcesApi'
 import { createFacebookAdsApi } from '~/utils/api/facebookAdsApi'
 import { createAdminApi } from '~/utils/api/adminApi'
 import { createTelegramApi } from '~/utils/api/telegramApi'
+import { createGa4Api } from '~/utils/api/ga4Api'
 
 export const useApi = () => {
   const authStore = useAuthStore()
@@ -24,5 +25,6 @@ export const useApi = () => {
     facebookAds: createFacebookAdsApi(fetchWithRefresh),
     admin: createAdminApi(fetchWithRefresh),
     telegram: createTelegramApi(fetchWithRefresh),
+    ga4: createGa4Api(fetchWithRefresh),
   }
 }

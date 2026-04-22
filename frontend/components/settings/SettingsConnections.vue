@@ -69,7 +69,11 @@
             />
           </div>
           <!-- Connected account (Facebook Ads) or source filename (file-based connectors) -->
-          <div v-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
+          <div v-if="connection.db_type === 'bigquery' && connection.host" class="flex items-center gap-1 mt-1">
+            <Database class="h-3 w-3 text-gray-400 shrink-0" />
+            <span class="text-[11px] text-gray-400 truncate">{{ connection.host }}</span>
+          </div>
+          <div v-else-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
             <User class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
             <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">Account: {{ connection.name }}</span>
           </div>
@@ -817,7 +821,6 @@
               </div>
             </div>
 
-            <!-- Upload to start check -->
             <div v-if="!bigqueryJsonFile" class="text-center py-4 text-xs text-gray-400 shrink-0">
               Upload a service account JSON to check permissions
             </div>
@@ -854,46 +857,63 @@
               </div>
 
               <!-- Permission Status (collapsible) -->
-              <div v-if="permissionCheckExpanded" class="space-y-3 shrink-0">
-                <div class="space-y-1">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-700 dark:text-neutral-200">Read Access</span>
-                    <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
-                    <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
-                    <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+              <div v-if="permissionCheckExpanded" class="shrink-0">
+                <div class="grid grid-cols-2 gap-x-4">
+                  <!-- Left: Read Access + Write Access stacked -->
+                  <div class="space-y-3">
+                    <!-- Read Access -->
+                    <div class="space-y-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-700">Read Access</span>
+                        <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
+                        <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
+                        <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                      </div>
+                      <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                        <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
+                      </div>
+                    </div>
+                    <!-- Write Access -->
+                    <div class="space-y-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-700">Write Access</span>
+                        <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
+                        <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
+                        <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                        <span v-else class="h-4 w-4 shrink-0" />
+                        <button
+                          type="button"
+                          @click="toggleWriteAccess"
+                          class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+                          :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
+                        >
+                          <span
+                            class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                            :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
+                          />
+                        </button>
+                      </div>
+                      <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                        <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div class="flex flex-wrap gap-x-3 gap-y-0.5">
-                    <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
-                    <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
-                  </div>
-                  <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                    <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
-                  </div>
-                </div>
-                <div class="space-y-1">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-700 dark:text-neutral-200">Write Access</span>
-                    <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
-                    <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
-                    <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                    <span v-else class="h-4 w-4 shrink-0" />
-                    <button
-                      type="button"
-                      @click="toggleWriteAccess"
-                      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-auto"
-                      :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-neutral-600'"
-                    >
-                      <span
-                        class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                        :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
-                      />
-                    </button>
-                  </div>
-                  <div class="flex flex-wrap gap-x-3 gap-y-0.5">
-                    <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
-                  </div>
-                  <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                    <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
+                  <!-- Right: GA4 Unnesting aligned to bottom -->
+                  <div class="flex flex-col justify-end">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm text-gray-700">GA4 Unnesting</span>
+                      <button
+                        type="button"
+                        @click="toggleGa4Unnesting"
+                        class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+                        :class="ga4Enabled ? 'bg-blue-600' : 'bg-gray-200'"
+                      >
+                        <span
+                          class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                          :class="ga4Enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
+                        />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -901,6 +921,66 @@
 
             <!-- Divider between permission check and schema for BigQuery -->
             <div v-if="isBigQueryConnection" class="border-t border-gray-100 shrink-0" />
+
+            <!-- GA4 Unnesting Section (edit mode only) -->
+            <template v-if="isBigQueryConnection && editingConnection && ga4Enabled">
+              <div class="flex items-center shrink-0">
+                <button
+                  type="button"
+                  @click="ga4Expanded = !ga4Expanded"
+                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+                >
+                  <component :is="ga4Expanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
+                  GA4 Datasets
+                </button>
+              </div>
+
+              <div v-if="ga4Expanded && ga4Enabled" class="space-y-3 shrink-0">
+                <div v-if="ga4Loading" class="flex items-center gap-2 text-xs text-gray-400">
+                  <Loader2 class="h-3.5 w-3.5 animate-spin shrink-0" />
+                  Detecting GA4 datasets...
+                </div>
+                <div v-else-if="ga4Datasets.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p class="text-xs text-amber-700">No GA4 datasets (analytics_XXXXXXXX) found in this project.</p>
+                </div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="ds in ga4Datasets"
+                    :key="ds.analytics_dataset_id"
+                    class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-2"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="space-y-0.5 min-w-0">
+                        <p class="text-xs font-medium text-gray-800 truncate font-mono">{{ ds.analytics_dataset_id }}</p>
+                        <p class="text-xs text-gray-400 font-mono">→ {{ ds.bingo_dataset_id }}</p>
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <span
+                          v-if="ds.last_run_status"
+                          class="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                          :class="{
+                            'bg-green-100 text-green-700': ds.last_run_status === 'success',
+                            'bg-red-100 text-red-700': ds.last_run_status === 'failed',
+                            'bg-blue-100 text-blue-700': ds.last_run_status === 'running',
+                          }"
+                        >{{ ds.last_run_status }}</span>
+                        <button
+                          type="button"
+                          @click="triggerGa4Run(ds)"
+                          :disabled="ds.triggering"
+                          class="text-xs text-green-600 hover:text-green-800 flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <Loader2 v-if="ds.triggering" class="h-3 w-3 animate-spin" />
+                          <span v-else class="text-xs">▶</span>
+                          Run Now
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="border-t border-gray-100 shrink-0" />
+            </template>
 
             <!-- Schema panel for all editing connections (BigQuery + others) -->
             <!-- Header -->
@@ -1231,6 +1311,27 @@ const schema = ref<DatabaseSchema | null>(null)
 const schemaLoading = ref(false)
 const schemaError = ref<string | null>(null)
 
+// GA4 Unnesting state
+interface GA4DatasetConfig {
+  analytics_dataset_id: string
+  bingo_dataset_id: string
+  config_id?: number
+  tag_name: string
+  lookback_days: number
+  schedule_time: string
+  enabled: boolean
+  last_run_at?: string
+  last_run_status?: string
+  last_run_error?: string
+  params_count?: number
+  discovering_params?: boolean
+  triggering?: boolean
+}
+const ga4Enabled = ref(false)
+const ga4Expanded = ref(true)
+const ga4Loading = ref(false)
+const ga4Datasets = ref<GA4DatasetConfig[]>([])
+
 // Profiling state
 const reprofilingId = ref<number | null>(null)
 const profilingPollers = ref<Record<number, ReturnType<typeof setInterval>>>({})
@@ -1504,7 +1605,6 @@ async function fetchSchema(connectionId: number) {
     schemaLoading.value = true
     schemaError.value = null
     schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
-    // Auto-expand the first schema
     if (schema.value) {
       const schemaNames = Object.keys(schema.value.schemas)
       if (schemaNames.length === 1) {
@@ -1513,7 +1613,23 @@ async function fetchSchema(connectionId: number) {
     }
   } catch (err: any) {
     if (err?.status === 404 || err?.statusCode === 404) {
-      schema.value = null
+      if (editingConnection.value?.id === connectionId) {
+        // No schema cached yet — auto-discover on first open
+        try {
+          await api.connections.refreshSchema(String(connectionId))
+          schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
+          if (schema.value) {
+            const schemaNames = Object.keys(schema.value.schemas)
+            if (schemaNames.length === 1) {
+              expandedSchemas.value[schemaNames[0]] = true
+            }
+          }
+        } catch (refreshErr: any) {
+          schemaError.value = refreshErr?.data?.detail || refreshErr?.message || 'Failed to load schema'
+        }
+      } else {
+        schema.value = null
+      }
     } else {
       schemaError.value = err?.data?.detail || err?.message || 'Failed to load schema'
     }
@@ -1815,11 +1931,16 @@ function openEditDialog(connection: DatabaseConnection) {
   bigquerySaInfo.value = null
   bigqueryPermissionCheck.value = { read: null, write: null }
   bigqueryPermissionError.value = { read: null, write: null }
+  // Reset GA4 state
+  ga4Enabled.value = false
+  ga4Datasets.value = []
+  ga4Expanded.value = true
   // Edit skips type picker, opens form sheet directly
   showFormSheet.value = true
-  // For BigQuery, auto-run permission check using saved credentials
+  // For BigQuery, auto-run permission check and load GA4 state
   if (connection.db_type === 'bigquery') {
     checkBigQueryPermissionsFromSaved(connection.id)
+    loadGa4State()
   }
   // Fetch schema in background
   fetchSchema(connection.id)
@@ -2323,6 +2444,149 @@ async function checkBigQueryPermissionsFromSaved(connectionId: number) {
     }
   }
 }
+
+// ── GA4 Unnesting ─────────────────────────────────────────────────────────────
+
+function _cronToTime(cron: string): string {
+  const parts = (cron || '0 6 * * *').split(' ')
+  if (parts.length < 2) return '06:00'
+  return `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`
+}
+
+async function loadGa4State() {
+  if (!editingConnection.value || editingConnection.value.db_type !== 'bigquery') return
+  ga4Loading.value = true
+  try {
+    const [detected, existing] = await Promise.all([
+      api.ga4.detect(editingConnection.value.id) as Promise<{ datasets: any[] }>,
+      api.ga4.listConfigs(editingConnection.value.id) as Promise<{ configs: any[] }>,
+    ])
+    const configMap = new Map((existing.configs || []).map((c: any) => [c.analytics_dataset_id, c]))
+    ga4Datasets.value = (detected.datasets || []).map((ds: any) => {
+      const cfg: any = configMap.get(ds.analytics_dataset_id)
+      return {
+        analytics_dataset_id: ds.analytics_dataset_id,
+        bingo_dataset_id: ds.bingo_dataset_id,
+        config_id: cfg?.id,
+        tag_name: cfg?.tag_name || '',
+        lookback_days: cfg?.lookback_days ?? 2,
+        schedule_time: cfg ? _cronToTime(cfg.schedule_cron) : '06:00',
+        enabled: cfg?.enabled ?? true,
+        last_run_at: cfg?.last_run_at,
+        last_run_status: cfg?.last_run_status,
+        params_count: Array.isArray(cfg?.discovered_params) ? cfg.discovered_params.length : 0,
+      } as GA4DatasetConfig
+    })
+    if (ga4Datasets.value.some(d => d.config_id && d.enabled)) ga4Enabled.value = true
+  } catch (e) {
+    console.error('Failed to load GA4 state', e)
+  } finally {
+    ga4Loading.value = false
+  }
+}
+
+async function toggleGa4Unnesting() {
+  ga4Enabled.value = !ga4Enabled.value
+  if (ga4Enabled.value) {
+    if (ga4Datasets.value.length === 0) await loadGa4State()
+    // Save new configs or re-enable existing disabled ones
+    for (const ds of ga4Datasets.value) {
+      if (!ds.config_id) {
+        await saveGa4Config(ds)
+      } else if (!ds.enabled) {
+        try { await api.ga4.patchConfig(ds.config_id, { enabled: true }) } catch {}
+        ds.enabled = true
+      }
+    }
+  }
+  if (!ga4Enabled.value) {
+    // Disable all configs without deleting
+    for (const ds of ga4Datasets.value) {
+      if (ds.config_id) {
+        try { await api.ga4.patchConfig(ds.config_id, { enabled: false }) } catch {}
+        ds.enabled = false
+      }
+    }
+  }
+}
+
+async function saveGa4Config(ds: GA4DatasetConfig) {
+  if (!editingConnection.value) return
+  try {
+    const result = await api.ga4.upsertConfig({
+      connection_id: editingConnection.value.id,
+      analytics_dataset_id: ds.analytics_dataset_id,
+      tag_name: ds.tag_name,
+      lookback_days: ds.lookback_days,
+      schedule_time: ds.schedule_time,
+    }) as { config_id: number }
+    ds.config_id = result.config_id
+    ds.enabled = true
+  } catch (e: any) {
+    console.error('Failed to save GA4 config', e)
+  }
+}
+
+async function discoverGa4Params(ds: GA4DatasetConfig) {
+  if (!editingConnection.value) return
+  ds.discovering_params = true
+  try {
+    const result = await api.ga4.discoverParams({
+      connection_id: editingConnection.value.id,
+      analytics_dataset_id: ds.analytics_dataset_id,
+      lookback_days: 7,
+    }) as { count: number }
+    ds.params_count = result.count
+  } catch (e) {
+    console.error('GA4 param discovery failed', e)
+  } finally {
+    ds.discovering_params = false
+  }
+}
+
+async function triggerGa4Run(ds: GA4DatasetConfig) {
+  if (!ds.config_id) await saveGa4Config(ds)
+  if (!ds.config_id) return
+  ds.triggering = true
+  try {
+    await api.ga4.trigger(ds.config_id)
+    ds.last_run_status = 'running'
+    pollGa4Status(ds)
+  } catch (e) {
+    console.error('GA4 trigger failed', e)
+  } finally {
+    ds.triggering = false
+  }
+}
+
+function pollGa4Status(ds: GA4DatasetConfig) {
+  const MAX_POLLS = 60  // 5 minutes at 5s intervals
+  let count = 0
+  const interval = setInterval(async () => {
+    count++
+    if (count > MAX_POLLS || !editingConnection.value) {
+      clearInterval(interval)
+      return
+    }
+    try {
+      const res = await api.ga4.listConfigs(editingConnection.value.id) as { configs: any[] }
+      const updated = res.configs.find((c: any) => c.id === ds.config_id)
+      if (updated) {
+        ds.last_run_status = updated.last_run_status
+        ds.last_run_error = updated.last_run_error
+        if (updated.last_run_status !== 'running') clearInterval(interval)
+      }
+    } catch {
+      clearInterval(interval)
+    }
+  }, 5000)
+}
+
+watch(editingConnection, (conn) => {
+  ga4Enabled.value = false
+  ga4Datasets.value = []
+  if (conn?.db_type === 'bigquery') loadGa4State()
+})
 
 async function toggleWriteAccess() {
   form.value.ssl_enabled = !form.value.ssl_enabled
