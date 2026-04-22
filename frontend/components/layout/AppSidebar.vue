@@ -175,7 +175,10 @@
         </div>
         <div class="ml-3 flex-1 min-w-0">
           <p class="text-sm font-light text-gray-900 dark:text-neutral-200 truncate">{{ authStore.user?.email }}</p>
-          <p class="text-xs text-gray-400 dark:text-neutral-500 tabular-nums">{{ Math.round(remaining) }} credits</p>
+          <p
+            v-if="featureConfig?.credits_enabled !== false"
+            class="text-xs text-gray-400 dark:text-neutral-500 tabular-nums"
+          >{{ Math.round(remaining) }} credits</p>
         </div>
         <component :is="Settings" class="h-4 w-4 text-gray-400" />
       </div>
