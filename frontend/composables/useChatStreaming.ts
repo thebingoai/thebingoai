@@ -341,6 +341,8 @@ export const useChatStreaming = () => {
             updated_at: new Date().toISOString(),
             message_count: 2
           })
+        } else if (threadId) {
+          chatStore.updateConversationActivity(threadId, new Date().toISOString())
         }
 
         // Refresh credit balance after each turn so the badge stays current
