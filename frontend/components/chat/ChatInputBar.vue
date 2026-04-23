@@ -26,7 +26,7 @@
     <div class="px-4 pb-4 md:px-16">
       <!-- Out-of-credits banner -->
       <div
-        v-if="isExhausted"
+        v-if="isExhausted && featureConfig?.credits_enabled !== false"
         class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-3"
       >
         <span>Daily credits used up. Resets at midnight.</span>
@@ -146,6 +146,7 @@ const emit = defineEmits<{
 }>()
 
 const { isExhausted } = useCreditBalance()
+const { config: featureConfig } = useFeatureConfig()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)

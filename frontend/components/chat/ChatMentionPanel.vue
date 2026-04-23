@@ -1,30 +1,30 @@
 <template>
-  <div class="rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+  <div class="rounded-xl border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-lg overflow-hidden">
     <!-- Search input -->
-    <div class="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+    <div class="px-3 py-2 border-b border-gray-100 dark:border-neutral-700 flex items-center gap-2">
       <!-- Back button (items level) -->
       <button
         v-if="props.mentionLevel === 'items'"
         type="button"
-        class="text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+        class="text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 transition-colors shrink-0"
         @mousedown.prevent
         @click="handleBack"
       >
         <ChevronLeft class="h-4 w-4" />
       </button>
-      <Search class="h-4 w-4 text-gray-400 shrink-0" />
+      <Search class="h-4 w-4 text-gray-400 dark:text-neutral-500 shrink-0" />
       <input
         ref="searchRef"
         :value="mentionQuery"
         @input="setQuery(($event.target as HTMLInputElement).value)"
         @keydown="handleKeydown"
         :placeholder="props.mentionLevel === 'root' ? 'Search connections, pages…' : `Search in ${props.activeGroup?.label ?? ''}…`"
-        class="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400 min-w-0"
+        class="flex-1 text-sm bg-transparent outline-none text-gray-700 dark:text-neutral-200 placeholder-gray-400 dark:placeholder-neutral-500 min-w-0"
         autocomplete="off"
       />
       <button
         type="button"
-        class="text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+        class="text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 transition-colors"
         @mousedown.prevent="emit('close')"
       >
         <X class="h-4 w-4" />
@@ -32,10 +32,10 @@
     </div>
 
     <!-- Active group breadcrumb -->
-    <div v-if="props.mentionLevel === 'items' && props.activeGroup" class="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center gap-1.5">
-      <component :is="groupIcon(props.activeGroup.iconType)" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
-      <span class="text-xs font-medium text-gray-600">{{ props.activeGroup.label }}</span>
-      <span class="text-xs text-gray-400 ml-auto">{{ props.activeGroupItems.length }} item{{ props.activeGroupItems.length !== 1 ? 's' : '' }}</span>
+    <div v-if="props.mentionLevel === 'items' && props.activeGroup" class="px-3 py-1.5 bg-gray-50 dark:bg-neutral-700/50 border-b border-gray-100 dark:border-neutral-700 flex items-center gap-1.5">
+      <component :is="groupIcon(props.activeGroup.iconType)" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-500 shrink-0" />
+      <span class="text-xs font-medium text-gray-600 dark:text-neutral-300">{{ props.activeGroup.label }}</span>
+      <span class="text-xs text-gray-400 dark:text-neutral-500 ml-auto">{{ props.activeGroupItems.length }} item{{ props.activeGroupItems.length !== 1 ? 's' : '' }}</span>
     </div>
 
     <!-- Results -->
@@ -48,34 +48,36 @@
           :key="group.id"
           type="button"
           class="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-colors"
-          :class="i === activeIndex ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'"
+          :class="i === activeIndex
+            ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white'
+            : 'text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700/50'"
           @mousedown.prevent
           @click="selectGroup(group)"
         >
           <div class="h-7 w-7 rounded-md flex items-center justify-center shrink-0"
             :class="{
-              'bg-purple-100': group.iconType === 'dashboard',
-              'bg-blue-100': group.iconType === 'database',
-              'bg-gray-100': group.iconType === 'notion',
+              'bg-purple-100 dark:bg-purple-900/30': group.iconType === 'dashboard',
+              'bg-blue-100 dark:bg-blue-900/30': group.iconType === 'database',
+              'bg-gray-100 dark:bg-neutral-700': group.iconType === 'notion',
             }"
           >
             <component :is="groupIcon(group.iconType)"
               class="h-4 w-4"
               :class="{
-                'text-purple-600': group.iconType === 'dashboard',
-                'text-blue-600': group.iconType === 'database',
-                'text-gray-600': group.iconType === 'notion',
+                'text-purple-600 dark:text-purple-400': group.iconType === 'dashboard',
+                'text-blue-600 dark:text-blue-400': group.iconType === 'database',
+                'text-gray-600 dark:text-neutral-400': group.iconType === 'notion',
               }"
             />
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-gray-900 truncate">{{ group.label }}</p>
-            <p class="text-xs text-gray-400">{{ group.subLabel }}</p>
+            <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ group.label }}</p>
+            <p class="text-xs text-gray-400 dark:text-neutral-500">{{ group.subLabel }}</p>
           </div>
-          <ChevronRight class="h-4 w-4 text-gray-300 shrink-0" />
+          <ChevronRight class="h-4 w-4 text-gray-300 dark:text-neutral-600 shrink-0" />
         </button>
 
-        <div v-if="props.filteredGroups.length === 0" class="px-3 py-5 text-sm text-gray-400 text-center">
+        <div v-if="props.filteredGroups.length === 0" class="px-3 py-5 text-sm text-gray-400 dark:text-neutral-500 text-center">
           No matches
         </div>
       </template>
@@ -88,16 +90,18 @@
             :key="`item-${item.type}-${item.id}-${item.pageId ?? ''}`"
             type="button"
             class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors"
-            :class="i === activeIndex ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'"
+            :class="i === activeIndex
+              ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white'
+              : 'text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700/50'"
             @mousedown.prevent="emit('select', item)"
           >
-            <component :is="itemIcon(item)" class="h-4 w-4 text-gray-400 shrink-0" />
+            <component :is="itemIcon(item)" class="h-4 w-4 text-gray-400 dark:text-neutral-500 shrink-0" />
             <span class="truncate">{{ item.displayName }}</span>
-            <span v-if="item.dbType" class="ml-auto text-xs text-gray-400 shrink-0">{{ item.dbType }}</span>
+            <span v-if="item.dbType" class="ml-auto text-xs text-gray-400 dark:text-neutral-500 shrink-0">{{ item.dbType }}</span>
           </button>
         </template>
 
-        <div v-else class="px-3 py-4 text-sm text-gray-400 text-center">
+        <div v-else class="px-3 py-4 text-sm text-gray-400 dark:text-neutral-500 text-center">
           <template v-if="props.activeGroup?.count === 0 && props.activeGroup?.iconType === 'notion'">
             No pages synced — share pages with your Notion integration, then Sync Now.
           </template>

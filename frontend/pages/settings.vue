@@ -53,7 +53,8 @@
       <SettingsJobs v-else-if="currentSection === 'jobs'" />
       <SettingsMemory v-else-if="currentSection === 'memory'" />
       <SettingsProfile v-else-if="currentSection === 'profile'" />
-      <SettingsCredits v-else-if="currentSection === 'credits'" />
+      <SettingsApiKeys v-else-if="currentSection === 'credits' && featureConfig?.credits_enabled === false" />
+      <SettingsCredits v-else-if="currentSection === 'credits' && featureConfig?.credits_enabled === true" />
       <SettingsAdmin v-else-if="currentSection === 'admin' && isAdmin" />
       <SettingsChannels v-else-if="currentSection === 'channels'" />
       <div v-else class="p-6">
@@ -84,7 +85,7 @@ const sections = computed(() => {
     { id: 'skills', name: 'Skills' },
     { id: 'jobs', name: 'Jobs' },
     { id: 'memory', name: 'Memory' },
-    { id: 'credits', name: 'Credits & API Keys' },
+    { id: 'credits', name: featureConfig.value?.credits_enabled === false ? 'API Keys' : 'Credits & API Keys' },
     { id: 'profile', name: 'Profile' },
   ]
   if (isAdmin.value) {

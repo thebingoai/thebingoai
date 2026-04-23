@@ -119,44 +119,43 @@ async def create_connection(
         if user_memberships:
             db.commit()
 
-    # Auto-discover schema
-    try:
-        with get_connector(
-            db_type=request.db_type,
-            host=request.host,
-            port=request.port,
-            database=request.database,
-            username=request.username,
-            password=request.password,
-            ssl_enabled=request.ssl_enabled,
-            ssl_ca_cert=request.ssl_ca_cert
-        ) as connector:
-            schema_data = discover_schema(connector)
-            schema_json = generate_schema_json(
-                connection.id,
-                connection.name,
-                connection.db_type,
-                schema_data
-            )
-            schema_path = save_schema_file(connection.id, schema_json)
+    db.refresh(connection)
 
-            # Update connection with schema info
-            connection.schema_json_path = schema_path
-            connection.schema_generated_at = datetime.utcnow()
-            connection.table_count = _schema_item_count(connection.db_type, schema_data)
+    # Auto-discover schema for all connector types except BigQuery (too many datasets)
+    if request.db_type != "bigquery":
+        try:
+            with get_connector(
+                db_type=request.db_type,
+                host=request.host,
+                port=request.port,
+                database=request.database,
+                username=request.username,
+                password=request.password,
+                ssl_enabled=request.ssl_enabled,
+                ssl_ca_cert=request.ssl_ca_cert
+            ) as connector:
+                schema_data = discover_schema(connector)
+                schema_json = generate_schema_json(
+                    connection.id,
+                    connection.name,
+                    connection.db_type,
+                    schema_data
+                )
+                schema_path = save_schema_file(connection.id, schema_json)
+
+                connection.schema_json_path = schema_path
+                connection.schema_generated_at = datetime.utcnow()
+                connection.table_count = _schema_item_count(connection.db_type, schema_data)
+                db.commit()
+                db.refresh(connection)
+
+            from backend.tasks.profiling_tasks import profile_connection
+            connection.profiling_status = "pending"
             db.commit()
-            db.refresh(connection)
+            profile_connection.delay(connection.id)
 
-        # Kick off background profiling now that schema is available
-        from backend.tasks.profiling_tasks import profile_connection
-        connection.profiling_status = "pending"
-        db.commit()
-        profile_connection.delay(connection.id)
-
-    except Exception as e:
-        # Log error but don't fail connection creation
-        # Schema can be generated later via refresh endpoint
-        logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
+        except Exception as e:
+            logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
 
     db.refresh(connection)
     logger.info("Connection '%s' (id=%s) created successfully", connection.name, connection.id)

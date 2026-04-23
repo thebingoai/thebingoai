@@ -15,6 +15,7 @@ from backend.schemas.memory import (
     SoulResponse, SoulUpdate,
 )
 from backend.memory.storage import MemoryStorage
+from backend.services.conversation_service import ConversationService
 from backend.tasks.memory_tasks import generate_user_memory
 from backend.memory.retriever import MemoryRetriever
 from datetime import datetime
@@ -84,12 +85,11 @@ async def delete_all_memories(
 
 @router.get("/heatmap", response_model=MemoryHeatmapResponse)
 async def get_memory_heatmap(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Get daily conversation memory activity for heatmap visualization."""
-    storage = MemoryStorage()
-    entries = storage.list_memory_dates(current_user.id)
-
+    """Get daily conversation activity for heatmap visualization."""
+    entries = ConversationService.list_activity_by_date(db, current_user.id)
     total_conversations = sum(e["count"] for e in entries)
     return MemoryHeatmapResponse(
         data=[MemoryHeatmapEntry(date=e["date"], count=e["count"]) for e in entries],

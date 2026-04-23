@@ -1,19 +1,19 @@
 <template>
   <!-- Answered state: green card summary -->
-  <div v-if="answered" class="mt-3 rounded-xl border border-green-200 bg-green-50/50 p-3">
+  <div v-if="answered" class="mt-3 rounded-xl border border-green-200 dark:border-green-900/50 bg-green-50/50 dark:bg-green-950/30 p-3">
     <div class="mb-2 flex items-center gap-1.5">
-      <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-green-100">
-        <svg class="h-3 w-3 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+      <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50">
+        <svg class="h-3 w-3 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
         </svg>
       </span>
-      <span class="text-[10px] font-semibold uppercase tracking-wide text-green-700">Answered</span>
+      <span class="text-[10px] font-semibold uppercase tracking-wide text-green-700 dark:text-green-400">Answered</span>
     </div>
     <div class="flex flex-wrap gap-1.5">
       <span
         v-for="answer in parsedAnswers"
         :key="answer"
-        class="inline-block rounded-md bg-green-100 px-2 py-0.5 text-sm font-medium text-green-800"
+        class="inline-block rounded-md bg-green-100 dark:bg-green-900/40 px-2 py-0.5 text-sm font-medium text-green-800 dark:text-green-300"
       >
         {{ answer }}
       </span>
