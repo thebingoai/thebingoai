@@ -69,6 +69,18 @@ def _invalidate_dashboard_caches_for_connection(
     return count
 
 
+def _find_connection(db: Session, key: str, user_id: str):
+    """Look up a connection by either its UUID or its numeric id.
+
+    Lets API callers use either form during the UUID transition. Returns None
+    if no matching connection is owned by this user.
+    """
+    query = db.query(DatabaseConnection).filter(DatabaseConnection.user_id == user_id)
+    if key.isdigit():
+        return query.filter(DatabaseConnection.id == int(key)).first()
+    return query.filter(DatabaseConnection.uuid == key).first()
+
+
 router = APIRouter(prefix="/connections", tags=["connections"])
 
 
@@ -296,15 +308,12 @@ async def test_unsaved_write_access(
 
 @router.get("/{connection_id}", response_model=ConnectionResponse)
 async def get_connection(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a specific database connection."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -314,16 +323,13 @@ async def get_connection(
 
 @router.put("/{connection_id}", response_model=ConnectionResponse)
 async def update_connection(
-    connection_id: int,
+    connection_id: str,
     request: ConnectionUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a database connection."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -333,7 +339,7 @@ async def update_connection(
         setattr(connection, field, value)
 
     # Invalidate dashboard caches that use this connection
-    _invalidate_dashboard_caches_for_connection(connection_id, current_user.id, db)
+    _invalidate_dashboard_caches_for_connection(connection.id, current_user.id, db)
 
     db.commit()
     db.refresh(connection)
@@ -343,21 +349,18 @@ async def update_connection(
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_connection(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a database connection and its cached schema."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
     # Invalidate dashboard caches that use this connection
-    _invalidate_dashboard_caches_for_connection(connection_id, current_user.id, db)
+    _invalidate_dashboard_caches_for_connection(connection.id, current_user.id, db)
 
     # Run type-specific delete hook if registered (e.g., dataset cleanup)
     reg = get_connector_registration(connection.db_type)
@@ -370,11 +373,11 @@ async def delete_connection(
     # Delete schema and context JSON files
     delete_schema_file(connection.schema_json_path)
     from backend.services.connection_context import delete_context_file
-    delete_context_file(connection_id)
+    delete_context_file(connection.id)
 
     # Remove any team connection policies first to avoid FK violations
     db.query(TeamConnectionPolicy).filter(
-        TeamConnectionPolicy.connection_id == connection_id
+        TeamConnectionPolicy.connection_id == connection.id
     ).delete()
 
     # Delete connection from database
@@ -384,15 +387,12 @@ async def delete_connection(
 
 @router.post("/{connection_id}/test", response_model=ConnectionTestResponse)
 async def test_connection(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Test a database connection."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -426,15 +426,12 @@ async def test_connection(
 
 @router.post("/{connection_id}/test-write", response_model=ConnectionTestResponse)
 async def test_write_access(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Test write access (roles/bigquery.dataEditor) for a saved connection."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -461,7 +458,7 @@ async def test_write_access(
 
 @router.post("/{connection_id}/refresh-schema", response_model=SchemaRefreshResponse)
 async def refresh_connection_schema(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -471,10 +468,7 @@ async def refresh_connection_schema(
     Re-discovers full schema and regenerates JSON file.
     Useful when database structure changes.
     """
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -545,7 +539,7 @@ async def refresh_connection_schema(
 
 @router.get("/{connection_id}/schema", response_model=SchemaResponse)
 async def get_connection_schema(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -555,10 +549,7 @@ async def get_connection_schema(
     Returns the full schema including schemas, tables, columns, and relationships.
     Returns 404 if schema has not been generated yet.
     """
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -579,15 +570,12 @@ async def get_connection_schema(
 
 @router.get("/{connection_id}/profiling-status")
 async def get_profiling_status(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get profiling status for a connection (used for polling during profiling)."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id,
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -603,15 +591,12 @@ async def get_profiling_status(
 
 @router.post("/{connection_id}/reprofile")
 async def reprofile_connection(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Manually trigger re-profiling for a connection."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id,
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -634,15 +619,12 @@ async def reprofile_connection(
 
 @router.get("/{connection_id}/context")
 async def get_connection_context(
-    connection_id: int,
+    connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get the data context for a connection (used by the dashboard agent)."""
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id,
-    ).first()
+    connection = _find_connection(db, connection_id, current_user.id)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -655,6 +637,6 @@ async def get_connection_context(
 
     from backend.services.connection_context import load_context_file
     try:
-        return load_context_file(connection_id)
+        return load_context_file(connection.id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Context file not found. Try re-profiling the connection.")

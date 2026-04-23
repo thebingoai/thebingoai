@@ -14,7 +14,7 @@ router = APIRouter(prefix="/connections", tags=["sql-query"])
 
 @router.post("/{connection_id}/query", response_model=SqlQueryResponse)
 async def execute_sql_query(
-    connection_id: int,
+    connection_id: str,
     request: SqlQueryRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -25,11 +25,12 @@ async def execute_sql_query(
     Only SELECT queries are permitted. Multi-statement queries and
     dangerous keywords (INSERT, UPDATE, DELETE, DROP, etc.) are blocked.
     """
-    # Verify connection ownership
-    connection = db.query(DatabaseConnection).filter(
-        DatabaseConnection.id == connection_id,
-        DatabaseConnection.user_id == current_user.id
-    ).first()
+    # Verify connection ownership — accept either numeric id or UUID
+    query = db.query(DatabaseConnection).filter(DatabaseConnection.user_id == current_user.id)
+    if connection_id.isdigit():
+        connection = query.filter(DatabaseConnection.id == int(connection_id)).first()
+    else:
+        connection = query.filter(DatabaseConnection.uuid == connection_id).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
