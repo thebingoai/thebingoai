@@ -231,6 +231,14 @@
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <UiButton
+              variant="outline"
+              size="sm"
+              @click="showFormSheet = false"
+            >
+              Cancel
+            </UiButton>
+            <!-- Refresh Schema / Sync Now (editing only) -->
+            <UiButton
               v-if="editingConnection"
               variant="outline"
               size="sm"
@@ -239,10 +247,12 @@
               @click.stop="refreshSchema(editingConnection)"
             >
               <RefreshCw class="h-3.5 w-3.5" />
-              Refresh Schema
+              {{ isNotionConnection ? 'Sync Now' : 'Refresh Schema' }}
             </UiButton>
+
+            <!-- Reprofile: not useful for Notion, BigQuery, or file-upload -->
             <UiButton
-              v-if="editingConnection && !isBigQueryConnection"
+              v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
               variant="outline"
               size="sm"
               class="whitespace-nowrap"
@@ -253,8 +263,20 @@
               <RefreshCw class="h-3.5 w-3.5" />
               Reprofile
             </UiButton>
-            <!-- File-upload connections: no Test or Save buttons (upload form handles submission) -->
-            <template v-if="!isFileUploadConnection">
+
+            <!-- Test Connection: Notion (editing only) — Save Changes not needed -->
+            <UiButton
+              v-if="isNotionConnection && editingConnection && !testSuccess"
+              variant="outline"
+              size="sm"
+              :loading="testing"
+              @click="handleTestConnection"
+            >
+              Test Connection
+            </UiButton>
+
+            <!-- Standard connections: Test + Save/Create -->
+            <template v-if="!isFileUploadConnection && !isNotionConnection">
               <UiButton
                 v-if="!testSuccess"
                 variant="outline"
@@ -642,6 +664,65 @@
             </div>
           </template>
 
+          <!-- Notion API key form (creating new connection) -->
+          <template v-else-if="isNotionConnection && !editingConnection">
+            <form @submit.prevent="handleNotionConnect" class="space-y-4">
+              <UiInput
+                v-model="form.name"
+                label="Connection Name"
+                placeholder="My Notion Workspace"
+                required
+                :error="notionFormErrors.name"
+              />
+              <UiInput
+                v-model="notionApiKey"
+                label="Integration Token"
+                type="password"
+                placeholder="secret_..."
+                required
+                :error="notionFormErrors.api_key"
+              />
+              <p class="text-xs text-gray-500">
+                Create an Internal Integration at
+                <span class="font-mono bg-gray-100 px-1 rounded">notion.so/my-integrations</span>
+                and paste the secret token above.
+              </p>
+              <UiButton type="submit" class="w-full" :loading="connectingNotion" :disabled="!notionApiKey.trim()">
+                Connect Notion
+              </UiButton>
+            </form>
+          </template>
+
+          <!-- Notion view (editing existing connection) -->
+          <template v-else-if="isNotionConnection && editingConnection">
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connection Name</label>
+                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ editingConnection.name }}</p>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Integration Token</label>
+                <p class="text-sm text-gray-400 mt-0.5 font-mono">secret_••••••••••••</p>
+              </div>
+              <UiButton variant="outline" size="sm" :loading="saving" @click="handleNotionSync">
+                <RefreshCw class="h-3.5 w-3.5" />
+                Sync Now
+              </UiButton>
+            </div>
+            <div class="border-t border-gray-200 dark:border-neutral-700 pt-4 mt-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
+                </div>
+                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
+                  <Trash2 class="h-3.5 w-3.5" />
+                  Delete
+                </UiButton>
+              </div>
+            </div>
+          </template>
+
           <!-- Standard database connection form -->
           <template v-else>
           <form @submit.prevent="handleFormSubmit" class="space-y-4">
@@ -913,7 +994,52 @@
             <!-- Divider between permission check and schema for BigQuery -->
             <div v-if="isBigQueryConnection" class="border-t border-gray-100 shrink-0" />
 
-            <!-- GA4 Unnesting Section (edit mode only) -->
+            <!-- Notion workspace panel (replaces schema tree for Notion connections) -->
+            <template v-if="isNotionConnection && editingConnection">
+              <div class="flex items-center gap-2 shrink-0">
+                <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Notion Workspace</h3>
+                <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full dark:bg-neutral-700 dark:text-neutral-400">
+                  {{ notionMeta.page_count ?? 0 }} pages
+                </span>
+              </div>
+
+              <!-- Workspace name + last sync -->
+              <div class="space-y-1 shrink-0">
+                <p class="text-sm font-medium text-gray-800 dark:text-neutral-100">{{ notionMeta.bot_name || editingConnection.name }}</p>
+                <p v-if="notionMeta.last_sync" class="text-xs text-gray-400">
+                  Last synced {{ new Date(notionMeta.last_sync).toLocaleString() }}
+                </p>
+                <p v-else class="text-xs text-gray-400">Not yet synced — click Sync Now</p>
+              </div>
+
+              <!-- Pages list -->
+              <div class="overflow-y-auto flex-1">
+                <div v-if="notionPagesLoading" class="space-y-2">
+                  <UiSkeleton class="h-5 w-full" />
+                  <UiSkeleton class="h-5 w-5/6" />
+                  <UiSkeleton class="h-5 w-4/6" />
+                </div>
+                <template v-else-if="notionPages.length">
+                  <a
+                    v-for="page in notionPages"
+                    :key="page.id"
+                    :href="page.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="flex items-center gap-2 py-1.5 px-2 rounded text-sm text-gray-700 hover:bg-gray-50 dark:text-neutral-300 dark:hover:bg-neutral-800 group"
+                  >
+                    <FileText class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                    <span class="truncate">{{ page.title }}</span>
+                    <ExternalLink class="h-3 w-3 text-gray-300 group-hover:text-gray-500 ml-auto shrink-0" />
+                  </a>
+                </template>
+                <div v-else class="text-sm text-gray-400 px-2 py-3">
+                  No pages synced yet. Share pages with your integration in Notion, then click Sync Now.
+                </div>
+              </div>
+            </template>
+
+            <!-- GA4 Unnesting Section (BigQuery edit mode only) -->
             <template v-if="isBigQueryConnection && editingConnection && ga4Enabled">
               <div class="flex items-center shrink-0">
                 <button
@@ -974,6 +1100,7 @@
             </template>
 
             <!-- Schema panel for all editing connections (BigQuery + others) -->
+            <template v-else>
             <!-- Header -->
             <div class="flex items-center gap-2 shrink-0">
                 <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Database Schema</h3>
@@ -1082,7 +1209,8 @@
                   </div>
                 </div>
               </template>
-          </template>
+            </template><!-- end schema panel v-else -->
+          </template><!-- end editing connection block -->
         </div>
 
         <!-- Mobile-only delete section (appears after schema) -->
@@ -1243,7 +1371,7 @@
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle, ExternalLink } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
@@ -1258,6 +1386,7 @@ const connectorIcons: Record<string, string> = {
   facebook_ads: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.854V15.47H7.078V12h3.047V9.356c0-3.007 1.792-4.668 4.533-4.668 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.875V12h3.328l-.532 3.47h-2.796v8.385C19.612 22.954 24 17.99 24 12" fill="#1877F2"/></svg>`,
   sqlite: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 3.79 5 6v12c0 2.21 3.13 4 7 4s7-1.79 7-4V6c0-2.21-3.13-4-7-4z" stroke="#0F80CC" stroke-width="1.5" fill="none"/><path d="M5 6c0 2.21 3.13 4 7 4s7-1.79 7-4" stroke="#0F80CC" stroke-width="1.5"/><path d="M5 12c0 2.21 3.13 4 7 4s7-1.79 7-4" stroke="#0F80CC" stroke-width="1.5"/></svg>`,
   bigquery: `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2zm6.5 20.5l-3-3a5.5 5.5 0 1 1 1.5-1.5l3 3-1.5 1.5zM16 20a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="#4285F4"/></svg>`,
+  notion: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.539 1.447-1.632z"/></svg>`,
 }
 
 // State
@@ -1364,6 +1493,11 @@ const bigqueryPermissionError = ref<{ read: string | null; write: string | null 
 
 // Dataset grouping state
 const expandedGroups = ref<Record<string, boolean>>({})
+
+// Notion API key state
+const notionApiKey = ref('')
+const notionFormErrors = ref<{ name?: string; api_key?: string }>({})
+const connectingNotion = ref(false)
 
 // Facebook OAuth state
 const facebookOAuthLoading = ref(false)
@@ -1519,6 +1653,34 @@ const isFacebookAdsConnection = computed(() => {
 const isBigQueryConnection = computed(() => {
   return form.value.db_type === 'bigquery' || editingConnection.value?.db_type === 'bigquery'
 })
+
+const isNotionConnection = computed(() => {
+  return form.value.db_type === 'notion' || editingConnection.value?.db_type === 'notion'
+})
+
+const notionPages = ref<{id: string; title: string; url: string}[]>([])
+const notionPagesLoading = ref(false)
+
+const notionMeta = computed(() => {
+  try {
+    return JSON.parse(editingConnection.value?.source_filename || '{}')
+  } catch {
+    return {}
+  }
+})
+
+async function fetchNotionPages(connectionId: number) {
+  notionPagesLoading.value = true
+  notionPages.value = []
+  try {
+    const result = await api.notion.listPages(connectionId)
+    notionPages.value = result.pages
+  } catch {
+    // silent — pages just won't show
+  } finally {
+    notionPagesLoading.value = false
+  }
+}
 
 const isFileUploadConnection = computed(() => {
   return isDatasetConnection.value || isSqliteConnection.value
@@ -1754,6 +1916,8 @@ function selectConnectorType(typeId: string) {
   bigquerySaInfo.value = null
   bigqueryPermissionCheck.value = { read: null, write: null }
   bigqueryPermissionError.value = { read: null, write: null }
+  notionApiKey.value = ''
+  notionFormErrors.value = {}
   // Close type picker first to avoid HeadlessUI focus trap conflict
   showTypePicker.value = false
   showFormSheet.value = true
@@ -1778,6 +1942,45 @@ function handleFormSheetClose(value: boolean) {
     } else {
       showFormSheet.value = false
     }
+  }
+}
+
+// Notion API key flow
+async function handleNotionConnect() {
+  notionFormErrors.value = {}
+  if (!form.value.name.trim()) {
+    notionFormErrors.value.name = 'Connection name is required'
+    return
+  }
+  if (!notionApiKey.value.trim()) {
+    notionFormErrors.value.api_key = 'Integration token is required'
+    return
+  }
+  connectingNotion.value = true
+  try {
+    await api.notion.connect(form.value.name.trim(), notionApiKey.value.trim())
+    toast.success('Notion workspace connected!')
+    showFormSheet.value = false
+    notionApiKey.value = ''
+    notionFormErrors.value = {}
+    await fetchConnections()
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to connect Notion')
+  } finally {
+    connectingNotion.value = false
+  }
+}
+
+async function handleNotionSync() {
+  if (!editingConnection.value) return
+  saving.value = true
+  try {
+    await api.notion.triggerSync(editingConnection.value.id)
+    toast.success('Sync started — schema will update automatically')
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Sync failed')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -1915,6 +2118,7 @@ function openEditDialog(connection: DatabaseConnection) {
   schemaSearch.value = ''
   expandedSchemas.value = {}
   expandedTables.value = {}
+  notionPages.value = []
   // Reset BigQuery state
   bigqueryJsonFile.value = null
   bigqueryJsonContent.value = ''
@@ -1932,6 +2136,11 @@ function openEditDialog(connection: DatabaseConnection) {
   if (connection.db_type === 'bigquery') {
     checkBigQueryPermissionsFromSaved(connection.id)
     loadGa4State()
+  }
+  // For Notion, fetch synced pages instead of schema tree
+  if (connection.db_type === 'notion') {
+    fetchNotionPages(connection.id)
+    return
   }
   // Fetch schema in background
   fetchSchema(connection.id)
@@ -2071,7 +2280,8 @@ async function handleFormSubmit() {
 }
 
 async function handleTestConnection() {
-  if (!validateForm()) return
+  // Notion connections use stored credentials — skip form validation
+  if (!isNotionConnection.value && !validateForm()) return
 
   try {
     testing.value = true
@@ -2132,13 +2342,23 @@ async function refreshSchema(connection: DatabaseConnection) {
   try {
     refreshingId.value = connection.id
     await api.connections.refreshSchema(String(connection.id))
-    toast.success('Schema refreshed successfully')
     await fetchConnections()
-    // Refetch schema to update tree panel
-    if (editingConnection.value?.id === connection.id) {
-      expandedSchemas.value = {}
-      expandedTables.value = {}
-      await fetchSchema(connection.id)
+    if (connection.db_type === 'notion') {
+      toast.success('Sync queued — pages will update in a moment')
+      // Re-fetch pages after a short delay to pick up the new sync
+      setTimeout(() => {
+        if (editingConnection.value?.id === connection.id) {
+          fetchNotionPages(connection.id)
+        }
+      }, 4000)
+    } else {
+      toast.success('Schema refreshed successfully')
+      // Refetch schema to update tree panel
+      if (editingConnection.value?.id === connection.id) {
+        expandedSchemas.value = {}
+        expandedTables.value = {}
+        await fetchSchema(connection.id)
+      }
     }
   } catch (err: any) {
     const errorMessage = err?.data?.detail || err?.message || 'Failed to refresh schema'
