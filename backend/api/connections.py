@@ -69,16 +69,23 @@ def _invalidate_dashboard_caches_for_connection(
     return count
 
 
-def _find_connection(db: Session, key: str, user_id: str):
+def _find_connection(db: Session, key, user_id: str):
     """Look up a connection by either its UUID or its numeric id.
 
-    Lets API callers use either form during the UUID transition. Returns None
-    if no matching connection is owned by this user.
+    Accepts str (FastAPI path params) or int (internal callers / tests).
+    Returns None if no matching connection is owned by this user.
     """
-    query = db.query(DatabaseConnection).filter(DatabaseConnection.user_id == user_id)
-    if key.isdigit():
-        return query.filter(DatabaseConnection.id == int(key)).first()
-    return query.filter(DatabaseConnection.uuid == key).first()
+    key_str = str(key)
+    q = db.query(DatabaseConnection)
+    if key_str.isdigit():
+        return q.filter(
+            DatabaseConnection.user_id == user_id,
+            DatabaseConnection.id == int(key_str),
+        ).first()
+    return q.filter(
+        DatabaseConnection.user_id == user_id,
+        DatabaseConnection.uuid == key_str,
+    ).first()
 
 
 router = APIRouter(prefix="/connections", tags=["connections"])

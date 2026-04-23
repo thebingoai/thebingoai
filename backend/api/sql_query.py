@@ -26,11 +26,18 @@ async def execute_sql_query(
     dangerous keywords (INSERT, UPDATE, DELETE, DROP, etc.) are blocked.
     """
     # Verify connection ownership — accept either numeric id or UUID
-    query = db.query(DatabaseConnection).filter(DatabaseConnection.user_id == current_user.id)
-    if connection_id.isdigit():
-        connection = query.filter(DatabaseConnection.id == int(connection_id)).first()
+    key_str = str(connection_id)
+    q = db.query(DatabaseConnection)
+    if key_str.isdigit():
+        connection = q.filter(
+            DatabaseConnection.user_id == current_user.id,
+            DatabaseConnection.id == int(key_str),
+        ).first()
     else:
-        connection = query.filter(DatabaseConnection.uuid == connection_id).first()
+        connection = q.filter(
+            DatabaseConnection.user_id == current_user.id,
+            DatabaseConnection.uuid == key_str,
+        ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
