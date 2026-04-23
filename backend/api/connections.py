@@ -15,7 +15,7 @@ from backend.schemas.connection import (
 from backend.connectors.factory import get_connector, get_available_types, get_connector_registration
 from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
-    refresh_schema, delete_schema_file, load_schema_file
+    refresh_schema, delete_schema_file, load_schema_file, schema_key_for,
 )
 from backend.config import settings
 from datetime import datetime
@@ -141,7 +141,7 @@ async def create_connection(
                     connection.db_type,
                     schema_data
                 )
-                schema_path = save_schema_file(connection.id, schema_json)
+                schema_path = save_schema_file(schema_key_for(connection), schema_json)
 
                 connection.schema_json_path = schema_path
                 connection.schema_generated_at = datetime.utcnow()
@@ -368,7 +368,7 @@ async def delete_connection(
             logger.warning("on_delete hook failed for connection %s: %s", connection.id, e)
 
     # Delete schema and context JSON files
-    delete_schema_file(connection_id)
+    delete_schema_file(connection.schema_json_path)
     from backend.services.connection_context import delete_context_file
     delete_context_file(connection_id)
 
@@ -507,14 +507,15 @@ async def refresh_connection_schema(
             ssl_ca_cert=connection.ssl_ca_cert
         ) as connector:
             schema_path = refresh_schema(
-                connection.id,
+                schema_key_for(connection),
                 connector,
+                connection.id,
                 connection.name,
-                connection.db_type
+                connection.db_type,
             )
 
             # Load refreshed schema to get table count
-            schema_json = load_schema_file(connection.id)
+            schema_json = load_schema_file(schema_path)
 
             # Update connection timestamp and table count
             connection.schema_json_path = schema_path
@@ -562,9 +563,13 @@ async def get_connection_schema(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
+    if not connection.schema_json_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Schema not yet generated. Create the connection or use the refresh endpoint."
+        )
     try:
-        schema_json = load_schema_file(connection_id)
-        return schema_json
+        return load_schema_file(connection.schema_json_path)
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
