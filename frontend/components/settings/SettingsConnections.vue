@@ -229,7 +229,7 @@
               <Check class="h-3.5 w-3.5 text-white" />
             </div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <UiButton
               variant="outline"
               size="sm"
@@ -242,6 +242,7 @@
               v-if="editingConnection"
               variant="outline"
               size="sm"
+              class="whitespace-nowrap"
               :loading="refreshingId === editingConnection.id"
               @click.stop="refreshSchema(editingConnection)"
             >
@@ -254,6 +255,7 @@
               v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
               variant="outline"
               size="sm"
+              class="whitespace-nowrap"
               :loading="reprofilingId === editingConnection.id"
               :disabled="editingConnection.profiling_status === 'in_progress'"
               @click.stop="handleReprofile(editingConnection)"
@@ -279,6 +281,7 @@
                 v-if="!testSuccess"
                 variant="outline"
                 size="sm"
+                class="whitespace-nowrap"
                 :loading="testing"
                 @click="handleTestConnection"
               >
@@ -286,18 +289,13 @@
               </UiButton>
               <UiButton
                 size="sm"
+                class="whitespace-nowrap"
                 :loading="saving"
                 @click="handleFormSubmit"
               >
                 {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
               </UiButton>
             </template>
-            <button
-              @click="handleFormSheetClose(false)"
-              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-            >
-              <component :is="X" class="h-5 w-5" />
-            </button>
           </div>
         </div>
       </template>
