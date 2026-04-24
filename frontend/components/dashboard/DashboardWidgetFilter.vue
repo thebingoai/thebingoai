@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full flex-wrap items-center gap-3 p-3">
+  <div ref="wrapperRef" class="flex flex-wrap items-center gap-3 p-3">
     <div
       v-for="control in config.controls"
       :key="control.key"
@@ -109,11 +109,28 @@ import { useApi } from '~/composables/useApi'
 import { useDashboardStore } from '~/stores/dashboard'
 
 const props = defineProps<{
+  widgetId: string
   config: FilterWidgetConfig
 }>()
 
 const store = useDashboardStore()
 const api = useApi()
+
+const wrapperRef = ref<HTMLElement | null>(null)
+const resizeWidget = inject<(id: string, h: number) => void>('resizeWidget')
+let resizeObserver: ResizeObserver | null = null
+
+const CELL_HEIGHT = 70
+const MARGIN = 4
+const INSET = 4
+
+function autoResize() {
+  if (!wrapperRef.value || !resizeWidget) return
+  const scrollH = wrapperRef.value.scrollHeight
+  const overhead = INSET * 2 + MARGIN
+  const neededH = Math.max(2, Math.ceil((scrollH + overhead) / (CELL_HEIGHT + MARGIN)))
+  resizeWidget(props.widgetId, neededH)
+}
 
 // Map from control.key → dynamically loaded option values
 const dynamicOptions = ref<Map<string, string[]>>(new Map())
@@ -273,6 +290,11 @@ onMounted(() => {
   loadDynamicOptions()
   document.addEventListener('click', onClickOutside)
   document.addEventListener('scroll', onScroll, true)
+  if (wrapperRef.value) {
+    resizeObserver = new ResizeObserver(() => nextTick(autoResize))
+    resizeObserver.observe(wrapperRef.value)
+  }
+  nextTick(autoResize)
 })
 
 onBeforeUnmount(() => {
@@ -280,5 +302,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('scroll', onScroll, true)
   searchTimers.value.forEach(timer => clearTimeout(timer))
   searchTimers.value.clear()
+  resizeObserver?.disconnect()
+  resizeObserver = null
 })
 </script>

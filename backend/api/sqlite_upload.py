@@ -16,7 +16,7 @@ from backend.models.database_connection import DatabaseConnection
 from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.models.user import User
-from backend.services.schema_discovery import generate_schema_json, save_schema_file
+from backend.services.schema_discovery import generate_schema_json, save_schema_file, schema_key_for
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ async def upload_sqlite(
         # Upload to DO Spaces
         from backend.services import object_storage as _object_storage
 
-        do_spaces_key = f"{settings.do_spaces_base_path}/{current_user.id}/sqlite/{connection.id}.sqlite"
+        do_spaces_key = f"{settings.do_spaces_base_path}/{current_user.id}/sqlite/{connection.uuid}.sqlite"
         try:
             _object_storage.upload_bytes(do_spaces_key, file_bytes, content_type="application/x-sqlite3")
         except Exception as e:
@@ -193,7 +193,7 @@ async def upload_sqlite(
                 db_type="sqlite",
                 schema_data=schema_data,
             )
-            schema_path = save_schema_file(connection.id, schema_json)
+            schema_path = save_schema_file(schema_key_for(connection), schema_json)
             connection.schema_json_path = schema_path
             connection.schema_generated_at = datetime.utcnow()
             connection.table_count = table_count

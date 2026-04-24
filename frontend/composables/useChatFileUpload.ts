@@ -70,7 +70,6 @@ export const useChatFileUpload = () => {
   const api = useApi()
   const chatStore = useChatStore()
   const config = useRuntimeConfig()
-  const maxFileSizeBytes = config.public.chatFileMaxSizeMb * 1024 * 1024
 
   /** Ensure a conversation exists for file uploads, creating one if needed. */
   const ensureThread = async (): Promise<string> => {
@@ -114,8 +113,9 @@ export const useChatFileUpload = () => {
         continue
       }
 
-      if (file.size > maxFileSizeBytes) {
-        rejections.push({ name: file.name, error: `File size exceeds ${config.public.chatFileMaxSizeMb}MB limit` })
+      const maxFileSizeMb = config.public.chatFileMaxSizeMb
+      if (file.size > maxFileSizeMb * 1024 * 1024) {
+        rejections.push({ name: file.name, error: `File size exceeds ${maxFileSizeMb}MB limit` })
         continue
       }
 

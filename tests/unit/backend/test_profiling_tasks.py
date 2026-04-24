@@ -94,6 +94,7 @@ class TestProfileConnection:
         mock_connector = patch_overrides.pop("connector", MagicMock())
         mock_reg = patch_overrides.pop("connector_registration", MagicMock())
         mock_reg.sql_dialect_hint = patch_overrides.pop("sql_dialect_hint", None)
+        mock_reg.skip_profiling = patch_overrides.pop("skip_profiling", False)
 
         profile_table_mock = patch_overrides.pop("profile_table", MagicMock(return_value={"columns": {}}))
 
@@ -270,7 +271,7 @@ class TestProfileConnection:
             patch(f"{self._P}.SessionLocal", return_value=mock_session),
             patch("backend.services.schema_discovery.load_schema_file", return_value=_minimal_schema()),
             patch("backend.connectors.factory.get_connector_for_connection", side_effect=RuntimeError("db down")),
-            patch("backend.connectors.factory.get_connector_registration", return_value=MagicMock(sql_dialect_hint=None)),
+            patch("backend.connectors.factory.get_connector_registration", return_value=MagicMock(sql_dialect_hint=None, skip_profiling=False)),
             patch("backend.services.table_profiler.profile_table"),
             patch("backend.services.connection_context.build_connection_context"),
             patch("backend.services.connection_context.save_context_file"),

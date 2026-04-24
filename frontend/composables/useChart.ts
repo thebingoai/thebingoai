@@ -131,6 +131,7 @@ function getChartColors() {
 function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): ChartJsOptions {
   const opts = config.options ?? {}
   const isPieOrDoughnut = config.type === 'pie' || config.type === 'doughnut'
+  const isHorizontal = !isPieOrDoughnut && opts.indexAxis === 'y'
   const colors = getChartColors()
 
   const options: ChartJsOptions = {
@@ -138,9 +139,9 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
     maintainAspectRatio: opts.maintainAspectRatio ?? false,
     animation: enableAnimation ? undefined : false,
     layout: {
-      padding: {
-        top: opts.showValues ? 20 : 0,
-      },
+      padding: isHorizontal
+        ? { right: opts.showValues ? 28 : 0 }
+        : { top: opts.showValues ? 20 : 0 },
     },
     plugins: {
       legend: {
@@ -156,7 +157,7 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
         color: isPieOrDoughnut ? '#fff' : colors.datalabelColor,
         font: { size: 11, weight: 'bold' as const },
         anchor: isPieOrDoughnut ? 'center' : 'end',
-        align: isPieOrDoughnut ? 'center' : 'top',
+        align: isPieOrDoughnut ? 'center' : isHorizontal ? 'right' : 'top',
         ...(opts.roundValues && {
           formatter: (value: unknown) => {
             if (typeof value === 'number') return value.toFixed(opts.decimalPlaces ?? 2)
@@ -172,12 +173,13 @@ function buildChartJsOptions(config: ChartConfig, enableAnimation: boolean): Cha
       x: {
         grid: { display: opts.showGrid ?? true, color: colors.gridColor },
         stacked: opts.stacked ?? false,
+        grace: isHorizontal && opts.showValues ? '10%' : undefined,
         ticks: { color: colors.tickColor },
       },
       y: {
         grid: { display: opts.showGrid ?? true, color: colors.gridColor },
         stacked: opts.stacked ?? false,
-        grace: opts.showValues ? '20%' : undefined,
+        grace: !isHorizontal && opts.showValues ? '20%' : undefined,
         ticks: { color: colors.tickColor },
       },
     }

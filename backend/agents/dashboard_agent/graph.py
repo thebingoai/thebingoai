@@ -121,6 +121,7 @@ async def invoke_dashboard_agent(
 
         messages = result.get("messages", [])
         dashboard_id, steps = _extract_results(messages)
+        dashboard_name, widget_count = _lookup_dashboard_meta(dashboard_id, db_session_factory)
 
         logger.info(
             "Dashboard agent completed in %d messages (limit: %d)",
@@ -138,6 +139,8 @@ async def invoke_dashboard_agent(
             "success": True,
             "message": final_answer or "Dashboard creation completed.",
             "dashboard_id": dashboard_id,
+            "dashboard_name": dashboard_name,
+            "widget_count": widget_count,
             "steps": steps,
         }
 
@@ -150,10 +153,13 @@ async def invoke_dashboard_agent(
         # created during the partial run by querying the DB.
         partial_dashboard_id = _find_latest_dashboard(context.user_id, db_session_factory)
         if partial_dashboard_id:
+            dashboard_name, widget_count = _lookup_dashboard_meta(partial_dashboard_id, db_session_factory)
             return {
                 "success": True,
                 "message": "Dashboard was created successfully, though the agent needed more steps than expected to finish.",
                 "dashboard_id": partial_dashboard_id,
+                "dashboard_name": dashboard_name,
+                "widget_count": widget_count,
                 "steps": [],
             }
         return {
@@ -241,5 +247,20 @@ def _find_latest_dashboard(user_id: str, db_session_factory: Callable):
         return dashboard.id if dashboard else None
     except Exception:
         return None
+    finally:
+        db.close()
+
+
+def _lookup_dashboard_meta(dashboard_id, db_session_factory: Callable) -> tuple:
+    """Return (title, widget_count) for a dashboard, or (None, 0) if not found."""
+    if not dashboard_id:
+        return None, 0
+    from backend.models.dashboard import Dashboard
+    db = db_session_factory()
+    try:
+        d = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+        return (d.title, len(d.widgets or [])) if d else (None, 0)
+    except Exception:
+        return None, 0
     finally:
         db.close()
