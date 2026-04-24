@@ -52,6 +52,7 @@
           @refresh-all="store.refreshAllWidgets()"
           @delete="handleDeleteRequest"
           @update:title="handleTitleUpdate"
+          @analyze="openAnalyzePanel"
         />
 
         <!-- Edit toolbar (visible only in edit mode) -->
@@ -78,6 +79,17 @@
               :class="isMobile ? 'fixed inset-0 z-50 w-full' : ''"
               @close="configEditorWidget = null"
               @open-sql-editor="openSqlEditor"
+            />
+          </Transition>
+          <Transition name="panel-slide">
+            <DashboardAnalyzePanel
+              v-if="analyzePanel"
+              :loading="analyzeLoading"
+              :message="analyzeMessage"
+              :error="analyzeError"
+              :class="isMobile ? 'fixed inset-0 z-50 w-full' : ''"
+              @close="analyzePanel = false"
+              @retry="runAnalysis"
             />
           </Transition>
         </div>
@@ -156,6 +168,7 @@ import { useDashboardStore } from '~/stores/dashboard'
 import { toDashboardListItem } from '~/types/dashboard'
 import type { DashboardWidget } from '~/types/dashboard'
 import DashboardWidgetEditor from '~/components/dashboard/editors/DashboardWidgetEditor.vue'
+import DashboardAnalyzePanel from '~/components/dashboard/DashboardAnalyzePanel.vue'
 
 const store = useDashboardStore()
 const route = useRoute()
@@ -173,6 +186,34 @@ onMounted(async () => {
 const sqlEditorWidget = ref<DashboardWidget | null>(null)
 const sqlEditorError = ref<string | null>(null)
 const configEditorWidget = ref<DashboardWidget | null>(null)
+
+const analyzePanel = ref(false)
+const analyzeLoading = ref(false)
+const analyzeMessage = ref('')
+const analyzeError = ref('')
+
+const { dashboards: dashboardsApi } = useApi()
+
+async function runAnalysis() {
+  const id = store.currentDashboard?.id
+  if (!id) return
+  analyzeLoading.value = true
+  analyzeMessage.value = ''
+  analyzeError.value = ''
+  try {
+    const result = await dashboardsApi.analyze(id)
+    analyzeMessage.value = result.message
+  } catch {
+    analyzeError.value = 'Analysis failed. Please try again.'
+  } finally {
+    analyzeLoading.value = false
+  }
+}
+
+function openAnalyzePanel() {
+  analyzePanel.value = true
+  runAnalysis()
+}
 
 const showDeleteDialog = ref(false)
 const deleteConfirmText = ref('')

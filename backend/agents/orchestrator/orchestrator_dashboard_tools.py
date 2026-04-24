@@ -211,6 +211,7 @@ async def _do_read_dashboard(
     from backend.models.dashboard import Dashboard
     from backend.agents.dashboard_tools import _execute_widget_sql
     import copy
+    logger.info("read_dashboard called for dashboard_id=%s", dashboard_id)
 
     db = db_session_factory()
     try:
@@ -293,6 +294,148 @@ async def _do_read_dashboard(
         "description": description,
         "widget_count": len(widget_summaries),
         "widgets": widget_summaries,
+    })
+
+
+def _materialize_sql_params(sql: str, params: dict) -> str:
+    """Embed %(key)s param placeholders as safely-quoted literals into sql."""
+    for key, val in params.items():
+        if val is None:
+            literal = "NULL"
+        elif isinstance(val, str):
+            literal = "'" + val.replace("'", "''") + "'"
+        else:
+            literal = str(val)
+        sql = sql.replace(f'%({key})s', literal)
+    return sql
+
+
+async def _do_analyze_dashboard(
+    context: AgentContext,
+    db_session_factory: Callable,
+    dashboard_id: int,
+    focus: str = "",
+    filters: str = "",
+) -> str:
+    """Business logic for analyze_dashboard tool."""
+    import copy
+    logger.info("analyze_dashboard called for dashboard_id=%s", dashboard_id)
+
+    # Parse filters JSON → FilterParam list
+    filter_params = []
+    if filters:
+        try:
+            from backend.schemas.widget_data import FilterParam
+            raw_filters = json.loads(filters) if isinstance(filters, str) else filters
+            filter_params = [FilterParam(**f) for f in raw_filters]
+        except Exception as e:
+            return json.dumps({"success": False, "message": f"Invalid filters: {e}"})
+
+    # Load dashboard directly (avoids double SQL execution vs calling _do_read_dashboard)
+    from backend.models.dashboard import Dashboard
+    from backend.agents.dashboard_tools import _execute_widget_sql
+
+    db = db_session_factory()
+    try:
+        dashboard = db.query(Dashboard).filter(
+            Dashboard.id == dashboard_id,
+            Dashboard.user_id == context.user_id,
+        ).first()
+        if not dashboard:
+            return json.dumps({"success": False, "message": f"Dashboard {dashboard_id} not found or not accessible."})
+        title = dashboard.title
+        description = dashboard.description
+        data_context = dashboard.data_context
+        widgets = copy.deepcopy(dashboard.widgets or [])
+    finally:
+        db.close()
+
+    # Pre-inject filters into each widget's SQL copy before execution
+    if filter_params:
+        from backend.api.widget_data import inject_filters
+        for w in widgets:
+            ds = w.get("dataSource")
+            if ds and ds.get("sql"):
+                widget_sources = ds.get("sources") or None
+                filtered_sql, params = inject_filters(
+                    ds["sql"], filter_params, data_context, widget_sources
+                )
+                ds["sql"] = _materialize_sql_params(filtered_sql, params)
+
+    # Re-execute SQL for widgets that have a dataSource
+    for w in widgets:
+        if "dataSource" in w:
+            await _execute_widget_sql(w, db_session_factory, data_context, context.user_id)
+
+    # Build per-widget analysis entries
+    widget_analyses = []
+    for w in widgets:
+        wtype = w.get("widget", {}).get("type", "unknown")
+        config = w.get("widget", {}).get("config", {})
+        entry = {"id": w.get("id"), "type": wtype}
+
+        if wtype == "kpi":
+            entry.update({
+                "label": config.get("label"),
+                "value": config.get("value"),
+                "prefix": config.get("prefix"),
+                "suffix": config.get("suffix"),
+                "trend": config.get("trend"),
+            })
+        elif wtype == "chart":
+            chart_data = config.get("data") or {}
+            datasets = chart_data.get("datasets", [])
+            labels = chart_data.get("labels", [])
+            entry.update({
+                "chart_type": config.get("type"),
+                "title": config.get("title"),
+                "label_count": len(labels),
+                "dataset_stats": [],
+            })
+            for ds in datasets:
+                values = [v for v in (ds.get("data") or []) if isinstance(v, (int, float))]
+                if values:
+                    first, last = values[0], values[-1]
+                    change_pct = round((last - first) / first * 100, 1) if first else None
+                    entry["dataset_stats"].append({
+                        "label": ds.get("label"),
+                        "min": min(values),
+                        "max": max(values),
+                        "avg": round(sum(values) / len(values), 2),
+                        "total": round(sum(values), 2),
+                        "trend": "increasing" if last > first else "decreasing" if last < first else "flat",
+                        "change_pct": change_pct,
+                    })
+        elif wtype == "table":
+            entry.update({
+                "title": config.get("title"),
+                "column_count": len(config.get("columns") or []),
+                "row_count": len(config.get("rows") or []),
+            })
+        elif wtype == "text":
+            entry["content_length"] = len(config.get("content") or "")
+        elif wtype == "filter":
+            entry["controls"] = [
+                {
+                    "key": c.get("key"),
+                    "label": c.get("label"),
+                    "type": c.get("type"),
+                    "column": c.get("column"),
+                }
+                for c in (config.get("controls") or [])
+            ]
+
+        widget_analyses.append(entry)
+
+    return json.dumps({
+        "success": True,
+        "dashboard_id": dashboard_id,
+        "title": title,
+        "description": description,
+        "widget_count": len(widget_analyses),
+        "focus": focus or "general",
+        "filters_applied": [f.model_dump() for f in filter_params],
+        "analysis": widget_analyses,
     })
 
 
@@ -413,6 +556,9 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         a widget (e.g. "what's the total revenue?", "check the line chart",
         "what does my sales dashboard show?").
 
+        Do NOT use this for analysis, summary, or insights requests — use
+        analyze_dashboard instead.
+
         This is a READ-ONLY tool — it never modifies the dashboard.
 
         Call list_dashboards first if you need to find the dashboard_id.
@@ -428,7 +574,52 @@ def build_dashboard_tools(context: AgentContext, db_session_factory: Optional[Ca
         """
         return await _do_read_dashboard(context, db_session_factory, dashboard_id, widget_id)
 
-    tools = [create_dashboard, update_dashboard, read_dashboard, list_dashboards, list_connections]
+    @tool
+    async def analyze_dashboard(dashboard_id: int, focus: str = "", filters: str = "") -> str:
+        """
+        Analyze a dashboard's metrics, trends, and statistics, with optional
+        filter conditions applied to all widget SQL.
+
+        Use this when the user asks to analyze, summarize, explain, or get
+        insights from a dashboard — optionally scoped to a filter:
+          "analyze my sales dashboard"
+          "analyze for last 30 days"
+          "analyze revenue for region = APAC"
+
+        Computes per-widget statistics:
+        - KPI: current value and trend direction
+        - Chart: min/max/average/total per dataset, % change first to last
+        - Table: row and column count
+        - Filter: available filter controls the dashboard supports (date ranges,
+          dropdowns, etc.) — surface these to the user as available options
+
+        After this tool returns, write a structured analysis report:
+        - Start with a 1-2 sentence executive summary of what the dashboard covers
+        - Use **bold** section headings named after the actual data (e.g. "**Revenue Performance**",
+          "**Customer Trends**") — not generic labels like "KPIs" or "Widget 1"
+        - For each section, state the current value or trend in plain language, then give
+          one concrete insight or observation
+        - End with a **Key Takeaways** section (3 bullet points max) with the most important findings
+        - Keep the tone concise and business-focused; do not mention widget IDs or raw JSON
+        - Mention any filters_applied so the user knows the data scope
+
+        Call list_dashboards first if you need to find the dashboard_id.
+
+        Args:
+            dashboard_id: ID of the dashboard (from list_dashboards)
+            focus: Optional focus area — "trends", "anomalies", "revenue", etc.
+            filters: Optional JSON array of filter objects to apply to all widget SQL.
+                     Each item: {"column": "col_name", "op": "eq|neq|gt|gte|lt|lte|ilike|in", "value": <val>}
+                     Date range: [{"column":"order_date","op":"gte","value":"2026-01-01"},
+                                  {"column":"order_date","op":"lte","value":"2026-03-31"}]
+                     Categorical: [{"column":"region","op":"eq","value":"APAC"}]
+
+        Returns:
+            JSON with per-widget statistics and filters_applied list.
+        """
+        return await _do_analyze_dashboard(context, db_session_factory, dashboard_id, focus, filters)
+
+    tools = [create_dashboard, update_dashboard, read_dashboard, analyze_dashboard, list_dashboards, list_connections]
 
     # Dynamically include plugin-provided tools
     from backend.agents.tool_registry import get_plugin_tool_builders
