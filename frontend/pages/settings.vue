@@ -55,8 +55,11 @@
       <SettingsProfile v-else-if="currentSection === 'profile'" />
       <SettingsApiKeys v-else-if="currentSection === 'credits' && featureConfig?.credits_enabled === false" />
       <SettingsCredits v-else-if="currentSection === 'credits' && featureConfig?.credits_enabled === true" />
-      <SettingsAdmin v-else-if="currentSection === 'admin' && isAdmin" />
       <SettingsChannels v-else-if="currentSection === 'channels'" />
+      <component
+        v-else-if="activePluginTab"
+        :is="activePluginTab.component"
+      />
       <div v-else class="p-6">
         <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
         <p class="text-gray-500">This section is under construction.</p>
@@ -70,13 +73,13 @@ import { X } from 'lucide-vue-next'
 
 const router = useRouter()
 const { isMobile } = useIsMobile()
-const authStore = useAuthStore()
 const { config: featureConfig } = useFeatureConfig()
+const settingsTabs = useSettingsTabs()
 
 const { data: appInfo } = useLazyFetch('/api/info')
 
-const isAdmin = computed(() =>
-  authStore.user?.role === 'admin' && featureConfig.value?.admin_enabled === true
+const pluginTabs = computed(() =>
+  settingsTabs.list().filter(tab => !tab.condition || tab.condition())
 )
 
 const sections = computed(() => {
@@ -88,11 +91,13 @@ const sections = computed(() => {
     { id: 'credits', name: featureConfig.value?.credits_enabled === false ? 'API Keys' : 'Credits & API Keys' },
     { id: 'profile', name: 'Profile' },
   ]
-  if (isAdmin.value) {
-    base.push({ id: 'admin', name: 'Admin' })
-  }
   if (featureConfig.value?.telegram_enabled) {
     base.push({ id: 'channels', name: 'Channels' })
+  }
+  for (const tab of pluginTabs.value) {
+    if (!base.find(s => s.id === tab.id)) {
+      base.push({ id: tab.id, name: tab.label })
+    }
   }
   return base
 })
@@ -106,6 +111,10 @@ const currentSection = ref(
 const currentSectionName = computed(() => {
   return sections.value.find(s => s.id === currentSection.value)?.name || ''
 })
+
+const activePluginTab = computed(() =>
+  pluginTabs.value.find(tab => tab.id === currentSection.value),
+)
 
 definePageMeta({
   middleware: 'auth'
