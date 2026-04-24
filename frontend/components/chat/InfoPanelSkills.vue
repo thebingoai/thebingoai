@@ -1,18 +1,18 @@
 <template>
-  <div v-if="suggestions.length > 0" class="border-b border-gray-100">
+  <div v-if="suggestions.length > 0" class="border-b border-gray-100 dark:border-neutral-700">
     <!-- Header -->
     <button
       @click="chatStore.toggleInfoSection('skills')"
-      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
     >
       <div class="flex items-center gap-1.5">
-        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Suggested Skills</span>
-        <span class="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-px rounded-full font-semibold">
+        <span class="text-[10px] uppercase tracking-wider text-gray-400 dark:text-neutral-400 font-semibold">Suggested Skills</span>
+        <span class="text-[10px] bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-1.5 py-px rounded-full font-semibold">
           {{ suggestions.length }}
         </span>
       </div>
       <svg
-        class="w-3 h-3 text-gray-300 transition-transform duration-200"
+        class="w-3 h-3 text-gray-300 dark:text-neutral-500 transition-transform duration-200"
         :class="{ 'rotate-180': chatStore.infoPanelSections.skills }"
         fill="none" viewBox="0 0 24 24" stroke="currentColor"
       >
@@ -26,16 +26,16 @@
         <div v-for="s in suggestions" :key="s.id">
           <!-- Compact row -->
           <div
-            class="flex items-center justify-between py-2 border-b border-gray-50 last:border-b-0"
+            class="flex items-center justify-between py-2 border-b border-gray-50 dark:border-neutral-700/50 last:border-b-0"
           >
             <button
               @click="toggleExpanded(s.id)"
               class="flex items-center gap-2 min-w-0 flex-1 text-left"
             >
-              <component :is="getSkillTypeIcon(s.suggested_skill_type)" class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <component :is="getSkillTypeIcon(s.suggested_skill_type)" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-400 flex-shrink-0" />
               <div class="min-w-0">
-                <div class="text-[11px] font-semibold text-gray-900 truncate">{{ s.suggested_name }}</div>
-                <div class="text-[10px] text-gray-400">
+                <div class="text-[11px] font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ s.suggested_name }}</div>
+                <div class="text-[10px] text-gray-400 dark:text-neutral-500">
                   {{ s.frequency_count ? `Detected ${s.frequency_count} times` : 'Detected' }}
                 </div>
               </div>
@@ -45,14 +45,14 @@
                 @click="handleAccept(s.id)"
                 class="text-[9px] rounded-lg px-1.5 py-0.5 transition-colors"
                 :class="s.recommendation === 'recommended'
-                  ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                  : 'border border-gray-200 text-gray-300 hover:text-gray-500 hover:border-gray-300'"
+                  ? 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/60'
+                  : 'border border-gray-200 dark:border-neutral-600 text-gray-300 dark:text-neutral-500 hover:text-gray-500 dark:hover:text-neutral-300 hover:border-gray-300 dark:hover:border-neutral-400'"
               >
                 &#10003;
               </button>
               <button
                 @click="handleDismiss(s.id)"
-                class="text-[9px] rounded-lg px-1.5 py-0.5 border border-gray-200 text-gray-300 hover:text-gray-500 hover:border-gray-300 transition-colors"
+                class="text-[9px] rounded-lg px-1.5 py-0.5 border border-gray-200 dark:border-neutral-600 text-gray-300 dark:text-neutral-500 hover:text-gray-500 dark:hover:text-neutral-300 hover:border-gray-300 dark:hover:border-neutral-400 transition-colors"
               >
                 &#10005;
               </button>
@@ -60,9 +60,9 @@
           </div>
 
           <!-- Expanded details -->
-          <div v-if="expandedIds.has(s.id)" class="bg-gray-50 rounded-md p-2 mt-1.5 mb-2">
-            <p v-if="s.suggested_description" class="text-[11px] text-gray-600 mb-1">{{ s.suggested_description }}</p>
-            <p v-if="s.recommendation_reason" class="text-[10px] text-gray-400 italic">{{ s.recommendation_reason }}</p>
+          <div v-if="expandedIds.has(s.id)" class="bg-gray-50 dark:bg-neutral-800 rounded-md p-2 mt-1.5 mb-2">
+            <p v-if="s.suggested_description" class="text-[11px] text-gray-600 dark:text-neutral-300 mb-1">{{ s.suggested_description }}</p>
+            <p v-if="s.recommendation_reason" class="text-[10px] text-gray-400 dark:text-neutral-500 italic">{{ s.recommendation_reason }}</p>
           </div>
         </div>
       </TransitionGroup>

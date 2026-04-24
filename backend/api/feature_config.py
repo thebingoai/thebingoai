@@ -16,4 +16,14 @@ async def get_config():
         "credits_enabled": credits_enabled,
         "admin_enabled": admin_enabled,
         "telegram_enabled": telegram_enabled,
+        "providers": {
+            "openai": {
+                "configured": bool(settings.openai_api_key),
+                "base_url": "https://api.openai.com/v1",
+            },
+            "anthropic": {
+                "configured": bool(settings.anthropic_api_key),
+                "base_url": "https://api.anthropic.com",
+            },
+        },
     }

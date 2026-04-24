@@ -114,6 +114,13 @@ def _build_dashboard_agent_tool(context: AgentContext) -> List:
     return [dashboard_agent]
 
 
+def build_analyze_dashboard_tool(context: AgentContext, db_session_factory: Optional[Callable] = None) -> List:
+    """Return [analyze_dashboard] tool bound to context."""
+    from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashboard_tools
+    tools = build_dashboard_tools(context, db_session_factory)
+    return [t for t in tools if getattr(t, "name", None) == "analyze_dashboard"]
+
+
 def _build_communication_tools(context: AgentContext) -> List:
     """Return communication tools for the agent mesh."""
     from backend.agents.communication_tools import build_communication_tools
@@ -160,6 +167,7 @@ TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "recall_memory": _build_recall_memory_tool,
     "summarize_text": _build_summarize_tool,
     "create_dashboard": build_create_dashboard_tool,
+    "analyze_dashboard": build_analyze_dashboard_tool,
     "dashboard_agent": _build_dashboard_agent_tool,
     "sessions_list": _build_communication_tools,
     "sessions_send": _build_communication_tools,

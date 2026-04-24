@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -31,6 +33,8 @@ class DatabaseConnection(Base, TimestampMixin):
     __tablename__ = "database_connections"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), unique=True, nullable=False,
+                  default=lambda: str(_uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     org_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     name = Column(String, nullable=False)  # User-friendly name

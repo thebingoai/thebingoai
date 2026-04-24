@@ -5,8 +5,10 @@ import { createConnectionsApi } from '~/utils/api/connectionsApi'
 import { createDashboardsApi } from '~/utils/api/dashboardsApi'
 import { createResourcesApi } from '~/utils/api/resourcesApi'
 import { createFacebookAdsApi } from '~/utils/api/facebookAdsApi'
+import { createNotionApi } from '~/utils/api/notionApi'
 import { createAdminApi } from '~/utils/api/adminApi'
 import { createTelegramApi } from '~/utils/api/telegramApi'
+import { createGa4Api } from '~/utils/api/ga4Api'
 
 export const useApi = () => {
   const authStore = useAuthStore()
@@ -22,7 +24,9 @@ export const useApi = () => {
     chat: createChatApi(fetchWithRefresh, authStore, router),
     dashboards: createDashboardsApi(fetchWithRefresh),
     facebookAds: createFacebookAdsApi(fetchWithRefresh),
+    notion: createNotionApi(fetchWithRefresh),
     admin: createAdminApi(fetchWithRefresh),
     telegram: createTelegramApi(fetchWithRefresh),
+    ga4: createGa4Api(fetchWithRefresh),
   }
 }

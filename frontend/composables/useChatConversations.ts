@@ -42,6 +42,8 @@ export const useChatConversations = () => {
   const chatStore = useChatStore()
   const api = useApi()
   const ws = useWebSocket()
+  const router = useRouter()
+  const route = useRoute()
 
   const checkStreamingViaWs = (threadId: string) => {
     const sendCheck = () => {
@@ -142,6 +144,9 @@ export const useChatConversations = () => {
       messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       chatStore.setMessages(messages)
       chatStore.setCurrentThread(threadId)
+      if (route.path === '/chat' && route.query.id !== threadId) {
+        router.replace({ path: '/chat', query: { id: threadId } })
+      }
 
       // Resolve presigned URLs for image attachments
       const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])

@@ -41,7 +41,8 @@ const store = useDashboardStore()
 const containerRef = ref<HTMLElement | null>(null)
 const widgetsRef = computed(() => props.widgets)
 
-const { contentRefs, renderedWidgets } = useDashboardGrid(containerRef, widgetsRef)
+const { contentRefs, renderedWidgets, resizeWidget } = useDashboardGrid(containerRef, widgetsRef)
+provide('resizeWidget', resizeWidget)
 
 function onRemove(id: string) {
   store.removeWidget(id)

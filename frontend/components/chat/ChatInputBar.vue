@@ -13,16 +13,20 @@
       <ChatMentionPanel
         v-if="isMentionOpen"
         class="absolute bottom-full left-4 right-4 md:left-16 md:right-16 mb-2 z-50"
-        :filtered-results="filteredResults"
+        :filtered-groups="filteredGroups"
+        :active-group="activeGroup"
+        :active-group-items="activeGroupItems"
+        :mention-level="mentionLevel"
         @select="handleMentionSelect"
         @close="closeMention()"
+        @back="() => {}"
       />
     </Transition>
 
     <div class="px-4 pb-4 md:px-16">
       <!-- Out-of-credits banner -->
       <div
-        v-if="isExhausted"
+        v-if="isExhausted && featureConfig?.credits_enabled !== false"
         class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-3"
       >
         <span>Daily credits used up. Resets at midnight.</span>
@@ -102,7 +106,7 @@
                 ? 'text-gray-300 opacity-40'
                 : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
             ]"
-            title="Attach files"
+            title="Attach files (max 50 MB)"
           >
             <Paperclip class="h-4 w-4" />
           </button>
@@ -142,6 +146,7 @@ const emit = defineEmits<{
 }>()
 
 const { isExhausted } = useCreditBalance()
+const { config: featureConfig } = useFeatureConfig()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -161,10 +166,14 @@ const isPermanentConversation = computed(() => chatStore.currentConversation?.ty
 
 const {
   isMentionOpen,
-  filteredResults,
+  mentionLevel,
+  filteredGroups,
+  activeGroup,
+  activeGroupItems,
   mentionAnchor,
   openMention,
   closeMention,
+  goBackToRoot,
   setQuery,
   recordMention,
   clearResolvedMentions,
@@ -235,8 +244,13 @@ const handleInput = () => {
   if (match) {
     const query = match[1]
     const anchorPos = el.selectionStart - query.length - 1
-    openMention(anchorPos)
-    setQuery(query)
+    if (!isMentionOpen.value) {
+      // First time seeing @: open panel (resets to root level)
+      openMention(anchorPos)
+    } else {
+      // Panel already open: just update the search query for the current level
+      setQuery(query)
+    }
   } else {
     if (isMentionOpen.value) closeMention()
   }
@@ -245,10 +259,14 @@ const handleInput = () => {
 const handleKeydown = (event: KeyboardEvent) => {
   const el = textareaRef.value
 
-  // Escape closes the panel when focus is still in the textarea
+  // Escape: go back to root if in items level, otherwise close
   if (isMentionOpen.value && event.key === 'Escape') {
     event.preventDefault()
-    closeMention()
+    if (mentionLevel.value === 'items') {
+      goBackToRoot()
+    } else {
+      closeMention()
+    }
     return
   }
 
