@@ -116,10 +116,17 @@ def reset_plugin_state():
         if not k.startswith("_") and isinstance(v, str)
     }
 
+    # Clear loaded plugins so discover_and_load_plugins()'s re-entrance guard
+    # (`if _is_discovering or _loaded_plugins: return`) doesn't short-circuit
+    # when real plugins have already been loaded by an earlier test.
+    loader._loaded_plugins.clear()
+    loader._is_discovering = False
+
     yield
 
     loader._loaded_plugins.clear()
     loader._loaded_plugins.update(original_plugins)
+    loader._is_discovering = False
     factory._CONNECTORS.clear()
     factory._CONNECTORS.update(original_connectors)
     DatabaseType._all.clear()
