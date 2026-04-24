@@ -4,19 +4,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
-@pytest.fixture
-def no_provider_wrappers():
-    """Temporarily clear plugin-registered provider wrappers (e.g. admin plugin's
-    CreditAwareProvider) so factory tests see the raw provider instance."""
-    from backend.llm import factory
-    original = list(factory._provider_wrappers)
-    factory._provider_wrappers.clear()
-    try:
-        yield
-    finally:
-        factory._provider_wrappers[:] = original
-
-
 # ---------------------------------------------------------------------------
 # get_provider
 # ---------------------------------------------------------------------------
@@ -25,7 +12,7 @@ class TestGetProvider:
     """Tests for get_provider factory function."""
 
     @patch("backend.llm.factory.OpenAIProvider")
-    def test_openai_provider(self, MockOpenAI, no_provider_wrappers):
+    def test_openai_provider(self, MockOpenAI):
         """get_provider('openai') instantiates and returns an OpenAIProvider."""
         from backend.llm.factory import get_provider, _PROVIDERS
         sentinel = MagicMock()
@@ -42,7 +29,7 @@ class TestGetProvider:
             _PROVIDERS["openai"] = original
 
     @patch("backend.llm.factory.AnthropicProvider")
-    def test_anthropic_provider(self, MockAnthropic, no_provider_wrappers):
+    def test_anthropic_provider(self, MockAnthropic):
         """get_provider('anthropic') instantiates and returns an AnthropicProvider."""
         from backend.llm.factory import get_provider, _PROVIDERS
         sentinel = MagicMock()
@@ -58,7 +45,7 @@ class TestGetProvider:
             _PROVIDERS["anthropic"] = original
 
     @patch("backend.llm.factory.OllamaProvider")
-    def test_ollama_provider(self, MockOllama, no_provider_wrappers):
+    def test_ollama_provider(self, MockOllama):
         """get_provider('ollama') instantiates and returns an OllamaProvider."""
         from backend.llm.factory import get_provider, _PROVIDERS
         sentinel = MagicMock()

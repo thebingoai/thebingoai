@@ -1,9 +1,9 @@
-name: thebingo-local
+name: llm-cli-local
 
 services:
   redis:
     image: redis:7-alpine
-    container_name: thebingo-redis
+    container_name: llm-md-redis
     ports:
       - "6379:6379"
     volumes:
@@ -16,7 +16,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.7.4
-    container_name: thebingo-qdrant
+    container_name: llm-cli-qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -34,7 +34,7 @@ services:
     build:
       context: ../../
       dockerfile: docker/backend/Dockerfile
-    container_name: thebingo-backend
+    container_name: llm-md-backend
     ports:
       - "8000:8000"
     environment:
@@ -65,7 +65,7 @@ services:
     build:
       context: ../../
       dockerfile: docker/backend/Dockerfile
-    container_name: thebingo-celery
+    container_name: llm-md-celery
     command: celery -A backend.tasks.upload_tasks worker --loglevel=info
     environment:
       - REDIS_URL=redis://redis:6379/0
@@ -90,7 +90,7 @@ services:
     build:
       context: ../../
       dockerfile: docker/backend/Dockerfile
-    container_name: thebingo-celery-beat
+    container_name: llm-md-celery-beat
     command: celery -A backend.tasks.upload_tasks beat --loglevel=info
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/1
@@ -107,7 +107,7 @@ services:
     build:
       context: ../../
       dockerfile: docker/backend/Dockerfile
-    container_name: thebingo-agent-worker
+    container_name: llm-md-agent-worker
     command: celery -A backend.tasks.upload_tasks worker --queues=agent.data,agent.dashboard,agent.rag,agent.custom --concurrency=2 --loglevel=info
     environment:
       - REDIS_URL=redis://redis:6379/0
@@ -132,7 +132,7 @@ services:
       context: ../../frontend
       # dockerfile path is relative to the build context (../../frontend)
       dockerfile: ../docker/frontend/Dockerfile.dev
-    container_name: thebingo-frontend
+    container_name: llm-md-frontend
     ports:
       - "3000:3000"
     environment:

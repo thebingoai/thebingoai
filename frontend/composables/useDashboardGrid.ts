@@ -15,9 +15,6 @@ export function useDashboardGrid(
   // Maps widgetId → the .grid-stack-item-content element (Teleport target)
   const contentRefs = reactive(new Map<string, HTMLElement>())
 
-  let desktopPositions: Array<{ id: string; pos: GridPosition }> | null = null
-  let isColumnChanging = false
-
   function initGrid() {
     const el = containerRef.value
     if (!el || grid) return
@@ -40,7 +37,7 @@ export function useDashboardGrid(
 
     // Sync positions back to store after drag/resize
     grid.on('change', (_event: Event, nodes: GridStackNode[]) => {
-      if (!nodes || isColumnChanging) return
+      if (!nodes) return
       for (const node of nodes) {
         const id = node.el?.dataset.widgetId
         if (!id) continue
@@ -86,12 +83,6 @@ export function useDashboardGrid(
 
   function syncStaticMode(isStatic: boolean) {
     grid?.setStatic(isStatic)
-  }
-
-  function resizeWidget(widgetId: string, h: number) {
-    if (!grid) return
-    const el = grid.getGridItems().find(el => el.dataset.widgetId === widgetId)
-    if (el) grid.update(el, { h })
   }
 
   // Track which widgets have been staggered in (for skeleton → content transition)
@@ -146,42 +137,10 @@ export function useDashboardGrid(
     { flush: 'post', immediate: true },
   )
 
-  // Collapse to single column on mobile, restore desktop layout when switching back
-  watch(isMobile, async (mobile) => {
-    if (!grid) return
-
-    if (mobile) {
-      // Snapshot desktop positions before collapsing
-      desktopPositions = grid.getGridItems()
-        .filter(el => el.dataset.widgetId)
-        .map(el => ({
-          id: el.dataset.widgetId!,
-          pos: {
-            x: el.gridstackNode?.x ?? 0,
-            y: el.gridstackNode?.y ?? 0,
-            w: el.gridstackNode?.w ?? 1,
-            h: el.gridstackNode?.h ?? 1,
-          },
-        }))
-      isColumnChanging = true
-      grid.column(1)
-      await nextTick()
-      isColumnChanging = false
-    } else {
-      isColumnChanging = true
-      // 'none' prevents GridStack from auto-scaling mobile positions to desktop
-      grid.column(12, 'none')
-      // Restore saved desktop positions, or fall back to store positions
-      const positions = desktopPositions
-        ?? widgets.value.map(w => ({ id: w.id, pos: w.position }))
-      grid.batchUpdate()
-      for (const { id, pos } of positions) {
-        const el = grid.getGridItems().find(el => el.dataset.widgetId === id)
-        if (el) grid.update(el, { x: pos.x, y: pos.y, w: pos.w, h: pos.h })
-      }
-      grid.batchUpdate(false)
-      await nextTick()
-      isColumnChanging = false
+  // Collapse to single column on mobile
+  watch(isMobile, (mobile) => {
+    if (grid) {
+      grid.column(mobile ? 1 : 12)
     }
   })
 
@@ -191,5 +150,5 @@ export function useDashboardGrid(
     contentRefs.clear()
   })
 
-  return { contentRefs, renderedWidgets, resizeWidget }
+  return { contentRefs, renderedWidgets }
 }

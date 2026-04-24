@@ -3,7 +3,7 @@ name = "bingo"
 version = "0.1.0"
 description = "An open-source BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. FastAPI + Nuxt 4 + LangGraph."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [{ name = "The Bingo AI" }]
 urls = { Homepage = "https://thebingo.ai", Repository = "https://github.com/thebingoai/thebingoai" }

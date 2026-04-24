@@ -327,20 +327,13 @@ class TestPluginLoader:
             def api_routers(self):
                 return [(router, "/api/test")]
 
-        # Isolate from plugins loaded by prior tests / real entry points
-        original = dict(loader._loaded_plugins)
-        loader._loaded_plugins.clear()
-        try:
-            with patch.object(loader, "entry_points", return_value=[_make_entry_point(RouterPlugin)]):
-                loader.discover_and_load_plugins()
+        with patch.object(loader, "entry_points", return_value=[_make_entry_point(RouterPlugin)]):
+            loader.discover_and_load_plugins()
 
-            routers = loader.get_plugin_routers()
-            assert len(routers) == 1
-            assert routers[0][0] is router
-            assert routers[0][1] == "/api/test"
-        finally:
-            loader._loaded_plugins.clear()
-            loader._loaded_plugins.update(original)
+        routers = loader.get_plugin_routers()
+        assert len(routers) == 1
+        assert routers[0][0] is router
+        assert routers[0][1] == "/api/test"
 
     def test_tool_builders_default_empty(self):
         """BingoPlugin.tool_builders() returns empty dict by default."""
@@ -414,20 +407,13 @@ class TestPluginLoader:
 
 class TestGracefulDegradation:
     def test_core_works_without_plugins(self):
-        # Isolate from plugins loaded by prior tests / real entry points
-        original = dict(loader._loaded_plugins)
-        loader._loaded_plugins.clear()
-        try:
-            with patch.object(loader, "entry_points", return_value=[]):
-                loader.discover_and_load_plugins()
+        with patch.object(loader, "entry_points", return_value=[]):
+            loader.discover_and_load_plugins()
 
-            ids = [t["id"] for t in factory.get_available_types()]
-            assert "postgres" in ids
-            assert "mysql" in ids
-            assert len(loader._loaded_plugins) == 0
-        finally:
-            loader._loaded_plugins.clear()
-            loader._loaded_plugins.update(original)
+        ids = [t["id"] for t in factory.get_available_types()]
+        assert "postgres" in ids
+        assert "mysql" in ids
+        assert len(loader._loaded_plugins) == 0
 
     def test_failing_plugin_doesnt_crash_core(self):
         class FailStartupPlugin(BingoPlugin):

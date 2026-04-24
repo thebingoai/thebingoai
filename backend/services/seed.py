@@ -53,9 +53,7 @@ def seed_sample_connections(user_id: str, db: Session) -> None:
     # Schema discovery (fast for a single-table SQLite file)
     try:
         from backend.api.sqlite_upload import _discover_sqlite_schema
-        from backend.services.schema_discovery import (
-            generate_schema_json, save_schema_file, schema_key_for,
-        )
+        from backend.services.schema_discovery import generate_schema_json, save_schema_file
 
         schema_data = _discover_sqlite_schema(SAMPLE_DB_PATH)
         schema_json = generate_schema_json(
@@ -64,7 +62,7 @@ def seed_sample_connections(user_id: str, db: Session) -> None:
             db_type="sqlite",
             schema_data=schema_data,
         )
-        schema_path = save_schema_file(schema_key_for(connection), schema_json)
+        schema_path = save_schema_file(connection.id, schema_json)
 
         connection.schema_json_path = schema_path
         connection.schema_generated_at = datetime.utcnow()

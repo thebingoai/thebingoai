@@ -51,7 +51,7 @@
 @layer components {
   /* Chat message prose styling */
   .prose-chat {
-    @apply text-gray-800;
+    @apply text-gray-900;
   }
 
   .prose-chat h1,
@@ -133,11 +133,7 @@
 
   .prose-chat strong,
   .prose-chat b {
-    @apply font-bold text-gray-900;
-  }
-
-  .prose-chat mark {
-    @apply bg-transparent text-orange-600;
+    @apply font-semibold;
   }
 }
 
@@ -209,15 +205,6 @@
 
 .dark .prose-chat {
   @apply text-neutral-200;
-}
-
-.dark .prose-chat strong,
-.dark .prose-chat b {
-  @apply text-white;
-}
-
-.dark .prose-chat mark {
-  @apply bg-transparent text-orange-400;
 }
 
 .dark .prose-chat code {

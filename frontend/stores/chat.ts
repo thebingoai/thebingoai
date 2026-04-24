@@ -245,13 +245,6 @@ export const useChatStore = defineStore('chat', {
       }
     },
 
-    updateConversationActivity(threadId: string, updatedAt: string) {
-      const conversation = this.conversations.find(c => c.id === threadId)
-      if (conversation) {
-        conversation.updated_at = updatedAt
-      }
-    },
-
     incrementUnread(threadId: string) {
       const conversation = this.conversations.find(c => c.id === threadId)
       // Only increment if this conversation is not currently selected

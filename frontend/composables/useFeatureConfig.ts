@@ -1,17 +1,8 @@
-interface ProviderConfig {
-  configured: boolean
-  base_url: string
-}
-
 interface FeatureConfig {
   governance_enabled: boolean
   credits_enabled: boolean
   admin_enabled: boolean
   telegram_enabled: boolean
-  providers: {
-    openai: ProviderConfig
-    anthropic: ProviderConfig
-  }
 }
 
 export const useFeatureConfig = () => {
