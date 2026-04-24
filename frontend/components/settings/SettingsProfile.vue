@@ -5,6 +5,11 @@
     <UiCard class="p-6">
       <div class="space-y-4">
         <div>
+          <label class="block text-sm font-extralight text-gray-700 dark:text-neutral-400 mb-1">User ID</label>
+          <div class="text-gray-900 dark:text-white font-mono text-sm break-all">{{ authStore.user?.id }}</div>
+        </div>
+
+        <div>
           <label class="block text-sm font-extralight text-gray-700 dark:text-neutral-400 mb-1">Email</label>
           <div class="text-gray-900 dark:text-white">{{ authStore.user?.email }}</div>
         </div>
