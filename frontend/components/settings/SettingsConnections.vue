@@ -62,9 +62,9 @@
                 </button>
               </div>
             </div>
-            <!-- Spinner for profiling in progress -->
+            <!-- Spinner while sync or profile is running -->
             <Loader2
-              v-if="connection.profiling_status === 'in_progress'"
+              v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
               class="h-4 w-4 text-yellow-500 animate-spin shrink-0 mt-1"
             />
           </div>
@@ -1571,7 +1571,12 @@ function getAccentClass(connection: DatabaseConnection): string {
 
 // Profiling status helpers for bottom metadata
 function getProfilingLabel(connection: DatabaseConnection): string {
-  switch (connection.profiling_status) {
+  const status = connection.profiling_status
+  const progress = connection.profiling_progress
+  if ((status === 'in_progress' || status === 'pending') && progress) {
+    return progress
+  }
+  switch (status) {
     case 'ready': return 'Profiled'
     case 'in_progress': return 'Profiling...'
     case 'pending': return 'Queued'
@@ -1584,7 +1589,7 @@ function getProfilingIconClass(connection: DatabaseConnection): string {
   switch (connection.profiling_status) {
     case 'ready': return 'text-green-600'
     case 'in_progress': return 'text-yellow-500'
-    case 'pending': return 'text-gray-400'
+    case 'pending': return 'text-yellow-500'
     case 'failed': return 'text-red-500'
     default: return 'text-gray-400'
   }
@@ -1594,17 +1599,18 @@ function getProfilingTextClass(connection: DatabaseConnection): string {
   switch (connection.profiling_status) {
     case 'ready': return 'text-green-600'
     case 'in_progress': return 'text-yellow-600'
-    case 'pending': return 'text-gray-500'
+    case 'pending': return 'text-yellow-600'
     case 'failed': return 'text-red-500'
     default: return 'text-gray-500'
   }
 }
 
 function getProfilingTitle(connection: DatabaseConnection): string {
+  const progress = connection.profiling_progress
   switch (connection.profiling_status) {
     case 'ready': return 'Profiling complete'
-    case 'in_progress': return 'Profiling in progress'
-    case 'pending': return 'Profiling queued'
+    case 'in_progress': return progress || 'Profiling in progress'
+    case 'pending': return progress || 'Profiling queued'
     case 'failed': return 'Profiling failed — click card to retry'
     default: return 'Profiling status unknown'
   }
