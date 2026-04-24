@@ -237,67 +237,66 @@
             >
               Cancel
             </UiButton>
-            <!-- Plugin-provided forms own their action buttons inside the form body. -->
+            <!-- Edit-mode lifecycle buttons: connector-agnostic, capability-gated.
+                 These act on a saved connection id and don't depend on community form state,
+                 so they render even when a plugin form owns the left column. -->
+            <UiButton
+              v-if="editingConnection && showRefresh"
+              variant="outline"
+              size="sm"
+              class="whitespace-nowrap"
+              :loading="refreshingId === editingConnection.id"
+              @click.stop="refreshSchema(editingConnection)"
+            >
+              <RefreshCw class="h-3.5 w-3.5" />
+              {{ refreshLabel }}
+            </UiButton>
+
+            <UiButton
+              v-if="editingConnection && showReprofile"
+              variant="outline"
+              size="sm"
+              class="whitespace-nowrap"
+              :loading="reprofilingId === editingConnection.id"
+              :disabled="editingConnection.profiling_status === 'in_progress'"
+              @click.stop="handleReprofile(editingConnection)"
+            >
+              <RefreshCw class="h-3.5 w-3.5" />
+              Reprofile
+            </UiButton>
+
+            <UiButton
+              v-if="editingConnection && showTest && !testSuccess"
+              variant="outline"
+              size="sm"
+              :loading="testing"
+              @click="handleTestConnection"
+            >
+              Test Connection
+            </UiButton>
+
+            <!-- Form-state-dependent buttons: only when community owns the form body. -->
             <template v-if="!hasPluginForm">
-              <!-- Refresh (label via capabilities — e.g. Notion "Sync Now"). Hidden when editor disables it. -->
+              <!-- Create-mode Test Connection for built-in types (needs form state). -->
               <UiButton
-                v-if="editingConnection && showRefresh"
+                v-if="!editingConnection && !isFileUploadConnection && !testSuccess"
                 variant="outline"
                 size="sm"
                 class="whitespace-nowrap"
-                :loading="refreshingId === editingConnection.id"
-                @click.stop="refreshSchema(editingConnection)"
-              >
-                <RefreshCw class="h-3.5 w-3.5" />
-                {{ refreshLabel }}
-              </UiButton>
-
-              <!-- Reprofile — shown for connectors whose capabilities opt in. -->
-              <UiButton
-                v-if="editingConnection && showReprofile"
-                variant="outline"
-                size="sm"
-                class="whitespace-nowrap"
-                :loading="reprofilingId === editingConnection.id"
-                :disabled="editingConnection.profiling_status === 'in_progress'"
-                @click.stop="handleReprofile(editingConnection)"
-              >
-                <RefreshCw class="h-3.5 w-3.5" />
-                Reprofile
-              </UiButton>
-
-              <!-- Test Connection: Notion (editing only) — Save Changes not needed -->
-              <UiButton
-                v-if="isNotionConnection && editingConnection && !testSuccess"
-                variant="outline"
-                size="sm"
                 :loading="testing"
                 @click="handleTestConnection"
               >
                 Test Connection
               </UiButton>
-
-              <!-- Standard connections: Test + Save/Create -->
-              <template v-if="!isFileUploadConnection && !isNotionConnection">
-                <UiButton
-                  v-if="!testSuccess"
-                  variant="outline"
-                  size="sm"
-                  class="whitespace-nowrap"
-                  :loading="testing"
-                  @click="handleTestConnection"
-                >
-                  Test Connection
-                </UiButton>
-                <UiButton
-                  size="sm"
-                  class="whitespace-nowrap"
-                  :loading="saving"
-                  @click="handleFormSubmit"
-                >
-                  {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
-                </UiButton>
-              </template>
+              <UiButton
+                v-if="!isFileUploadConnection && !isNotionConnection"
+                size="sm"
+                class="whitespace-nowrap"
+                :loading="saving"
+                @click="handleFormSubmit"
+              >
+                {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
+              </UiButton>
             </template>
           </div>
         </div>
@@ -1213,11 +1212,12 @@ const hasPluginForm = computed(() =>
 )
 
 // Right column shows when:
-//   - plugin provides an editPanel for the current editing connection, OR
-//   - no plugin form is active (community default right column).
-const showRightColumn = computed(() =>
-  (!!pluginEditPanel.value && !!editingConnection.value) || !hasPluginForm.value,
-)
+//   - editing a connection: always (plugin editPanel if registered, else community schema tree), OR
+//   - creating: only when community owns the left-column form (no plugin createForm).
+const showRightColumn = computed(() => {
+  if (editingConnection.value) return true
+  return !hasPluginForm.value
+})
 
 // Capability lookups for edit-mode header buttons. Default behavior preserved:
 // built-in types (postgres/mysql/sqlite) show both Refresh + Reprofile; file
@@ -1243,6 +1243,13 @@ const showReprofile = computed(() => {
   const cap = editingCaps.value?.reprofile
   if (cap) return cap.enabled
   // built-in default: everything except file uploads
+  return !isFileUploadConnection.value
+})
+
+const showTest = computed(() => {
+  if (!editingConnection.value) return false
+  const cap = editingCaps.value?.test
+  if (cap) return cap.enabled
   return !isFileUploadConnection.value
 })
 

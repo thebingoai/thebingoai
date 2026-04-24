@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 export interface ConnectorCapabilities {
   refresh?: { enabled: boolean; label?: string }  // default label "Refresh Schema"
   reprofile?: { enabled: boolean }
+  test?: { enabled: boolean }
 }
 
 export interface ConnectorFormEntry {
