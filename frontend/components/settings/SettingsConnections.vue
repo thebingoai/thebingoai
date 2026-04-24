@@ -237,64 +237,67 @@
             >
               Cancel
             </UiButton>
-            <!-- Refresh Schema / Sync Now (editing only) -->
-            <UiButton
-              v-if="editingConnection"
-              variant="outline"
-              size="sm"
-              class="whitespace-nowrap"
-              :loading="refreshingId === editingConnection.id"
-              @click.stop="refreshSchema(editingConnection)"
-            >
-              <RefreshCw class="h-3.5 w-3.5" />
-              {{ isNotionConnection ? 'Sync Now' : 'Refresh Schema' }}
-            </UiButton>
-
-            <!-- Reprofile: not useful for Notion, BigQuery, or file-upload -->
-            <UiButton
-              v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
-              variant="outline"
-              size="sm"
-              class="whitespace-nowrap"
-              :loading="reprofilingId === editingConnection.id"
-              :disabled="editingConnection.profiling_status === 'in_progress'"
-              @click.stop="handleReprofile(editingConnection)"
-            >
-              <RefreshCw class="h-3.5 w-3.5" />
-              Reprofile
-            </UiButton>
-
-            <!-- Test Connection: Notion (editing only) — Save Changes not needed -->
-            <UiButton
-              v-if="isNotionConnection && editingConnection && !testSuccess"
-              variant="outline"
-              size="sm"
-              :loading="testing"
-              @click="handleTestConnection"
-            >
-              Test Connection
-            </UiButton>
-
-            <!-- Standard connections: Test + Save/Create -->
-            <template v-if="!isFileUploadConnection && !isNotionConnection">
+            <!-- Plugin-provided forms own their action buttons inside the form body. -->
+            <template v-if="!hasPluginForm">
+              <!-- Refresh Schema / Sync Now (editing only) -->
               <UiButton
-                v-if="!testSuccess"
+                v-if="editingConnection"
                 variant="outline"
                 size="sm"
                 class="whitespace-nowrap"
+                :loading="refreshingId === editingConnection.id"
+                @click.stop="refreshSchema(editingConnection)"
+              >
+                <RefreshCw class="h-3.5 w-3.5" />
+                {{ isNotionConnection ? 'Sync Now' : 'Refresh Schema' }}
+              </UiButton>
+
+              <!-- Reprofile: not useful for Notion, BigQuery, or file-upload -->
+              <UiButton
+                v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
+                variant="outline"
+                size="sm"
+                class="whitespace-nowrap"
+                :loading="reprofilingId === editingConnection.id"
+                :disabled="editingConnection.profiling_status === 'in_progress'"
+                @click.stop="handleReprofile(editingConnection)"
+              >
+                <RefreshCw class="h-3.5 w-3.5" />
+                Reprofile
+              </UiButton>
+
+              <!-- Test Connection: Notion (editing only) — Save Changes not needed -->
+              <UiButton
+                v-if="isNotionConnection && editingConnection && !testSuccess"
+                variant="outline"
+                size="sm"
                 :loading="testing"
                 @click="handleTestConnection"
               >
                 Test Connection
               </UiButton>
-              <UiButton
-                size="sm"
-                class="whitespace-nowrap"
-                :loading="saving"
-                @click="handleFormSubmit"
-              >
-                {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
-              </UiButton>
+
+              <!-- Standard connections: Test + Save/Create -->
+              <template v-if="!isFileUploadConnection && !isNotionConnection">
+                <UiButton
+                  v-if="!testSuccess"
+                  variant="outline"
+                  size="sm"
+                  class="whitespace-nowrap"
+                  :loading="testing"
+                  @click="handleTestConnection"
+                >
+                  Test Connection
+                </UiButton>
+                <UiButton
+                  size="sm"
+                  class="whitespace-nowrap"
+                  :loading="saving"
+                  @click="handleFormSubmit"
+                >
+                  {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
+                </UiButton>
+              </template>
             </template>
           </div>
         </div>
@@ -304,8 +307,17 @@
         <!-- 40% form -->
         <div class="w-full md:w-2/5 md:pr-6 pb-4 md:pb-0">
 
+          <!-- Plugin-provided create form (when registered for this db_type) -->
+          <template v-if="!editingConnection && pluginCreateForm">
+            <component
+              :is="pluginCreateForm"
+              @saved="onPluginFormSaved"
+              @close="showFormSheet = false"
+            />
+          </template>
+
           <!-- SQLite upload form (creating new sqlite connection) -->
-          <template v-if="isSqliteConnection && !editingConnection">
+          <template v-else-if="isSqliteConnection && !editingConnection">
             <form @submit.prevent="handleSqliteUpload" class="space-y-4">
               <UiInput
                 v-model="sqliteForm.name"
@@ -392,101 +404,6 @@
             </div>
           </template>
 
-          <!-- Dataset upload form (creating new dataset connection) -->
-          <template v-else-if="isDatasetConnection && !editingConnection">
-            <form @submit.prevent="handleDatasetUpload" class="space-y-4">
-              <UiInput
-                v-model="datasetForm.name"
-                label="Dataset Name"
-                placeholder="My Dataset"
-                :error="datasetFormErrors.name"
-              />
-              <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">File</label>
-                <div
-                  class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="datasetDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
-                  @dragover.prevent="datasetDragOver = true"
-                  @dragleave.prevent="datasetDragOver = false"
-                  @drop.prevent="handleDatasetDrop"
-                >
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    ref="datasetFileInputRef"
-                    @change="handleDatasetFileChange"
-                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div v-if="!datasetFile">
-                    <Sheet class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop a CSV or Excel file here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">CSV or .xlsx — max 50 MB, 500K rows</p>
-                  </div>
-                  <div v-else class="flex items-center gap-3 justify-center">
-                    <Sheet class="h-5 w-5 text-blue-500 shrink-0" />
-                    <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ datasetFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(datasetFile.size) }}</p>
-                    </div>
-                    <button type="button" @click.stop="clearDatasetFile" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
-                      <component :is="X" class="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <p v-if="datasetFormErrors.file" class="text-xs text-red-500 mt-1">{{ datasetFormErrors.file }}</p>
-              </div>
-
-              <!-- Column preview for CSV -->
-              <div v-if="datasetPreviewColumns.length > 0">
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Column Preview</label>
-                <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-                  <table class="w-full text-xs">
-                    <thead class="bg-gray-50 dark:bg-neutral-800">
-                      <tr>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Column</th>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Detected Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="col in datasetPreviewColumns" :key="col.name" class="border-t border-gray-100 dark:border-neutral-700/50">
-                        <td class="px-3 py-1.5 text-gray-700 dark:text-neutral-300 font-mono">{{ col.name }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800/50 font-mono">{{ col.type }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Excel notice -->
-              <div v-else-if="datasetFile && datasetFile.name.endsWith('.xlsx')" class="flex items-center gap-2 text-sm text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
-                <Sheet class="h-4 w-4 shrink-0" />
-                Excel file selected — column preview not available. Upload to inspect schema.
-              </div>
-
-              <UiButton type="submit" class="w-full" :loading="uploadingDataset" :disabled="!datasetFile">
-                Upload Dataset
-              </UiButton>
-              <div v-if="uploadingDataset" class="w-full mt-2">
-                <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>{{ datasetUploadProgress >= 100 ? 'Processing file...' : 'Uploading...' }}</span>
-                  <span v-if="datasetUploadProgress < 100">{{ datasetUploadProgress }}%</span>
-                </div>
-                <div class="h-1.5 w-full bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                  <div
-                    v-if="datasetUploadProgress < 100"
-                    class="h-full bg-gray-900 dark:bg-gray-100 rounded-full transition-all duration-200 ease-out"
-                    :style="{ width: `${datasetUploadProgress}%` }"
-                  />
-                  <div
-                    v-else
-                    class="h-full w-full bg-gray-900 dark:bg-gray-100 rounded-full animate-pulse"
-                  />
-                </div>
-              </div>
-            </form>
-          </template>
-
           <!-- Dataset view (editing existing dataset) -->
           <template v-else-if="isDatasetConnection && editingConnection">
             <div class="space-y-4">
@@ -556,58 +473,6 @@
             </div>
           </template>
 
-          <!-- BigQuery connection form (creating new bigquery connection) -->
-          <template v-else-if="isBigQueryConnection && !editingConnection">
-            <form @submit.prevent="handleFormSubmit" class="space-y-4">
-              <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Service Account JSON</label>
-                <div
-                  class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
-                  @dragover.prevent="bigqueryJsonDragOver = true"
-                  @dragleave.prevent="bigqueryJsonDragOver = false"
-                  @drop.prevent="handleBigQueryJsonDrop"
-                >
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    ref="bigqueryJsonFileInputRef"
-                    @change="handleBigQueryJsonFileChange"
-                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div v-if="!bigqueryJsonFile">
-                    <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop your service account JSON here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">.json — GCP service account key</p>
-                  </div>
-                  <div v-else class="flex items-center gap-3 justify-center">
-                    <Database class="h-5 w-5 text-blue-500 shrink-0" />
-                    <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
-                    </div>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
-                      <component :is="X" class="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <p v-if="bigqueryFormErrors.json" class="text-xs text-red-500 mt-1">{{ bigqueryFormErrors.json }}</p>
-              </div>
-
-              <!-- Auto-populated info preview -->
-              <div v-if="bigquerySaInfo" class="bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2 space-y-1">
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
-                  Connection name: <span class="font-medium text-gray-700 dark:text-neutral-200">{{ form.name || '—' }}</span>
-                </p>
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
-                  Project: <span class="font-mono text-gray-700 dark:text-neutral-200">{{ bigquerySaInfo.project_id || '—' }}</span>
-                </p>
-              </div>
-
-            </form>
-          </template>
-
           <!-- BigQuery view (editing existing BigQuery connection) -->
           <template v-else-if="isBigQueryConnection && editingConnection">
             <div class="space-y-4">
@@ -662,35 +527,6 @@
                 </UiButton>
               </div>
             </div>
-          </template>
-
-          <!-- Notion API key form (creating new connection) -->
-          <template v-else-if="isNotionConnection && !editingConnection">
-            <form @submit.prevent="handleNotionConnect" class="space-y-4">
-              <UiInput
-                v-model="form.name"
-                label="Connection Name"
-                placeholder="My Notion Workspace"
-                required
-                :error="notionFormErrors.name"
-              />
-              <UiInput
-                v-model="notionApiKey"
-                label="Integration Token"
-                type="password"
-                placeholder="secret_..."
-                required
-                :error="notionFormErrors.api_key"
-              />
-              <p class="text-xs text-gray-500">
-                Create an Internal Integration at
-                <span class="font-mono bg-gray-100 px-1 rounded">notion.so/my-integrations</span>
-                and paste the secret token above.
-              </p>
-              <UiButton type="submit" class="w-full" :loading="connectingNotion" :disabled="!notionApiKey.trim()">
-                Connect Notion
-              </UiButton>
-            </form>
           </template>
 
           <!-- Notion view (editing existing connection) -->
@@ -833,8 +669,8 @@
           </template><!-- end v-else standard form -->
         </div>
 
-        <!-- 60% schema panel -->
-        <div class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
+        <!-- 60% schema panel — hidden when a plugin form owns the modal body. -->
+        <div v-if="!hasPluginForm" class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
           <!-- BigQuery permission checker: shown during create (no editingConnection yet) -->
           <template v-if="isBigQueryConnection && !editingConnection">
             <div class="flex items-center gap-2 shrink-0">
@@ -1376,7 +1212,8 @@ import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
 
-const api = useApi()
+const api = useApi() as any
+const connectorForms = useConnectorForms()
 
 // Icon registry — keyed by connector id
 const connectorIcons: Record<string, string> = {
@@ -1691,6 +1528,19 @@ async function fetchNotionPages(connectionId: number) {
 const isFileUploadConnection = computed(() => {
   return isDatasetConnection.value || isSqliteConnection.value
 })
+
+// Plugin-provided create form for the current db_type (overrides inline form when registered).
+const pluginCreateForm = computed(() => {
+  const dbType = form.value.db_type
+  if (!dbType) return null
+  return connectorForms.get(dbType)?.createForm ?? null
+})
+
+async function onPluginFormSaved() {
+  await fetchConnections()
+}
+
+const hasPluginForm = computed(() => !!pluginCreateForm.value && !editingConnection.value)
 
 function formatFbConnectedAt(sourceFilename: string): string {
   try {
