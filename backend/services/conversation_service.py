@@ -153,6 +153,15 @@ class ConversationService:
             db.commit()
 
     @staticmethod
+    def count_user_messages(db: Session, conversation_id: int) -> int:
+        return (
+            db.query(func.count(Message.id))
+            .filter(Message.conversation_id == conversation_id, Message.role == "user")
+            .scalar()
+            or 0
+        )
+
+    @staticmethod
     def add_context_reset(db: Session, conversation_id: int) -> Message:
         """Insert a context reset marker into a conversation."""
         message = Message(

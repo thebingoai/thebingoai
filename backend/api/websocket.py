@@ -71,6 +71,10 @@ async def _resolve_conversation(
         if not conversation:
             await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": "Conversation not found"})
             return None, False
+        # Pre-created empty shells (e.g. file-upload flow) still deserve title generation
+        # on their first real user turn.
+        if conversation.type == "task" and ConversationService.count_user_messages(db, conversation.id) == 0:
+            is_new = True
     else:
         conversation = ConversationService.create_conversation(db, user.id, title="New Task")
 
@@ -278,20 +282,22 @@ async def _persist_and_postprocess(
                 ))
             db.commit()
 
-    # Generate title for new conversations
-    if is_new and final_message:
+    # Generate title for new conversations. Broadcast via the connection manager so
+    # every tab's sidebar refreshes live, not just the tab that sent the message.
+    if is_new and (final_message or collected_steps):
+        from backend.services.title_service import generate_title, fallback_title
         try:
-            from backend.services.title_service import generate_title
-            title = await generate_title(user_message, final_message, steps=collected_steps)
-            ConversationService.update_title(db, conversation.id, title)
-            await send({
-                "type": "chat.title",
-                "request_id": request_id,
-                "thread_id": conversation.thread_id,
-                "content": title,
-            })
-        except Exception as title_err:
-            logger.warning(f"Title generation failed: {title_err}")
+            title = await generate_title(user_message, final_message or "", steps=collected_steps)
+        except Exception:
+            logger.exception("Title generation failed; using fallback")
+            title = fallback_title(user_message)
+        ConversationService.update_title(db, conversation.id, title)
+        await manager.send_to_user(user.id, {
+            "type": "chat.title",
+            "request_id": request_id,
+            "thread_id": conversation.thread_id,
+            "content": title,
+        })
 
     # Generate/update conversation summary
     if final_message:
@@ -302,7 +308,7 @@ async def _persist_and_postprocess(
             )
             token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
             token_limit = SummaryService.get_token_limit()
-            await send({
+            await manager.send_to_user(user.id, {
                 "type": "chat.summary",
                 "request_id": request_id,
                 "thread_id": conversation.thread_id,

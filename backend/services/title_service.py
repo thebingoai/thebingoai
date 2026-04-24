@@ -12,6 +12,15 @@ _TITLE_MODELS = {
 }
 
 
+def fallback_title(user_message: str) -> str:
+    """Derive a simple title from the user's first message. Never raises."""
+    words = (user_message or "").strip().split()
+    if not words:
+        return "Untitled"
+    snippet = " ".join(words[:6])[:60].rstrip(".,!?;:")
+    return snippet.title() or "Untitled"
+
+
 def _extract_step_context(steps: list) -> str:
     """Build a context hint from agent steps (tools used, first SQL snippet)."""
     if not steps:
