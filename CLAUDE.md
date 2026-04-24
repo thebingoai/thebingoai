@@ -66,7 +66,7 @@ Requirements:
 4. Optionally set `DATABASE_URL_DIRECT` to the direct connection URI (port 5432) for migrations
 
 **Option 2: Local PostgreSQL**
-1. Set `DATABASE_URL=postgresql://llm_user:llm_password@localhost:5432/llm_cli` in `.env`
+1. Set `DATABASE_URL=postgresql://thebingo_user:thebingo_password@localhost:5432/thebingo` in `.env`
 2. `start.sh` will automatically include Docker PostgreSQL
 
 Migrations run automatically on startup via `alembic upgrade head` in the Dockerfile CMD. When using Supabase, set `DATABASE_URL_DIRECT` to bypass the connection pooler for migrations.

@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func, cast, Date
 from backend.models.conversation import Conversation
 from backend.models.message import Message
 from typing import Optional, List
+from datetime import datetime
 import uuid
 
 
@@ -85,6 +87,9 @@ class ConversationService:
         )
 
         db.add(message)
+        db.query(Conversation).filter(Conversation.id == conversation_id).update(
+            {"updated_at": datetime.utcnow()}
+        )
         db.commit()
         db.refresh(message)
 
@@ -160,6 +165,20 @@ class ConversationService:
         db.commit()
         db.refresh(message)
         return message
+
+    @staticmethod
+    def list_activity_by_date(db: Session, user_id: str) -> List[dict]:
+        """Count conversations with activity per calendar day for heatmap."""
+        rows = (
+            db.query(
+                cast(Conversation.updated_at, Date).label("date"),
+                func.count(Conversation.id).label("count"),
+            )
+            .filter(Conversation.user_id == user_id)
+            .group_by(cast(Conversation.updated_at, Date))
+            .all()
+        )
+        return [{"date": str(row.date), "count": row.count} for row in rows]
 
     @staticmethod
     def delete_conversation(db: Session, thread_id: str, user_id: str) -> bool:

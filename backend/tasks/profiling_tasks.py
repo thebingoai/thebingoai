@@ -55,8 +55,19 @@ def profile_connection(self, connection_id: int):
 
         # Determine connector metadata
         reg = get_connector_registration(connection.db_type)
+        if reg and reg.skip_profiling:
+            connection.profiling_status = "ready"
+            connection.profiling_progress = "skipped"
+            db.commit()
+            logger.info("profile_connection %d: skipped (connector opted out)", connection_id)
+            return
         is_dataset = reg is not None and reg.sql_dialect_hint is not None and "SQLite" in reg.sql_dialect_hint
-        db_type_str = "mysql" if connection.db_type == "mysql" else "postgres"
+        if connection.db_type == "bigquery":
+            db_type_str = "bigquery"
+        elif connection.db_type == "mysql":
+            db_type_str = "mysql"
+        else:
+            db_type_str = "postgres"
 
         # Collect all tables from all schemas
         tables_to_profile: list[tuple[str, str, dict]] = []  # (schema_name, table_name, table_data)

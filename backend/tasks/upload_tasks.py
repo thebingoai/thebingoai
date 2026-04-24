@@ -60,6 +60,15 @@ celery_app.conf.beat_schedule = {
     },
 }
 
+# Import plugin task modules now so celery-beat picks up their beat_schedule entries
+try:
+    from backend.plugins.loader import discover_and_load_plugins, import_plugin_celery_tasks
+    discover_and_load_plugins()
+    imported = import_plugin_celery_tasks()
+    logger.info("upload_tasks: imported %d plugin task module(s)", len(imported))
+except Exception:
+    logger.exception("upload_tasks: failed to import plugin task modules")
+
 from celery.signals import worker_process_init, celeryd_init
 
 @celeryd_init.connect

@@ -36,6 +36,10 @@ class JudgeVerdict(BaseModel):
         default="",
         description="If resolved=false, a direct instruction to the assistant on how to finish the task (reference the fix it already proposed, tell it not to ask). Empty when resolved=true.",
     )
+    highlighted_response: Optional[str] = Field(
+        default=None,
+        description="When resolved=true, a copy of the assistant response with meaningful whitespace-free numeric tokens wrapped in ==...== for downstream orange rendering. Do NOT change any wording, punctuation, capitalization, whitespace, or formatting — only insert == markers. Null when resolved=false or nothing qualifies.",
+    )
 
 
 _JUDGE_SYSTEM_PROMPT = """You evaluate whether an assistant's response fully resolves a user's question.
@@ -52,6 +56,21 @@ Mark `resolved: true` when:
 - The response explains a terminal limitation in plain language and offers a real next step (NOT a retry-with-fix offer)
 
 When `resolved: false`, write `suggested_directive` as a direct instruction to the assistant on how to complete the task. Reference the fix the assistant already proposed (if present), and tell it to proceed without asking for permission."""
+
+
+_HIGHLIGHT_RULES = """
+
+HIGHLIGHTING RULES (applies only when resolved=true):
+
+Populate `highlighted_response` with a copy of the assistant response where meaningful headline numbers are wrapped in `==...==` for downstream orange rendering. Strict rules:
+- Only wrap single **whitespace-free** tokens. Examples: `==4,863==`, `==17==`, `==RM500==`, `==12.5%==`, `==$1.2M==`.
+- NEVER place whitespace inside `==...==`. `==4,863 units==` is INVALID.
+- Focus on aggregate metrics, counts, percentages, and currency figures — the numbers a reader would screenshot. Skip years (e.g. 2021), page numbers, row IDs, footnote markers.
+- Skip numbers inside fenced code blocks (```...```) or markdown table cells.
+- Cap at roughly 8 marks per response. If nothing qualifies, leave `highlighted_response` null.
+- Do NOT change any wording, punctuation, capitalization, whitespace, or formatting. Only insert `==` markers. The unmarked text must be byte-identical to the original.
+
+When `resolved=false`, leave `highlighted_response` null."""
 
 
 async def judge_response(
@@ -86,10 +105,14 @@ async def judge_response(
         llm = provider.get_langchain_llm(model=settings.judge_llm_model)
         structured_llm = llm.with_structured_output(JudgeVerdict)
 
+        system_prompt = _JUDGE_SYSTEM_PROMPT
+        if settings.judge_highlight_enabled:
+            system_prompt += _HIGHLIGHT_RULES
+
         verdict: JudgeVerdict = await asyncio.wait_for(
             structured_llm.ainvoke(
                 [
-                    {"role": "system", "content": _JUDGE_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {
                         "role": "user",
                         "content": f"USER QUESTION:\n{user_question}\n\nASSISTANT RESPONSE:\n{response}",

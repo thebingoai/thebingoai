@@ -35,14 +35,14 @@
         <div
           v-for="(db, idx) in dashboards"
           :key="idx"
-          class="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-2"
+          class="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-neutral-700 px-2.5 py-2"
         >
           <div class="flex items-center gap-2 min-w-0">
             <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
             <div class="min-w-0">
-              <p class="text-[11px] font-medium text-gray-600 truncate">{{ db.name }}</p>
+              <p class="text-[11px] font-medium text-gray-600 dark:text-neutral-300 truncate">{{ db.name }}</p>
               <p class="text-[10px] text-gray-300">{{ db.widgetCount }} widget{{ db.widgetCount !== 1 ? 's' : '' }}</p>
             </div>
           </div>
