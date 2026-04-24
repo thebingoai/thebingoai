@@ -118,18 +118,6 @@ def build_orchestrator_prompt(
             connections_str = ", ".join(str(c) for c in available_connections)
         base += f"\n\n## Available Database Connections\n{connections_str}\nUse these connection IDs when tools require a connectionId parameter, and for dataSource.connectionId in dashboard widgets.\n"
 
-        # Inject Notion-specific guidance when a Notion connection is present
-        if connection_metadata:
-            notion_conns = [c for c in connection_metadata if getattr(c, 'db_type', '') == 'notion']
-            if notion_conns:
-                notion_ids = ", ".join(str(c.id) for c in notion_conns)
-                base += (
-                    f"\n**Notion connections** (IDs: {notion_ids}): "
-                    "Use `read_notion_pages(connection_id=<id>, title_filter=\"<page title or keyword>\")` "
-                    "to read page content for summarisation, Q&A, or analysis. "
-                    "Do NOT use `data_agent` or `rag_agent` for Notion page content — use `read_notion_pages`.\n"
-                )
-
     base += """
 ## Sub-Agent Error Handling
 A sub-agent response is "problematic" if ANY of these are true:

@@ -2,7 +2,7 @@
   <div class="p-6">
     <!-- Header -->
     <div class="mb-4">
-      <h2 class="text-2xl font-medium text-gray-900 dark:text-white select-none">Jobs</h2>
+      <h2 class="text-2xl font-medium text-gray-900">Jobs</h2>
     </div>
 
     <!-- Tab bar -->
@@ -53,7 +53,7 @@
         v-for="job in jobs"
         :key="job.id"
         class="rounded-lg border transition-colors"
-        :class="expandedJobId === job.id ? 'border-blue-200 bg-white dark:bg-neutral-800' : 'border-gray-200 bg-white dark:bg-neutral-800'"
+        :class="expandedJobId === job.id ? 'border-blue-200 bg-white' : 'border-gray-200'"
       >
         <div class="flex items-center gap-3 px-4 py-3">
           <!-- Active toggle -->
@@ -73,7 +73,7 @@
           <!-- Job info -->
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ job.name || 'Unnamed job' }}</p>
+              <p class="text-sm font-medium text-gray-900 truncate">{{ job.name }}</p>
               <button
                 type="button"
                 :title="expandedJobId === job.id ? 'Close schedule editor' : 'Edit schedule'"

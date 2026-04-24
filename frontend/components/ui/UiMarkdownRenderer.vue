@@ -4,8 +4,6 @@
 
 <script setup lang="ts">
 import MarkdownIt from 'markdown-it'
-// @ts-expect-error — markdown-it-mark ships no bundled types
-import markdownItMark from 'markdown-it-mark'
 import { useShikiHighlighter } from '~/composables/useShikiHighlighter'
 
 interface Props {
@@ -20,8 +18,6 @@ const md = new MarkdownIt({
   typographer: true,
   breaks: true
 })
-
-md.use(markdownItMark)
 
 const highlighter = ref<any>(null)
 

@@ -1,6 +1,6 @@
 # Bingo
 
-[![License: BSUL](https://img.shields.io/badge/License-Bingo_Sustainable_Use-blue.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 A BI platform with AI-powered dashboards, real-time chat, and multi-database connectivity. Built with FastAPI, Nuxt 4, and LangGraph.
 
@@ -228,4 +228,4 @@ Issues and PRs welcome. See [LICENSE](./LICENSE) for terms.
 
 ## License
 
-Bingo Community is source-available under the [Bingo Sustainable Use License](./LICENSE) — a fair-code license. You are free to self-host, modify, and use Bingo internally. Offering Bingo as a hosted service to third parties, or removing license and copyright notices, is not permitted. For commercial hosting rights, contact The Bingo AI.
+Released under the [MIT License](./LICENSE).

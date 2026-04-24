@@ -3,8 +3,8 @@
   "description": "Nuxt 4 + Pinia frontend for the Bingo BI platform.",
   "homepage": "https://thebingo.ai",
   "repository": "https://github.com/thebingoai/thebingoai",
-  "license": "SEE LICENSE IN LICENSE",
-  "version": "0.1.26",
+  "license": "MIT",
+  "version": "0.1.24",
   "private": true,
   "type": "module",
   "scripts": {

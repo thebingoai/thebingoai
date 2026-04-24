@@ -1,28 +1,28 @@
 <template>
   <div class="p-6">
     <div class="mb-6">
-      <h2 class="text-2xl font-medium text-gray-900 dark:text-white select-none">Skills</h2>
-      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Manage your custom skills. Create new skills by asking the AI in chat.</p>
+      <h2 class="text-2xl font-medium text-gray-900">Skills</h2>
+      <p class="text-sm text-gray-500 mt-1">Manage your custom skills. Create new skills by asking the AI in chat.</p>
     </div>
 
     <!-- Suggestions Banner -->
-    <div v-if="suggestions.length > 0" class="mb-6 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-4">
-      <h3 class="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-3">Suggested Skills</h3>
-      <p class="text-xs text-amber-700 dark:text-amber-400 mb-3">Background analysis detected these repeated patterns. Accept to create a skill automatically.</p>
+    <div v-if="suggestions.length > 0" class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <h3 class="text-sm font-semibold text-amber-800 mb-3">Suggested Skills</h3>
+      <p class="text-xs text-amber-700 mb-3">Background analysis detected these repeated patterns. Accept to create a skill automatically.</p>
       <div class="flex flex-col gap-2">
         <div
           v-for="suggestion in suggestions"
           :key="suggestion.id"
-          class="flex items-start justify-between gap-4 rounded-md bg-white dark:bg-neutral-800 border border-amber-100 dark:border-neutral-700 px-3 py-2.5"
+          class="flex items-start justify-between gap-4 rounded-md bg-white border border-amber-100 px-3 py-2.5"
         >
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5">
-              <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ suggestion.suggested_name }}</p>
-              <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+              <p class="text-sm font-medium text-gray-900 truncate">{{ suggestion.suggested_name }}</p>
+              <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
                 {{ Math.round(suggestion.confidence * 100) }}% match
               </span>
             </div>
-            <p v-if="suggestion.pattern_summary" class="text-xs text-gray-500 dark:text-neutral-400 line-clamp-2">{{ suggestion.pattern_summary }}</p>
+            <p v-if="suggestion.pattern_summary" class="text-xs text-gray-500 line-clamp-2">{{ suggestion.pattern_summary }}</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button
@@ -37,7 +37,7 @@
               type="button"
               :disabled="respondingTo === suggestion.id"
               @click="respondToSuggestion(suggestion.id, 'dismiss')"
-              class="text-xs font-medium px-2.5 py-1 rounded-md border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-700 disabled:opacity-50 transition-colors"
+              class="text-xs font-medium px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
               Dismiss
             </button>
@@ -71,11 +71,11 @@
         <!-- Icon + Name -->
         <div class="flex items-start gap-2 mb-2">
           <component :is="Wand2" class="h-5 w-5 text-purple-500 shrink-0 mt-0.5" />
-          <p class="text-sm font-medium text-gray-900 dark:text-white line-clamp-2 leading-snug">{{ skill.name }}</p>
+          <p class="text-sm font-medium text-gray-900 line-clamp-2 leading-snug">{{ skill.name }}</p>
         </div>
 
         <!-- Description -->
-        <p class="text-xs text-gray-500 dark:text-neutral-400 line-clamp-3 mb-2">{{ skill.description }}</p>
+        <p class="text-xs text-gray-500 line-clamp-3 mb-2">{{ skill.description }}</p>
 
         <!-- Badges -->
         <div class="flex flex-wrap gap-1 mb-auto">

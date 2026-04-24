@@ -53,33 +53,29 @@
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
               <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
-                <span class="text-[11px] text-gray-400 dark:text-neutral-500">v{{ getConnectorType(connection.db_type)?.version }}</span>
+                <span class="text-[11px] text-gray-400">v{{ getConnectorType(connection.db_type)?.version }}</span>
                 <button
                   @click.stop="openChangelog(connection.db_type)"
-                  class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-600 inline-flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:border-gray-400 dark:hover:border-neutral-400"
+                  class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
                 >
                   <Info class="h-2 w-2" />
                 </button>
               </div>
             </div>
-            <!-- Spinner while sync or profile is running -->
+            <!-- Spinner for profiling in progress -->
             <Loader2
-              v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
+              v-if="connection.profiling_status === 'in_progress'"
               class="h-4 w-4 text-yellow-500 animate-spin shrink-0 mt-1"
             />
           </div>
           <!-- Connected account (Facebook Ads) or source filename (file-based connectors) -->
-          <div v-if="connection.db_type === 'bigquery' && connection.host" class="flex items-center gap-1 mt-1">
-            <Database class="h-3 w-3 text-gray-400 shrink-0" />
-            <span class="text-[11px] text-gray-400 truncate">{{ connection.host }}</span>
-          </div>
-          <div v-else-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
-            <User class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
-            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">Account: {{ connection.name }}</span>
+          <div v-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
+            <User class="h-3 w-3 text-gray-400 shrink-0" />
+            <span class="text-[11px] text-gray-400 truncate">Account: {{ connection.name }}</span>
           </div>
           <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
-            <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
-            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">{{ connection.source_filename }}</span>
+            <FileText class="h-3 w-3 text-gray-400 shrink-0" />
+            <span class="text-[11px] text-gray-400 truncate">{{ connection.source_filename }}</span>
           </div>
           <!-- Bottom metadata row -->
           <div class="mt-auto border-t border-gray-100 dark:border-neutral-700 pt-2.5 flex items-end gap-4">
@@ -135,16 +131,16 @@
             <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
               <div class="flex items-center gap-1 mt-0.5">
-                <span class="text-[11px] text-gray-400 dark:text-neutral-500">v{{ getConnectorType('dataset')?.version }}</span>
+                <span class="text-[11px] text-gray-400">v{{ getConnectorType('dataset')?.version }}</span>
                 <button
                   @click.stop="openChangelog('dataset')"
-                  class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-600 inline-flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:border-gray-400 dark:hover:border-neutral-400"
+                  class="h-3.5 w-3.5 rounded-full border border-gray-300 inline-flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400"
                 >
                   <Info class="h-2 w-2" />
                 </button>
               </div>
             </div>
-            <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 dark:text-neutral-500 shrink-0 mt-1" />
+            <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 shrink-0 mt-1" />
           </button>
           <p class="text-[13px] text-gray-500 dark:text-neutral-400 mt-2.5">{{ group.connections.length }} datasets</p>
           <!-- Expanded: list individual datasets -->
@@ -168,7 +164,7 @@
             </div>
           </div>
           <div v-else class="mt-auto flex flex-col gap-0.5">
-            <p class="text-xs text-gray-400 dark:text-neutral-500">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
+            <p class="text-xs text-gray-400">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
           </div>
         </div>
       </UiCard>
@@ -176,10 +172,10 @@
       <!-- Add Connection card -->
       <button
         @click="openCreateDialog"
-        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 dark:border-neutral-600 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 dark:hover:border-neutral-500 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 hover:bg-gray-50 transition-colors cursor-pointer"
       >
-        <component :is="Plus" class="h-6 w-6 text-gray-400 dark:text-neutral-500" />
-        <span class="text-sm text-gray-500 dark:text-neutral-400">Add Connection</span>
+        <component :is="Plus" class="h-6 w-6 text-gray-400" />
+        <span class="text-sm text-gray-500">Add Connection</span>
       </button>
     </div>
 
@@ -229,7 +225,7 @@
               <Check class="h-3.5 w-3.5 text-white" />
             </div>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-2">
             <UiButton
               variant="outline"
               size="sm"
@@ -237,25 +233,20 @@
             >
               Cancel
             </UiButton>
-            <!-- Refresh Schema / Sync Now (editing only) -->
             <UiButton
               v-if="editingConnection"
               variant="outline"
               size="sm"
-              class="whitespace-nowrap"
               :loading="refreshingId === editingConnection.id"
               @click.stop="refreshSchema(editingConnection)"
             >
               <RefreshCw class="h-3.5 w-3.5" />
-              {{ isNotionConnection ? 'Sync Now' : 'Refresh Schema' }}
+              Refresh Schema
             </UiButton>
-
-            <!-- Reprofile: not useful for Notion, BigQuery, or file-upload -->
             <UiButton
-              v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
+              v-if="editingConnection && !isBigQueryConnection"
               variant="outline"
               size="sm"
-              class="whitespace-nowrap"
               :loading="reprofilingId === editingConnection.id"
               :disabled="editingConnection.profiling_status === 'in_progress'"
               @click.stop="handleReprofile(editingConnection)"
@@ -263,25 +254,12 @@
               <RefreshCw class="h-3.5 w-3.5" />
               Reprofile
             </UiButton>
-
-            <!-- Test Connection: Notion (editing only) — Save Changes not needed -->
-            <UiButton
-              v-if="isNotionConnection && editingConnection && !testSuccess"
-              variant="outline"
-              size="sm"
-              :loading="testing"
-              @click="handleTestConnection"
-            >
-              Test Connection
-            </UiButton>
-
-            <!-- Standard connections: Test + Save/Create -->
-            <template v-if="!isFileUploadConnection && !isNotionConnection">
+            <!-- File-upload connections: no Test or Save buttons (upload form handles submission) -->
+            <template v-if="!isFileUploadConnection">
               <UiButton
                 v-if="!testSuccess"
                 variant="outline"
                 size="sm"
-                class="whitespace-nowrap"
                 :loading="testing"
                 @click="handleTestConnection"
               >
@@ -289,13 +267,18 @@
               </UiButton>
               <UiButton
                 size="sm"
-                class="whitespace-nowrap"
                 :loading="saving"
                 @click="handleFormSubmit"
               >
                 {{ editingConnection ? 'Save Changes' : 'Create Connection' }}
               </UiButton>
             </template>
+            <button
+              @click="handleFormSheetClose(false)"
+              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            >
+              <component :is="X" class="h-5 w-5" />
+            </button>
           </div>
         </div>
       </template>
@@ -314,10 +297,10 @@
                 :error="sqliteFormErrors.name"
               />
               <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">File</label>
+                <label class="text-sm font-normal text-gray-900 mb-1.5 block">File</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="sqliteDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
+                  :class="sqliteDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
                   @dragover.prevent="sqliteDragOver = true"
                   @dragleave.prevent="sqliteDragOver = false"
                   @drop.prevent="handleSqliteDrop"
@@ -331,17 +314,17 @@
                   />
                   <div v-if="!sqliteFile">
                     <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop a SQLite database file here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">.sqlite or .db — max 50 MB</p>
+                    <p class="text-sm text-gray-600">Drop a SQLite database file here</p>
+                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 mt-1">.sqlite or .db — max 50 MB</p>
                   </div>
                   <div v-else class="flex items-center gap-3 justify-center">
                     <Database class="h-5 w-5 text-blue-500 shrink-0" />
                     <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ sqliteFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(sqliteFile.size) }}</p>
+                      <p class="text-sm font-medium text-gray-900 truncate">{{ sqliteFile.name }}</p>
+                      <p class="text-xs text-gray-500">{{ formatFileSize(sqliteFile.size) }}</p>
                     </div>
-                    <button type="button" @click.stop="clearSqliteFile" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
+                    <button type="button" @click.stop="clearSqliteFile" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
                       <component :is="X" class="h-4 w-4" />
                     </button>
                   </div>
@@ -351,21 +334,21 @@
 
               <!-- Table preview after upload -->
               <div v-if="sqliteUploadResult">
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Tables ({{ sqliteUploadResult.table_count }})</label>
-                <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Tables ({{ sqliteUploadResult.table_count }})</label>
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
                   <table class="w-full text-xs">
-                    <thead class="bg-gray-50 dark:bg-neutral-800">
+                    <thead class="bg-gray-50">
                       <tr>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Table</th>
-                        <th class="px-3 py-2 text-right font-medium text-gray-600 dark:text-neutral-300">Rows</th>
-                        <th class="px-3 py-2 text-right font-medium text-gray-600 dark:text-neutral-300">Columns</th>
+                        <th class="px-3 py-2 text-left font-medium text-gray-600">Table</th>
+                        <th class="px-3 py-2 text-right font-medium text-gray-600">Rows</th>
+                        <th class="px-3 py-2 text-right font-medium text-gray-600">Columns</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="t in sqliteUploadResult.tables" :key="t.name" class="border-t border-gray-100 dark:border-neutral-700/50">
-                        <td class="px-3 py-1.5 text-gray-700 dark:text-neutral-300 font-mono">{{ t.name }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-right">{{ t.row_count.toLocaleString() }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-right">{{ t.column_count }}</td>
+                      <tr v-for="t in sqliteUploadResult.tables" :key="t.name" class="border-t border-gray-100">
+                        <td class="px-3 py-1.5 text-gray-700 font-mono">{{ t.name }}</td>
+                        <td class="px-3 py-1.5 text-gray-500 text-right">{{ t.row_count.toLocaleString() }}</td>
+                        <td class="px-3 py-1.5 text-gray-500 text-right">{{ t.column_count }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -382,12 +365,12 @@
           <template v-else-if="isSqliteConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Database Name</label>
-                <p class="text-sm text-gray-900 dark:text-white mt-0.5">{{ editingConnection.name }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Database Name</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
               </div>
               <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Source File</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-200 mt-0.5">{{ editingConnection.source_filename }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Source File</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.source_filename }}</p>
               </div>
             </div>
           </template>
@@ -402,10 +385,10 @@
                 :error="datasetFormErrors.name"
               />
               <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">File</label>
+                <label class="text-sm font-normal text-gray-900 mb-1.5 block">File</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="datasetDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
+                  :class="datasetDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
                   @dragover.prevent="datasetDragOver = true"
                   @dragleave.prevent="datasetDragOver = false"
                   @drop.prevent="handleDatasetDrop"
@@ -419,17 +402,17 @@
                   />
                   <div v-if="!datasetFile">
                     <Sheet class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop a CSV or Excel file here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">CSV or .xlsx — max 50 MB, 500K rows</p>
+                    <p class="text-sm text-gray-600">Drop a CSV or Excel file here</p>
+                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 mt-1">CSV or .xlsx — max 50 MB, 500K rows</p>
                   </div>
                   <div v-else class="flex items-center gap-3 justify-center">
                     <Sheet class="h-5 w-5 text-blue-500 shrink-0" />
                     <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ datasetFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(datasetFile.size) }}</p>
+                      <p class="text-sm font-medium text-gray-900 truncate">{{ datasetFile.name }}</p>
+                      <p class="text-xs text-gray-500">{{ formatFileSize(datasetFile.size) }}</p>
                     </div>
-                    <button type="button" @click.stop="clearDatasetFile" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
+                    <button type="button" @click.stop="clearDatasetFile" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
                       <component :is="X" class="h-4 w-4" />
                     </button>
                   </div>
@@ -439,19 +422,19 @@
 
               <!-- Column preview for CSV -->
               <div v-if="datasetPreviewColumns.length > 0">
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Column Preview</label>
-                <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Column Preview</label>
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
                   <table class="w-full text-xs">
-                    <thead class="bg-gray-50 dark:bg-neutral-800">
+                    <thead class="bg-gray-50">
                       <tr>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Column</th>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Detected Type</th>
+                        <th class="px-3 py-2 text-left font-medium text-gray-600">Column</th>
+                        <th class="px-3 py-2 text-left font-medium text-gray-600">Detected Type</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="col in datasetPreviewColumns" :key="col.name" class="border-t border-gray-100 dark:border-neutral-700/50">
-                        <td class="px-3 py-1.5 text-gray-700 dark:text-neutral-300 font-mono">{{ col.name }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800/50 font-mono">{{ col.type }}</td>
+                      <tr v-for="col in datasetPreviewColumns" :key="col.name" class="border-t border-gray-100">
+                        <td class="px-3 py-1.5 text-gray-700 font-mono">{{ col.name }}</td>
+                        <td class="px-3 py-1.5 text-gray-500 bg-gray-50 font-mono">{{ col.type }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -459,7 +442,7 @@
               </div>
 
               <!-- Excel notice -->
-              <div v-else-if="datasetFile && datasetFile.name.endsWith('.xlsx')" class="flex items-center gap-2 text-sm text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
+              <div v-else-if="datasetFile && datasetFile.name.endsWith('.xlsx')" class="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
                 <Sheet class="h-4 w-4 shrink-0" />
                 Excel file selected — column preview not available. Upload to inspect schema.
               </div>
@@ -491,18 +474,18 @@
           <template v-else-if="isDatasetConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Dataset Name</label>
-                <p class="text-sm text-gray-900 dark:text-white mt-0.5">{{ editingConnection.name }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Dataset Name</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
               </div>
               <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Source File</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-200 mt-0.5 font-mono">{{ editingConnection.source_filename }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Source File</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.source_filename }}</p>
               </div>
             </div>
             <div class="border-t border-gray-200 pt-4 mt-6 hidden md:block">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this dataset</p>
+                  <p class="text-sm font-medium text-gray-900">Delete this dataset</p>
                   <p class="text-xs text-gray-500">This action cannot be undone.</p>
                 </div>
                 <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
@@ -517,20 +500,20 @@
           <template v-else-if="isFacebookAdsConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Connection Name</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ editingConnection.name }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connection Name</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ editingConnection.name }}</p>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Ad Account ID</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.database }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Ad Account ID</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.database }}</p>
               </div>
               <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Connected At</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ formatFbConnectedAt(editingConnection.source_filename) }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connected At</label>
+                <p class="text-sm text-gray-900 mt-0.5">{{ formatFbConnectedAt(editingConnection.source_filename) }}</p>
               </div>
 
               <div class="border-t border-gray-200 pt-4">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Sync Settings</label>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Sync Settings</label>
                 <UiInput
                   v-model="fbLookbackDays"
                   label="Lookback Days"
@@ -545,8 +528,8 @@
             <div class="border-t border-gray-200 pt-4 mt-6">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
+                  <p class="text-sm font-medium text-gray-900">Delete this connection</p>
+                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
                 </div>
                 <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
                   <Trash2 class="h-3.5 w-3.5" />
@@ -560,10 +543,10 @@
           <template v-else-if="isBigQueryConnection && !editingConnection">
             <form @submit.prevent="handleFormSubmit" class="space-y-4">
               <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Service Account JSON</label>
+                <label class="text-sm font-normal text-gray-900 mb-1.5 block">Service Account JSON</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
+                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
                   @dragover.prevent="bigqueryJsonDragOver = true"
                   @dragleave.prevent="bigqueryJsonDragOver = false"
                   @drop.prevent="handleBigQueryJsonDrop"
@@ -577,17 +560,17 @@
                   />
                   <div v-if="!bigqueryJsonFile">
                     <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop your service account JSON here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">.json — GCP service account key</p>
+                    <p class="text-sm text-gray-600">Drop your service account JSON here</p>
+                    <p class="text-xs text-gray-400 mt-1">or click to browse</p>
+                    <p class="text-xs text-gray-400 mt-1">.json — GCP service account key</p>
                   </div>
                   <div v-else class="flex items-center gap-3 justify-center">
                     <Database class="h-5 w-5 text-blue-500 shrink-0" />
                     <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
+                      <p class="text-sm font-medium text-gray-900 truncate">{{ bigqueryJsonFile.name }}</p>
+                      <p class="text-xs text-gray-500">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
                     </div>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
+                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
                       <component :is="X" class="h-4 w-4" />
                     </button>
                   </div>
@@ -596,12 +579,12 @@
               </div>
 
               <!-- Auto-populated info preview -->
-              <div v-if="bigquerySaInfo" class="bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2 space-y-1">
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
-                  Connection name: <span class="font-medium text-gray-700 dark:text-neutral-200">{{ form.name || '—' }}</span>
+              <div v-if="bigquerySaInfo" class="bg-gray-50 rounded-lg px-3 py-2 space-y-1">
+                <p class="text-xs text-gray-500">
+                  Connection name: <span class="font-medium text-gray-700">{{ form.name || '—' }}</span>
                 </p>
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
-                  Project: <span class="font-mono text-gray-700 dark:text-neutral-200">{{ bigquerySaInfo.project_id || '—' }}</span>
+                <p class="text-xs text-gray-500">
+                  Project: <span class="font-mono text-gray-700">{{ bigquerySaInfo.project_id || '—' }}</span>
                 </p>
               </div>
 
@@ -612,18 +595,18 @@
           <template v-else-if="isBigQueryConnection && editingConnection">
             <div class="space-y-4">
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Service Account</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.username }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Service Account</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.username }}</p>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">GCP Project</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.host }}</p>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">GCP Project</label>
+                <p class="text-sm text-gray-900 mt-0.5 font-mono">{{ editingConnection.host }}</p>
               </div>
               <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Update Service Account JSON (optional)</label>
+                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Update Service Account JSON (optional)</label>
                 <div
                   class="relative border-2 border-dashed rounded-lg p-4 text-center transition-colors mt-1.5"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
+                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'"
                   @dragover.prevent="bigqueryJsonDragOver = true"
                   @dragleave.prevent="bigqueryJsonDragOver = false"
                   @drop.prevent="handleBigQueryJsonDrop"
@@ -640,8 +623,8 @@
                   </div>
                   <div v-else class="flex items-center gap-2 justify-center">
                     <Database class="h-4 w-4 text-blue-500 shrink-0" />
-                    <p class="text-xs font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
+                    <p class="text-xs font-medium text-gray-900 truncate">{{ bigqueryJsonFile.name }}</p>
+                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 hover:text-gray-600">
                       <component :is="X" class="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -653,66 +636,7 @@
             <div class="border-t border-gray-200 pt-4 mt-6">
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
-                </div>
-                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                  <Trash2 class="h-3.5 w-3.5" />
-                  Delete
-                </UiButton>
-              </div>
-            </div>
-          </template>
-
-          <!-- Notion API key form (creating new connection) -->
-          <template v-else-if="isNotionConnection && !editingConnection">
-            <form @submit.prevent="handleNotionConnect" class="space-y-4">
-              <UiInput
-                v-model="form.name"
-                label="Connection Name"
-                placeholder="My Notion Workspace"
-                required
-                :error="notionFormErrors.name"
-              />
-              <UiInput
-                v-model="notionApiKey"
-                label="Integration Token"
-                type="password"
-                placeholder="secret_..."
-                required
-                :error="notionFormErrors.api_key"
-              />
-              <p class="text-xs text-gray-500">
-                Create an Internal Integration at
-                <span class="font-mono bg-gray-100 px-1 rounded">notion.so/my-integrations</span>
-                and paste the secret token above.
-              </p>
-              <UiButton type="submit" class="w-full" :loading="connectingNotion" :disabled="!notionApiKey.trim()">
-                Connect Notion
-              </UiButton>
-            </form>
-          </template>
-
-          <!-- Notion view (editing existing connection) -->
-          <template v-else-if="isNotionConnection && editingConnection">
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connection Name</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ editingConnection.name }}</p>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Integration Token</label>
-                <p class="text-sm text-gray-400 mt-0.5 font-mono">secret_••••••••••••</p>
-              </div>
-              <UiButton variant="outline" size="sm" :loading="saving" @click="handleNotionSync">
-                <RefreshCw class="h-3.5 w-3.5" />
-                Sync Now
-              </UiButton>
-            </div>
-            <div class="border-t border-gray-200 dark:border-neutral-700 pt-4 mt-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+                  <p class="text-sm font-medium text-gray-900">Delete this connection</p>
                   <p class="text-xs text-gray-500">This action cannot be undone.</p>
                 </div>
                 <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
@@ -821,8 +745,8 @@
           <div v-if="editingConnection" class="border-t border-gray-200 pt-4 mt-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
+                <p class="text-sm font-medium text-gray-900">Delete this connection</p>
+                <p class="text-xs text-gray-500">This action cannot be undone.</p>
               </div>
               <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
                 <Trash2 class="h-3.5 w-3.5" />
@@ -841,7 +765,7 @@
               <button
                 type="button"
                 @click="permissionCheckExpanded = !permissionCheckExpanded"
-                class="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:text-gray-700 dark:hover:text-neutral-300"
+                class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
               >
                 <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
                 Permission Check
@@ -852,14 +776,14 @@
             <div v-if="permissionCheckExpanded" class="space-y-3 shrink-0">
               <div class="space-y-1">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm text-gray-700 dark:text-neutral-200">Read Access</span>
+                  <span class="text-sm text-gray-700">Read Access</span>
                   <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
                   <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
                   <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
                 </div>
                 <div class="flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
-                  <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
+                  <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
+                  <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
                 </div>
                 <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
                   <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
@@ -867,7 +791,7 @@
               </div>
               <div class="space-y-1">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm text-gray-700 dark:text-neutral-200">Write Access</span>
+                  <span class="text-sm text-gray-700">Write Access</span>
                   <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
                   <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
                   <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
@@ -876,7 +800,7 @@
                     type="button"
                     @click="toggleWriteAccess"
                     class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-auto"
-                    :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-neutral-600'"
+                    :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
                   >
                     <span
                       class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
@@ -885,7 +809,7 @@
                   </button>
                 </div>
                 <div class="flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
+                  <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
                 </div>
                 <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
                   <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
@@ -893,6 +817,7 @@
               </div>
             </div>
 
+            <!-- Upload to start check -->
             <div v-if="!bigqueryJsonFile" class="text-center py-4 text-xs text-gray-400 shrink-0">
               Upload a service account JSON to check permissions
             </div>
@@ -913,7 +838,7 @@
                 <button
                   type="button"
                   @click="permissionCheckExpanded = !permissionCheckExpanded"
-                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:text-gray-700 dark:hover:text-neutral-300"
+                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
                 >
                   <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
                   Permission Check
@@ -929,63 +854,46 @@
               </div>
 
               <!-- Permission Status (collapsible) -->
-              <div v-if="permissionCheckExpanded" class="shrink-0">
-                <div class="grid grid-cols-2 gap-x-4">
-                  <!-- Left: Read Access + Write Access stacked -->
-                  <div class="space-y-3">
-                    <!-- Read Access -->
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm text-gray-700">Read Access</span>
-                        <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
-                        <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
-                        <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                      </div>
-                      <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                        <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
-                      </div>
-                    </div>
-                    <!-- Write Access -->
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm text-gray-700">Write Access</span>
-                        <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
-                        <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
-                        <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                        <span v-else class="h-4 w-4 shrink-0" />
-                        <button
-                          type="button"
-                          @click="toggleWriteAccess"
-                          class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-                          :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
-                        >
-                          <span
-                            class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                            :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
-                          />
-                        </button>
-                      </div>
-                      <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                        <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
-                      </div>
-                    </div>
+              <div v-if="permissionCheckExpanded" class="space-y-3 shrink-0">
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-700">Read Access</span>
+                    <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
+                    <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
+                    <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
                   </div>
-                  <!-- Right: GA4 Unnesting aligned to bottom -->
-                  <div class="flex flex-col justify-end">
-                    <div class="flex items-center gap-2">
-                      <span class="text-sm text-gray-700">GA4 Unnesting</span>
-                      <button
-                        type="button"
-                        @click="toggleGa4Unnesting"
-                        class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-                        :class="ga4Enabled ? 'bg-blue-600' : 'bg-gray-200'"
-                      >
-                        <span
-                          class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                          :class="ga4Enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
-                        />
-                      </button>
-                    </div>
+                  <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
+                    <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
+                  </div>
+                  <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                    <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
+                  </div>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-700">Write Access</span>
+                    <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
+                    <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
+                    <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
+                    <span v-else class="h-4 w-4 shrink-0" />
+                    <button
+                      type="button"
+                      @click="toggleWriteAccess"
+                      class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-auto"
+                      :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
+                    >
+                      <span
+                        class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                        :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
+                      />
+                    </button>
+                  </div>
+                  <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span class="text-xs text-gray-500"><code class="bg-gray-100 px-1 rounded text-gray-600">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
+                  </div>
+                  <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                    <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
                   </div>
                 </div>
               </div>
@@ -994,113 +902,7 @@
             <!-- Divider between permission check and schema for BigQuery -->
             <div v-if="isBigQueryConnection" class="border-t border-gray-100 shrink-0" />
 
-            <!-- Notion workspace panel (replaces schema tree for Notion connections) -->
-            <template v-if="isNotionConnection && editingConnection">
-              <div class="flex items-center gap-2 shrink-0">
-                <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Notion Workspace</h3>
-                <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full dark:bg-neutral-700 dark:text-neutral-400">
-                  {{ notionMeta.page_count ?? 0 }} pages
-                </span>
-              </div>
-
-              <!-- Workspace name + last sync -->
-              <div class="space-y-1 shrink-0">
-                <p class="text-sm font-medium text-gray-800 dark:text-neutral-100">{{ notionMeta.bot_name || editingConnection.name }}</p>
-                <p v-if="notionMeta.last_sync" class="text-xs text-gray-400">
-                  Last synced {{ new Date(notionMeta.last_sync).toLocaleString() }}
-                </p>
-                <p v-else class="text-xs text-gray-400">Not yet synced — click Sync Now</p>
-              </div>
-
-              <!-- Pages list -->
-              <div class="overflow-y-auto flex-1">
-                <div v-if="notionPagesLoading" class="space-y-2">
-                  <UiSkeleton class="h-5 w-full" />
-                  <UiSkeleton class="h-5 w-5/6" />
-                  <UiSkeleton class="h-5 w-4/6" />
-                </div>
-                <template v-else-if="notionPages.length">
-                  <a
-                    v-for="page in notionPages"
-                    :key="page.id"
-                    :href="page.url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="flex items-center gap-2 py-1.5 px-2 rounded text-sm text-gray-700 hover:bg-gray-50 dark:text-neutral-300 dark:hover:bg-neutral-800 group"
-                  >
-                    <FileText class="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <span class="truncate">{{ page.title }}</span>
-                    <ExternalLink class="h-3 w-3 text-gray-300 group-hover:text-gray-500 ml-auto shrink-0" />
-                  </a>
-                </template>
-                <div v-else class="text-sm text-gray-400 px-2 py-3">
-                  No pages synced yet. Share pages with your integration in Notion, then click Sync Now.
-                </div>
-              </div>
-            </template>
-
-            <!-- GA4 Unnesting Section (BigQuery edit mode only) -->
-            <template v-if="isBigQueryConnection && editingConnection && ga4Enabled">
-              <div class="flex items-center shrink-0">
-                <button
-                  type="button"
-                  @click="ga4Expanded = !ga4Expanded"
-                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
-                >
-                  <component :is="ga4Expanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
-                  GA4 Datasets
-                </button>
-              </div>
-
-              <div v-if="ga4Expanded && ga4Enabled" class="space-y-3 shrink-0">
-                <div v-if="ga4Loading" class="flex items-center gap-2 text-xs text-gray-400">
-                  <Loader2 class="h-3.5 w-3.5 animate-spin shrink-0" />
-                  Detecting GA4 datasets...
-                </div>
-                <div v-else-if="ga4Datasets.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                  <p class="text-xs text-amber-700">No GA4 datasets (analytics_XXXXXXXX) found in this project.</p>
-                </div>
-                <div v-else class="space-y-2">
-                  <div
-                    v-for="ds in ga4Datasets"
-                    :key="ds.analytics_dataset_id"
-                    class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-2"
-                  >
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="space-y-0.5 min-w-0">
-                        <p class="text-xs font-medium text-gray-800 truncate font-mono">{{ ds.analytics_dataset_id }}</p>
-                        <p class="text-xs text-gray-400 font-mono">→ {{ ds.bingo_dataset_id }}</p>
-                      </div>
-                      <div class="flex items-center gap-2 shrink-0">
-                        <span
-                          v-if="ds.last_run_status"
-                          class="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                          :class="{
-                            'bg-green-100 text-green-700': ds.last_run_status === 'success',
-                            'bg-red-100 text-red-700': ds.last_run_status === 'failed',
-                            'bg-blue-100 text-blue-700': ds.last_run_status === 'running',
-                          }"
-                        >{{ ds.last_run_status }}</span>
-                        <button
-                          type="button"
-                          @click="triggerGa4Run(ds)"
-                          :disabled="ds.triggering"
-                          class="text-xs text-green-600 hover:text-green-800 flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <Loader2 v-if="ds.triggering" class="h-3 w-3 animate-spin" />
-                          <span v-else class="text-xs">▶</span>
-                          Run Now
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="border-t border-gray-100 shrink-0" />
-            </template>
-
             <!-- Schema panel for all editing connections (BigQuery + others) -->
-            <template v-else>
             <!-- Header -->
             <div class="flex items-center gap-2 shrink-0">
                 <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Database Schema</h3>
@@ -1151,12 +953,12 @@
                     <!-- Schema row -->
                     <button
                       @click="toggleSchema(String(schemaName))"
-                      class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-neutral-700"
+                      class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
                     >
-                      <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-400 shrink-0" />
-                      <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400 shrink-0" />
-                      <span class="text-xs font-medium text-gray-700 dark:text-neutral-200 truncate">{{ schemaName }}</span>
-                      <span class="text-xs text-gray-400 dark:text-neutral-500 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
+                      <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                      <Database class="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                      <span class="text-xs font-medium text-gray-700 truncate">{{ schemaName }}</span>
+                      <span class="text-xs text-gray-400 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
                     </button>
 
                     <!-- Tables -->
@@ -1165,12 +967,12 @@
                         <!-- Table row -->
                         <button
                           @click="toggleTable(`${schemaName}.${tableName}`)"
-                          class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-neutral-700"
+                          class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50"
                         >
-                          <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-400 shrink-0" />
+                          <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 shrink-0" />
                           <Table2 class="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                          <span class="text-xs text-gray-700 dark:text-neutral-200 truncate">{{ tableName }}</span>
-                          <span v-if="tableData.row_count != null" class="text-xs text-gray-400 dark:text-neutral-500 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
+                          <span class="text-xs text-gray-700 truncate">{{ tableName }}</span>
+                          <span v-if="tableData.row_count != null" class="text-xs text-gray-400 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
                         </button>
 
                         <!-- Columns -->
@@ -1182,9 +984,9 @@
                           >
                             <Key v-if="col.primary_key" class="h-3 w-3 text-amber-500 shrink-0" />
                             <span v-else class="h-3 w-3 shrink-0" />
-                            <span class="text-gray-600 dark:text-neutral-300 truncate">{{ col.name }}</span>
-                            <span class="text-gray-600 dark:text-neutral-200 bg-gray-100 dark:bg-neutral-700 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
-                            <span v-if="col.nullable" class="text-gray-400 dark:text-neutral-500 shrink-0">?</span>
+                            <span class="text-gray-600 truncate">{{ col.name }}</span>
+                            <span class="text-gray-400 bg-gray-100 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
+                            <span v-if="col.nullable" class="text-gray-400 shrink-0">?</span>
                           </div>
                         </div>
                       </div>
@@ -1209,8 +1011,7 @@
                   </div>
                 </div>
               </template>
-            </template><!-- end schema panel v-else -->
-          </template><!-- end editing connection block -->
+          </template>
         </div>
 
         <!-- Mobile-only delete section (appears after schema) -->
@@ -1371,7 +1172,7 @@
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle, ExternalLink } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
@@ -1386,7 +1187,6 @@ const connectorIcons: Record<string, string> = {
   facebook_ads: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.854V15.47H7.078V12h3.047V9.356c0-3.007 1.792-4.668 4.533-4.668 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.875V12h3.328l-.532 3.47h-2.796v8.385C19.612 22.954 24 17.99 24 12" fill="#1877F2"/></svg>`,
   sqlite: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 3.79 5 6v12c0 2.21 3.13 4 7 4s7-1.79 7-4V6c0-2.21-3.13-4-7-4z" stroke="#0F80CC" stroke-width="1.5" fill="none"/><path d="M5 6c0 2.21 3.13 4 7 4s7-1.79 7-4" stroke="#0F80CC" stroke-width="1.5"/><path d="M5 12c0 2.21 3.13 4 7 4s7-1.79 7-4" stroke="#0F80CC" stroke-width="1.5"/></svg>`,
   bigquery: `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2zm6.5 20.5l-3-3a5.5 5.5 0 1 1 1.5-1.5l3 3-1.5 1.5zM16 20a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="#4285F4"/></svg>`,
-  notion: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.539 1.447-1.632z"/></svg>`,
 }
 
 // State
@@ -1431,27 +1231,6 @@ const schema = ref<DatabaseSchema | null>(null)
 const schemaLoading = ref(false)
 const schemaError = ref<string | null>(null)
 
-// GA4 Unnesting state
-interface GA4DatasetConfig {
-  analytics_dataset_id: string
-  bingo_dataset_id: string
-  config_id?: number
-  tag_name: string
-  lookback_days: number
-  schedule_time: string
-  enabled: boolean
-  last_run_at?: string
-  last_run_status?: string
-  last_run_error?: string
-  params_count?: number
-  discovering_params?: boolean
-  triggering?: boolean
-}
-const ga4Enabled = ref(false)
-const ga4Expanded = ref(true)
-const ga4Loading = ref(false)
-const ga4Datasets = ref<GA4DatasetConfig[]>([])
-
 // Profiling state
 const reprofilingId = ref<number | null>(null)
 const profilingPollers = ref<Record<number, ReturnType<typeof setInterval>>>({})
@@ -1493,11 +1272,6 @@ const bigqueryPermissionError = ref<{ read: string | null; write: string | null 
 
 // Dataset grouping state
 const expandedGroups = ref<Record<string, boolean>>({})
-
-// Notion API key state
-const notionApiKey = ref('')
-const notionFormErrors = ref<{ name?: string; api_key?: string }>({})
-const connectingNotion = ref(false)
 
 // Facebook OAuth state
 const facebookOAuthLoading = ref(false)
@@ -1571,12 +1345,7 @@ function getAccentClass(connection: DatabaseConnection): string {
 
 // Profiling status helpers for bottom metadata
 function getProfilingLabel(connection: DatabaseConnection): string {
-  const status = connection.profiling_status
-  const progress = connection.profiling_progress
-  if ((status === 'in_progress' || status === 'pending') && progress) {
-    return progress
-  }
-  switch (status) {
+  switch (connection.profiling_status) {
     case 'ready': return 'Profiled'
     case 'in_progress': return 'Profiling...'
     case 'pending': return 'Queued'
@@ -1589,7 +1358,7 @@ function getProfilingIconClass(connection: DatabaseConnection): string {
   switch (connection.profiling_status) {
     case 'ready': return 'text-green-600'
     case 'in_progress': return 'text-yellow-500'
-    case 'pending': return 'text-yellow-500'
+    case 'pending': return 'text-gray-400'
     case 'failed': return 'text-red-500'
     default: return 'text-gray-400'
   }
@@ -1599,18 +1368,17 @@ function getProfilingTextClass(connection: DatabaseConnection): string {
   switch (connection.profiling_status) {
     case 'ready': return 'text-green-600'
     case 'in_progress': return 'text-yellow-600'
-    case 'pending': return 'text-yellow-600'
+    case 'pending': return 'text-gray-500'
     case 'failed': return 'text-red-500'
     default: return 'text-gray-500'
   }
 }
 
 function getProfilingTitle(connection: DatabaseConnection): string {
-  const progress = connection.profiling_progress
   switch (connection.profiling_status) {
     case 'ready': return 'Profiling complete'
-    case 'in_progress': return progress || 'Profiling in progress'
-    case 'pending': return progress || 'Profiling queued'
+    case 'in_progress': return 'Profiling in progress'
+    case 'pending': return 'Profiling queued'
     case 'failed': return 'Profiling failed — click card to retry'
     default: return 'Profiling status unknown'
   }
@@ -1659,34 +1427,6 @@ const isFacebookAdsConnection = computed(() => {
 const isBigQueryConnection = computed(() => {
   return form.value.db_type === 'bigquery' || editingConnection.value?.db_type === 'bigquery'
 })
-
-const isNotionConnection = computed(() => {
-  return form.value.db_type === 'notion' || editingConnection.value?.db_type === 'notion'
-})
-
-const notionPages = ref<{id: string; title: string; url: string}[]>([])
-const notionPagesLoading = ref(false)
-
-const notionMeta = computed(() => {
-  try {
-    return JSON.parse(editingConnection.value?.source_filename || '{}')
-  } catch {
-    return {}
-  }
-})
-
-async function fetchNotionPages(connectionId: number) {
-  notionPagesLoading.value = true
-  notionPages.value = []
-  try {
-    const result = await api.notion.listPages(connectionId)
-    notionPages.value = result.pages
-  } catch {
-    // silent — pages just won't show
-  } finally {
-    notionPagesLoading.value = false
-  }
-}
 
 const isFileUploadConnection = computed(() => {
   return isDatasetConnection.value || isSqliteConnection.value
@@ -1764,6 +1504,7 @@ async function fetchSchema(connectionId: number) {
     schemaLoading.value = true
     schemaError.value = null
     schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
+    // Auto-expand the first schema
     if (schema.value) {
       const schemaNames = Object.keys(schema.value.schemas)
       if (schemaNames.length === 1) {
@@ -1772,23 +1513,7 @@ async function fetchSchema(connectionId: number) {
     }
   } catch (err: any) {
     if (err?.status === 404 || err?.statusCode === 404) {
-      if (editingConnection.value?.id === connectionId) {
-        // No schema cached yet — auto-discover on first open
-        try {
-          await api.connections.refreshSchema(String(connectionId))
-          schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
-          if (schema.value) {
-            const schemaNames = Object.keys(schema.value.schemas)
-            if (schemaNames.length === 1) {
-              expandedSchemas.value[schemaNames[0]] = true
-            }
-          }
-        } catch (refreshErr: any) {
-          schemaError.value = refreshErr?.data?.detail || refreshErr?.message || 'Failed to load schema'
-        }
-      } else {
-        schema.value = null
-      }
+      schema.value = null
     } else {
       schemaError.value = err?.data?.detail || err?.message || 'Failed to load schema'
     }
@@ -1922,8 +1647,6 @@ function selectConnectorType(typeId: string) {
   bigquerySaInfo.value = null
   bigqueryPermissionCheck.value = { read: null, write: null }
   bigqueryPermissionError.value = { read: null, write: null }
-  notionApiKey.value = ''
-  notionFormErrors.value = {}
   // Close type picker first to avoid HeadlessUI focus trap conflict
   showTypePicker.value = false
   showFormSheet.value = true
@@ -1948,45 +1671,6 @@ function handleFormSheetClose(value: boolean) {
     } else {
       showFormSheet.value = false
     }
-  }
-}
-
-// Notion API key flow
-async function handleNotionConnect() {
-  notionFormErrors.value = {}
-  if (!form.value.name.trim()) {
-    notionFormErrors.value.name = 'Connection name is required'
-    return
-  }
-  if (!notionApiKey.value.trim()) {
-    notionFormErrors.value.api_key = 'Integration token is required'
-    return
-  }
-  connectingNotion.value = true
-  try {
-    await api.notion.connect(form.value.name.trim(), notionApiKey.value.trim())
-    toast.success('Notion workspace connected!')
-    showFormSheet.value = false
-    notionApiKey.value = ''
-    notionFormErrors.value = {}
-    await fetchConnections()
-  } catch (err: any) {
-    toast.error(err?.data?.detail || err?.message || 'Failed to connect Notion')
-  } finally {
-    connectingNotion.value = false
-  }
-}
-
-async function handleNotionSync() {
-  if (!editingConnection.value) return
-  saving.value = true
-  try {
-    await api.notion.triggerSync(editingConnection.value.id)
-    toast.success('Sync started — schema will update automatically')
-  } catch (err: any) {
-    toast.error(err?.data?.detail || err?.message || 'Sync failed')
-  } finally {
-    saving.value = false
   }
 }
 
@@ -2124,7 +1808,6 @@ function openEditDialog(connection: DatabaseConnection) {
   schemaSearch.value = ''
   expandedSchemas.value = {}
   expandedTables.value = {}
-  notionPages.value = []
   // Reset BigQuery state
   bigqueryJsonFile.value = null
   bigqueryJsonContent.value = ''
@@ -2132,21 +1815,11 @@ function openEditDialog(connection: DatabaseConnection) {
   bigquerySaInfo.value = null
   bigqueryPermissionCheck.value = { read: null, write: null }
   bigqueryPermissionError.value = { read: null, write: null }
-  // Reset GA4 state
-  ga4Enabled.value = false
-  ga4Datasets.value = []
-  ga4Expanded.value = true
   // Edit skips type picker, opens form sheet directly
   showFormSheet.value = true
-  // For BigQuery, auto-run permission check and load GA4 state
+  // For BigQuery, auto-run permission check using saved credentials
   if (connection.db_type === 'bigquery') {
     checkBigQueryPermissionsFromSaved(connection.id)
-    loadGa4State()
-  }
-  // For Notion, fetch synced pages instead of schema tree
-  if (connection.db_type === 'notion') {
-    fetchNotionPages(connection.id)
-    return
   }
   // Fetch schema in background
   fetchSchema(connection.id)
@@ -2286,8 +1959,7 @@ async function handleFormSubmit() {
 }
 
 async function handleTestConnection() {
-  // Notion connections use stored credentials — skip form validation
-  if (!isNotionConnection.value && !validateForm()) return
+  if (!validateForm()) return
 
   try {
     testing.value = true
@@ -2329,8 +2001,7 @@ async function handleTestConnection() {
 
     if (response.success) {
       testSuccess.value = true
-      connectionSuccessMessage.value = response.message || 'Connection test successful'
-      setTimeout(() => { connectionSuccessMessage.value = '' }, 4000)
+      toast.success(response.message || 'Connection test successful')
     } else {
       connectionFailedMessage.value = response.message || 'Connection test failed'
       setTimeout(() => { connectionFailedMessage.value = '' }, 4000)
@@ -2348,23 +2019,13 @@ async function refreshSchema(connection: DatabaseConnection) {
   try {
     refreshingId.value = connection.id
     await api.connections.refreshSchema(String(connection.id))
+    toast.success('Schema refreshed successfully')
     await fetchConnections()
-    if (connection.db_type === 'notion') {
-      toast.success('Sync queued — pages will update in a moment')
-      // Re-fetch pages after a short delay to pick up the new sync
-      setTimeout(() => {
-        if (editingConnection.value?.id === connection.id) {
-          fetchNotionPages(connection.id)
-        }
-      }, 4000)
-    } else {
-      toast.success('Schema refreshed successfully')
-      // Refetch schema to update tree panel
-      if (editingConnection.value?.id === connection.id) {
-        expandedSchemas.value = {}
-        expandedTables.value = {}
-        await fetchSchema(connection.id)
-      }
+    // Refetch schema to update tree panel
+    if (editingConnection.value?.id === connection.id) {
+      expandedSchemas.value = {}
+      expandedTables.value = {}
+      await fetchSchema(connection.id)
     }
   } catch (err: any) {
     const errorMessage = err?.data?.detail || err?.message || 'Failed to refresh schema'
@@ -2661,149 +2322,6 @@ async function checkBigQueryPermissionsFromSaved(connectionId: number) {
     }
   }
 }
-
-// ── GA4 Unnesting ─────────────────────────────────────────────────────────────
-
-function _cronToTime(cron: string): string {
-  const parts = (cron || '0 6 * * *').split(' ')
-  if (parts.length < 2) return '06:00'
-  return `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`
-}
-
-async function loadGa4State() {
-  if (!editingConnection.value || editingConnection.value.db_type !== 'bigquery') return
-  ga4Loading.value = true
-  try {
-    const [detected, existing] = await Promise.all([
-      api.ga4.detect(editingConnection.value.id) as Promise<{ datasets: any[] }>,
-      api.ga4.listConfigs(editingConnection.value.id) as Promise<{ configs: any[] }>,
-    ])
-    const configMap = new Map((existing.configs || []).map((c: any) => [c.analytics_dataset_id, c]))
-    ga4Datasets.value = (detected.datasets || []).map((ds: any) => {
-      const cfg: any = configMap.get(ds.analytics_dataset_id)
-      return {
-        analytics_dataset_id: ds.analytics_dataset_id,
-        bingo_dataset_id: ds.bingo_dataset_id,
-        config_id: cfg?.id,
-        tag_name: cfg?.tag_name || '',
-        lookback_days: cfg?.lookback_days ?? 2,
-        schedule_time: cfg ? _cronToTime(cfg.schedule_cron) : '06:00',
-        enabled: cfg?.enabled ?? true,
-        last_run_at: cfg?.last_run_at,
-        last_run_status: cfg?.last_run_status,
-        params_count: Array.isArray(cfg?.discovered_params) ? cfg.discovered_params.length : 0,
-      } as GA4DatasetConfig
-    })
-    if (ga4Datasets.value.some(d => d.config_id && d.enabled)) ga4Enabled.value = true
-  } catch (e) {
-    console.error('Failed to load GA4 state', e)
-  } finally {
-    ga4Loading.value = false
-  }
-}
-
-async function toggleGa4Unnesting() {
-  ga4Enabled.value = !ga4Enabled.value
-  if (ga4Enabled.value) {
-    if (ga4Datasets.value.length === 0) await loadGa4State()
-    // Save new configs or re-enable existing disabled ones
-    for (const ds of ga4Datasets.value) {
-      if (!ds.config_id) {
-        await saveGa4Config(ds)
-      } else if (!ds.enabled) {
-        try { await api.ga4.patchConfig(ds.config_id, { enabled: true }) } catch {}
-        ds.enabled = true
-      }
-    }
-  }
-  if (!ga4Enabled.value) {
-    // Disable all configs without deleting
-    for (const ds of ga4Datasets.value) {
-      if (ds.config_id) {
-        try { await api.ga4.patchConfig(ds.config_id, { enabled: false }) } catch {}
-        ds.enabled = false
-      }
-    }
-  }
-}
-
-async function saveGa4Config(ds: GA4DatasetConfig) {
-  if (!editingConnection.value) return
-  try {
-    const result = await api.ga4.upsertConfig({
-      connection_id: editingConnection.value.id,
-      analytics_dataset_id: ds.analytics_dataset_id,
-      tag_name: ds.tag_name,
-      lookback_days: ds.lookback_days,
-      schedule_time: ds.schedule_time,
-    }) as { config_id: number }
-    ds.config_id = result.config_id
-    ds.enabled = true
-  } catch (e: any) {
-    console.error('Failed to save GA4 config', e)
-  }
-}
-
-async function discoverGa4Params(ds: GA4DatasetConfig) {
-  if (!editingConnection.value) return
-  ds.discovering_params = true
-  try {
-    const result = await api.ga4.discoverParams({
-      connection_id: editingConnection.value.id,
-      analytics_dataset_id: ds.analytics_dataset_id,
-      lookback_days: 7,
-    }) as { count: number }
-    ds.params_count = result.count
-  } catch (e) {
-    console.error('GA4 param discovery failed', e)
-  } finally {
-    ds.discovering_params = false
-  }
-}
-
-async function triggerGa4Run(ds: GA4DatasetConfig) {
-  if (!ds.config_id) await saveGa4Config(ds)
-  if (!ds.config_id) return
-  ds.triggering = true
-  try {
-    await api.ga4.trigger(ds.config_id)
-    ds.last_run_status = 'running'
-    pollGa4Status(ds)
-  } catch (e) {
-    console.error('GA4 trigger failed', e)
-  } finally {
-    ds.triggering = false
-  }
-}
-
-function pollGa4Status(ds: GA4DatasetConfig) {
-  const MAX_POLLS = 60  // 5 minutes at 5s intervals
-  let count = 0
-  const interval = setInterval(async () => {
-    count++
-    if (count > MAX_POLLS || !editingConnection.value) {
-      clearInterval(interval)
-      return
-    }
-    try {
-      const res = await api.ga4.listConfigs(editingConnection.value.id) as { configs: any[] }
-      const updated = res.configs.find((c: any) => c.id === ds.config_id)
-      if (updated) {
-        ds.last_run_status = updated.last_run_status
-        ds.last_run_error = updated.last_run_error
-        if (updated.last_run_status !== 'running') clearInterval(interval)
-      }
-    } catch {
-      clearInterval(interval)
-    }
-  }, 5000)
-}
-
-watch(editingConnection, (conn) => {
-  ga4Enabled.value = false
-  ga4Datasets.value = []
-  if (conn?.db_type === 'bigquery') loadGa4State()
-})
 
 async function toggleWriteAccess() {
   form.value.ssl_enabled = !form.value.ssl_enabled

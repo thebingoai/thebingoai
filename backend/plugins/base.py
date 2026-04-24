@@ -18,7 +18,6 @@ class ConnectorRegistration:
     on_test: Optional[Callable] = None
     on_refresh_schema: Optional[Callable] = None
     skip_schema_refresh: bool = False
-    skip_profiling: bool = False
     sql_dialect_hint: Optional[str] = None
     version: Optional[str] = None
     card_meta_items: Optional[list[str]] = None

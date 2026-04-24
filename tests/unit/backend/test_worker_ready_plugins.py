@@ -30,7 +30,6 @@ def test_import_plugin_celery_tasks_imports_declared_modules():
     mock_plugin.celery_task_modules.return_value = ["test_plugin.tasks"]
 
     original = dict(_loaded_plugins)
-    _loaded_plugins.clear()
     _loaded_plugins["test-plugin"] = mock_plugin
     try:
         with patch("importlib.import_module") as mock_import:
@@ -51,7 +50,6 @@ def test_import_plugin_celery_tasks_handles_import_error():
     mock_plugin.celery_task_modules.return_value = ["nonexistent.module"]
 
     original = dict(_loaded_plugins)
-    _loaded_plugins.clear()
     _loaded_plugins["bad-plugin"] = mock_plugin
     try:
         with patch("importlib.import_module", side_effect=ImportError("no such module")):

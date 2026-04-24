@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     judge_highlight_enabled: bool = True  # mark meaningful numbers with ==...== for frontend orange rendering
 
     # Database
-    database_url: str = "postgresql://thebingo_user:thebingo_password@localhost:5432/thebingo"
+    database_url: str = "postgresql://llm_user:llm_password@localhost:5432/llm_cli"
     database_url_direct: Optional[str] = None  # Direct connection for migrations (bypasses Supabase connection pooler)
 
     # Schema storage

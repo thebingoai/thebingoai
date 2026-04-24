@@ -43,17 +43,7 @@
         @click="emit('refresh-all')"
       >
         <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
-        <span class="hidden sm:inline">{{ refreshing ? 'Refreshing...' : 'Refresh All' }}</span>
-      </button>
-
-      <!-- Analyze button — visible in view mode -->
-      <button
-        v-if="!editMode"
-        class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
-        @click="emit('analyze')"
-      >
-        <BarChart2 class="h-3.5 w-3.5" />
-        <span class="hidden sm:inline">Analyze</span>
+        {{ refreshing ? 'Refreshing...' : 'Refresh All' }}
       </button>
 
       <!-- Schedule popover — visible in view mode -->
@@ -99,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { ChevronLeft, Pencil, Eye, Save, RefreshCw, Trash2, BarChart2 } from 'lucide-vue-next'
+import { ChevronLeft, Pencil, Eye, Save, RefreshCw, Trash2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   title: string
@@ -116,7 +106,6 @@ const emit = defineEmits<{
   save: []
   'refresh-all': []
   delete: []
-  analyze: []
   'update:title': [value: string]
 }>()
 

@@ -107,13 +107,11 @@
       />
       <DashboardWidgetText
         v-else-if="widget.widget.type === 'text'"
-        :widget-id="widget.id"
         :config="widget.widget.config"
         :edit-mode="editMode"
       />
       <DashboardWidgetFilter
         v-else-if="widget.widget.type === 'filter'"
-        :widget-id="widget.id"
         :config="widget.widget.config"
       />
     </div>

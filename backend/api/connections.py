@@ -15,7 +15,7 @@ from backend.schemas.connection import (
 from backend.connectors.factory import get_connector, get_available_types, get_connector_registration
 from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
-    refresh_schema, delete_schema_file, load_schema_file, schema_key_for,
+    refresh_schema, delete_schema_file, load_schema_file
 )
 from backend.config import settings
 from datetime import datetime
@@ -69,25 +69,6 @@ def _invalidate_dashboard_caches_for_connection(
     return count
 
 
-def _find_connection(db: Session, key, user_id: str):
-    """Look up a connection by either its UUID or its numeric id.
-
-    Accepts str (FastAPI path params) or int (internal callers / tests).
-    Returns None if no matching connection is owned by this user.
-    """
-    key_str = str(key)
-    q = db.query(DatabaseConnection)
-    if key_str.isdigit():
-        return q.filter(
-            DatabaseConnection.user_id == user_id,
-            DatabaseConnection.id == int(key_str),
-        ).first()
-    return q.filter(
-        DatabaseConnection.user_id == user_id,
-        DatabaseConnection.uuid == key_str,
-    ).first()
-
-
 router = APIRouter(prefix="/connections", tags=["connections"])
 
 
@@ -138,43 +119,44 @@ async def create_connection(
         if user_memberships:
             db.commit()
 
-    db.refresh(connection)
+    # Auto-discover schema
+    try:
+        with get_connector(
+            db_type=request.db_type,
+            host=request.host,
+            port=request.port,
+            database=request.database,
+            username=request.username,
+            password=request.password,
+            ssl_enabled=request.ssl_enabled,
+            ssl_ca_cert=request.ssl_ca_cert
+        ) as connector:
+            schema_data = discover_schema(connector)
+            schema_json = generate_schema_json(
+                connection.id,
+                connection.name,
+                connection.db_type,
+                schema_data
+            )
+            schema_path = save_schema_file(connection.id, schema_json)
 
-    # Auto-discover schema for all connector types except BigQuery (too many datasets)
-    if request.db_type != "bigquery":
-        try:
-            with get_connector(
-                db_type=request.db_type,
-                host=request.host,
-                port=request.port,
-                database=request.database,
-                username=request.username,
-                password=request.password,
-                ssl_enabled=request.ssl_enabled,
-                ssl_ca_cert=request.ssl_ca_cert
-            ) as connector:
-                schema_data = discover_schema(connector)
-                schema_json = generate_schema_json(
-                    connection.id,
-                    connection.name,
-                    connection.db_type,
-                    schema_data
-                )
-                schema_path = save_schema_file(schema_key_for(connection), schema_json)
-
-                connection.schema_json_path = schema_path
-                connection.schema_generated_at = datetime.utcnow()
-                connection.table_count = _schema_item_count(connection.db_type, schema_data)
-                db.commit()
-                db.refresh(connection)
-
-            from backend.tasks.profiling_tasks import profile_connection
-            connection.profiling_status = "pending"
+            # Update connection with schema info
+            connection.schema_json_path = schema_path
+            connection.schema_generated_at = datetime.utcnow()
+            connection.table_count = _schema_item_count(connection.db_type, schema_data)
             db.commit()
-            profile_connection.delay(connection.id)
+            db.refresh(connection)
 
-        except Exception as e:
-            logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
+        # Kick off background profiling now that schema is available
+        from backend.tasks.profiling_tasks import profile_connection
+        connection.profiling_status = "pending"
+        db.commit()
+        profile_connection.delay(connection.id)
+
+    except Exception as e:
+        # Log error but don't fail connection creation
+        # Schema can be generated later via refresh endpoint
+        logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
 
     db.refresh(connection)
     logger.info("Connection '%s' (id=%s) created successfully", connection.name, connection.id)
@@ -315,12 +297,15 @@ async def test_unsaved_write_access(
 
 @router.get("/{connection_id}", response_model=ConnectionResponse)
 async def get_connection(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a specific database connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -330,13 +315,16 @@ async def get_connection(
 
 @router.put("/{connection_id}", response_model=ConnectionResponse)
 async def update_connection(
-    connection_id: str,
+    connection_id: int,
     request: ConnectionUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a database connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -346,7 +334,7 @@ async def update_connection(
         setattr(connection, field, value)
 
     # Invalidate dashboard caches that use this connection
-    _invalidate_dashboard_caches_for_connection(connection.id, current_user.id, db)
+    _invalidate_dashboard_caches_for_connection(connection_id, current_user.id, db)
 
     db.commit()
     db.refresh(connection)
@@ -356,18 +344,21 @@ async def update_connection(
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_connection(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a database connection and its cached schema."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
     # Invalidate dashboard caches that use this connection
-    _invalidate_dashboard_caches_for_connection(connection.id, current_user.id, db)
+    _invalidate_dashboard_caches_for_connection(connection_id, current_user.id, db)
 
     # Run type-specific delete hook if registered (e.g., dataset cleanup)
     reg = get_connector_registration(connection.db_type)
@@ -378,13 +369,13 @@ async def delete_connection(
             logger.warning("on_delete hook failed for connection %s: %s", connection.id, e)
 
     # Delete schema and context JSON files
-    delete_schema_file(connection.schema_json_path)
+    delete_schema_file(connection_id)
     from backend.services.connection_context import delete_context_file
-    delete_context_file(connection.id)
+    delete_context_file(connection_id)
 
     # Remove any team connection policies first to avoid FK violations
     db.query(TeamConnectionPolicy).filter(
-        TeamConnectionPolicy.connection_id == connection.id
+        TeamConnectionPolicy.connection_id == connection_id
     ).delete()
 
     # Delete connection from database
@@ -394,12 +385,15 @@ async def delete_connection(
 
 @router.post("/{connection_id}/test", response_model=ConnectionTestResponse)
 async def test_connection(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Test a database connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -433,12 +427,15 @@ async def test_connection(
 
 @router.post("/{connection_id}/test-write", response_model=ConnectionTestResponse)
 async def test_write_access(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Test write access (roles/bigquery.dataEditor) for a saved connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -465,7 +462,7 @@ async def test_write_access(
 
 @router.post("/{connection_id}/refresh-schema", response_model=SchemaRefreshResponse)
 async def refresh_connection_schema(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -475,7 +472,10 @@ async def refresh_connection_schema(
     Re-discovers full schema and regenerates JSON file.
     Useful when database structure changes.
     """
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -508,15 +508,14 @@ async def refresh_connection_schema(
             ssl_ca_cert=connection.ssl_ca_cert
         ) as connector:
             schema_path = refresh_schema(
-                schema_key_for(connection),
-                connector,
                 connection.id,
+                connector,
                 connection.name,
-                connection.db_type,
+                connection.db_type
             )
 
             # Load refreshed schema to get table count
-            schema_json = load_schema_file(schema_path)
+            schema_json = load_schema_file(connection.id)
 
             # Update connection timestamp and table count
             connection.schema_json_path = schema_path
@@ -546,7 +545,7 @@ async def refresh_connection_schema(
 
 @router.get("/{connection_id}/schema", response_model=SchemaResponse)
 async def get_connection_schema(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -556,18 +555,17 @@ async def get_connection_schema(
     Returns the full schema including schemas, tables, columns, and relationships.
     Returns 404 if schema has not been generated yet.
     """
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    if not connection.schema_json_path:
-        raise HTTPException(
-            status_code=404,
-            detail="Schema not yet generated. Create the connection or use the refresh endpoint."
-        )
     try:
-        return load_schema_file(connection.schema_json_path)
+        schema_json = load_schema_file(connection_id)
+        return schema_json
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -577,12 +575,15 @@ async def get_connection_schema(
 
 @router.get("/{connection_id}/profiling-status")
 async def get_profiling_status(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get profiling status for a connection (used for polling during profiling)."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -598,12 +599,15 @@ async def get_profiling_status(
 
 @router.post("/{connection_id}/reprofile")
 async def reprofile_connection(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Manually trigger re-profiling for a connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -626,12 +630,15 @@ async def reprofile_connection(
 
 @router.get("/{connection_id}/context")
 async def get_connection_context(
-    connection_id: str,
+    connection_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get the data context for a connection (used by the dashboard agent)."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id,
+    ).first()
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -644,6 +651,6 @@ async def get_connection_context(
 
     from backend.services.connection_context import load_context_file
     try:
-        return load_context_file(connection.id)
+        return load_context_file(connection_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Context file not found. Try re-profiling the connection.")
