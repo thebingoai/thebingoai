@@ -1,21 +1,134 @@
-MIT License
+Bingo Sustainable Use License (BSUL)
+Version 1.0
 
-Copyright (c) 2026 The Bingo AI
+Copyright (c) 2026 The Bingo AI. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 1. Preamble
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Bingo is a source-available business intelligence platform. This License
+is a "fair-code" license: the source is open, modification and internal
+use are free, but the right to commercialize the Software as a hosted
+service is reserved so the project's maintainers can sustain continued
+development.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+If You self-host Bingo for Your own operations, build internal tooling on
+top of it, or modify it for private use, this License gives You
+everything You need. If You want to resell Bingo as a hosted product,
+please contact The Bingo AI for a commercial agreement.
+
+## 2. Definitions
+
+In this License:
+
+- "Software" means the Bingo codebase distributed in this repository,
+  including all source files, configuration, documentation, and
+  associated assets, together with any modifications You make to them.
+- "You" (or "Your") means the individual or legal entity exercising
+  rights under this License.
+- "Distribute" means to make the Software, whether modified or not,
+  available to another party in any form.
+- "Hosted Service" means any offering — provided directly, by an
+  affiliate, or through a reseller, whether in exchange for payment,
+  advertising revenue, data, or any other consideration — that allows
+  third parties to use the Software, or substantially its features,
+  without installing or operating it themselves.
+- "Notices" means the license, copyright, attribution, and trademark
+  notices distributed with the Software.
+
+## 3. Grant of Rights
+
+Subject to Your compliance with Section 4, The Bingo AI grants You a
+worldwide, royalty-free, non-exclusive, non-transferable license to:
+
+(a) install, run, and use the Software for any purpose, including in a
+    commercial setting, provided such use is for Your own internal
+    operations or those of Your affiliates;
+(b) modify the Software and create derivative works;
+(c) copy the Software and its modifications; and
+(d) Distribute the Software and modifications to third parties, provided
+    the Distribution does not itself constitute a Hosted Service.
+
+## 4. Restrictions
+
+### 4.1 No Commercial Hosting
+
+You may not offer the Software, or any product or service that delivers
+substantially the features of the Software, as a Hosted Service to third
+parties. In particular, You may not operate the Software on
+infrastructure You control and provide access to it to third parties —
+whether directly, through a subscription, or bundled with other services
+— without a separate written agreement with The Bingo AI.
+
+This restriction applies regardless of whether the Software is modified,
+renamed, combined with other software, or presented under different
+branding. Use within a single organization, including You and Your
+affiliates, is not a Hosted Service.
+
+### 4.2 Preservation of Notices
+
+You must retain all Notices in any copy or modified version of the
+Software You Distribute. You may not add or alter attribution or
+trademarks in a way that obscures, misrepresents, or removes the
+attribution of the original authors.
+
+### 4.3 Trademarks
+
+This License does not grant You any rights to the "Bingo" or "The Bingo
+AI" names, related logos, or any confusingly similar marks. You may
+refer to the Software by its name for truthful descriptive purposes —
+for example, stating that Your product works with Bingo — but You may
+not use the marks in a way that implies endorsement, affiliation, or
+origin without prior written permission from The Bingo AI.
+
+## 5. Contributions
+
+If You submit a contribution — code, documentation, or otherwise — to
+the Software, You agree that the contribution is licensed under the
+terms of this License. You represent that You have the right to make
+the contribution and that, to Your knowledge, it does not infringe the
+rights of any third party.
+
+## 6. Warranty Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NON-INFRINGEMENT. THE BINGO AI DOES NOT WARRANT THAT THE SOFTWARE WILL
+MEET YOUR REQUIREMENTS OR THAT ITS OPERATION WILL BE UNINTERRUPTED OR
+ERROR-FREE.
+
+## 7. Limitation of Liability
+
+TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+BINGO AI, ITS OFFICERS, EMPLOYEES, OR AFFILIATES BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY
+DAMAGES ARISING OUT OF OR IN CONNECTION WITH THIS LICENSE OR THE USE OF
+THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+## 8. Termination
+
+Your rights under this License terminate automatically if You breach any
+of its terms. If the breach is curable and made in good faith, Your
+rights will be reinstated if You cure the breach within thirty (30) days
+of becoming aware of it. Sections 6, 7, and 9 survive termination.
+
+## 9. Governing Law
+
+This License is governed by the laws of Malaysia, without regard to its
+conflict-of-laws principles. Any dispute arising under this License
+shall be subject to the exclusive jurisdiction of the courts of
+Malaysia.
+
+## 10. Entire Agreement
+
+This License constitutes the entire agreement between You and The Bingo
+AI with respect to the Software. If any provision is held unenforceable,
+the remaining provisions shall remain in full force and effect.
+
+---
+
+The canonical version of this license is published at
+https://thebingo.ai/license.
+
+For commercial hosting rights, extended support, or enterprise
+licensing, contact The Bingo AI.
