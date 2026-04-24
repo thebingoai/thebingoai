@@ -28,8 +28,19 @@ export const useChatWsHandlers = () => {
   const registerTitleHandler = () => {
     return ws.on('chat.title', (data: any) => {
       const threadId = data.thread_id || chatStore.currentThreadId
-      if (threadId) {
+      if (!threadId) return
+      const existing = chatStore.conversations.find(c => c.id === threadId)
+      if (existing) {
         chatStore.updateConversationTitle(threadId, data.content)
+      } else {
+        chatStore.addConversation({
+          id: threadId,
+          title: data.content,
+          type: 'task',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          message_count: 2,
+        })
       }
     })
   }

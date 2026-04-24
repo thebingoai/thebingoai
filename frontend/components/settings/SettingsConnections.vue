@@ -237,9 +237,11 @@
             >
               Cancel
             </UiButton>
-            <!-- Refresh Schema / Sync Now (editing only) -->
+            <!-- Edit-mode lifecycle buttons: connector-agnostic, capability-gated.
+                 These act on a saved connection id and don't depend on community form state,
+                 so they render even when a plugin form owns the left column. -->
             <UiButton
-              v-if="editingConnection"
+              v-if="editingConnection && showRefresh"
               variant="outline"
               size="sm"
               class="whitespace-nowrap"
@@ -247,12 +249,11 @@
               @click.stop="refreshSchema(editingConnection)"
             >
               <RefreshCw class="h-3.5 w-3.5" />
-              {{ isNotionConnection ? 'Sync Now' : 'Refresh Schema' }}
+              {{ refreshLabel }}
             </UiButton>
 
-            <!-- Reprofile: not useful for Notion, BigQuery, or file-upload -->
             <UiButton
-              v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
+              v-if="editingConnection && showReprofile"
               variant="outline"
               size="sm"
               class="whitespace-nowrap"
@@ -264,9 +265,8 @@
               Reprofile
             </UiButton>
 
-            <!-- Test Connection: Notion (editing only) — Save Changes not needed -->
             <UiButton
-              v-if="isNotionConnection && editingConnection && !testSuccess"
+              v-if="editingConnection && showTest && !testSuccess"
               variant="outline"
               size="sm"
               :loading="testing"
@@ -275,10 +275,11 @@
               Test Connection
             </UiButton>
 
-            <!-- Standard connections: Test + Save/Create -->
-            <template v-if="!isFileUploadConnection && !isNotionConnection">
+            <!-- Form-state-dependent buttons: only when community owns the form body. -->
+            <template v-if="!hasPluginForm">
+              <!-- Create-mode Test Connection for built-in types (needs form state). -->
               <UiButton
-                v-if="!testSuccess"
+                v-if="!editingConnection && !isFileUploadConnection && !testSuccess"
                 variant="outline"
                 size="sm"
                 class="whitespace-nowrap"
@@ -288,6 +289,7 @@
                 Test Connection
               </UiButton>
               <UiButton
+                v-if="!isFileUploadConnection && !isNotionConnection"
                 size="sm"
                 class="whitespace-nowrap"
                 :loading="saving"
@@ -304,8 +306,28 @@
         <!-- 40% form -->
         <div class="w-full md:w-2/5 md:pr-6 pb-4 md:pb-0">
 
+          <!-- Plugin-provided create form (when registered for this db_type) -->
+          <template v-if="!editingConnection && pluginCreateForm">
+            <component
+              :is="pluginCreateForm"
+              @saved="onPluginFormSaved"
+              @close="showFormSheet = false"
+            />
+          </template>
+
+          <!-- Plugin-provided edit form (when registered for this db_type) -->
+          <template v-else-if="editingConnection && pluginEditForm">
+            <component
+              :is="pluginEditForm"
+              :connection="editingConnection"
+              @saved="onPluginFormSaved"
+              @close="showFormSheet = false"
+              @delete="onPluginDelete"
+            />
+          </template>
+
           <!-- SQLite upload form (creating new sqlite connection) -->
-          <template v-if="isSqliteConnection && !editingConnection">
+          <template v-else-if="isSqliteConnection && !editingConnection">
             <form @submit.prevent="handleSqliteUpload" class="space-y-4">
               <UiInput
                 v-model="sqliteForm.name"
@@ -388,337 +410,6 @@
               <div v-if="editingConnection.source_filename">
                 <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Source File</label>
                 <p class="text-sm text-gray-900 dark:text-neutral-200 mt-0.5">{{ editingConnection.source_filename }}</p>
-              </div>
-            </div>
-          </template>
-
-          <!-- Dataset upload form (creating new dataset connection) -->
-          <template v-else-if="isDatasetConnection && !editingConnection">
-            <form @submit.prevent="handleDatasetUpload" class="space-y-4">
-              <UiInput
-                v-model="datasetForm.name"
-                label="Dataset Name"
-                placeholder="My Dataset"
-                :error="datasetFormErrors.name"
-              />
-              <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">File</label>
-                <div
-                  class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="datasetDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
-                  @dragover.prevent="datasetDragOver = true"
-                  @dragleave.prevent="datasetDragOver = false"
-                  @drop.prevent="handleDatasetDrop"
-                >
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    ref="datasetFileInputRef"
-                    @change="handleDatasetFileChange"
-                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div v-if="!datasetFile">
-                    <Sheet class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop a CSV or Excel file here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">CSV or .xlsx — max 50 MB, 500K rows</p>
-                  </div>
-                  <div v-else class="flex items-center gap-3 justify-center">
-                    <Sheet class="h-5 w-5 text-blue-500 shrink-0" />
-                    <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ datasetFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(datasetFile.size) }}</p>
-                    </div>
-                    <button type="button" @click.stop="clearDatasetFile" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
-                      <component :is="X" class="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <p v-if="datasetFormErrors.file" class="text-xs text-red-500 mt-1">{{ datasetFormErrors.file }}</p>
-              </div>
-
-              <!-- Column preview for CSV -->
-              <div v-if="datasetPreviewColumns.length > 0">
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Column Preview</label>
-                <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-                  <table class="w-full text-xs">
-                    <thead class="bg-gray-50 dark:bg-neutral-800">
-                      <tr>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Column</th>
-                        <th class="px-3 py-2 text-left font-medium text-gray-600 dark:text-neutral-300">Detected Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="col in datasetPreviewColumns" :key="col.name" class="border-t border-gray-100 dark:border-neutral-700/50">
-                        <td class="px-3 py-1.5 text-gray-700 dark:text-neutral-300 font-mono">{{ col.name }}</td>
-                        <td class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800/50 font-mono">{{ col.type }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Excel notice -->
-              <div v-else-if="datasetFile && datasetFile.name.endsWith('.xlsx')" class="flex items-center gap-2 text-sm text-gray-500 dark:text-neutral-400 bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
-                <Sheet class="h-4 w-4 shrink-0" />
-                Excel file selected — column preview not available. Upload to inspect schema.
-              </div>
-
-              <UiButton type="submit" class="w-full" :loading="uploadingDataset" :disabled="!datasetFile">
-                Upload Dataset
-              </UiButton>
-              <div v-if="uploadingDataset" class="w-full mt-2">
-                <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>{{ datasetUploadProgress >= 100 ? 'Processing file...' : 'Uploading...' }}</span>
-                  <span v-if="datasetUploadProgress < 100">{{ datasetUploadProgress }}%</span>
-                </div>
-                <div class="h-1.5 w-full bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                  <div
-                    v-if="datasetUploadProgress < 100"
-                    class="h-full bg-gray-900 dark:bg-gray-100 rounded-full transition-all duration-200 ease-out"
-                    :style="{ width: `${datasetUploadProgress}%` }"
-                  />
-                  <div
-                    v-else
-                    class="h-full w-full bg-gray-900 dark:bg-gray-100 rounded-full animate-pulse"
-                  />
-                </div>
-              </div>
-            </form>
-          </template>
-
-          <!-- Dataset view (editing existing dataset) -->
-          <template v-else-if="isDatasetConnection && editingConnection">
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Dataset Name</label>
-                <p class="text-sm text-gray-900 dark:text-white mt-0.5">{{ editingConnection.name }}</p>
-              </div>
-              <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Source File</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-200 mt-0.5 font-mono">{{ editingConnection.source_filename }}</p>
-              </div>
-            </div>
-            <div class="border-t border-gray-200 pt-4 mt-6 hidden md:block">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this dataset</p>
-                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
-                </div>
-                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                  <Trash2 class="h-3.5 w-3.5" />
-                  Delete
-                </UiButton>
-              </div>
-            </div>
-          </template>
-
-          <!-- Facebook Ads connection -->
-          <template v-else-if="isFacebookAdsConnection && editingConnection">
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Connection Name</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ editingConnection.name }}</p>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Ad Account ID</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.database }}</p>
-              </div>
-              <div v-if="editingConnection.source_filename">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Connected At</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ formatFbConnectedAt(editingConnection.source_filename) }}</p>
-              </div>
-
-              <div class="border-t border-gray-200 pt-4">
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Sync Settings</label>
-                <UiInput
-                  v-model="fbLookbackDays"
-                  label="Lookback Days"
-                  type="number"
-                  placeholder="7"
-                  class="mt-2"
-                />
-                <p class="text-xs text-gray-400 mt-1">Number of days of historical insights to sync (default: 7)</p>
-              </div>
-            </div>
-
-            <div class="border-t border-gray-200 pt-4 mt-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
-                </div>
-                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                  <Trash2 class="h-3.5 w-3.5" />
-                  Delete
-                </UiButton>
-              </div>
-            </div>
-          </template>
-
-          <!-- BigQuery connection form (creating new bigquery connection) -->
-          <template v-else-if="isBigQueryConnection && !editingConnection">
-            <form @submit.prevent="handleFormSubmit" class="space-y-4">
-              <div>
-                <label class="text-sm font-normal text-gray-900 dark:text-neutral-100 mb-1.5 block">Service Account JSON</label>
-                <div
-                  class="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
-                  @dragover.prevent="bigqueryJsonDragOver = true"
-                  @dragleave.prevent="bigqueryJsonDragOver = false"
-                  @drop.prevent="handleBigQueryJsonDrop"
-                >
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    ref="bigqueryJsonFileInputRef"
-                    @change="handleBigQueryJsonFileChange"
-                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div v-if="!bigqueryJsonFile">
-                    <Database class="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p class="text-sm text-gray-600 dark:text-neutral-400">Drop your service account JSON here</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">or click to browse</p>
-                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">.json — GCP service account key</p>
-                  </div>
-                  <div v-else class="flex items-center gap-3 justify-center">
-                    <Database class="h-5 w-5 text-blue-500 shrink-0" />
-                    <div class="text-left min-w-0">
-                      <p class="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-neutral-400">{{ formatFileSize(bigqueryJsonFile.size) }}</p>
-                    </div>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
-                      <component :is="X" class="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <p v-if="bigqueryFormErrors.json" class="text-xs text-red-500 mt-1">{{ bigqueryFormErrors.json }}</p>
-              </div>
-
-              <!-- Auto-populated info preview -->
-              <div v-if="bigquerySaInfo" class="bg-gray-50 dark:bg-neutral-800 rounded-lg px-3 py-2 space-y-1">
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
-                  Connection name: <span class="font-medium text-gray-700 dark:text-neutral-200">{{ form.name || '—' }}</span>
-                </p>
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
-                  Project: <span class="font-mono text-gray-700 dark:text-neutral-200">{{ bigquerySaInfo.project_id || '—' }}</span>
-                </p>
-              </div>
-
-            </form>
-          </template>
-
-          <!-- BigQuery view (editing existing BigQuery connection) -->
-          <template v-else-if="isBigQueryConnection && editingConnection">
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Service Account</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.username }}</p>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">GCP Project</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5 font-mono">{{ editingConnection.host }}</p>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400 uppercase tracking-wide">Update Service Account JSON (optional)</label>
-                <div
-                  class="relative border-2 border-dashed rounded-lg p-4 text-center transition-colors mt-1.5"
-                  :class="bigqueryJsonDragOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-neutral-600 hover:border-gray-400 dark:hover:border-neutral-500'"
-                  @dragover.prevent="bigqueryJsonDragOver = true"
-                  @dragleave.prevent="bigqueryJsonDragOver = false"
-                  @drop.prevent="handleBigQueryJsonDrop"
-                >
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    ref="bigqueryJsonFileInputRef"
-                    @change="handleBigQueryJsonFileChange"
-                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div v-if="!bigqueryJsonFile">
-                    <p class="text-xs text-gray-500">Drop new .json key to replace credentials</p>
-                  </div>
-                  <div v-else class="flex items-center gap-2 justify-center">
-                    <Database class="h-4 w-4 text-blue-500 shrink-0" />
-                    <p class="text-xs font-medium text-gray-900 dark:text-neutral-100 truncate">{{ bigqueryJsonFile.name }}</p>
-                    <button type="button" @click.stop="clearBigQueryJson" class="ml-auto shrink-0 text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300">
-                      <component :is="X" class="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-400 mt-1">Leave blank to keep existing credentials.</p>
-              </div>
-            </div>
-
-            <div class="border-t border-gray-200 pt-4 mt-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
-                </div>
-                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                  <Trash2 class="h-3.5 w-3.5" />
-                  Delete
-                </UiButton>
-              </div>
-            </div>
-          </template>
-
-          <!-- Notion API key form (creating new connection) -->
-          <template v-else-if="isNotionConnection && !editingConnection">
-            <form @submit.prevent="handleNotionConnect" class="space-y-4">
-              <UiInput
-                v-model="form.name"
-                label="Connection Name"
-                placeholder="My Notion Workspace"
-                required
-                :error="notionFormErrors.name"
-              />
-              <UiInput
-                v-model="notionApiKey"
-                label="Integration Token"
-                type="password"
-                placeholder="secret_..."
-                required
-                :error="notionFormErrors.api_key"
-              />
-              <p class="text-xs text-gray-500">
-                Create an Internal Integration at
-                <span class="font-mono bg-gray-100 px-1 rounded">notion.so/my-integrations</span>
-                and paste the secret token above.
-              </p>
-              <UiButton type="submit" class="w-full" :loading="connectingNotion" :disabled="!notionApiKey.trim()">
-                Connect Notion
-              </UiButton>
-            </form>
-          </template>
-
-          <!-- Notion view (editing existing connection) -->
-          <template v-else-if="isNotionConnection && editingConnection">
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Connection Name</label>
-                <p class="text-sm text-gray-900 dark:text-neutral-100 mt-0.5">{{ editingConnection.name }}</p>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Integration Token</label>
-                <p class="text-sm text-gray-400 mt-0.5 font-mono">secret_••••••••••••</p>
-              </div>
-              <UiButton variant="outline" size="sm" :loading="saving" @click="handleNotionSync">
-                <RefreshCw class="h-3.5 w-3.5" />
-                Sync Now
-              </UiButton>
-            </div>
-            <div class="border-t border-gray-200 dark:border-neutral-700 pt-4 mt-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                  <p class="text-xs text-gray-500">This action cannot be undone.</p>
-                </div>
-                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                  <Trash2 class="h-3.5 w-3.5" />
-                  Delete
-                </UiButton>
               </div>
             </div>
           </template>
@@ -833,8 +524,17 @@
           </template><!-- end v-else standard form -->
         </div>
 
-        <!-- 60% schema panel -->
-        <div class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
+        <!-- 60% right-column panel — renders plugin editPanel when registered, otherwise community default. -->
+        <div v-if="showRightColumn" class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
+          <!-- Plugin-provided edit panel (when registered for this db_type). -->
+          <template v-if="pluginEditPanel && editingConnection">
+            <component
+              :is="pluginEditPanel"
+              :connection="editingConnection"
+              @saved="onPluginFormSaved"
+            />
+          </template>
+          <template v-else>
           <!-- BigQuery permission checker: shown during create (no editingConnection yet) -->
           <template v-if="isBigQueryConnection && !editingConnection">
             <div class="flex items-center gap-2 shrink-0">
@@ -994,223 +694,14 @@
             <!-- Divider between permission check and schema for BigQuery -->
             <div v-if="isBigQueryConnection" class="border-t border-gray-100 shrink-0" />
 
-            <!-- Notion workspace panel (replaces schema tree for Notion connections) -->
-            <template v-if="isNotionConnection && editingConnection">
-              <div class="flex items-center gap-2 shrink-0">
-                <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Notion Workspace</h3>
-                <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full dark:bg-neutral-700 dark:text-neutral-400">
-                  {{ notionMeta.page_count ?? 0 }} pages
-                </span>
-              </div>
-
-              <!-- Workspace name + last sync -->
-              <div class="space-y-1 shrink-0">
-                <p class="text-sm font-medium text-gray-800 dark:text-neutral-100">{{ notionMeta.bot_name || editingConnection.name }}</p>
-                <p v-if="notionMeta.last_sync" class="text-xs text-gray-400">
-                  Last synced {{ new Date(notionMeta.last_sync).toLocaleString() }}
-                </p>
-                <p v-else class="text-xs text-gray-400">Not yet synced — click Sync Now</p>
-              </div>
-
-              <!-- Pages list -->
-              <div class="overflow-y-auto flex-1">
-                <div v-if="notionPagesLoading" class="space-y-2">
-                  <UiSkeleton class="h-5 w-full" />
-                  <UiSkeleton class="h-5 w-5/6" />
-                  <UiSkeleton class="h-5 w-4/6" />
-                </div>
-                <template v-else-if="notionPages.length">
-                  <a
-                    v-for="page in notionPages"
-                    :key="page.id"
-                    :href="page.url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="flex items-center gap-2 py-1.5 px-2 rounded text-sm text-gray-700 hover:bg-gray-50 dark:text-neutral-300 dark:hover:bg-neutral-800 group"
-                  >
-                    <FileText class="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <span class="truncate">{{ page.title }}</span>
-                    <ExternalLink class="h-3 w-3 text-gray-300 group-hover:text-gray-500 ml-auto shrink-0" />
-                  </a>
-                </template>
-                <div v-else class="text-sm text-gray-400 px-2 py-3">
-                  No pages synced yet. Share pages with your integration in Notion, then click Sync Now.
-                </div>
-              </div>
-            </template>
-
-            <!-- GA4 Unnesting Section (BigQuery edit mode only) -->
-            <template v-if="isBigQueryConnection && editingConnection && ga4Enabled">
-              <div class="flex items-center shrink-0">
-                <button
-                  type="button"
-                  @click="ga4Expanded = !ga4Expanded"
-                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
-                >
-                  <component :is="ga4Expanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
-                  GA4 Datasets
-                </button>
-              </div>
-
-              <div v-if="ga4Expanded && ga4Enabled" class="space-y-3 shrink-0">
-                <div v-if="ga4Loading" class="flex items-center gap-2 text-xs text-gray-400">
-                  <Loader2 class="h-3.5 w-3.5 animate-spin shrink-0" />
-                  Detecting GA4 datasets...
-                </div>
-                <div v-else-if="ga4Datasets.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                  <p class="text-xs text-amber-700">No GA4 datasets (analytics_XXXXXXXX) found in this project.</p>
-                </div>
-                <div v-else class="space-y-2">
-                  <div
-                    v-for="ds in ga4Datasets"
-                    :key="ds.analytics_dataset_id"
-                    class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 space-y-2"
-                  >
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="space-y-0.5 min-w-0">
-                        <p class="text-xs font-medium text-gray-800 truncate font-mono">{{ ds.analytics_dataset_id }}</p>
-                        <p class="text-xs text-gray-400 font-mono">→ {{ ds.bingo_dataset_id }}</p>
-                      </div>
-                      <div class="flex items-center gap-2 shrink-0">
-                        <span
-                          v-if="ds.last_run_status"
-                          class="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                          :class="{
-                            'bg-green-100 text-green-700': ds.last_run_status === 'success',
-                            'bg-red-100 text-red-700': ds.last_run_status === 'failed',
-                            'bg-blue-100 text-blue-700': ds.last_run_status === 'running',
-                          }"
-                        >{{ ds.last_run_status }}</span>
-                        <button
-                          type="button"
-                          @click="triggerGa4Run(ds)"
-                          :disabled="ds.triggering"
-                          class="text-xs text-green-600 hover:text-green-800 flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <Loader2 v-if="ds.triggering" class="h-3 w-3 animate-spin" />
-                          <span v-else class="text-xs">▶</span>
-                          Run Now
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="border-t border-gray-100 shrink-0" />
-            </template>
-
-            <!-- Schema panel for all editing connections (BigQuery + others) -->
-            <template v-else>
-            <!-- Header -->
-            <div class="flex items-center gap-2 shrink-0">
-                <h3 class="text-sm font-medium text-gray-900 dark:text-neutral-100">Database Schema</h3>
-                <span v-if="schema" class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full dark:bg-neutral-700 dark:text-neutral-400">
-                  {{ schema.table_names.length }} tables
-                </span>
-              </div>
-
-              <!-- Loading state -->
-              <div v-if="schemaLoading" class="space-y-2 shrink-0">
-                <UiSkeleton class="h-5 w-full" />
-                <UiSkeleton class="h-5 w-5/6" />
-                <UiSkeleton class="h-5 w-4/6" />
-              </div>
-
-              <!-- Error state -->
-              <div v-else-if="schemaError" class="text-sm text-red-500 shrink-0">
-                {{ schemaError }}
-              </div>
-
-              <!-- No schema yet -->
-              <div v-else-if="!schema" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400 shrink-0">
-                <Database class="h-4 w-4" />
-                Click "Refresh Schema" to discover database structure.
-              </div>
-
-              <!-- BigQuery: schema loaded but empty (no tables or missing dataViewer) -->
-              <div v-else-if="isBigQueryConnection && !schema.table_names?.length" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 shrink-0">
-                <p class="text-xs text-amber-700 leading-relaxed">No tables found. Either the project or dataset contains no tables, or the service account is missing <code class="bg-amber-100 px-1 rounded">roles/bigquery.dataViewer</code> which is required to list tables.</p>
-              </div>
-
-              <!-- Schema tree -->
-              <template v-else>
-                <!-- Search -->
-                <div class="relative shrink-0">
-                  <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                  <input
-                    v-model="schemaSearch"
-                    type="text"
-                    placeholder="Filter tables..."
-                    class="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                <!-- Tree -->
-                <div class="overflow-y-auto flex-1 space-y-1">
-                  <div v-for="(schemaData, schemaName) in filteredSchemas" :key="schemaName">
-                    <!-- Schema row -->
-                    <button
-                      @click="toggleSchema(String(schemaName))"
-                      class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-neutral-700"
-                    >
-                      <component :is="expandedSchemas[String(schemaName)] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-400 shrink-0" />
-                      <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400 shrink-0" />
-                      <span class="text-xs font-medium text-gray-700 dark:text-neutral-200 truncate">{{ schemaName }}</span>
-                      <span class="text-xs text-gray-400 dark:text-neutral-500 ml-auto shrink-0">{{ Object.keys(schemaData.tables).length }}</span>
-                    </button>
-
-                    <!-- Tables -->
-                    <div v-if="expandedSchemas[String(schemaName)]" class="ml-4 space-y-0.5">
-                      <div v-for="(tableData, tableName) in schemaData.tables" :key="tableName">
-                        <!-- Table row -->
-                        <button
-                          @click="toggleTable(`${schemaName}.${tableName}`)"
-                          class="flex items-center gap-1.5 w-full text-left py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-neutral-700"
-                        >
-                          <component :is="expandedTables[`${schemaName}.${tableName}`] ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400 dark:text-neutral-400 shrink-0" />
-                          <Table2 class="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                          <span class="text-xs text-gray-700 dark:text-neutral-200 truncate">{{ tableName }}</span>
-                          <span v-if="tableData.row_count != null" class="text-xs text-gray-400 dark:text-neutral-500 ml-auto shrink-0">{{ tableData.row_count.toLocaleString() }}</span>
-                        </button>
-
-                        <!-- Columns -->
-                        <div v-if="expandedTables[`${schemaName}.${tableName}`]" class="ml-6 space-y-0.5">
-                          <div
-                            v-for="col in tableData.columns"
-                            :key="col.name"
-                            class="flex items-center gap-1.5 py-0.5 px-2 text-xs"
-                          >
-                            <Key v-if="col.primary_key" class="h-3 w-3 text-amber-500 shrink-0" />
-                            <span v-else class="h-3 w-3 shrink-0" />
-                            <span class="text-gray-600 dark:text-neutral-300 truncate">{{ col.name }}</span>
-                            <span class="text-gray-600 dark:text-neutral-200 bg-gray-100 dark:bg-neutral-700 px-1 py-0.5 rounded font-mono ml-auto shrink-0 text-xs">{{ col.type }}</span>
-                            <span v-if="col.nullable" class="text-gray-400 dark:text-neutral-500 shrink-0">?</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Relationships -->
-                  <div v-if="schema.relationships.length > 0" class="border-t border-gray-100 pt-3 mt-2">
-                    <h4 class="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Relationships</h4>
-                    <div class="space-y-1">
-                      <div
-                        v-for="rel in schema.relationships"
-                        :key="`${rel.from}-${rel.to}`"
-                        class="flex items-center gap-1.5 text-xs text-gray-500"
-                      >
-                        <Link2 class="h-3 w-3 shrink-0" />
-                        <span class="font-mono truncate">{{ rel.from }}</span>
-                        <span class="shrink-0">→</span>
-                        <span class="font-mono truncate">{{ rel.to }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </template><!-- end schema panel v-else -->
+            <!-- Community default: schema tree. Plugin connectors (notion/bigquery) override via editPanel. -->
+            <ConnectionSchemaTree
+              :schema="schema"
+              :loading="schemaLoading"
+              :error="schemaError"
+            />
           </template><!-- end editing connection block -->
+          </template><!-- end community default right column -->
         </div>
 
         <!-- Mobile-only delete section (appears after schema) -->
@@ -1376,7 +867,8 @@ import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
 
-const api = useApi()
+const api = useApi() as any
+const connectorForms = useConnectorForms()
 
 // Icon registry — keyed by connector id
 const connectorIcons: Record<string, string> = {
@@ -1455,10 +947,6 @@ const ga4Datasets = ref<GA4DatasetConfig[]>([])
 // Profiling state
 const reprofilingId = ref<number | null>(null)
 const profilingPollers = ref<Record<number, ReturnType<typeof setInterval>>>({})
-
-const schemaSearch = ref('')
-const expandedSchemas = ref<Record<string, boolean>>({})
-const expandedTables = ref<Record<string, boolean>>({})
 
 // Dataset upload state
 const datasetFile = ref<File | null>(null)
@@ -1692,6 +1180,79 @@ const isFileUploadConnection = computed(() => {
   return isDatasetConnection.value || isSqliteConnection.value
 })
 
+// Plugin-provided create/edit components for the current db_type.
+const pluginCreateForm = computed(() => {
+  const dbType = form.value.db_type
+  if (!dbType) return null
+  return connectorForms.get(dbType)?.createForm ?? null
+})
+
+const pluginEditForm = computed(() => {
+  const dbType = editingConnection.value?.db_type
+  if (!dbType) return null
+  return connectorForms.get(dbType)?.editForm ?? null
+})
+
+const pluginEditPanel = computed(() => {
+  const dbType = editingConnection.value?.db_type
+  if (!dbType) return null
+  return connectorForms.get(dbType)?.editPanel ?? null
+})
+
+async function onPluginFormSaved() {
+  await fetchConnections()
+}
+
+function onPluginDelete(conn: DatabaseConnection) {
+  openDeleteDialog(conn)
+}
+
+const hasPluginForm = computed(() =>
+  (!!pluginCreateForm.value && !editingConnection.value) || !!pluginEditForm.value,
+)
+
+// Right column shows when:
+//   - editing a connection: always (plugin editPanel if registered, else community schema tree), OR
+//   - creating: only when community owns the left-column form (no plugin createForm).
+const showRightColumn = computed(() => {
+  if (editingConnection.value) return true
+  return !hasPluginForm.value
+})
+
+// Capability lookups for edit-mode header buttons. Default behavior preserved:
+// built-in types (postgres/mysql/sqlite) show both Refresh + Reprofile; file
+// uploads show neither; plugin types show only what their registration declares.
+const editingCaps = computed(() => {
+  const dbType = editingConnection.value?.db_type
+  if (!dbType) return undefined
+  return connectorForms.get(dbType)?.capabilities
+})
+
+const showRefresh = computed(() => {
+  if (!editingConnection.value) return false
+  const cap = editingCaps.value?.refresh
+  if (cap) return cap.enabled
+  // built-in default: everything except file uploads
+  return !isFileUploadConnection.value
+})
+
+const refreshLabel = computed(() => editingCaps.value?.refresh?.label ?? 'Refresh Schema')
+
+const showReprofile = computed(() => {
+  if (!editingConnection.value) return false
+  const cap = editingCaps.value?.reprofile
+  if (cap) return cap.enabled
+  // built-in default: everything except file uploads
+  return !isFileUploadConnection.value
+})
+
+const showTest = computed(() => {
+  if (!editingConnection.value) return false
+  const cap = editingCaps.value?.test
+  if (cap) return cap.enabled
+  return !isFileUploadConnection.value
+})
+
 function formatFbConnectedAt(sourceFilename: string): string {
   try {
     const data = JSON.parse(sourceFilename)
@@ -1704,25 +1265,6 @@ function formatFbConnectedAt(sourceFilename: string): string {
 // Computed
 const typePickerTitle = computed(() => {
   return 'Choose a Database'
-})
-
-const filteredSchemas = computed(() => {
-  if (!schema.value) return {}
-  const search = schemaSearch.value.toLowerCase()
-  if (!search) return schema.value.schemas
-  const result: Record<string, any> = {}
-  for (const [schemaName, schemaData] of Object.entries(schema.value.schemas)) {
-    const filteredTables: Record<string, any> = {}
-    for (const [tableName, tableData] of Object.entries(schemaData.tables)) {
-      if (tableName.toLowerCase().includes(search)) {
-        filteredTables[tableName] = tableData
-      }
-    }
-    if (Object.keys(filteredTables).length > 0) {
-      result[schemaName] = { ...schemaData, tables: filteredTables }
-    }
-  }
-  return result
 })
 
 // Fetch data on mount
@@ -1764,12 +1306,6 @@ async function fetchSchema(connectionId: number) {
     schemaLoading.value = true
     schemaError.value = null
     schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
-    if (schema.value) {
-      const schemaNames = Object.keys(schema.value.schemas)
-      if (schemaNames.length === 1) {
-        expandedSchemas.value[schemaNames[0]] = true
-      }
-    }
   } catch (err: any) {
     if (err?.status === 404 || err?.statusCode === 404) {
       if (editingConnection.value?.id === connectionId) {
@@ -1777,12 +1313,6 @@ async function fetchSchema(connectionId: number) {
         try {
           await api.connections.refreshSchema(String(connectionId))
           schema.value = await api.connections.getSchema(String(connectionId)) as DatabaseSchema
-          if (schema.value) {
-            const schemaNames = Object.keys(schema.value.schemas)
-            if (schemaNames.length === 1) {
-              expandedSchemas.value[schemaNames[0]] = true
-            }
-          }
         } catch (refreshErr: any) {
           schemaError.value = refreshErr?.data?.detail || refreshErr?.message || 'Failed to load schema'
         }
@@ -1883,14 +1413,6 @@ async function handleReprofile(connection: DatabaseConnection) {
   } finally {
     reprofilingId.value = null
   }
-}
-
-function toggleSchema(name: string) {
-  expandedSchemas.value[name] = !expandedSchemas.value[name]
-}
-
-function toggleTable(key: string) {
-  expandedTables.value[key] = !expandedTables.value[key]
 }
 
 function handleTypePickerClose(value: boolean) {
@@ -2121,9 +1643,6 @@ function openEditDialog(connection: DatabaseConnection) {
   // Reset schema state
   schema.value = null
   schemaError.value = null
-  schemaSearch.value = ''
-  expandedSchemas.value = {}
-  expandedTables.value = {}
   notionPages.value = []
   // Reset BigQuery state
   bigqueryJsonFile.value = null
@@ -2359,10 +1878,7 @@ async function refreshSchema(connection: DatabaseConnection) {
       }, 4000)
     } else {
       toast.success('Schema refreshed successfully')
-      // Refetch schema to update tree panel
       if (editingConnection.value?.id === connection.id) {
-        expandedSchemas.value = {}
-        expandedTables.value = {}
         await fetchSchema(connection.id)
       }
     }

@@ -101,7 +101,21 @@ export default defineNuxtConfig({
 
   vite: {
     optimizeDeps: {
-      include: ['sql.js'],
+      include: [
+        'sql.js',
+        'sql-formatter',
+        'gridstack',
+        'lucide-vue-next',
+        'date-fns',
+        'markdown-it',
+        'markdown-it-mark',
+        'shiki',
+        'clsx',
+        'tailwind-merge',
+        '@headlessui/vue',
+        'chart.js',
+        'chartjs-plugin-datalabels',
+      ],
       exclude: [],
     },
   },

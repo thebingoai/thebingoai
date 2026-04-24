@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 _loaded_plugins: dict[str, BingoPlugin] = {}
 _connector_to_plugin: dict[str, str] = {}  # type_id -> plugin name
+_is_discovering = False
 
 
 def _topo_sort(plugins: list[BingoPlugin]) -> list[BingoPlugin]:
@@ -36,47 +37,57 @@ def _topo_sort(plugins: list[BingoPlugin]) -> list[BingoPlugin]:
 
 def discover_and_load_plugins() -> None:
     """Discover plugins via entry_points(group='bingo.plugins'), topo-sort by deps, register."""
-    from backend.connectors.factory import register_connector
+    # Re-entrance guard: a plugin's on_startup may transitively import modules
+    # (e.g. backend.tasks.upload_tasks) that themselves call this function.
+    # Without this flag the wrapper/tool registries get populated twice.
+    global _is_discovering
+    if _is_discovering or _loaded_plugins:
+        return
+    _is_discovering = True
+    try:
+        from backend.connectors.factory import register_connector
 
-    eps = entry_points(group="bingo.plugins")
-    candidates: list[BingoPlugin] = []
+        eps = entry_points(group="bingo.plugins")
+        candidates: list[BingoPlugin] = []
 
-    for ep in eps:
-        try:
-            plugin_cls = ep.load()
-            plugin = plugin_cls()
-            if not isinstance(plugin, BingoPlugin):
-                logger.warning("Plugin '%s' does not extend BingoPlugin, skipping", ep.name)
-                continue
-            candidates.append(plugin)
-            logger.info("Discovered plugin: %s v%s", plugin.name, plugin.version)
-        except Exception:
-            logger.exception("Failed to load plugin entry point '%s', skipping", ep.name)
-
-    sorted_plugins = _topo_sort(candidates)
-
-    for plugin in sorted_plugins:
-        try:
-            for reg in plugin.connectors():
-                if reg.version is None:
-                    reg.version = plugin.version
-                register_connector(reg)
-                _connector_to_plugin[reg.type_id] = plugin.name
-                logger.info("Registered connector type '%s' from plugin '%s'", reg.type_id, plugin.name)
-
+        for ep in eps:
             try:
-                from backend.agents.tool_registry import register_plugin_tool_builder
-                for tool_name, builder in plugin.tool_builders().items():
-                    register_plugin_tool_builder(tool_name, builder)
-                    logger.info("Registered tool builder '%s' from plugin '%s'", tool_name, plugin.name)
+                plugin_cls = ep.load()
+                plugin = plugin_cls()
+                if not isinstance(plugin, BingoPlugin):
+                    logger.warning("Plugin '%s' does not extend BingoPlugin, skipping", ep.name)
+                    continue
+                candidates.append(plugin)
+                logger.info("Discovered plugin: %s v%s", plugin.name, plugin.version)
             except Exception:
-                logger.exception("Failed to register tool builders from plugin '%s'", plugin.name)
+                logger.exception("Failed to load plugin entry point '%s', skipping", ep.name)
 
-            plugin.on_startup()
-            _loaded_plugins[plugin.name] = plugin
-            logger.info("Loaded plugin: %s v%s", plugin.name, plugin.version)
-        except Exception:
-            logger.exception("Failed to initialize plugin '%s', skipping", plugin.name)
+        sorted_plugins = _topo_sort(candidates)
+
+        for plugin in sorted_plugins:
+            try:
+                for reg in plugin.connectors():
+                    if reg.version is None:
+                        reg.version = plugin.version
+                    register_connector(reg)
+                    _connector_to_plugin[reg.type_id] = plugin.name
+                    logger.info("Registered connector type '%s' from plugin '%s'", reg.type_id, plugin.name)
+
+                try:
+                    from backend.agents.tool_registry import register_plugin_tool_builder
+                    for tool_name, builder in plugin.tool_builders().items():
+                        register_plugin_tool_builder(tool_name, builder)
+                        logger.info("Registered tool builder '%s' from plugin '%s'", tool_name, plugin.name)
+                except Exception:
+                    logger.exception("Failed to register tool builders from plugin '%s'", plugin.name)
+
+                plugin.on_startup()
+                _loaded_plugins[plugin.name] = plugin
+                logger.info("Loaded plugin: %s v%s", plugin.name, plugin.version)
+            except Exception:
+                logger.exception("Failed to initialize plugin '%s', skipping", plugin.name)
+    finally:
+        _is_discovering = False
 
 
 def import_plugin_celery_tasks() -> list[str]:
