@@ -239,9 +239,9 @@
             </UiButton>
             <!-- Plugin-provided forms own their action buttons inside the form body. -->
             <template v-if="!hasPluginForm">
-              <!-- Refresh Schema / Sync Now (editing only) -->
+              <!-- Refresh (label via capabilities — e.g. Notion "Sync Now"). Hidden when editor disables it. -->
               <UiButton
-                v-if="editingConnection"
+                v-if="editingConnection && showRefresh"
                 variant="outline"
                 size="sm"
                 class="whitespace-nowrap"
@@ -249,12 +249,12 @@
                 @click.stop="refreshSchema(editingConnection)"
               >
                 <RefreshCw class="h-3.5 w-3.5" />
-                {{ isNotionConnection ? 'Sync Now' : 'Refresh Schema' }}
+                {{ refreshLabel }}
               </UiButton>
 
-              <!-- Reprofile: not useful for Notion, BigQuery, or file-upload -->
+              <!-- Reprofile — shown for connectors whose capabilities opt in. -->
               <UiButton
-                v-if="editingConnection && !isBigQueryConnection && !isNotionConnection && !isFileUploadConnection"
+                v-if="editingConnection && showReprofile"
                 variant="outline"
                 size="sm"
                 class="whitespace-nowrap"
@@ -1541,6 +1541,33 @@ async function onPluginFormSaved() {
 }
 
 const hasPluginForm = computed(() => !!pluginCreateForm.value && !editingConnection.value)
+
+// Capability lookups for edit-mode header buttons. Default behavior preserved:
+// built-in types (postgres/mysql/sqlite) show both Refresh + Reprofile; file
+// uploads show neither; plugin types show only what their registration declares.
+const editingCaps = computed(() => {
+  const dbType = editingConnection.value?.db_type
+  if (!dbType) return undefined
+  return connectorForms.get(dbType)?.capabilities
+})
+
+const showRefresh = computed(() => {
+  if (!editingConnection.value) return false
+  const cap = editingCaps.value?.refresh
+  if (cap) return cap.enabled
+  // built-in default: everything except file uploads
+  return !isFileUploadConnection.value
+})
+
+const refreshLabel = computed(() => editingCaps.value?.refresh?.label ?? 'Refresh Schema')
+
+const showReprofile = computed(() => {
+  if (!editingConnection.value) return false
+  const cap = editingCaps.value?.reprofile
+  if (cap) return cap.enabled
+  // built-in default: everything except file uploads
+  return !isFileUploadConnection.value
+})
 
 function formatFbConnectedAt(sourceFilename: string): string {
   try {
