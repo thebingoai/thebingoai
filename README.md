@@ -179,6 +179,11 @@ Copy `.env.example` to `.env` and configure:
 | `OLLAMA_BASE_URL` | Ollama endpoint (default: `http://localhost:11434`) |
 | `DEFAULT_LLM_PROVIDER` | `openai` / `anthropic` / `ollama` (default: `openai`) |
 
+### Optional — Orchestrator
+| Variable | Description |
+|----------|-------------|
+| `ORCHESTRATOR_LEAN_TOOLS` | When `true`, binds ≤10 primary tools to the orchestrator LLM and routes admin operations (skills, profile, soul, list-dashboards, list-connections) through a single `manage` meta-tool. Also enables a structured `@`-mention scope channel: resolved dashboards / connections / Notion pages from the chat input arrive as a per-turn prompt block + typed sub-agent kwargs. Default: `false` (current behavior — ~20–30 tools bound directly). |
+
 ### Optional — Bingo SSO
 | Variable | Description |
 |----------|-------------|
