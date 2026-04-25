@@ -535,69 +535,6 @@
             />
           </template>
           <template v-else>
-          <!-- BigQuery permission checker: shown during create (no editingConnection yet) -->
-          <template v-if="isBigQueryConnection && !editingConnection">
-            <div class="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                @click="permissionCheckExpanded = !permissionCheckExpanded"
-                class="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:text-gray-700 dark:hover:text-neutral-300"
-              >
-                <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
-                Permission Check
-              </button>
-            </div>
-
-            <!-- Permission Status (collapsible) -->
-            <div v-if="permissionCheckExpanded" class="space-y-3 shrink-0">
-              <div class="space-y-1">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm text-gray-700 dark:text-neutral-200">Read Access</span>
-                  <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
-                  <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
-                  <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                </div>
-                <div class="flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery User</code> <span class="text-gray-400">(for querying)</span></span>
-                  <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery Data Viewer</code> <span class="text-gray-400">(for viewing datasets)</span></span>
-                </div>
-                <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                  <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
-                </div>
-              </div>
-              <div class="space-y-1">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm text-gray-700 dark:text-neutral-200">Write Access</span>
-                  <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
-                  <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
-                  <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                  <span v-else class="h-4 w-4 shrink-0" />
-                  <button
-                    type="button"
-                    @click="toggleWriteAccess"
-                    class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-auto"
-                    :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-neutral-600'"
-                  >
-                    <span
-                      class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                      :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
-                    />
-                  </button>
-                </div>
-                <div class="flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span class="text-xs text-gray-500"><code class="bg-gray-100 dark:bg-neutral-700 px-1 rounded text-gray-600 dark:text-neutral-300">BigQuery Data Editor</code> <span class="text-gray-400">(for writing data)</span></span>
-                </div>
-                <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                  <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="!bigqueryJsonFile" class="text-center py-4 text-xs text-gray-400 shrink-0">
-              Upload a service account JSON to check permissions
-            </div>
-          </template>
-
           <!-- Non-BigQuery: no editingConnection yet -->
           <div v-else-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400">
             <Database class="h-4 w-4" />
@@ -607,93 +544,6 @@
 
           <!-- editing connection: schema panel for all non-BigQuery, or BigQuery with file drop -->
           <template v-else>
-            <!-- BigQuery with editing connection: permission checker -->
-            <template v-if="isBigQueryConnection">
-              <div class="flex items-center justify-between gap-2 shrink-0">
-                <button
-                  type="button"
-                  @click="permissionCheckExpanded = !permissionCheckExpanded"
-                  class="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-neutral-100 hover:text-gray-700 dark:hover:text-neutral-300"
-                >
-                  <component :is="permissionCheckExpanded ? ChevronDown : ChevronRight" class="h-3.5 w-3.5 text-gray-400" />
-                  Permission Check
-                </button>
-                <button
-                  type="button"
-                  @click="checkBigQueryPermissionsFromSaved(editingConnection!.id)"
-                  class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                >
-                  <RefreshCw class="h-3 w-3" />
-                  Re-check
-                </button>
-              </div>
-
-              <!-- Permission Status (collapsible) -->
-              <div v-if="permissionCheckExpanded" class="shrink-0">
-                <div class="grid grid-cols-2 gap-x-4">
-                  <!-- Left: Read Access + Write Access stacked -->
-                  <div class="space-y-3">
-                    <!-- Read Access -->
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm text-gray-700">Read Access</span>
-                        <CheckCircle2 v-if="bigqueryPermissionCheck.read === true" class="h-4 w-4 text-green-500 shrink-0" />
-                        <XCircle v-else-if="bigqueryPermissionCheck.read === false" class="h-4 w-4 text-red-500 shrink-0" />
-                        <Loader2 v-else class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                      </div>
-                      <div v-if="bigqueryPermissionError.read" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                        <p class="text-xs text-red-600 leading-relaxed">Grant <code class="bg-red-100 px-1 rounded">roles/bigquery.user</code> (for querying) and <code class="bg-red-100 px-1 rounded">roles/bigquery.dataViewer</code> (for viewing datasets) to the service account on this project.</p>
-                      </div>
-                    </div>
-                    <!-- Write Access -->
-                    <div class="space-y-1">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm text-gray-700">Write Access</span>
-                        <CheckCircle2 v-if="form.ssl_enabled && bigqueryPermissionCheck.write === true" class="h-4 w-4 text-green-500 shrink-0" />
-                        <XCircle v-else-if="form.ssl_enabled && bigqueryPermissionCheck.write === false" class="h-4 w-4 text-red-500 shrink-0" />
-                        <Loader2 v-else-if="form.ssl_enabled" class="h-4 w-4 text-gray-400 shrink-0 animate-spin" />
-                        <span v-else class="h-4 w-4 shrink-0" />
-                        <button
-                          type="button"
-                          @click="toggleWriteAccess"
-                          class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-                          :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200'"
-                        >
-                          <span
-                            class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                            :class="form.ssl_enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
-                          />
-                        </button>
-                      </div>
-                      <div v-if="bigqueryPermissionError.write" class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                        <p class="text-xs text-red-600 leading-relaxed">{{ bigqueryPermissionError.write }}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <!-- Right: GA4 Unnesting aligned to bottom -->
-                  <div class="flex flex-col justify-end">
-                    <div class="flex items-center gap-2">
-                      <span class="text-sm text-gray-700">GA4 Unnesting</span>
-                      <button
-                        type="button"
-                        @click="toggleGa4Unnesting"
-                        class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-                        :class="ga4Enabled ? 'bg-blue-600' : 'bg-gray-200'"
-                      >
-                        <span
-                          class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                          :class="ga4Enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'"
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <!-- Divider between permission check and schema for BigQuery -->
-            <div v-if="isBigQueryConnection" class="border-t border-gray-100 shrink-0" />
-
             <!-- Community default: schema tree. Plugin connectors (notion/bigquery) override via editPanel. -->
             <ConnectionSchemaTree
               :schema="schema"
@@ -1201,6 +1051,10 @@ const pluginEditPanel = computed(() => {
 
 async function onPluginFormSaved() {
   await fetchConnections()
+  if (editingConnection.value) {
+    const updated = connections.value.find(c => c.id === editingConnection.value!.id)
+    if (updated) editingConnection.value = updated
+  }
 }
 
 function onPluginDelete(conn: DatabaseConnection) {
