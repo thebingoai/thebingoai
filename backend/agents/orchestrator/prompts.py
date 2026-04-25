@@ -3,6 +3,126 @@ from typing import List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.models.custom_agent import CustomAgent
     from backend.models.user_skill import UserSkill
+    from backend.schemas.chat import ResolvedMention
+
+
+# ---------------------------------------------------------------------------
+# Lean-mode (orchestrator_lean_tools=True) prompt building blocks
+# ---------------------------------------------------------------------------
+
+_LEAN_CHASSIS = """You are a helpful, direct assistant. Be concise. Skip filler.
+
+You can query databases, build dashboards, search documents, recall past
+context, and manage your own skills/profile/soul/connections through a single
+admin tool. Use tools to act; ask for clarification when intent is unclear.
+"""
+
+_LEAN_ROUTING_RULE = """## Routing rule
+- Data / SQL / analysis              → data_agent
+- Create a new dashboard             → create_dashboard
+- Edit an existing dashboard         → update_dashboard (call manage(domain="dashboard", action="list") first if you need the dashboard_id)
+- Read a dashboard / its widgets     → read_dashboard
+- Insights or summary of a dashboard → analyze_dashboard
+- Notion page content                → read_notion_pages (plugin, when present); else rag_agent
+- Other knowledge / uploaded docs    → rag_agent
+- Save user-stated facts             → save_memory
+- Recall prior facts                 → recall_memory
+- Skills / profile / soul / list dashboards / list connections → manage
+                                       (single meta-tool — see its description
+                                        for valid (domain, action) pairs)
+- Unsure what the user wants         → ask_user_question
+
+Do NOT use `manage` for data queries, dashboard verbs, knowledge, or memory —
+those have dedicated tools above.
+"""
+
+_LEAN_MENTION_FEWSHOT = """## How to use resolved @-mentions
+When the user @-mentions an entity, the resolved metadata appears below in a
+"Resolved @-mentions" block. Pass the ids as explicit arguments. Example:
+
+  user:     "summarize @q4-revenue"
+  resolved: dashboard #42 "Q4 Revenue"
+  → call analyze_dashboard(dashboard_id=42, focus="summary")
+
+Apply the same pattern for:
+- @connection  → data_agent(question=..., connection_ids=[...])
+- @notion_page → read_notion_pages(connection_id=..., title_filter=...)
+                 if available, otherwise rag_agent(..., page_ids=[...])
+"""
+
+
+def render_mentions_block(mentions: "Optional[List[ResolvedMention]]") -> str:
+    """Render resolved @-mentions as a prompt block.
+
+    Returns "" when there are no mentions, so empty-mention turns pay zero
+    prompt cost. Called per turn (mentions change every turn) so this lives
+    outside any cached profile render.
+    """
+    if not mentions:
+        return ""
+    lines = ["## Resolved @-mentions for this turn"]
+    for m in mentions:
+        if m.type == "dashboard":
+            lines.append(f'- dashboard #{m.id} — "{m.display_name}"')
+        elif m.type == "connection":
+            db = f" ({m.db_type})" if m.db_type else ""
+            lines.append(f'- connection #{m.id} — "{m.display_name}"{db}')
+        elif m.type == "notion_page":
+            lines.append(
+                f'- notion_page page_id={m.page_id!r} '
+                f'(connection #{m.connection_id}) — "{m.display_name}"'
+            )
+    lines += [
+        "",
+        "## Routing bias",
+        "- @dashboard mentioned   → use the dashboard verb that matches user intent",
+        "                            (read_dashboard / update_dashboard / analyze_dashboard),",
+        "                            passing `dashboard_id`.",
+        "- @connection mentioned  → call `data_agent`, pass `connection_ids`.",
+        "- @notion_page mentioned → prefer `read_notion_pages(connection_id=…)`",
+        "                            (or `rag_agent` with `page_ids` if the plugin is unavailable).",
+        "Mentions never go through `manage`.",
+    ]
+    return "\n".join(lines)
+
+
+def build_lean_orchestrator_prompt(
+    soul_prompt: str = "",
+    user_memories_context: str = "",
+    available_connections: Optional[List[int]] = None,
+    connection_metadata: Optional[list] = None,
+    mentions: "Optional[List[ResolvedMention]]" = None,
+) -> str:
+    """Build a lean orchestrator prompt for orchestrator_lean_tools=True.
+
+    Drops the inline custom-agent / skill listings and the long tool-usage
+    guide. The bound tools (≤10) carry their own descriptions and the routing
+    rule above tells the model how to pick among them.
+    """
+    base = _LEAN_CHASSIS + "\n" + _LEAN_ROUTING_RULE + "\n" + _LEAN_MENTION_FEWSHOT
+
+    if soul_prompt:
+        base += f"\n## Your Personality & Approach\n{soul_prompt}\n"
+
+    if user_memories_context:
+        base += f"\n## User Preferences & Instructions\n{user_memories_context}\n"
+
+    if available_connections:
+        if connection_metadata:
+            lines = [
+                f'- ID {c.id}: "{c.name}" ({c.db_type}, database: {c.database})'
+                for c in connection_metadata
+            ]
+            connections_str = "\n".join(lines)
+        else:
+            connections_str = ", ".join(str(c) for c in available_connections)
+        base += f"\n## Available Database Connections\n{connections_str}\n"
+
+    mentions_block = render_mentions_block(mentions)
+    if mentions_block:
+        base += "\n" + mentions_block + "\n"
+
+    return base
 
 _ORCHESTRATOR_CHASSIS = """You are a helpful, direct assistant.
 

@@ -1,11 +1,29 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
+
+
+class ResolvedMention(BaseModel):
+    """An @-mention resolved client-side before the chat request is submitted.
+
+    The frontend's mention picker resolves @-tokens to one of the supported
+    entity types and sends structured metadata so the orchestrator can use it
+    as scope (pin a dashboard, scope a query to one connection) instead of
+    guessing what `@some-name` referred to from the raw text.
+    """
+    type: Literal["dashboard", "connection", "notion_page"]
+    id: int                                    # dashboard.id | connection.id | parent connection.id
+    name: str                                  # slug used in the @token (matches text)
+    display_name: str                          # original label
+    db_type: Optional[str] = None              # connections only
+    page_id: Optional[str] = None              # notion_page only — Notion page UUID
+    connection_id: Optional[int] = None        # notion_page only — parent connection.id
 
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=50_000)
     connection_ids: List[int] = Field(default_factory=list)  # Connections available to orchestrator
+    mentions: List[ResolvedMention] = Field(default_factory=list)  # @-mentions resolved by frontend
     thread_id: Optional[str] = None  # For continuing conversations
 
 

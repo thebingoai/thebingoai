@@ -343,6 +343,7 @@ async def _handle_chat_send(
     message: str,
     connection_ids: list,
     file_ids: list = None,
+    mentions: list = None,
 ) -> None:
     """
     Handle a chat.send message over WebSocket.
@@ -459,6 +460,7 @@ async def _handle_chat_send(
             file_contents=file_contents or None,
             profile=ctx.profile,
             llm_provider=user_provider,
+            mentions=mentions or None,
         ):
             # Map SSE event type → WS event type
             event_type = event.get("type", "")
@@ -597,6 +599,7 @@ async def websocket_endpoint(ws: WebSocket):
                 message = data.get("message", "").strip()
                 connection_ids = data.get("connection_ids", [])
                 file_ids = data.get("file_ids", [])
+                mentions = data.get("mentions", [])
 
                 if not message:
                     await ws.send_text(json.dumps({
@@ -611,6 +614,7 @@ async def websocket_endpoint(ws: WebSocket):
                 asyncio.create_task(_handle_chat_send(
                     ws, user, request_id, thread_id, message, connection_ids,
                     file_ids=file_ids,
+                    mentions=mentions,
                 ))
 
             elif msg_type == "conversation.switch":

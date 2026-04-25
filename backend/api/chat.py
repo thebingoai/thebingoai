@@ -142,6 +142,7 @@ async def chat(
         soul_prompt=ctx.soul_prompt,
         profile=ctx.profile,
         llm_provider=user_provider,
+        mentions=request.mentions or None,
     )
 
     # Save assistant message
@@ -298,7 +299,7 @@ async def chat_stream(
             collected_steps = []
             collected_retry_succeeded = None
             collected_judge_metadata = None
-            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt, profile=ctx.profile, llm_provider=user_provider):
+            async for event in stream_orchestrator(request.message, ctx.agent_context, history=history, custom_agents=ctx.custom_agents or None, db_session_factory=SessionLocal, memory_context=ctx.memory_context, user_skills=ctx.user_skills or None, user_memories_context=ctx.user_memories_context, skill_suggestions=ctx.skill_suggestions or None, soul_prompt=ctx.soul_prompt, profile=ctx.profile, llm_provider=user_provider, mentions=request.mentions or None):
                 # Capture steps + Layer-4 metadata from done event BEFORE forwarding
                 if event.get("type") == "done":
                     if "steps" in event:

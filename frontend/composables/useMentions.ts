@@ -263,6 +263,38 @@ export const useMentions = () => {
     return ids
   }
 
+  // Resolved @-mentions in the message, in order, with the structured payload
+  // expected by ChatRequest.mentions on the backend.
+  const extractMentions = (text: string): Array<{
+    type: 'dashboard' | 'connection' | 'notion_page'
+    id: number
+    name: string
+    display_name: string
+    db_type?: string
+    page_id?: string
+    connection_id?: number
+  }> => {
+    const out: Array<any> = []
+    const seen = new Set<string>()
+    for (const m of text.matchAll(/@([\w.-]+)/g)) {
+      const slug = m[1]
+      if (seen.has(slug)) continue
+      const item = state.resolvedMentions.value.get(slug)
+      if (!item) continue
+      seen.add(slug)
+      out.push({
+        type: item.type,
+        id: item.id,
+        name: item.name,
+        display_name: item.displayName,
+        db_type: item.dbType,
+        page_id: item.pageId,
+        connection_id: item.connectionId,
+      })
+    }
+    return out
+  }
+
   const clearResolvedMentions = () => {
     state.resolvedMentions.value = new Map()
   }
@@ -283,6 +315,7 @@ export const useMentions = () => {
     goBackToRoot,
     recordMention,
     extractMentionConnectionIds,
+    extractMentions,
     clearResolvedMentions,
   }
 }

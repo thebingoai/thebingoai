@@ -134,6 +134,7 @@ class Settings(BaseSettings):
     # Feature flags
     enable_governance: bool = False
     agent_mesh_enabled: bool = False
+    orchestrator_lean_tools: bool = False  # ≤10 primary tools + manage meta-tool + @-mention scope
 
     # Agent mesh settings (Redis DB 4)
     agent_mesh_redis_url: str = "redis://localhost:6379/4"

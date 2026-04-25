@@ -1,12 +1,13 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
-from backend.agents.orchestrator.prompts import build_orchestrator_prompt
+from backend.agents.orchestrator.prompts import build_orchestrator_prompt, build_lean_orchestrator_prompt
 from backend.agents.orchestrator.skill_tools import build_skill_tools
 from backend.agents.orchestrator.soul_tools import build_soul_tools
 from backend.agents.orchestrator.profile_tools import build_profile_tools
 from backend.agents.orchestrator.orchestrator_dashboard_tools import build_dashboard_tools
 from backend.agents.orchestrator.memory_tools import build_memory_tools
+from backend.agents.orchestrator.manage_tool import build_manage_tool
 from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.orchestrator.pre_steps import run_pre_steps, PreStepContext
 from backend.agents.orchestrator.response_judge import judge_response, JudgeVerdict
@@ -205,8 +206,22 @@ async def _render_orchestrator_prompt(
     soul_prompt: str,
     db_session_factory: Optional[Callable],
     log_prefix: str,
+    mentions: Optional[list] = None,
 ) -> str:
-    """Render profile-driven prompt (with pre-steps) or legacy fallback."""
+    """Render profile-driven prompt (with pre-steps) or legacy fallback.
+
+    When `settings.orchestrator_lean_tools` is True, return the lean prompt
+    that pairs with the ≤10 primary tool surface and includes a per-turn
+    @-mention block.
+    """
+    if settings.orchestrator_lean_tools:
+        return build_lean_orchestrator_prompt(
+            soul_prompt=soul_prompt,
+            user_memories_context=user_memories_context,
+            available_connections=context.available_connections,
+            connection_metadata=context.connection_metadata,
+            mentions=mentions,
+        )
     if profile:
         pre_ctx = PreStepContext(
             user_id=context.user_id,
@@ -473,11 +488,133 @@ def build_orchestrator_tools(
 
         return json.dumps({"questions": parsed})
 
+    if settings.orchestrator_lean_tools:
+        return _build_lean_tools(
+            context=context,
+            db_session_factory=db_session_factory,
+            custom_agents=custom_agents,
+            ask_user_question_tool=ask_user_question,
+            dashboard_tools=dashboard_tools,
+            memory_tools=memory_tools,
+            llm_provider=llm_provider,
+        )
+
     shared_tools = skill_tools + profile_tools_list + dashboard_tools + memory_tools + [ask_user_question]
 
     if custom_agents:
         return _build_dynamic_tools(context, custom_agents, db_session_factory, llm_provider=llm_provider) + shared_tools
     return _build_legacy_tools(context, db_session_factory) + shared_tools
+
+
+# Names that custom agents must not shadow when bound as top-level tools.
+_LEAN_CORE_TOOL_NAMES = frozenset({
+    "ask_user_question", "data_agent", "rag_agent", "recall_memory",
+    "save_memory", "create_dashboard", "update_dashboard", "read_dashboard",
+    "analyze_dashboard", "manage",
+})
+
+# Maximum number of custom_agents bound as top-level tools in lean mode.
+_LEAN_MAX_CUSTOM_AGENTS = 3
+
+
+def _wrap_subagent_tools_with_scope(base_tools: list) -> list:
+    """Wrap data_agent / rag_agent so the orchestrator can pin scope ids from
+    resolved @-mentions without touching the sub-agent internals.
+
+    The wrappers accept optional kwargs (`connection_ids`, `page_ids`) and
+    prepend a one-line scope hint to the natural-language question before
+    dispatching to the underlying tool. recall_memory is passed through
+    unchanged.
+    """
+    base_by_name = {t.name: t for t in base_tools}
+    wrapped: list = []
+
+    data_base = base_by_name.get("data_agent")
+    if data_base is not None:
+        @tool("data_agent", description=data_base.description)
+        async def data_agent_scoped(question: str, connection_ids: Optional[List[int]] = None) -> str:
+            scoped_q = question
+            if connection_ids:
+                scoped_q = (
+                    f"[Scope: restrict to connection_ids={connection_ids}]\n{question}"
+                )
+            return await data_base.ainvoke({"question": scoped_q})
+        wrapped.append(data_agent_scoped)
+
+    rag_base = base_by_name.get("rag_agent")
+    if rag_base is not None:
+        @tool("rag_agent", description=rag_base.description)
+        async def rag_agent_scoped(
+            question: str,
+            namespace: str = "default",
+            page_ids: Optional[List[str]] = None,
+        ) -> str:
+            scoped_q = question
+            if page_ids:
+                scoped_q = f"[Scope: restrict to notion page_ids={page_ids}]\n{question}"
+            return await rag_base.ainvoke({"question": scoped_q, "namespace": namespace})
+        wrapped.append(rag_agent_scoped)
+
+    # recall_memory and any plugin tools — pass through unchanged.
+    for t in base_tools:
+        if t.name not in {"data_agent", "rag_agent"}:
+            wrapped.append(t)
+
+    return wrapped
+
+
+def _build_lean_tools(
+    context: AgentContext,
+    db_session_factory: Optional[Callable],
+    custom_agents: Optional[List["CustomAgent"]],
+    ask_user_question_tool,
+    dashboard_tools: list,
+    memory_tools: list,
+    llm_provider: Optional[BaseLLMProvider] = None,
+) -> list:
+    """Lean tool surface: ≤10 primary tools + the manage meta-tool + capped custom agents.
+
+    Replaces the 18–30+ tool surface of the default path. Skill / profile / soul
+    operations are routed through `manage`. Dashboard verbs (create, update,
+    read, analyze) stay as primary tools so the orchestrator can act directly;
+    list_dashboards / list_connections move behind `manage`.
+    """
+    primary: list = [ask_user_question_tool]
+
+    # Sub-agents (data_agent, rag_agent, recall_memory). The legacy/mesh tools
+    # don't accept structured scope kwargs — wrap them so the orchestrator can
+    # pin scope (connection_ids / page_ids) from a resolved @-mention by
+    # prepending a scope hint to the natural-language question.
+    base_subagent_tools = _build_legacy_tools(context, db_session_factory)
+    primary += _wrap_subagent_tools_with_scope(base_subagent_tools)
+
+    # Memory: keep save_memory as primary (recall_memory comes from legacy).
+    primary += memory_tools
+
+    # Dashboard verbs: only the four meaningful ones. list_dashboards and
+    # list_connections move behind `manage`.
+    keep_dashboard = {"create_dashboard", "update_dashboard", "read_dashboard", "analyze_dashboard"}
+    primary += [t for t in dashboard_tools if t.name in keep_dashboard]
+
+    # The manage meta-tool absorbs skill_*, profile_*, update_personality,
+    # list_dashboards, list_connections.
+    manage_tool = build_manage_tool(context, db_session_factory)
+    if manage_tool is not None:
+        primary.append(manage_tool)
+
+    # Custom agents — capped, namespace-prefixed, de-duped against core names.
+    if custom_agents:
+        capped = list(custom_agents)[:_LEAN_MAX_CUSTOM_AGENTS]
+        dynamic = _build_dynamic_tools(context, capped, db_session_factory, llm_provider=llm_provider)
+        renamed: list = []
+        for t in dynamic:
+            if t.name in _LEAN_CORE_TOOL_NAMES or any(t.name == p.name for p in primary):
+                # Namespace-prefix any colliding custom-agent name.
+                t.name = f"agent_{t.name}"
+            renamed.append(t)
+        primary += renamed
+
+    return primary
 
 
 def _build_legacy_tools(context: AgentContext, db_session_factory: Optional[Callable] = None):
@@ -794,6 +931,7 @@ async def run_orchestrator(
     file_contents: list = None,
     profile: object = None,
     llm_provider: Optional[BaseLLMProvider] = None,
+    mentions: Optional[list] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -821,6 +959,7 @@ async def run_orchestrator(
         custom_agents, user_skills, skill_suggestions,
         user_memories_context, memory_context, soul_prompt,
         db_session_factory, "run_orchestrator",
+        mentions=mentions,
     )
     orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
 
@@ -882,6 +1021,7 @@ async def stream_orchestrator(
     file_contents: list = None,
     profile: object = None,
     llm_provider: Optional[BaseLLMProvider] = None,
+    mentions: Optional[list] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -913,6 +1053,7 @@ async def stream_orchestrator(
             custom_agents, user_skills, skill_suggestions,
             user_memories_context, memory_context, soul_prompt,
             db_session_factory, "stream_orchestrator",
+            mentions=mentions,
         )
         orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
         messages = _build_messages(user_question, history, file_contents)
