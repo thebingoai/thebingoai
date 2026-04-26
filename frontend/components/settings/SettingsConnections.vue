@@ -535,8 +535,8 @@
             />
           </template>
           <template v-else>
-          <!-- Non-BigQuery: no editingConnection yet -->
-          <div v-else-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400">
+          <!-- No editingConnection yet -->
+          <div v-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400">
             <Database class="h-4 w-4" />
             <span v-if="isFileUploadConnection">Upload the file to explore its schema.</span>
             <span v-else>Save the connection to explore its schema.</span>
