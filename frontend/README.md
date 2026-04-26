@@ -184,5 +184,5 @@ Three Pinia stores with selective persistence:
 ## Browser Support
 
 - Modern browsers with ES2020+ support
-- SSE/EventSource API required for chat streaming
+- WebSocket support required for chat streaming
 - Tested on Chrome, Firefox, Safari, Edge
