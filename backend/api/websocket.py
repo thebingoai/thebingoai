@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from backend.database.session import SessionLocal
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
+from backend.schemas.chat import ResolvedMention
 from backend.services.conversation_service import ConversationService
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
@@ -599,7 +600,13 @@ async def websocket_endpoint(ws: WebSocket):
                 message = data.get("message", "").strip()
                 connection_ids = data.get("connection_ids", [])
                 file_ids = data.get("file_ids", [])
-                mentions = data.get("mentions", [])
+                raw_mentions = data.get("mentions") or []
+                mentions: list[ResolvedMention] = []
+                for raw in raw_mentions:
+                    try:
+                        mentions.append(ResolvedMention.model_validate(raw))
+                    except Exception as exc:
+                        logger.warning("Dropping invalid @-mention payload: %r (%s)", raw, exc)
 
                 if not message:
                     await ws.send_text(json.dumps({

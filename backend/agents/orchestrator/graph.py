@@ -1225,7 +1225,7 @@ async def stream_orchestrator(
         }
 
     except Exception as e:
-        logger.error(f"Orchestrator streaming failed: {str(e)}")
+        logger.exception("Orchestrator streaming failed")
         yield {
             "type": "error",
             "content": _friendly_error(e)
