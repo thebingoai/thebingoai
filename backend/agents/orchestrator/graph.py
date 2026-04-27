@@ -13,6 +13,7 @@ from backend.agents.orchestrator.pre_steps import run_pre_steps, PreStepContext
 from backend.agents.orchestrator.response_judge import judge_response, JudgeVerdict
 from backend.agents.data_agent import invoke_data_agent
 from backend.agents.data_agent.graph import _make_loop_detector
+from backend.agents.exceptions import LoopDetectedError
 from backend.agents.rag_agent import invoke_rag_agent
 from backend.agents.context import AgentContext
 from backend.agents.tool_registry import build_tools_for_keys
@@ -1224,6 +1225,23 @@ async def stream_orchestrator(
             "judge_metadata": judge_metadata,
         }
 
+    except LoopDetectedError as e:
+        logger.warning(f"Loop detected in orchestrator: {e}")
+        yield {
+            "type": "loop_detected",
+            "content": {
+                "message": str(e),
+                "total_calls": e.total_calls,
+            }
+        }
+        yield {
+            "type": "done",
+            "content": "Agent stopped",
+            "thread_id": context.thread_id,
+            "steps": collected_steps,
+            "retry_succeeded": False,
+            "judge_metadata": {},
+        }
     except Exception as e:
         logger.exception("Orchestrator streaming failed")
         yield {

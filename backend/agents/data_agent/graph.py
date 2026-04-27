@@ -6,6 +6,7 @@ from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
 from backend.agents.context import AgentContext
 from backend.llm.factory import get_provider
 from backend.llm.base import BaseLLMProvider
+from backend.agents.exceptions import LoopDetectedError
 from backend.config import settings
 from typing import Dict, Any, Optional
 import logging
@@ -60,7 +61,7 @@ def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 10, max_total
                     "but no useful result. The information is not available through this approach. "
                     "Report this to the user and move on. Do NOT try more variations."
                 ))]}
-        # Check 3: absolute total tool-call cap
+        # Check 3: absolute total tool-call cap — hard stop, raises to surface in UI
         if max_total_calls:
             total = sum(
                 len(msg.tool_calls)
@@ -68,11 +69,11 @@ def _make_loop_detector(max_repeats: int = 2, max_same_tool: int = 10, max_total
                 if hasattr(msg, "tool_calls") and msg.tool_calls
             )
             if total >= max_total_calls:
-                logger.warning(f"Tool-call budget exhausted: {total}/{max_total_calls} calls used, injecting stop")
-                return {"messages": [SystemMessage(content=(
-                    f"[Budget exhausted] You have used {total} of {max_total_calls} allowed tool calls. "
-                    "You MUST stop calling tools NOW. Summarize all findings so far and respond to the user immediately."
-                ))]}
+                logger.warning(f"Tool-call budget exhausted: {total}/{max_total_calls} calls used, raising LoopDetectedError")
+                raise LoopDetectedError(
+                    f"Tool-call budget exhausted: {total}/{max_total_calls} calls used",
+                    total_calls=total,
+                )
 
         return {}
     return detect_loop

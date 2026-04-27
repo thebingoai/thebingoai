@@ -41,6 +41,7 @@ export const useChatStreaming = () => {
       content: '',
       thinking_steps: [],
       agent_steps: [],
+      loop_detected: false,
       created_at: new Date().toISOString()
     }
     chatStore.addMessage(assistantMessage)
@@ -281,6 +282,12 @@ export const useChatStreaming = () => {
           thinking_steps: [...thinkingSteps],
           agent_steps: [...agentSteps]
         })
+      })
+
+      onEvent('chat.loop_detected', (_data) => {
+        chatStore.updateMessageById(assistantMsgId, { loop_detected: true })
+        stepsLog.push(`${formatTs()}  ⚠ Agent stopped — too many repeated actions`)
+        syncStepsLog()
       })
 
       onEvent('query.result', (data) => {

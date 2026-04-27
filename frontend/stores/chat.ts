@@ -26,6 +26,7 @@ export interface Message {
   attachments?: FileAttachment[]
   source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer' | 'skill_suggestion'
   skillSuggestions?: SkillSuggestion[]
+  loop_detected?: boolean
 }
 
 export interface ThinkingStep {
