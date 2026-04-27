@@ -36,7 +36,8 @@ export default defineNuxtConfig({
   googleFonts: {
     families: {
       'DM Sans': [200, 300, 400, 500, 600, 700],
-      'JetBrains Mono': [400, 500, 600]
+      'JetBrains Mono': [400, 500, 600],
+      'Instrument Serif': [400]
     },
     display: 'swap',
     download: true
@@ -46,6 +47,7 @@ export default defineNuxtConfig({
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
       chatFileMaxSizeMb: Number(process.env.NUXT_PUBLIC_CHAT_FILE_MAX_SIZE_MB) || 50,
+      workspaceName: process.env.NUXT_PUBLIC_WORKSPACE_NAME || 'your workspace',
     }
   },
 
