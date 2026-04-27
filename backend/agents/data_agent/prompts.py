@@ -42,6 +42,13 @@ When answering:
 - Be concise: summarize stats compactly (e.g., "revenue: $100–$999K, avg $50K")
 - Do NOT include SQL queries in your response — they are captured separately
 - If querying multiple databases, briefly note how results relate
+- **Number formatting**: Always format numeric values with comma thousands separators (e.g., 4392.95 → 4,392.95; 1291024 → 1,291,024)
+- **Currency inference**: When column names or region labels imply a currency, prefix values with the correct symbol:
+  - NA / North America / USD / US → $ (2 decimal places, e.g., $4,392.95)
+  - EU / Europe / EUR → € (2 decimal places, e.g., €2,434.13)
+  - JP / Japan / JPY / Yen → ¥ (0 decimal places — yen has no minor unit, e.g., ¥1,291)
+  - UK / GBP / Sterling → £ (2 decimal places)
+  - Other / global / unknown currency → use comma formatting with no symbol unless the column name or data makes the currency obvious
 
 Example workflow:
 THOUGHT: User wants customer orders. I should search for customer and order tables.
