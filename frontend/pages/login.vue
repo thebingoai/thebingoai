@@ -1,59 +1,12 @@
 <template>
   <div class="min-h-screen flex">
     <!-- Left panel: editorial/branding (hidden on mobile) -->
-    <div class="hidden lg:flex lg:w-[42%] flex-col justify-between bg-[#FAF5ED] dark:bg-neutral-950 border-r border-neutral-200 dark:border-neutral-800 p-10">
-      <!-- Logo -->
-      <div>
-        <span class="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-          bingo<span class="text-purple-600">.</span>
-        </span>
-      </div>
-
-      <!-- Marketing headline -->
-      <div class="flex flex-col justify-center">
-        <p class="text-[11px] tracking-widest font-medium text-neutral-500 dark:text-neutral-500 uppercase mb-5">
-          Sign In
-        </p>
-        <h1 class="font-display text-5xl font-bold leading-[1.1] text-neutral-900 dark:text-neutral-50 mb-6">
-          The assistant<br>
-          that <em class="italic text-purple-600">queries</em> with<br>
-          you.
-        </h1>
-        <p class="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed max-w-xs">
-          Plug in a warehouse, ask a question, read a briefing over coffee. Your data, annotated.
-        </p>
-
-        <!-- Decorative progress stepper -->
-        <div class="mt-10 border-t border-dashed border-neutral-300 dark:border-neutral-700 pt-6">
-          <p class="text-[11px] tracking-widest font-medium text-neutral-500 dark:text-neutral-500 uppercase mb-4">
-            Setup · 1/4
-          </p>
-          <div class="flex gap-1.5 mb-3">
-            <div class="h-0.5 flex-1 bg-purple-600 rounded-full"></div>
-            <div class="h-0.5 flex-1 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
-            <div class="h-0.5 flex-1 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
-            <div class="h-0.5 flex-1 bg-neutral-200 dark:bg-neutral-700 rounded-full"></div>
-          </div>
-          <div class="flex justify-between text-[11px] text-neutral-400 dark:text-neutral-600">
-            <span>Account</span><span>Workspace</span><span>Connect</span><span>First task</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Compliance footer -->
-      <div>
-        <p class="text-[11px] text-neutral-400 dark:text-neutral-600 tracking-wide">SOC 2 Type II · GDPR · HIPAA</p>
-        <p class="text-[11px] text-neutral-400 dark:text-neutral-600 mt-1">Your queries never leave your warehouse.</p>
-      </div>
-    </div>
+    <AuthBrandingPanel :step="1" step-context="Sign In" />
 
     <!-- Right panel: auth form -->
     <div class="flex-1 flex flex-col items-center justify-center bg-white dark:bg-neutral-900 px-8 py-12">
       <div class="w-full max-w-md">
-        <h2 class="font-display text-5xl font-bold text-neutral-900 dark:text-neutral-50 mb-1">Welcome back.</h2>
-        <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-8">
-          Sign in to <span class="font-mono text-xs">{{ config.public.workspaceName }}</span>
-        </p>
+        <h2 class="font-display text-5xl font-bold text-neutral-900 dark:text-neutral-50 mb-8">Welcome back.</h2>
 
         <div v-if="error" class="mb-6 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
           {{ error }}
@@ -164,7 +117,6 @@
 import { Loader2, Eye, EyeOff } from 'lucide-vue-next'
 import TrialExpiredDialog from '~/components/TrialExpiredDialog.vue'
 
-const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const router = useRouter()
 
@@ -182,7 +134,7 @@ async function handleLogin() {
   if (authStore.isAccountInactive) {
     showTrialExpired.value = true
   } else if (result.success) {
-    router.push('/chat')
+    router.push('/connect')
   }
 }
 
