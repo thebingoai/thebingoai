@@ -1,5 +1,15 @@
 <template>
-  <div class="min-h-screen flex">
+  <div class="relative min-h-screen flex">
+    <!-- Dark mode toggle -->
+    <button
+      class="absolute top-4 right-4 z-10 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+      :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+      @click="isDark = !isDark"
+    >
+      <Sun v-if="isDark" class="h-4 w-4" />
+      <Moon v-else class="h-4 w-4" />
+    </button>
+
     <!-- Left panel: editorial/branding (hidden on mobile) -->
     <AuthBrandingPanel :step="1" step-context="Sign In" />
 
@@ -114,7 +124,13 @@
 </template>
 
 <script setup lang="ts">
-import { Loader2, Eye, EyeOff } from 'lucide-vue-next'
+import { Loader2, Eye, EyeOff, Sun, Moon } from 'lucide-vue-next'
+
+const colorMode = useColorMode()
+const isDark = computed({
+  get: () => colorMode.value === 'dark',
+  set: (val: boolean) => { colorMode.preference = val ? 'dark' : 'light' }
+})
 import TrialExpiredDialog from '~/components/TrialExpiredDialog.vue'
 
 const authStore = useAuthStore()
@@ -134,7 +150,7 @@ async function handleLogin() {
   if (authStore.isAccountInactive) {
     showTrialExpired.value = true
   } else if (result.success) {
-    router.push('/connect')
+    router.push(authStore.isFirstLogin ? '/connect' : '/chat')
   }
 }
 
