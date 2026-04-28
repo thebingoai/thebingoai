@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, markRaw } from 'vue'
 import type { Component } from 'vue'
 
 export interface ConnectorCapabilities {
@@ -27,7 +27,16 @@ export interface ConnectorFormRegistry {
 
 const api: ConnectorFormRegistry = {
   register(entry) {
-    registry.set(entry.dbType, { ...registry.get(entry.dbType), ...entry })
+    // Wrap component references in markRaw() so Vue does not attempt to make
+    // them deeply reactive — components stored in a reactive Map trigger a
+    // performance warning otherwise.
+    const safeEntry: ConnectorFormEntry = {
+      ...entry,
+      createForm: entry.createForm ? markRaw(entry.createForm) : undefined,
+      editForm:   entry.editForm   ? markRaw(entry.editForm)   : undefined,
+      editPanel:  entry.editPanel  ? markRaw(entry.editPanel)  : undefined,
+    }
+    registry.set(entry.dbType, { ...registry.get(entry.dbType), ...safeEntry })
   },
   get(dbType) {
     return registry.get(dbType)

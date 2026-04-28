@@ -1,254 +1,260 @@
 <template>
-  <!-- Outer relative wrapper anchors the mention panel -->
+  <!-- Outer wrapper -->
   <div ref="containerRef" class="relative">
-    <!-- Slide-up mention panel -->
-    <Transition
-      enter-active-class="transition-all duration-100 ease-out"
-      enter-from-class="opacity-0 translate-y-2"
-      enter-to-class="opacity-100 translate-y-0"
-      leave-active-class="transition-all duration-75 ease-in"
-      leave-from-class="opacity-100 translate-y-0"
-      leave-to-class="opacity-0 translate-y-2"
-    >
-      <ChatMentionPanel
-        v-if="isMentionOpen"
-        class="absolute bottom-full left-4 right-4 md:left-16 md:right-16 mb-2 z-50"
-        :filtered-groups="filteredGroups"
-        :active-group="activeGroup"
-        :active-group-items="activeGroupItems"
-        :mention-level="mentionLevel"
-        @select="handleMentionSelect"
-        @close="closeMention()"
-        @back="() => {}"
-      />
-    </Transition>
-
-    <div class="px-4 pb-4 md:px-16">
+    <div class="px-14 pb-6">
       <!-- Out-of-credits banner -->
       <div
         v-if="isExhausted && featureConfig?.credits_enabled !== false"
-        class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-3"
+        class="mb-3 rounded-xl border border-[var(--warn)] bg-[color-mix(in_oklch,var(--warn)_8%,var(--paper-0))] px-4 py-3 text-[13px] text-[var(--ink-0)] flex items-center justify-between gap-3"
       >
         <span>Daily credits used up. Resets at midnight.</span>
-        <NuxtLink to="/settings?tab=credits" class="font-medium underline hover:text-amber-900 whitespace-nowrap">
+        <NuxtLink to="/settings?tab=credits" class="font-medium underline hover:opacity-80 whitespace-nowrap">
           Add your own API key →
         </NuxtLink>
       </div>
 
-      <form
-        @submit.prevent="handleSubmit"
-        @dragover.prevent
-        @drop.prevent="handleDrop"
-        class="shadow-lg rounded-xl border border-gray-300 dark:border-neutral-600 flex flex-col focus-within:border-gray-400 dark:focus-within:border-neutral-500 transition-colors dark:bg-neutral-800"
-      >
-        <!-- Attachment preview strip -->
-        <div
-          v-if="attachedFiles.length > 0"
-          class="flex flex-wrap gap-2 px-4 pt-3"
+      <div class="max-w-[760px] mx-auto relative">
+        <!-- Floating mention panel -->
+        <Transition
+          enter-active-class="transition-all duration-100 ease-out"
+          enter-from-class="opacity-0 translate-y-1"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition-all duration-75 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 translate-y-1"
         >
+          <ChatMentionPanel
+            v-if="isMentionOpen"
+            class="absolute bottom-full left-0 mb-2 z-50"
+            :filtered-groups="filteredGroups"
+            :active-group="activeGroup"
+            :active-group-items="activeGroupItems"
+            :mention-level="mentionLevel"
+            @select="handleMentionSelect"
+            @close="closeMention()"
+            @back="() => {}"
+          />
+        </Transition>
+
+        <form
+          @submit.prevent="handleSubmit"
+          @dragover.prevent
+          @drop.prevent="handleDrop"
+          class="rounded-2xl border border-[var(--line-2)] bg-[var(--paper-0)] shadow-[var(--shadow-2)] flex flex-col focus-within:border-[var(--ink-3)] transition-colors px-4 pt-3.5 pb-2.5"
+        >
+          <!-- Attachment preview strip -->
+          <div v-if="attachedFiles.length > 0" class="flex flex-wrap gap-2 mb-2">
+            <div v-for="(file, index) in attachedFiles" :key="index" class="group">
+              <ChatFilePreview :file="file" :index="index" @remove="removeFile" />
+            </div>
+          </div>
+
+          <!-- Inline error messages -->
+          <div v-if="fileErrors.length > 0" class="mb-1">
+            <p v-for="(err, i) in fileErrors" :key="i" class="text-[11px] text-[var(--bad)]">
+              {{ err.name }}: {{ err.error }}
+            </p>
+          </div>
+
+          <!-- ── Contenteditable composer (replaces textarea) ── -->
           <div
-            v-for="(file, index) in attachedFiles"
-            :key="index"
-            class="group"
-          >
-            <ChatFilePreview
-              :file="file"
-              :index="index"
-              @remove="removeFile"
-            />
+            ref="editorRef"
+            role="textbox"
+            aria-multiline="true"
+            data-placeholder="Ask a question about your data…"
+            class="composer-editor pb-2"
+            :contenteditable="!chatStore.isStreaming ? 'true' : 'false'"
+            :class="{ 'opacity-50 pointer-events-none': chatStore.isStreaming }"
+            @input="handleInput"
+            @keydown="handleKeydown"
+            @paste="handlePaste"
+            @mousedown="handleEditorMousedown"
+          />
+
+          <!-- Bottom action rail: Mention · Attach · Skill · New topic -->
+          <div class="flex items-center gap-1.5 pt-2.5 mt-0.5 border-t border-dashed border-[var(--line)]">
+            <button
+              type="button"
+              :disabled="chatStore.isStreaming"
+              @click="triggerMention"
+              title="Mention a dataset, dashboard or skill"
+              class="composer-chip disabled:opacity-40"
+            >
+              <AtSign class="h-3 w-3" /> Mention
+            </button>
+
+            <button
+              type="button"
+              :disabled="chatStore.isStreaming"
+              @click="fileInputRef?.click()"
+              title="Attach files (max 50 MB)"
+              class="composer-chip disabled:opacity-40"
+            >
+              <Paperclip class="h-3 w-3" /> Attach
+            </button>
+
+            <button
+              type="button"
+              :disabled="chatStore.isStreaming"
+              title="Pick a skill  ⌘K"
+              class="composer-chip disabled:opacity-40"
+            >
+              <Sparkles class="h-3 w-3" /> Skill
+              <span class="font-mono text-[9.5px] text-[var(--ink-3)] ml-0.5">⌘K</span>
+            </button>
+
+            <button
+              type="button"
+              :disabled="chatStore.isStreaming"
+              @click="emit('reset')"
+              title="New Topic"
+              class="composer-chip disabled:opacity-40"
+            >
+              <Scissors class="h-3 w-3" /> New topic
+            </button>
+
+            <div class="flex-1" />
+            <span class="font-mono text-[10.5px] text-[var(--ink-3)] mr-1 hidden md:inline">
+              ⏎ send · ⇧⏎ new line
+            </span>
+
+            <button
+              type="submit"
+              :disabled="!chatStore.inputText.trim() || chatStore.isStreaming || (attachedFiles.length > 0 && !allFilesReady)"
+              class="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--ink-0)] text-[var(--paper-0)] disabled:opacity-40 hover:opacity-80 transition-opacity"
+            >
+              <ArrowUp class="h-4 w-4" />
+            </button>
           </div>
+
+          <!-- Hidden file input -->
+          <input
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/gif,image/webp,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ref="fileInputRef"
+            @change="handleFileChange"
+            class="sr-only"
+          />
+        </form>
+
+        <!-- Meta strip below composer -->
+        <div class="flex items-center gap-2 mt-2 px-0.5 text-[11px] text-[var(--ink-2)]">
+          <span class="text-[var(--ok)]">●</span>
+          <span v-if="datasetsInContext > 0">{{ datasetsInContext }} dataset{{ datasetsInContext !== 1 ? 's' : '' }} in context</span>
+          <span v-else>no datasets attached</span>
+          <template v-if="datasetsInContext > 0">
+            <span class="text-[var(--line-2)]">·</span>
+            <span>context: <b class="text-[var(--ink-0)]">—</b></span>
+          </template>
+          <div class="flex-1" />
+          <span v-if="featureConfig?.credits_enabled !== false">{{ Math.round(remaining) }} credits left today</span>
         </div>
-
-        <!-- Inline error messages from file rejections -->
-        <div v-if="fileErrors.length > 0" class="px-4 pt-2">
-          <p
-            v-for="(err, i) in fileErrors"
-            :key="i"
-            class="text-xs text-red-500"
-          >
-            {{ err.name }}: {{ err.error }}
-          </p>
-        </div>
-
-        <textarea
-          ref="textareaRef"
-          v-model="chatStore.inputText"
-          placeholder="Ask a question about your data…"
-          rows="1"
-          class="w-full resize-none px-4 pt-3 pb-2 max-h-48 overflow-y-auto bg-transparent outline-none rounded-t-xl text-gray-900 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500"
-          :disabled="chatStore.isStreaming"
-          @input="handleInput"
-          @keydown="handleKeydown"
-        />
-        <div class="flex items-center justify-between gap-1.5 px-3 pb-3">
-          <span class="flex-1" />
-
-          <div class="flex gap-1.5">
-          <!-- New Topic button — only visible on permanent conversation -->
-          <button
-            v-if="isPermanentConversation"
-            type="button"
-            :disabled="chatStore.isStreaming"
-            @click="emit('reset')"
-            title="New Topic"
-            class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors"
-          >
-            <Scissors class="h-4 w-4" />
-          </button>
-          <!-- Paperclip button -->
-          <button
-            type="button"
-            :disabled="chatStore.isStreaming"
-            @click="fileInputRef?.click()"
-            :class="[
-              'flex h-8 w-8 items-center justify-center rounded-full transition-colors cursor-pointer',
-              chatStore.isStreaming
-                ? 'text-gray-300 opacity-40'
-                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-            ]"
-            title="Attach files (max 50 MB)"
-          >
-            <Paperclip class="h-4 w-4" />
-          </button>
-          <!-- Send button -->
-          <button
-            type="submit"
-            :disabled="!chatStore.inputText.trim() || chatStore.isStreaming || (attachedFiles.length > 0 && !allFilesReady)"
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-white disabled:opacity-40 hover:bg-gray-700 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-white transition-colors"
-          >
-            <ArrowUp class="h-4 w-4" />
-          </button>
-          </div>
-        </div>
-
-        <!-- Hidden file input -->
-        <input
-          type="file"
-          multiple
-          accept="image/png,image/jpeg,image/gif,image/webp,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          ref="fileInputRef"
-          @change="handleFileChange"
-          class="sr-only"
-        />
-      </form>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Scissors, ArrowUp, Paperclip } from 'lucide-vue-next'
+import { Scissors, ArrowUp, Paperclip, AtSign, Sparkles } from 'lucide-vue-next'
 import { useMentions, type MentionItem } from '~/composables/useMentions'
 
 const chatStore = useChatStore()
-const emit = defineEmits<{
-  send: []
-  reset: []
-}>()
+const emit = defineEmits<{ send: []; reset: [] }>()
 
-const { isExhausted } = useCreditBalance()
+const { isExhausted, remaining } = useCreditBalance()
 const { config: featureConfig } = useFeatureConfig()
 
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const editorRef  = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const containerRef = ref<HTMLElement | null>(null)
 
 const { attachedFiles, addFiles, removeFile, allFilesReady } = useChatFileUpload()
+const fileErrors = ref<Array<{ name: string; error: string }>>([])
 
-interface FileRejection {
-  name: string
-  error: string
-}
-const fileErrors = ref<FileRejection[]>([])
+const datasetsInContext = computed(() => chatStore.conversationDatasets?.length ?? 0)
 
-const isPermanentConversation = computed(() => chatStore.currentConversation?.type === 'permanent')
-
-// --- Mention panel ---
-
+// ── Mention panel ─────────────────────────────────────────
 const {
-  isMentionOpen,
-  mentionLevel,
-  filteredGroups,
-  activeGroup,
-  activeGroupItems,
-  mentionAnchor,
-  openMention,
-  closeMention,
-  goBackToRoot,
-  setQuery,
-  recordMention,
-  clearResolvedMentions,
+  isMentionOpen, mentionLevel,
+  filteredGroups, activeGroup, activeGroupItems,
+  openMention, closeMention, goBackToRoot, setQuery,
+  recordMention, clearResolvedMentions, restoreSelectionRange,
+  isChildMode, openMentionForPill, getEditingPill,
 } = useMentions()
 
-const handleMentionSelect = (item: MentionItem) => {
-  const el = textareaRef.value
+// ── Pill icon SVGs (inline HTML — Vue components can't go in innerHTML) ──
+const PILL_ICONS: Record<string, string> = {
+  dataset:   `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+  notion:    `<svg width="11" height="11" viewBox="0 0 59.9 62.6" style="flex-shrink:0"><path fill="#FFFFFF" d="M3.8 2.7l34.6-2.6c4.2-.4 5.3-.1 8 1.8l11.1 7.8c1.8 1.3 2.4 1.7 2.4 3.2v42.7c0 2.7-1 4.3-4.4 4.5l-40.2 2.4c-2.6.1-3.8-.2-5.1-1.9L2.1 50.1c-1.5-2-2.1-3.4-2.1-5.1V7C0 4.8 1 2.9 3.8 2.7z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M38.4.1L3.8 2.7C1 2.9 0 4.8 0 7v38c0 1.7.6 3.2 2.1 5.1l8.1 10.6c1.3 1.7 2.6 2.1 5.1 1.9l40.2-2.4c3.4-.2 4.4-1.8 4.4-4.5V12.9c0-1.4-.5-1.8-2.2-3l-.3-.2L46.4 2C43.8 0 42.7-.2 38.4.1zM16.2 12.2c-3.3.2-4 .3-5.9-1.3L5.6 7.2c-.5-.5-.3-1.1 1-1.2l33.3-2.4c2.8-.2 4.2.7 5.3 1.6l5.7 4.1c.3.1.9.8.1.8l-34.4 2.1-.4.1zM12.4 55.3V19c0-1.6.5-2.3 1.9-2.4l39.5-2.3c1.3-.1 1.9.7 1.9 2.3v36c0 1.6-.3 2.9-2.4 3l-37.8 2.2c-1.8.1-2.8-.7-2.8-2.6zm37.3-34.3c.2 1.1 0 2.2-1.1 2.3l-1.8.4v26.8c-1.6.9-3 1.3-4.2 1.3-1.9 0-2.4-.6-3.9-2.4L26.7 30.6v18.1l3.8.9s0 2.2-3 2.2l-8.4.5c-.2-.5 0-1.7.8-1.9l2.2-.6v-24l-3-.3c-.2-1.1.4-2.7 2.1-2.8l9-.6 12.4 19V24.3l-3.2-.4c-.2-1.3.7-2.3 1.9-2.4l5.7-.8z"/></svg>`,
+  dashboard: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>`,
+  skill:     `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  person:    `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+}
+const MENTION_TYPE_META: Record<string, { typeClass: string }> = {
+  connection:  { typeClass: 'dataset' },
+  dashboard:   { typeClass: 'dashboard' },
+  notion_page: { typeClass: 'notion' },
+  skill:       { typeClass: 'skill' },
+  person:      { typeClass: 'person' },
+}
+
+// ── Plain-text extraction ─────────────────────────────────
+function extractPlainText(el: HTMLElement): string {
+  let text = ''
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent
+    } else if (node instanceof HTMLElement) {
+      if (node.dataset.mention) {
+        const child = node.dataset.mentionChild
+        text += child ? `@${node.dataset.mention}@${child}` : `@${node.dataset.mention}`
+      } else if (node.tagName === 'BR') {
+        text += '\n'
+      } else if (node.tagName === 'DIV' || node.tagName === 'P') {
+        // Browser wraps new lines in divs/p in contenteditable
+        text += '\n' + extractPlainText(node)
+      } else {
+        text += extractPlainText(node)
+      }
+    }
+  }
+  return text
+}
+
+let isInternalUpdate = false
+
+function syncPlainText() {
+  const el = editorRef.value
   if (!el) return
-  const token = `@${item.name} `
-  const anchor = mentionAnchor.value ?? -1
-  if (anchor < 0) return
-  // Replace from the '@' position up to the current cursor
-  const before = el.value.slice(0, anchor)
-  const after = el.value.slice(el.selectionStart)
-  chatStore.inputText = before + token + after
-  recordMention(item)
-  closeMention()
-  nextTick(() => {
-    el.selectionStart = el.selectionEnd = anchor + token.length
-    autoResize()
-    el.focus()
-  })
+  isInternalUpdate = true
+  chatStore.inputText = extractPlainText(el)
+  isInternalUpdate = false
 }
 
-// Close mention panel on click outside the container
-const handleDocumentMousedown = (event: MouseEvent) => {
-  if (!isMentionOpen.value) return
-  if (containerRef.value?.contains(event.target as Node)) return
-  closeMention()
+// ── Text before cursor (for @ detection) ─────────────────
+function getTextBeforeCursor(el: HTMLElement): string {
+  const sel = window.getSelection()
+  if (!sel?.rangeCount) return ''
+  const r = sel.getRangeAt(0).cloneRange()
+  r.selectNodeContents(el)
+  const cur = sel.getRangeAt(0)
+  r.setEnd(cur.startContainer, cur.startOffset)
+  return r.toString()
 }
 
-onMounted(() => document.addEventListener('mousedown', handleDocumentMousedown))
-onBeforeUnmount(() => document.removeEventListener('mousedown', handleDocumentMousedown))
-
-// --- Textarea helpers ---
-
-const autoResize = () => {
-  const el = textareaRef.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
-}
-
-const isInsideCodeBlock = (text: string, cursorPos: number): boolean => {
-  const textBeforeCursor = text.slice(0, cursorPos)
-  const fenceCount = (textBeforeCursor.match(/```/g) || []).length
-  return fenceCount % 2 !== 0
-}
-
-const insertNewline = (el: HTMLTextAreaElement) => {
-  const start = el.selectionStart
-  const end = el.selectionEnd
-  chatStore.inputText = el.value.slice(0, start) + '\n' + el.value.slice(end)
-  nextTick(() => {
-    el.selectionStart = el.selectionEnd = start + 1
-    autoResize()
-  })
-}
-
-// Detect whether the cursor is directly after an @-token and open/update the panel
+// ── Input handler ─────────────────────────────────────────
 const handleInput = () => {
-  autoResize()
-  const el = textareaRef.value
+  syncPlainText()
+  const el = editorRef.value
   if (!el) return
-  const before = el.value.slice(0, el.selectionStart)
-  // Match @ preceded by start-of-string, space, or newline
+  const before = getTextBeforeCursor(el)
   const match = before.match(/(?:^|[\s\n])@(\S*)$/)
   if (match) {
     const query = match[1]
-    const anchorPos = el.selectionStart - query.length - 1
     if (!isMentionOpen.value) {
-      // First time seeing @: open panel (resets to root level)
-      openMention(anchorPos)
+      openMention(0)
     } else {
-      // Panel already open: just update the search query for the current level
       setQuery(query)
     }
   } else {
@@ -256,66 +262,222 @@ const handleInput = () => {
   }
 }
 
-const handleKeydown = (event: KeyboardEvent) => {
-  const el = textareaRef.value
+// ── Pill interaction helpers ────────────────────────────
+function getPillFromTarget(target: HTMLElement): HTMLElement | null {
+  return target.closest('[data-mention]') as HTMLElement | null
+}
+function detachPillChild(pill: HTMLElement) {
+  const typeClass = pill.dataset.mentionType ?? 'dataset'
+  const icon = PILL_ICONS[typeClass] ?? PILL_ICONS.dataset
+  const parentName = pill.dataset.mention!
+  delete pill.dataset.mentionChild
+  delete pill.dataset.mentionChildDisplay
+  pill.className = `mention-inline-pill mention-inline-pill--${typeClass}`
+  pill.innerHTML = `${icon}<span style="vertical-align:1px">@${parentName}</span>`
+  syncPlainText()
+}
+const handleEditorMousedown = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  const pill = getPillFromTarget(target)
+  if (!pill) return
+  e.preventDefault()
+  if (target.closest('[data-pill-action="detach"]')) { detachPillChild(pill); return }
+  openMentionForPill(pill)
+}
 
-  // Escape: go back to root if in items level, otherwise close
-  if (isMentionOpen.value && event.key === 'Escape') {
-    event.preventDefault()
-    if (mentionLevel.value === 'items') {
-      goBackToRoot()
-    } else {
-      closeMention()
-    }
+// ── Mention pill insertion ────────────────────────────────
+const handleMentionSelect = (item: MentionItem) => {
+  // Child mode: update existing pill with child
+  if (isChildMode.value) {
+    const pill = getEditingPill()
+    if (!pill) { closeMention(); return }
+    const typeClass = pill.dataset.mentionType ?? 'dataset'
+    const icon = PILL_ICONS[typeClass] ?? PILL_ICONS.dataset
+    const parentName = pill.dataset.mention!
+    const childName = item.displayName ?? item.name
+    pill.dataset.mentionChild = item.name
+    pill.dataset.mentionChildDisplay = childName
+    pill.className = `mention-pc mention-pc--${typeClass}`
+    pill.innerHTML = [
+      `<span class="mention-pc__parent">${icon}<span style="vertical-align:1px">@${parentName}</span></span>`,
+      `<span class="mention-pc__sep" data-pill-action="detach">/</span>`,
+      `<span class="mention-pc__child">${childName}</span>`,
+    ].join('')
+    recordMention(item)
+    closeMention()
+    syncPlainText()
     return
   }
 
-  if (!el || event.key !== 'Enter') return
+  // Restore cursor to where @ was typed (clicking the panel loses it)
+  if (!restoreSelectionRange()) { closeMention(); return }
+  const el = editorRef.value
+  if (!el) return
+  const sel = window.getSelection()
+  if (!sel?.rangeCount) return
 
-  if (event.shiftKey || isInsideCodeBlock(el.value, el.selectionStart)) {
+  const textBefore = getTextBeforeCursor(el)
+  const match = textBefore.match(/(?:^|[\s\n])(@\S*)$/)
+  if (!match) { closeMention(); return }
+
+  const atQuery = match[1]   // "@query" including @
+  const cursorRange = sel.getRangeAt(0)
+  const container = cursorRange.startContainer
+  const cursorOffset = cursorRange.startOffset
+
+  // Only proceed if cursor is in a text node (normal typing position)
+  if (container.nodeType !== Node.TEXT_NODE) { closeMention(); return }
+
+  const textNode = container as Text
+  const beforeAt = textNode.textContent!.slice(0, cursorOffset - atQuery.length)
+  const afterQuery = textNode.textContent!.slice(cursorOffset)
+
+  // Build pill element
+  const meta = MENTION_TYPE_META[item.type] ?? { typeClass: 'default' }
+  const icon = PILL_ICONS[meta.typeClass] ?? PILL_ICONS.dataset
+  const pill = document.createElement('span')
+  pill.className = `mention-inline-pill mention-inline-pill--${meta.typeClass}`
+  pill.contentEditable = 'false'
+  pill.dataset.mention = item.name
+  pill.dataset.mentionType = meta.typeClass
+  pill.innerHTML = `${icon}<span style="vertical-align:1px">@${item.displayName ?? item.name}</span>`
+
+  // Split text node: [before@][pill][space+after]
+  const beforeNode = document.createTextNode(beforeAt)
+  const afterNode  = document.createTextNode(' ' + afterQuery)
+  const parent = textNode.parentNode!
+  parent.insertBefore(beforeNode, textNode)
+  parent.insertBefore(pill, textNode)
+  parent.insertBefore(afterNode, textNode)
+  parent.removeChild(textNode)
+
+  // Move cursor to after the trailing space
+  const newRange = document.createRange()
+  newRange.setStart(afterNode, 1)
+  newRange.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(newRange)
+
+  recordMention(item)
+  closeMention()
+  syncPlainText()
+  el.focus()
+}
+
+// ── Trigger @ mention via chip button ─────────────────────
+const triggerMention = () => {
+  const el = editorRef.value
+  if (!el) return
+  el.focus()
+  document.execCommand('insertText', false, '@')
+  handleInput()
+}
+
+// ── Keyboard handler ──────────────────────────────────────
+const handleKeydown = (event: KeyboardEvent) => {
+  // Escape: close or go back in mention panel
+  if (isMentionOpen.value && event.key === 'Escape') {
     event.preventDefault()
-    insertNewline(el)
-  } else {
+    mentionLevel.value === 'items' ? goBackToRoot() : closeMention()
+    return
+  }
+
+  // Backspace: delete an entire pill if cursor is right after one
+  if (event.key === 'Backspace') {
+    const sel = window.getSelection()
+    if (sel?.rangeCount && sel.getRangeAt(0).collapsed) {
+      const r = sel.getRangeAt(0)
+      // Check sibling just before cursor
+      let prevNode: Node | null = null
+      if (r.startContainer.nodeType === Node.TEXT_NODE && r.startOffset === 0) {
+        prevNode = r.startContainer.previousSibling
+      } else if (r.startContainer.nodeType === Node.ELEMENT_NODE) {
+        const el2 = r.startContainer as Element
+        prevNode = el2.childNodes[r.startOffset - 1] ?? null
+      }
+      if (prevNode instanceof HTMLElement && prevNode.dataset.mention) {
+        prevNode.remove()
+        syncPlainText()
+        event.preventDefault()
+        return
+      }
+    }
+  }
+
+  // Enter: submit (or Shift+Enter for newline)
+  if (event.key === 'Enter') {
+    if (event.shiftKey) {
+      // Allow default browser newline behavior in contenteditable
+      return
+    }
     event.preventDefault()
     handleSubmit()
   }
 }
 
-const handleSubmit = () => {
-  if (chatStore.inputText.trim() && !chatStore.isStreaming) {
-    emit('send')
-    clearResolvedMentions()
-  }
+// ── Paste: strip HTML, only plain text ────────────────────
+const handlePaste = (event: ClipboardEvent) => {
+  event.preventDefault()
+  const text = event.clipboardData?.getData('text/plain') ?? ''
+  document.execCommand('insertText', false, text)
+  syncPlainText()
 }
 
-// --- File handling ---
+// ── Submit ────────────────────────────────────────────────
+const handleSubmit = () => {
+  if (!chatStore.inputText.trim() || chatStore.isStreaming) return
+  emit('send')
+  clearResolvedMentions()
+  nextTick(() => {
+    const el = editorRef.value
+    if (el) el.innerHTML = ''
+    isInternalUpdate = true
+    chatStore.inputText = ''
+    isInternalUpdate = false
+  })
+}
 
-const handleFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement
+// ── Watch for external inputText changes (e.g. skill card click) ─
+watch(() => chatStore.inputText, (val) => {
+  if (isInternalUpdate) return
+  const el = editorRef.value
+  if (!el) return
+  if (extractPlainText(el) !== val) {
+    // Set as plain text (no pills for programmatically-set content)
+    el.textContent = val
+    // Move cursor to end
+    const sel = window.getSelection()
+    const r = document.createRange()
+    r.selectNodeContents(el)
+    r.collapse(false)
+    sel?.removeAllRanges()
+    sel?.addRange(r)
+  }
+})
+
+// ── Click outside → close panel ───────────────────────────
+const handleDocumentMousedown = (e: MouseEvent) => {
+  if (!isMentionOpen.value) return
+  if (containerRef.value?.contains(e.target as Node)) return
+  closeMention()
+}
+onMounted(() => document.addEventListener('mousedown', handleDocumentMousedown))
+onBeforeUnmount(() => document.removeEventListener('mousedown', handleDocumentMousedown))
+
+// ── File handling ─────────────────────────────────────────
+const handleFileChange = async (e: Event) => {
+  const input = e.target as HTMLInputElement
   if (!input.files) return
   const rejections = await addFiles(Array.from(input.files))
   fileErrors.value = rejections
   input.value = ''
-  if (rejections.length > 0) {
-    setTimeout(() => { fileErrors.value = [] }, 4000)
-  }
+  if (rejections.length > 0) setTimeout(() => { fileErrors.value = [] }, 4000)
 }
 
-const handleDrop = async (event: DragEvent) => {
-  if (!event.dataTransfer?.files) return
-  const rejections = await addFiles(Array.from(event.dataTransfer.files))
+const handleDrop = async (e: DragEvent) => {
+  if (!e.dataTransfer?.files) return
+  const rejections = await addFiles(Array.from(e.dataTransfer.files))
   fileErrors.value = rejections
-  if (rejections.length > 0) {
-    setTimeout(() => { fileErrors.value = [] }, 4000)
-  }
+  if (rejections.length > 0) setTimeout(() => { fileErrors.value = [] }, 4000)
 }
-
-watch(() => chatStore.inputText, (newVal) => {
-  if (!newVal) {
-    nextTick(() => {
-      const el = textareaRef.value
-      if (el) el.style.height = 'auto'
-    })
-  }
-})
 </script>
