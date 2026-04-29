@@ -57,7 +57,6 @@ export default defineNuxtConfig({
     '/api/connections/upload-dataset': {
       proxy: {
         to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/connections/upload-dataset`,
-        timeout: 120_000,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }
@@ -66,7 +65,6 @@ export default defineNuxtConfig({
     '/api/connections/upload-sqlite': {
       proxy: {
         to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/connections/upload-sqlite`,
-        timeout: 120_000,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }
@@ -77,7 +75,6 @@ export default defineNuxtConfig({
     '/api/chat/files/upload': {
       proxy: {
         to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/chat/files/upload`,
-        timeout: 120_000,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }
