@@ -206,6 +206,23 @@
                 />
               </div>
             </template>
+
+            <!-- Default range preset -->
+            <div class="space-y-1 mt-2">
+              <label class="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Default Range</label>
+              <select
+                :value="control.dateRangeDefault ?? 'full'"
+                :disabled="!editMode"
+                class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
+                @change="onDateRangeDefaultChange(control, ($event.target as HTMLSelectElement).value as FilterControl['dateRangeDefault'])"
+              >
+                <option value="full">Full range (min → max)</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+                <option value="ytd">Year to date</option>
+              </select>
+            </div>
           </div>
         </template>
 
@@ -297,6 +314,7 @@ function onTypeChange(control: FilterControl) {
   }
   if (control.type !== 'date_range') {
     delete control.dateRangeSource
+    delete control.dateRangeDefault
   }
 }
 
@@ -362,6 +380,11 @@ function onDateRangeSqlInput(control: FilterControl, sql: string) {
   } else {
     control.dateRangeSource.sql = sql
   }
+  emitUpdate()
+}
+
+function onDateRangeDefaultChange(control: FilterControl, value: FilterControl['dateRangeDefault']) {
+  control.dateRangeDefault = value
   emitUpdate()
 }
 

@@ -74,6 +74,7 @@ export interface FilterControl {
   options?: string[]                 // static fallback options
   optionsSource?: FilterOptionsSource // dynamic SQL-based options
   dateRangeSource?: FilterOptionsSource // dynamic SQL to fetch min/max dates for date_range controls
+  dateRangeDefault?: 'full' | '7d' | '30d' | '90d' | 'ytd'
 }
 
 export interface FilterWidgetConfig {

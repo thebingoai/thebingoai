@@ -44,7 +44,7 @@ SAMPLE_CONN_CONTEXT = {
                 "id": {"type": "integer", "role": "key"},
                 "region": {"type": "varchar", "role": "dimension", "cardinality": 5},
                 "amount": {"type": "numeric", "role": "measure"},
-                "order_date": {"type": "date", "role": "dimension"},
+                "order_date": {"type": "date", "role": "dimension", "min": "2022-01-01", "max": "2024-12-31"},
                 "customer_id": {"type": "integer", "role": "key"},
             },
         },
@@ -344,3 +344,43 @@ class TestBuildDashboardContext:
         assert result["success"] is True
         dim = result["data_context"]["dimensions"]["region"]
         assert dim["cardinality"] == 5
+
+    def test_date_dimension_includes_min_max(self):
+        """Date dimension exposes min/max so the AI can generate dateRangeSource SQL."""
+        context = _make_context()
+        factory, session = _make_db_session_factory(_make_connection())
+        tool_fn = _build_dashboard_context_tool(context, factory)
+
+        with patch(
+            "backend.services.connection_context.load_context_file",
+            return_value=SAMPLE_CONN_CONTEXT,
+        ):
+            result_json = tool_fn.invoke(
+                {"connection_id": 1, "table_names": ["orders"], "dimensions": ["order_date"]}
+            )
+
+        result = json.loads(result_json)
+        assert result["success"] is True
+        dim = result["data_context"]["dimensions"]["order_date"]
+        assert dim["min"] == "2022-01-01"
+        assert dim["max"] == "2024-12-31"
+
+    def test_non_date_dimension_has_no_min_max(self):
+        """Categorical dimensions do not get spurious min/max keys."""
+        context = _make_context()
+        factory, session = _make_db_session_factory(_make_connection())
+        tool_fn = _build_dashboard_context_tool(context, factory)
+
+        with patch(
+            "backend.services.connection_context.load_context_file",
+            return_value=SAMPLE_CONN_CONTEXT,
+        ):
+            result_json = tool_fn.invoke(
+                {"connection_id": 1, "table_names": ["orders"], "dimensions": ["region"]}
+            )
+
+        result = json.loads(result_json)
+        assert result["success"] is True
+        dim = result["data_context"]["dimensions"]["region"]
+        assert "min" not in dim
+        assert "max" not in dim

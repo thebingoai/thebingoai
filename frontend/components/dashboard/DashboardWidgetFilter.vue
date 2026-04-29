@@ -259,13 +259,21 @@ async function initDateRangeDefaults() {
 
         if (maxDate) {
           const max = new Date(maxDate)
-          const from = new Date(max)
-          from.setDate(from.getDate() - 7)
+          const preset = control.dateRangeDefault ?? 'full'
+          let from: Date
 
-          // Clamp "from" to min_date if data range is less than 7 days
-          if (minDate) {
-            const min = new Date(minDate)
-            if (from < min) from.setTime(min.getTime())
+          if (preset === 'full') {
+            from = minDate ? new Date(minDate) : new Date(Date.UTC(max.getUTCFullYear(), 0, 1))
+          } else if (preset === 'ytd') {
+            from = new Date(Date.UTC(max.getUTCFullYear(), 0, 1))
+          } else {
+            const days = preset === '90d' ? 90 : preset === '30d' ? 30 : 7
+            from = new Date(max)
+            from.setUTCDate(from.getUTCDate() - days)
+            if (minDate) {
+              const min = new Date(minDate)
+              if (from < min) from = min
+            }
           }
 
           store.setFilterValue(control.key, { from: fmt(from), to: fmt(max) })
