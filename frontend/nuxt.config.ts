@@ -47,6 +47,7 @@ export default defineNuxtConfig({
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
       chatFileMaxSizeMb: Number(process.env.NUXT_PUBLIC_CHAT_FILE_MAX_SIZE_MB) || 50,
+      workspaceName: process.env.NUXT_PUBLIC_WORKSPACE_NAME || 'your workspace',
     }
   },
 
