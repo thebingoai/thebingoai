@@ -7,6 +7,11 @@
   >
     <!-- ── EXPANDED state ─────────────────────────────────── -->
     <template v-if="!layoutStore.sidebarCollapsed">
+    <!-- Logo -->
+    <div class="flex h-16 items-center border-b border-gray-200 dark:border-neutral-800 pl-[14px] pr-4">
+      <img :src="'/logo/BINGO Logo Design_FA_Primary.png'" alt="Bingo" class="h-12 w-auto dark:hidden" />
+      <img :src="'/logo/BINGO Logo Design_FA_Primary_W.png'" alt="Bingo" class="h-12 w-auto hidden dark:block" />
+    </div>
 
       <!-- Logo row + collapse button -->
       <div class="flex h-14 items-center px-4 gap-2 flex-shrink-0">

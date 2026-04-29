@@ -2,9 +2,8 @@
   <div class="hidden lg:flex lg:w-[42%] flex-col justify-between bg-[#FAF5ED] dark:bg-neutral-950 border-r border-neutral-200 dark:border-neutral-800 p-10">
     <!-- Logo -->
     <div>
-      <span class="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-        bingo<span class="text-purple-600">.</span>
-      </span>
+      <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" class="h-16 w-auto dark:hidden" />
+      <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" class="h-16 w-auto hidden dark:block" />
     </div>
 
     <!-- Marketing headline -->
@@ -34,8 +33,10 @@
             :class="i <= step ? 'bg-purple-600' : 'bg-neutral-200 dark:bg-neutral-700'"
           ></div>
         </div>
-        <div class="flex justify-between text-[11px] text-neutral-400 dark:text-neutral-600">
-          <span>Connect your Account</span><span>Connect your First Plugin</span><span>First task</span>
+        <div class="flex text-[11px] text-neutral-400 dark:text-neutral-600">
+          <span class="flex-1 text-left">Connect your Account</span>
+          <span class="flex-1 text-center">Connect your First Plugin</span>
+          <span class="flex-1 text-right">Start your First task</span>
         </div>
       </div>
     </div>
