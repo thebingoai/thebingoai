@@ -13,9 +13,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Manrope', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        serif: ['Fraunces', 'Cambria', 'Georgia', 'serif'],
-        mono: ['JetBrains Mono', 'SF Mono', 'ui-monospace', 'monospace']
+        sans: ['DM Sans', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
       },
       spacing: {
         'sidebar': '220px',
