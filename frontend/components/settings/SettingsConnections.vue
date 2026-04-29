@@ -77,6 +77,10 @@
             <User class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
             <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">Account: {{ connection.name }}</span>
           </div>
+          <div v-else-if="connection.database" class="flex items-center gap-1 mt-1">
+            <Database class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
+            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">{{ connection.database }}</span>
+          </div>
           <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
             <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
             <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">{{ connection.source_filename }}</span>
