@@ -13,11 +13,12 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['DM Sans', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace']
+        sans: ['Manrope', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        serif: ['Fraunces', 'Cambria', 'Georgia', 'serif'],
+        mono: ['JetBrains Mono', 'SF Mono', 'ui-monospace', 'monospace']
       },
       spacing: {
-        'sidebar': '250px',
+        'sidebar': '220px',
         'upload-panel': '300px'
       },
       borderRadius: {
