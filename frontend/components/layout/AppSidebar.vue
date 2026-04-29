@@ -8,8 +8,8 @@
   >
     <!-- Logo -->
     <div class="flex h-16 items-center border-b border-gray-200 dark:border-neutral-800 pl-[14px] pr-4">
-      <img :src="'/logo/Bingo_BL.png'" alt="Bingo" class="h-16 w-auto dark:hidden" />
-      <img :src="'/logo/Bingo_WH.png'" alt="Bingo" class="h-16 w-auto hidden dark:block" />
+      <img :src="'/logo/BINGO Logo Design_FA_Primary.png'" alt="Bingo" class="h-12 w-auto dark:hidden" />
+      <img :src="'/logo/BINGO Logo Design_FA_Primary_W.png'" alt="Bingo" class="h-12 w-auto hidden dark:block" />
     </div>
 
     <!-- Permanent conversation (pinned) -->
