@@ -19,11 +19,11 @@ export const useApi = () => {
     connections: createConnectionsApi(fetchWithRefresh, authStore, router),
     chat: createChatApi(fetchWithRefresh, authStore, router),
     dashboards: createDashboardsApi(fetchWithRefresh),
-  } as Record<string, unknown>
+  }
 
   const ext = useApiExtensions()
   for (const [key, factory] of ext.entries()) {
-    base[key] = factory(fetchWithRefresh, authStore, router)
+    (base as Record<string, unknown>)[key] = factory(fetchWithRefresh, authStore, router)
   }
 
   return base

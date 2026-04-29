@@ -7,16 +7,10 @@
   >
     <!-- ── EXPANDED state ─────────────────────────────────── -->
     <template v-if="!layoutStore.sidebarCollapsed">
-    <!-- Logo -->
-    <div class="flex h-16 items-center border-b border-gray-200 dark:border-neutral-800 pl-[14px] pr-4">
-      <img :src="'/logo/BINGO Logo Design_FA_Primary.png'" alt="Bingo" class="h-12 w-auto dark:hidden" />
-      <img :src="'/logo/BINGO Logo Design_FA_Primary_W.png'" alt="Bingo" class="h-12 w-auto hidden dark:block" />
-    </div>
-
       <!-- Logo row + collapse button -->
       <div class="flex h-14 items-center px-4 gap-2 flex-shrink-0">
-        <img src="/logo/logo-black.png" alt="Bingo" class="h-9 w-auto dark:hidden flex-shrink-0" />
-        <img src="/logo/logo-white.png" alt="Bingo" class="h-9 w-auto hidden dark:block flex-shrink-0" />
+        <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 24px; width: auto;" class="dark:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block" />
         <div class="flex-1" />
         <button
           @click="layoutStore.toggleSidebarCollapsed()"
@@ -209,8 +203,8 @@
         title="Open sidebar"
       >
         <!-- Logo visible by default, swap to expand icon on hover -->
-        <img src="/logo/logo-black.png" alt="Bingo" class="h-6 w-auto dark:hidden group-hover:hidden" />
-        <img src="/logo/logo-white.png" alt="Bingo" class="h-6 w-auto hidden dark:block group-hover:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
         <PanelLeftOpen class="h-4 w-4 text-[var(--ink-2)] hidden group-hover:block" />
       </div>
 
@@ -270,8 +264,8 @@
     style="width: 220px"
   >
     <div class="flex h-14 items-center px-4">
-      <img src="/logo/logo-black.png" alt="Bingo" class="h-9 w-auto dark:hidden" />
-      <img src="/logo/logo-white.png" alt="Bingo" class="h-9 w-auto hidden dark:block" />
+      <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 36px; width: auto;" class="hidden dark:block" />
+      <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 36px; width: auto;" class="hidden dark:block" />
       <div class="flex-1" />
       <button @click="layoutStore.setMainExpanded(true)" class="p-1 text-[var(--ink-3)] hover:text-[var(--ink-1)]">
         <X class="h-4 w-4" />

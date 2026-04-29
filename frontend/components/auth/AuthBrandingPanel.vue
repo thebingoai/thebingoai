@@ -2,8 +2,8 @@
   <div class="hidden lg:flex lg:w-[42%] flex-col justify-between bg-[#FAF5ED] dark:bg-neutral-950 border-r border-neutral-200 dark:border-neutral-800 p-10">
     <!-- Logo -->
     <div>
-      <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" class="h-16 w-auto dark:hidden" />
-      <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" class="h-16 w-auto hidden dark:block" />
+      <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 40px; width: auto;" class="dark:hidden" />
+      <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 40px; width: auto;" class="hidden dark:block" />
     </div>
 
     <!-- Marketing headline -->
