@@ -83,6 +83,15 @@
   color: var(--ink-2);
 }
 
+.widget-label {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 .caret::after {
   content: '▍';
   display: inline-block;

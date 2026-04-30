@@ -55,7 +55,7 @@ Structure every dashboard as a top-to-bottom data story:
 
 **Section 3 — Analysis & Trends (y=4 to y=14):** Text section header, then 3-5 charts with varied types, placed side-by-side.
 
-**Section 4 — Detail & Drill-Down (y=15+):** Text section header, then 1-2 detail tables.
+**Section 4 — Detail & Drill-Down (y=15+):** One Text section header (e.g. "## Detail & Records"), then 1-2 detail tables. Use `config.title` on each table widget for its specific title — do NOT add extra Text widgets just to title individual tables.
 
 ### Layout Patterns (12-column grid)
 
@@ -74,7 +74,8 @@ Rows 16+:   Detail tables — w=12, h=5
 ### Widget Count Guidelines
 
 - Target **9-13 widgets** total (min 7, max 14)
-- 3-4 KPIs + 1 filter bar + 1-2 text headers + 3-5 charts + 1-2 tables
+- 3-4 KPIs + 1 filter bar + 2 text section headers + 3-5 charts + 1-2 tables
+- Text widgets are section headers only (one before charts, one before tables) — tables use `config.title` for their own title
 
 ### Chart Type Selection Guide
 

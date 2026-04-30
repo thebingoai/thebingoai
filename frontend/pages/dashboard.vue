@@ -38,7 +38,7 @@
 
       <!-- Dashboard drill-down view -->
       <template v-else>
-        <!-- Title bar: back + title + edit toggle + save -->
+        <!-- Title bar -->
         <DashboardTitleBar
           :title="store.currentDashboard.title"
           :edit-mode="store.editMode"
@@ -46,19 +46,21 @@
           :saving="store.saving"
           :refreshing="store.refreshing"
           :dashboard-id="store.currentDashboard.id"
+          :source-title="dashboardSourceTitle"
           @back="store.closeDashboard()"
           @toggle-edit="store.toggleEditMode()"
           @save="store.saveDashboard()"
           @refresh-all="store.refreshAllWidgets()"
           @delete="handleDeleteRequest"
+          @share="handleShare"
           @update:title="handleTitleUpdate"
           @analyze="openAnalyzePanel"
         />
 
-        <!-- Edit toolbar (visible only in edit mode) -->
+        <!-- Toolbar — always visible -->
         <DashboardToolbar
-          v-if="store.editMode"
-          @add-widget="store.addWidget"
+          :widget-count="store.currentWidgets.length"
+          @add-widget="handleAddWidget"
         />
 
         <!-- Grid + inline editor -->
@@ -161,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { LayoutGrid, Clock, Activity } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useDashboardStore } from '~/stores/dashboard'
@@ -257,6 +259,29 @@ function openSqlEditor(widgetId: string, error?: string) {
 
 function openConfigEditor(widgetId: string) {
   configEditorWidget.value = store.currentWidgets.find(w => w.id === widgetId) ?? null
+}
+
+// Derive provenance title: prefer source name from first widget that has one,
+// then data_context fields, then skip (no fallback to the long description)
+const dashboardSourceTitle = computed(() => {
+  const d = store.currentDashboard
+  if (!d) return undefined
+  const widgetSource = store.currentWidgets.find(w => w.sources?.length)?.sources?.[0]
+  return widgetSource
+    ?? (d.data_context as any)?.source_title
+    ?? (d.data_context as any)?.source_name
+    ?? (d.data_context as any)?.source_task
+    ?? undefined
+})
+
+function handleShare() {
+  navigator.clipboard?.writeText(window.location.href)
+  toast.success('Link copied to clipboard')
+}
+
+function handleAddWidget(type: import('~/types/dashboard').WidgetType) {
+  if (!store.editMode) store.toggleEditMode()
+  store.addWidget(type)
 }
 
 async function handleDuplicate(id: number) {

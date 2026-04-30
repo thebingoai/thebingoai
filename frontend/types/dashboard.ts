@@ -46,6 +46,7 @@ export interface TableColumn {
 }
 
 export interface TableWidgetConfig {
+  title?: string
   columns: TableColumn[]
   rows: Record<string, any>[]
   pagination?: boolean

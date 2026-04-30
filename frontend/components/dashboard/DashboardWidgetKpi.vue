@@ -2,20 +2,20 @@
   <div class="relative h-full overflow-hidden">
     <!-- Sparkline background (behind content) -->
     <div v-if="config.sparkline && config.sparkline.length > 0"
-         class="absolute inset-0 opacity-30 pointer-events-none">
+         class="absolute inset-0 opacity-20 pointer-events-none">
       <canvas ref="sparklineRef" class="w-full h-full" />
     </div>
 
     <!-- Content overlay -->
     <div class="relative flex h-full flex-col justify-between p-4 z-10">
       <!-- Label -->
-      <div class="text-xs font-medium text-gray-400 dark:text-neutral-400 uppercase tracking-wide">{{ config.label }}</div>
+      <div class="widget-label">{{ config.label }}</div>
 
       <!-- Main value -->
       <div class="flex items-baseline gap-1 mt-2">
-        <span v-if="config.prefix" class="text-sm font-medium text-gray-500 dark:text-neutral-400">{{ config.prefix }}</span>
-        <span class="text-2xl font-semibold text-gray-900 dark:text-neutral-100 tabular-nums">{{ formattedValue }}</span>
-        <span v-if="config.suffix" class="text-sm font-medium text-gray-500 dark:text-neutral-400">{{ config.suffix }}</span>
+        <span v-if="config.prefix" class="text-sm font-medium text-[var(--ink-3)]">{{ config.prefix }}</span>
+        <span class="kpi-value" :class="kpiValueClass">{{ formattedValue }}</span>
+        <span v-if="config.suffix" class="text-sm font-medium text-[var(--ink-3)]">{{ config.suffix }}</span>
       </div>
 
       <!-- Trend row -->
@@ -25,10 +25,10 @@
           class="h-3.5 w-3.5 flex-shrink-0"
           :class="trendColor"
         />
-        <span class="text-xs font-medium tabular-nums" :class="trendColor">
+        <span class="text-xs font-medium tabular-nums font-mono" :class="trendColor">
           {{ config.trend.value }}%
         </span>
-        <span v-if="config.trend.period" class="text-xs text-gray-400 dark:text-neutral-500">{{ config.trend.period }}</span>
+        <span v-if="config.trend.period" class="text-xs text-[var(--ink-3)]">{{ config.trend.period }}</span>
       </div>
     </div>
   </div>
@@ -67,6 +67,13 @@ const formattedValue = computed(() => {
   return String(v)
 })
 
+const kpiValueClass = computed(() => {
+  if (!props.config.trend) return ''
+  if (props.config.trend.direction === 'down') return 'delta-bad'
+  if (props.config.trend.direction === 'up') return 'delta-good'
+  return ''
+})
+
 const trendIcon = computed(() => {
   switch (props.config.trend?.direction) {
     case 'up': return TrendingUp
@@ -77,9 +84,9 @@ const trendIcon = computed(() => {
 
 const trendColor = computed(() => {
   switch (props.config.trend?.direction) {
-    case 'up': return 'text-emerald-500'
-    case 'down': return 'text-rose-500'
-    default: return 'text-gray-400'
+    case 'up': return 'text-[var(--d-teal)]'
+    case 'down': return 'text-[var(--d-ember)]'
+    default: return 'text-[var(--ink-3)]'
   }
 })
 
@@ -89,7 +96,9 @@ function renderSparkline() {
 
   if (!sparklineRef.value || !props.config.sparkline?.length) return
 
-  const color = props.config.trend?.direction === 'down' ? '#f43f5e' : '#6366f1'
+  const color = props.config.trend?.direction === 'down'
+    ? 'var(--d-ember)'
+    : 'var(--d-teal)'
 
   sparklineInstance = new Chart(sparklineRef.value, {
     type: 'line',
@@ -120,7 +129,6 @@ function renderSparkline() {
 
 onMounted(() => renderSparkline())
 
-// Re-render sparkline when data changes (e.g. after refresh)
 watch(() => props.config.sparkline, () => {
   nextTick(() => renderSparkline())
 })
@@ -129,3 +137,19 @@ onBeforeUnmount(() => {
   sparklineInstance?.destroy()
 })
 </script>
+
+<style scoped>
+.kpi-value {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-weight: 500;
+  font-size: 36px;
+  font-optical-sizing: auto;
+  font-variation-settings: 'opsz' 72;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  color: var(--ink-0);
+}
+.kpi-value.delta-bad  { color: var(--d-ember); }
+.kpi-value.delta-good { color: var(--d-teal); }
+</style>
