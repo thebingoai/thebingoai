@@ -116,9 +116,12 @@
               :key="conv.id"
               @click="handleSelectConversation(conv.id)"
               class="w-full flex items-baseline gap-2 px-4 py-1.5 text-left transition-colors duration-150 border-l-2"
-              :class="chatStore.currentThreadId === conv.id
-                ? 'border-[var(--ember)] bg-[var(--ember-wash)]'
-                : 'border-transparent hover:bg-[var(--paper-2)]'"
+              :class="[
+                chatStore.currentThreadId === conv.id
+                  ? 'border-[var(--ember)] bg-[var(--ember-wash)]'
+                  : 'border-transparent hover:bg-[var(--paper-2)]',
+                conv.id === newlyAddedId ? 'task-slide-in' : ''
+              ]"
             >
               <span
                 class="sidebar-title flex-1 min-w-0 text-[12.5px] overflow-hidden text-ellipsis whitespace-nowrap"
@@ -349,6 +352,20 @@ const groupedTasks = computed(() => {
 
 const isRecentExpanded = ref(true)
 const isArchivedExpanded = ref(false)
+const newlyAddedId = ref<string | null>(null)
+
+watch(
+  () => chatStore.taskConversations[0]?.id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      // Skip re-animation when the pending placeholder is silently replaced by the real thread ID
+      if (oldId?.startsWith('pending-')) return
+      newlyAddedId.value = newId
+      setTimeout(() => { newlyAddedId.value = null }, 500)
+    }
+  },
+  { flush: 'post' }
+)
 const archivedLoaded = ref(false)
 const taskListRef = ref<HTMLElement | null>(null)
 
@@ -418,6 +435,14 @@ const handleSelectConversation = (id: string) => {
 </script>
 
 <style scoped>
+@keyframes taskSlideIn {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.task-slide-in {
+  animation: taskSlideIn 0.35s ease forwards;
+}
+
 .sidebar-title {
   overflow: hidden;
   white-space: nowrap;

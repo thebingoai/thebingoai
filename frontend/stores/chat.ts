@@ -92,6 +92,7 @@ export const useChatStore = defineStore('chat', {
     conversationHasMore: false,
     conversationOffset: 0,
     isLoadingMoreConversations: false,
+    pendingNewConversationId: null as string | null,
   }),
 
   getters: {
@@ -217,6 +218,16 @@ export const useChatStore = defineStore('chat', {
 
     addConversation(conversation: Conversation) {
       this.conversations.unshift(conversation)
+    },
+
+    replacePendingConversation(realConv: Conversation) {
+      const idx = this.conversations.findIndex(c => c.id === this.pendingNewConversationId)
+      if (idx !== -1) {
+        this.conversations.splice(idx, 1, realConv)
+      } else {
+        this.conversations.unshift(realConv)
+      }
+      this.pendingNewConversationId = null
     },
 
     removeConversation(threadId: string) {

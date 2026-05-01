@@ -355,14 +355,19 @@ export const useChatStreaming = () => {
         const threadId: string = data.thread_id
         if (threadId && !chatStore.currentThreadId) {
           chatStore.setCurrentThread(threadId)
-          chatStore.addConversation({
+          const realConv = {
             id: threadId,
             title: 'New Task',
-            type: 'task',
+            type: 'task' as const,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            message_count: 2
-          })
+            message_count: 2,
+          }
+          if (chatStore.pendingNewConversationId) {
+            chatStore.replacePendingConversation(realConv)
+          } else {
+            chatStore.addConversation(realConv)
+          }
         } else if (threadId) {
           chatStore.updateConversationActivity(threadId, new Date().toISOString())
         }

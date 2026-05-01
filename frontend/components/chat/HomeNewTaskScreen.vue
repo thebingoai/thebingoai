@@ -1,9 +1,9 @@
 <template>
-  <div class="home-screen">
+  <div :class="['home-screen', { 'is-sending': props.isSending }]">
     <div class="home-inner">
 
       <!-- ── Greeting + hero heading ──────────────────────── -->
-      <div class="eyebrow" style="margin-bottom: 16px; letter-spacing: 0.12em;">
+      <div class="eyebrow home-hero-eyebrow" style="margin-bottom: 16px; letter-spacing: 0.12em;">
         {{ greeting }}, {{ firstName }}
       </div>
 
@@ -180,9 +180,21 @@ const chat = useChat()
 const api = useApi()
 const { addFiles } = useChatFileUpload()
 
+const props = defineProps<{ isSending?: boolean }>()
+
 const textareaRef = ref<HTMLElement | null>(null)   // contenteditable div
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const composerWrapRef = ref<HTMLElement | null>(null)
+
+// Calculates how far the composer must travel to reach the page bottom
+const composerTransform = ref('translateY(100px)')
+watch(() => props.isSending, (sending) => {
+  if (sending && composerWrapRef.value) {
+    const rect = composerWrapRef.value.getBoundingClientRect()
+    const distance = window.innerHeight - rect.bottom - 16
+    composerTransform.value = `translateY(${Math.max(distance, 80)}px)`
+  }
+})
 
 // ── Mention panel ─────────────────────────────────────────
 const {
@@ -714,5 +726,38 @@ const useSkill = (skill: SkillItem) => {
   font-size: 11px;
   color: var(--ink-2);
   flex-shrink: 0;
+}
+
+/* ── Send-from-New-Task in-place animation ───────────────────
+   Transitions are always declared so they fire the moment the
+   .is-sending class changes the property values. */
+.home-hero-eyebrow,
+.home-hero-heading,
+.home-hero-sub {
+  transition: opacity 0.4s ease-out, transform 0.45s ease-out;
+}
+.home-composer-wrap {
+  /* ease-in = accelerates downward like a natural slide; no opacity — stays
+     fully visible so it appears to physically travel to the ChatInputBar position */
+  transition: transform 0.5s ease-in;
+}
+.home-section {
+  transition: opacity 0.38s ease-out, transform 0.42s ease-out;
+}
+
+/* Values that trigger the transitions when .is-sending is applied */
+.is-sending .home-hero-eyebrow,
+.is-sending .home-hero-heading,
+.is-sending .home-hero-sub {
+  opacity: 0;
+  transform: translateY(-36px);
+}
+.is-sending .home-composer-wrap {
+  transform: v-bind(composerTransform);
+  /* opacity intentionally omitted — box stays visible as it slides to the bottom */
+}
+.is-sending .home-section {
+  opacity: 0;
+  transform: translateY(28px);
 }
 </style>
