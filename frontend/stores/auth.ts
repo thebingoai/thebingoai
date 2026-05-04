@@ -288,6 +288,12 @@ export const useAuthStore = defineStore('auth', {
         if (error?.statusCode === 403 || error?.status === 403) {
           this.isInactive = true
           this.error = 'Account is inactive'
+          this.token = null
+          this.refreshToken = null
+          if (process.client) {
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('auth_refresh_token')
+          }
           throw error
         } else if (error?.statusCode === 401 || error?.status === 401) {
           const refreshed = await this.refreshAccessToken()
