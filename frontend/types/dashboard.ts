@@ -43,6 +43,10 @@ export interface TableColumn {
   format?: 'number' | 'currency' | 'percent' | 'date' | 'text'
   roundValue?: boolean
   decimalPlaces?: number
+  // new
+  align?: 'left' | 'center' | 'right'
+  displayType?: 'number' | 'bar' | 'heatmap'   // applies to numeric formats only
+  showBarValue?: boolean                          // show number alongside bar (default true)
 }
 
 export interface TableWidgetConfig {
@@ -51,6 +55,19 @@ export interface TableWidgetConfig {
   rows: Record<string, any>[]
   pagination?: boolean
   rowsPerPage?: number
+  // new — Style tab
+  showHeader?: boolean           // default true
+  showRowNumbers?: boolean       // default false
+  stripedRows?: boolean          // default false
+  wrapText?: boolean             // default false
+  horizontalScrolling?: boolean  // default false
+  // new — Configure tab
+  defaultSortKey?: string        // column key for initial sort
+  defaultSortDir?: 'asc' | 'desc'
+  // new — Style tab continued
+  showSummaryRow?: boolean
+  missingDataDisplay?: 'dash' | 'blank' | 'no-data'  // default 'dash'
+  columnColors?: Record<string, string>               // keyed by col.key, for bar/heatmap
 }
 
 // Text/markdown widget
