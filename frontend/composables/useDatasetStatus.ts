@@ -338,8 +338,9 @@ export const useDatasetStatus = () => {
 
       for (const att of msg.attachments) {
         if (!CSV_MIME_TYPES.has(att.type)) continue
-        if (att.file_id && seenFileIds.has(att.file_id)) continue
-        if (att.file_id) seenFileIds.add(att.file_id)
+        if (!att.file_id || att.file_id.startsWith('__pending__:')) continue
+        if (seenFileIds.has(att.file_id)) continue
+        seenFileIds.add(att.file_id)
 
         const ds: DatasetStatus = {
           name: att.name,
@@ -501,16 +502,17 @@ export const useDatasetStatus = () => {
   )
 
   // Stop all polling and reload data when conversation changes
-  watch(() => chatStore.currentThreadId, () => {
+  watch(() => chatStore.currentThreadId, (newId, oldId) => {
     stopAllPolling()
     profilingStatuses.value = new Map()
     wsDatasets.value = new Map()
     wsTimestamps.value = new Map()
     restDatasets.value = new Map()
-    // Clear dataset files from attachedFiles — they belonged to the previous conversation
-    attachedFiles.value = attachedFiles.value.filter(
-      f => f.status !== 'ready' && f.status !== 'processing'
-    )
+    // Only clear attached files when switching AWAY from an existing conversation,
+    // not when first entering a chat (e.g. after ensureThread creates one on upload).
+    if (oldId && oldId !== newId) {
+      attachedFiles.value = []
+    }
     // Load datasets from REST for the new conversation (page refresh scenario)
     loadConversationDatasets()
   })
@@ -539,13 +541,11 @@ export const useDatasetStatus = () => {
       await (api.chat as any).cancelDataset(fileId)
       wsDatasets.value.delete(fileId)
       wsDatasets.value = new Map(wsDatasets.value)
-      // Mark the corresponding attachedFiles chip as error so it doesn't reappear in the panel
-      const cidx = attachedFiles.value.findIndex(f => f.file_id === fileId && f.status === 'processing')
-      if (cidx !== -1) {
-        const updated = [...attachedFiles.value]
-        updated[cidx] = { ...updated[cidx], status: 'error', error: 'Cancelled' }
-        attachedFiles.value = updated
-      }
+      // Remove from attachedFiles regardless of status or sent flag
+      attachedFiles.value = attachedFiles.value.filter(f => f.file_id !== fileId)
+      // Stop polling if this was a connection:N dataset
+      const cid = extractConnectionId(fileId)
+      if (cid) stopPolling(cid)
     } catch {
       // Silently fail
     }

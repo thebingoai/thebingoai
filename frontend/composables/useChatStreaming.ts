@@ -10,21 +10,20 @@ export const useChatStreaming = () => {
   const sendMessage = async (message: string, fileIds: string[] = [], options?: { source?: Message['source'] }) => {
     chatStore.isStreaming = true
 
-    // Add user message optimistically — include CSV/Excel files that have a file_id
-    // (only files with a connection:N id, not files still uploading without one)
+    // Add user message optimistically — include ALL CSV/Excel files,
+    // using file name as fallback id for files still uploading without one.
     const { attachedFiles } = useChatFileUpload()
     const CSV_MIME_SET = new Set(['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
-    const attachments = attachedFiles.value
-      .filter(f => f.file_id && CSV_MIME_SET.has(f.file.type))
-      .map(f => ({
-        file_id: f.file_id!,
-        name: f.file.name,
-        type: f.file.type,
-        size: f.file.size,
-        preview_url: f.preview_url,
-        status: f.status === 'ready' ? 'ready' as const : 'processing' as const,
-      }))
-    const hasAttachments = attachments.length > 0
+    const csvFiles = attachedFiles.value.filter(f => CSV_MIME_SET.has(f.file.type) && !f.sent)
+    const attachments = csvFiles.length > 0 ? csvFiles.map(f => ({
+      file_id: f.file_id || `__pending__:${f.file.name}`,
+      name: f.file.name,
+      type: f.file.type,
+      size: f.file.size,
+      preview_url: f.preview_url,
+      status: f.status === 'ready' ? 'ready' as const : 'processing' as const,
+    })) : undefined
+    const hasAttachments = csvFiles.length > 0
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -142,7 +141,7 @@ export const useChatStreaming = () => {
       }
     }
 
-    return new Promise<void>((resolve) => {
+    return new Promise<void>(async (resolve) => {
       const cleanup = () => {
         if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
         unsubs.forEach(fn => fn())
@@ -462,6 +461,34 @@ export const useChatStreaming = () => {
       const allConnectionIds = [...new Set([...readyConnectionIds, ...mentionIds])]
       const mentions = extractMentions(message)
 
+      // --- Deferred send: wait for any CSV files still uploading to get their file_ids ---
+
+      let deferredFileIds = fileIds
+      const CSV_MIME_SET2 = new Set(['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
+      const pendingNow = attachedFiles.value.filter(f => CSV_MIME_SET2.has(f.file.type) && !f.file_id && !f.sent)
+
+      if (pendingNow.length > 0) {
+        const names = pendingNow.map(f => f.file.name).join(', ')
+        stepsLog.push(`${formatTs()}  ⏳ Waiting for upload: ${names}…`)
+        syncStepsLog()
+
+        // Wait for markProcessing to set file_id after HTTP 200
+        await new Promise<void>(resolve => {
+          const stop = watch(attachedFiles, (files) => {
+            const stillPending = files.filter(f => CSV_MIME_SET2.has(f.file.type) && !f.file_id)
+            if (stillPending.length === 0) { stop(); resolve() }
+          }, { deep: false })
+        })
+
+        // Get file_ids directly — getFileIds() skips sent files (clearFiles already ran)
+        deferredFileIds = attachedFiles.value
+          .filter(f => f.file_id && CSV_MIME_SET2.has(f.file.type))
+          .map(f => f.file_id as string)
+        const logIdx = stepsLog.findLastIndex(l => l.includes('Waiting for upload:'))
+        if (logIdx !== -1) stepsLog[logIdx] = stepsLog[logIdx] + ' ✓'
+        syncStepsLog()
+      }
+
       // Send via WebSocket
       ws.send({
         type: 'chat.send',
@@ -470,7 +497,7 @@ export const useChatStreaming = () => {
         message,
         connection_ids: allConnectionIds,
         mentions,
-        file_ids: fileIds
+        file_ids: deferredFileIds
       })
     })
   }

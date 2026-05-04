@@ -49,16 +49,6 @@
                 <template v-if="rowCount(ds) != null">{{ rowCount(ds)!.toLocaleString() }} rows<template v-if="ds.size"> · </template></template>
                 <template v-if="ds.size">{{ formatSize(ds.size) }}</template>
               </span>
-              <button
-                v-if="ds.fileId"
-                @click.stop="cancelDataset(ds.fileId)"
-                class="shrink-0 p-0.5 text-gray-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                title="Remove dataset"
-              >
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
               <svg
                 class="w-3 h-3 text-gray-400 dark:text-neutral-500 flex-shrink-0 transition-transform duration-200"
                 :class="{ 'rotate-180': isExpanded(ds.fileId ?? ds.name) }"
@@ -106,16 +96,6 @@
               </svg>
               <span class="text-[11px] font-medium text-gray-600 truncate min-w-0 flex-1">{{ ds.name }}</span>
               <span class="text-[9px] text-gray-300 shrink-0">{{ formatSize(ds.size) }}</span>
-              <button
-                v-if="ds.fileId"
-                @click="cancelDataset(ds.fileId)"
-                class="shrink-0 p-0.5 text-gray-300 hover:text-red-400 transition-colors"
-                :title="ds.step === 'failed' ? 'Remove' : 'Cancel'"
-              >
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
 
             <!-- Vertical timeline -->

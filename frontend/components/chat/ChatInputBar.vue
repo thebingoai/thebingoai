@@ -43,9 +43,9 @@
           class="rounded-2xl border border-[var(--line-2)] bg-[var(--paper-0)] shadow-[var(--shadow-2)] flex flex-col focus-within:border-[var(--ink-3)] transition-colors px-4 pt-3.5 pb-2.5"
         >
           <!-- Attachment preview strip (hidden during streaming so retained processing files don't reappear) -->
-          <div v-if="attachedFiles.length > 0 && !chatStore.isStreaming" class="flex flex-wrap gap-2 mb-2">
+          <div v-if="attachedFiles.some(f => !f.sent) && !chatStore.isStreaming" class="flex flex-wrap gap-2 mb-2">
             <div v-for="(file, index) in attachedFiles" :key="index" class="group">
-              <ChatFilePreview :file="file" :index="index" @remove="removeFile" />
+              <ChatFilePreview v-if="!file.sent" :file="file" :index="index" @remove="removeFile" />
             </div>
           </div>
 
@@ -426,7 +426,6 @@ const handlePaste = (event: ClipboardEvent) => {
 // ── Submit ────────────────────────────────────────────────
 const handleSubmit = () => {
   if (!chatStore.inputText.trim() || chatStore.isStreaming) return
-  if (attachedFiles.value.length > 0 && !allFilesReady.value) return
   emit('send')
   clearResolvedMentions()
   nextTick(() => {

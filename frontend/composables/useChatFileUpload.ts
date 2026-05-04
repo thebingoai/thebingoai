@@ -6,6 +6,7 @@ export interface UploadingFile {
   status: 'uploading' | 'processing' | 'ready' | 'error'
   error?: string
   progress?: number  // 0-100, only meaningful when status === 'uploading'
+  sent?: boolean  // true after first send — skip in subsequent message embeddings
 }
 
 interface FileRejection {
@@ -254,31 +255,22 @@ export const useChatFileUpload = () => {
   }
 
   const clearFiles = () => {
-    // Keep CSV/Excel files that are still uploading or processing so the
-    // dataset panel continues showing the upload timeline after the user
-    // sends a message.  They are filtered from the chip strip separately.
-    attachedFiles.value = attachedFiles.value.filter(f => {
-      if (DATASET_TYPES.has(f.file.type) && f.status !== 'ready') return true
+    // Keep all CSV/Excel files so the dataset panel continues showing them
+    // across multiple messages in the same conversation. Mark them as sent so
+    // subsequent messages don't re-embed them. The conversation-change watch
+    // in useDatasetStatus clears them when switching chats.
+    attachedFiles.value = attachedFiles.value.map(f => {
+      if (DATASET_TYPES.has(f.file.type)) return { ...f, sent: true }
       if (f.preview_url) URL.revokeObjectURL(f.preview_url)
-      return false
-    })
+      return null as any
+    }).filter(Boolean)
   }
 
   const getFileIds = (): string[] => {
     return attachedFiles.value
-      .filter(f => f.file_id !== null && DATASET_TYPES.has(f.file.type))
+      .filter(f => !f.sent && f.file_id !== null && DATASET_TYPES.has(f.file.type))
       .map(f => f.file_id as string)
   }
-
-  // When streaming ends, clear any ready dataset files that were retained
-  // by clearFiles() so they don't reappear as chips in the input strip.
-  watch(() => chatStore.isStreaming, (streaming) => {
-    if (!streaming) {
-      attachedFiles.value = attachedFiles.value.filter(
-        f => !DATASET_TYPES.has(f.file.type) || f.status !== 'ready',
-      )
-    }
-  })
 
   return {
     attachedFiles,
