@@ -47,8 +47,10 @@ describe('useChatFileUpload', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockChatStore.currentThreadId = null
-    const { clearFiles } = useChatFileUpload()
+    const { clearFiles, attachedFiles } = useChatFileUpload()
+    // clearFiles retains CSV files, so also clear attachedFiles directly for test isolation
     clearFiles()
+    attachedFiles.value = []
   })
 
   it('routes CSV files through connectionsApi.uploadDataset', async () => {
@@ -192,6 +194,52 @@ describe('useChatFileUpload', () => {
 
       expect(rejections).toHaveLength(1)
       expect(rejections[0].error).toBe('Unsupported file type')
+    })
+  })
+
+  describe('sent flag', () => {
+    it('getFileIds excludes files marked as sent', async () => {
+      mockCreateConversation.mockResolvedValue({ thread_id: 'thread-1' })
+      mockUploadDataset.mockResolvedValue({ id: 42, name: 'test', row_count: 10 })
+
+      const { addFiles, getFileIds, clearFiles } = useChatFileUpload()
+      const file = new File(['a,b\n1,2'], 'test.csv', { type: 'text/csv' })
+      await addFiles([file])
+
+      clearFiles()
+
+      const ids = getFileIds()
+      expect(ids).toEqual([])
+    })
+
+    it('clearFiles marks CSV files as sent', async () => {
+      mockCreateConversation.mockResolvedValue({ thread_id: 'thread-1' })
+      mockUploadDataset.mockResolvedValue({ id: 42, name: 'test', row_count: 10 })
+
+      const { addFiles, clearFiles, attachedFiles } = useChatFileUpload()
+      const file = new File(['a,b\n1,2'], 'test.csv', { type: 'text/csv' })
+      await addFiles([file])
+
+      clearFiles()
+
+      expect(attachedFiles.value).toHaveLength(1)
+      expect(attachedFiles.value[0].sent).toBe(true)
+    })
+
+    it('clearFiles does not mark ready files as sent (removes them)', async () => {
+      mockCreateConversation.mockResolvedValue({ thread_id: 'thread-1' })
+      mockUploadDataset.mockResolvedValue({ id: 42, name: 'test', row_count: 10 })
+
+      const { addFiles, clearFiles, attachedFiles } = useChatFileUpload()
+      const file = new File(['a,b\n1,2'], 'sales.csv', { type: 'text/csv' })
+      await addFiles([file])
+
+      // Simulate ready state
+      attachedFiles.value = attachedFiles.value.map(f => ({ ...f, status: 'ready' }))
+
+      clearFiles()
+      expect(attachedFiles.value).toHaveLength(1)
+      expect(attachedFiles.value[0].sent).toBe(true)
     })
   })
 })
