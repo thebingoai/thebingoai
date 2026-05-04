@@ -32,6 +32,7 @@ export const useAuthStore = defineStore('auth', {
     error: null as string | null,
     isInactive: false,
     _isFirstLogin: false,
+    _authInitialized: false,
   }),
 
   getters: {
@@ -40,6 +41,7 @@ export const useAuthStore = defineStore('auth', {
     hasGoogleOAuth: (state) => !!state.authConfig?.google_oauth_url,
     isAccountInactive: (state) => state.isInactive,
     isFirstLogin: (state) => state._isFirstLogin,
+    authInitialized: (state) => state._authInitialized,
   },
 
   actions: {
@@ -321,11 +323,14 @@ export const useAuthStore = defineStore('auth', {
       if (process.client) {
         const token = localStorage.getItem('auth_token')
         const refreshToken = localStorage.getItem('auth_refresh_token')
+        const isFirstLogin = localStorage.getItem('auth_is_first_login')
         if (token) {
           this.token = token
           if (refreshToken) this.refreshToken = refreshToken
+          if (isFirstLogin !== null) this._isFirstLogin = isFirstLogin === 'true'
           await this.fetchUser()
         }
+        this._authInitialized = true
       }
     },
 
@@ -359,10 +364,12 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
       this.isInactive = false
       this._isFirstLogin = false
+      this._authInitialized = false
 
       if (process.client) {
         localStorage.removeItem('auth_token')
         localStorage.removeItem('auth_refresh_token')
+        localStorage.removeItem('auth_is_first_login')
       }
     },
 
@@ -372,6 +379,7 @@ export const useAuthStore = defineStore('auth', {
       if (process.client) {
         if (this.token) localStorage.setItem('auth_token', this.token)
         if (this.refreshToken) localStorage.setItem('auth_refresh_token', this.refreshToken)
+        localStorage.setItem('auth_is_first_login', String(!!this._isFirstLogin))
       }
     },
   },

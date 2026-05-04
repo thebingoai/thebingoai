@@ -14,7 +14,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
       }
     }
 
-    // Load user if we have a token but no user
+    // If token exists but user is not yet loaded, await fetchUser() before
+    // performing any redirect. This prevents a flash where the user sees /connect
+    // briefly before auth middleware redirects to /login (or vice versa).
     if (authStore.token && !authStore.user) {
       await authStore.fetchUser()
     }
