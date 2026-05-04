@@ -30,6 +30,16 @@
         Configure
       </button>
       <button
+        v-if="props.widget.widget.type === 'table'"
+        class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
+        :class="activeTab === 'style'
+          ? 'border-indigo-500 text-indigo-600'
+          : 'border-transparent text-gray-500 hover:text-gray-700'"
+        @click="activeTab = 'style'"
+      >
+        Style
+      </button>
+      <button
         class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
         :class="activeTab === 'data'
           ? 'border-indigo-500 text-indigo-600'
@@ -61,6 +71,19 @@
         <div v-else class="flex h-full items-center justify-center p-10 text-sm text-gray-400">
           Configuration editor not yet available for this widget type.
         </div>
+      </div>
+
+      <!-- Style tab (table only) -->
+      <div
+        v-else-if="activeTab === 'style' && props.widget.widget.type === 'table'"
+        class="h-full overflow-hidden"
+      >
+        <WidgetEditorTableStyle
+          :model-value="currentConfig"
+          :edit-mode="editMode"
+          class="h-full"
+          @update:model-value="onConfigUpdate"
+        />
       </div>
 
       <!-- Data Source tab -->
@@ -180,6 +203,7 @@
 
 <script lang="ts">
 import { defineAsyncComponent } from 'vue'
+import WidgetEditorTableStyle from './WidgetEditorTableStyle.vue'
 
 // Defined at module level so they're singletons, not re-created on each setup call
 const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> = {
@@ -217,7 +241,7 @@ const store = useDashboardStore()
 const api = useApi()
 
 // Tab state (only relevant for data widgets)
-const activeTab = ref<'configure' | 'data'>('configure')
+const activeTab = ref<'configure' | 'style' | 'data'>('configure')
 
 // Local meta state
 const localTitle = computed(() => props.widget.title ?? '')
