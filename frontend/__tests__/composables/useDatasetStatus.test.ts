@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref, computed, watch } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
+const mockAttachedFiles = vi.hoisted(() => {
+  const { ref } = require('vue')
+  return ref<any[]>([])
+})
+
+vi.mock('~/composables/useChatFileUpload', () => ({
+  attachedFiles: mockAttachedFiles,
+}))
+
 // ── Stub Nuxt auto-imports as globals ──────────────────────────────
 
 vi.stubGlobal('localStorage', {
@@ -97,6 +106,7 @@ describe('useDatasetStatus', () => {
     setActivePinia(createPinia())
     mockGetProfilingStatus.mockReset()
     mockReprofile.mockReset()
+    mockAttachedFiles.value = []
   })
 
   it('returns empty datasets when there are no messages', () => {
@@ -302,5 +312,32 @@ describe('useDatasetStatus', () => {
     expect(datasets.value[0].fileId).toBe('rest-1')
     expect(datasets.value[0].name).toBe('uploaded.csv')
     expect(datasets.value[0].step).toBe('ready')
+  })
+
+  it('injects a profiling-step entry when a processing upload is in attachedFiles', () => {
+    const store = useChatStore()
+    store.currentThreadId = 'thread-1'
+    store.messages = []
+    mockAttachedFiles.value = [
+      {
+        file: new File([''], 'sales.csv', { type: 'text/csv' }),
+        file_id: 'connection:42',
+        connection_id: 42,
+        status: 'processing',
+        progress: undefined,
+        preview_url: null,
+        error: undefined,
+      },
+    ]
+
+    const { datasets } = useDatasetStatus()
+
+    expect(datasets.value).toHaveLength(1)
+    expect(datasets.value[0].step).toBe('profiling')
+    expect(datasets.value[0].connectionId).toBe(42)
+    expect(datasets.value[0].fileId).toBe('connection:42')
+    expect(datasets.value[0].name).toBe('sales.csv')
+    expect(datasets.value[0].uploadedAt).not.toBeNull()
+    expect(datasets.value[0].schemaBuiltAt).not.toBeNull()
   })
 })

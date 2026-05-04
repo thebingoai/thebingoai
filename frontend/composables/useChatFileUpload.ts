@@ -3,9 +3,12 @@ export interface UploadingFile {
   file_id: string | null
   connection_id?: number | null  // for dataset files uploaded via connections API
   preview_url: string | null  // object URL for images
-  status: 'uploading' | 'ready' | 'error'
+  status: 'uploading' | 'processing' | 'ready' | 'error'
   error?: string
   progress?: number  // 0-100, only meaningful when status === 'uploading'
+  sentWithMessage?: boolean  // true after clearFiles() — hides chip but keeps Source 0 alive
+  transferCompletedAt?: string   // ISO timestamp when progress first hit 100% (transfer done)
+  processingStartedAt?: string   // ISO timestamp when HTTP 200 returned (schema built, profiling starting)
 }
 
 interface FileRejection {
@@ -60,10 +63,12 @@ function resolveFileType(file: File): string | null {
 }
 
 // Module-level singleton state (shared across all callers)
-const attachedFiles = ref<UploadingFile[]>([])
+// Exported so useDatasetStatus can read it reactively without a circular import.
+export const attachedFiles = ref<UploadingFile[]>([])
 
 const allFilesReady = computed<boolean>(() => {
-  return attachedFiles.value.length > 0 && attachedFiles.value.every(f => f.status === 'ready')
+  return attachedFiles.value.length > 0 &&
+    attachedFiles.value.every(f => f.status === 'ready' || f.status === 'processing')
 })
 
 export const useChatFileUpload = () => {
@@ -147,8 +152,13 @@ export const useChatFileUpload = () => {
     // Helper to update progress for a specific file
     const updateProgress = (fileIndex: number, percent: number) => {
       const updated = [...attachedFiles.value]
-      if (updated[fileIndex]?.status === 'uploading') {
-        updated[fileIndex] = { ...updated[fileIndex], progress: percent }
+      const existing = updated[fileIndex]
+      if (existing?.status === 'uploading') {
+        updated[fileIndex] = {
+          ...existing,
+          progress: percent,
+          ...(percent >= 100 && !existing.transferCompletedAt ? { transferCompletedAt: new Date().toISOString() } : {}),
+        }
         attachedFiles.value = updated
       }
     }
@@ -169,6 +179,14 @@ export const useChatFileUpload = () => {
       }
     }
 
+    const markProcessing = (fileIndex: number, extra: Partial<UploadingFile>) => {
+      const updated = [...attachedFiles.value]
+      if (updated[fileIndex]) {
+        updated[fileIndex] = { ...updated[fileIndex], ...extra, status: 'processing', processingStartedAt: new Date().toISOString() }
+        attachedFiles.value = updated
+      }
+    }
+
     // Upload dataset files via connections API (reuses existing proven endpoint)
     for (const file of datasetFiles) {
       const idx = startIndex + validFiles.indexOf(file)
@@ -181,7 +199,7 @@ export const useChatFileUpload = () => {
           (percent: number) => updateProgress(idx, percent),
           threadId,
         ) as { id: number; name: string; row_count: number }
-        markReady(idx, { file_id: `connection:${result.id}`, connection_id: result.id })
+        markProcessing(idx, { file_id: `connection:${result.id}`, connection_id: result.id })
       } catch (err: any) {
         markError(idx, err?.message || 'Dataset upload failed')
       }
@@ -239,17 +257,22 @@ export const useChatFileUpload = () => {
   }
 
   const clearFiles = () => {
+    const retained: UploadingFile[] = []
     for (const file of attachedFiles.value) {
-      if (file.preview_url) {
-        URL.revokeObjectURL(file.preview_url)
+      // Keep processing dataset files alive so Source 0 in useDatasetStatus
+      // continues showing the panel entry until the WS ready event arrives.
+      if (file.status === 'processing' && file.connection_id != null) {
+        retained.push({ ...file, sentWithMessage: true })
+      } else {
+        if (file.preview_url) URL.revokeObjectURL(file.preview_url)
       }
     }
-    attachedFiles.value = []
+    attachedFiles.value = retained
   }
 
   const getFileIds = (): string[] => {
     return attachedFiles.value
-      .filter(f => f.status === 'ready' && f.file_id !== null)
+      .filter(f => (f.status === 'ready' || f.status === 'processing') && f.file_id !== null)
       .map(f => f.file_id as string)
   }
 

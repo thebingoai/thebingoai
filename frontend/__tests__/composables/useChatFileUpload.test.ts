@@ -72,7 +72,7 @@ describe('useChatFileUpload', () => {
     expect(mockCreateConversation).toHaveBeenCalled()
     expect(mockChatStore.setCurrentThread).toHaveBeenCalledWith('new-thread')
     // File should be ready with connection_id
-    expect(attachedFiles.value[0].status).toBe('ready')
+    expect(attachedFiles.value[0].status).toBe('processing')
     expect(attachedFiles.value[0].connection_id).toBe(42)
   })
 
@@ -91,6 +91,30 @@ describe('useChatFileUpload', () => {
     expect(mockUploadChatFiles).toHaveBeenCalled()
     // Should NOT call uploadDataset
     expect(mockUploadDataset).not.toHaveBeenCalled()
+  })
+
+  it('allFilesReady is true when a dataset file is processing (upload done, backend has file)', async () => {
+    mockCreateConversation.mockResolvedValue({ thread_id: 'thread-1' })
+    mockUploadDataset.mockResolvedValue({ id: 42, name: 'test', row_count: 10 })
+
+    const { addFiles, allFilesReady } = useChatFileUpload()
+    const file = new File(['a,b\n1,2'], 'test.csv', { type: 'text/csv' })
+    await addFiles([file])
+
+    // 'processing' means upload is done — user should be able to submit
+    expect(allFilesReady.value).toBe(true)
+  })
+
+  it('getFileIds includes processing dataset files so they are referenced in chat messages', async () => {
+    mockCreateConversation.mockResolvedValue({ thread_id: 'thread-1' })
+    mockUploadDataset.mockResolvedValue({ id: 42, name: 'test', row_count: 10 })
+
+    const { addFiles, getFileIds } = useChatFileUpload()
+    const file = new File(['a,b\n1,2'], 'test.csv', { type: 'text/csv' })
+    await addFiles([file])
+
+    const ids = getFileIds()
+    expect(ids).toContain('connection:42')
   })
 
   it('uses existing thread_id for dataset uploads', async () => {
@@ -124,7 +148,7 @@ describe('useChatFileUpload', () => {
 
       expect(rejections).toHaveLength(0)
       expect(mockUploadDataset).toHaveBeenCalled()
-      expect(attachedFiles.value[0].status).toBe('ready')
+      expect(attachedFiles.value[0].status).toBe('processing')
     })
 
     it('accepts CSV file reported as text/plain (drag-and-drop)', async () => {
