@@ -1,6 +1,6 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <div v-if="config.title" class="flex-shrink-0 px-4 pt-3 pb-1">
+    <div v-if="config.showTitle && config.title" class="flex-shrink-0 px-4 pt-3 pb-1">
       <span class="widget-label">{{ config.title }}</span>
     </div>
 
@@ -11,6 +11,7 @@
         <!-- Header -->
         <thead
           v-if="config.showHeader !== false"
+          :style="config.headerBackground ? { background: config.headerBackground } : undefined"
           class="sticky top-0 bg-white border-b border-gray-100 dark:bg-neutral-800 dark:border-neutral-700"
         >
           <tr>
@@ -65,6 +66,7 @@
             :key="i"
             class="hover:bg-gray-50 transition-colors dark:hover:bg-neutral-700/50"
             :class="config.stripedRows && i % 2 === 1 ? 'bg-gray-50/60 dark:bg-neutral-800/40' : ''"
+            :style="rowStyle(i)"
           >
             <!-- Row number cell -->
             <td
@@ -160,7 +162,7 @@ import type { TableWidgetConfig, TableColumn } from '~/types/dashboard'
 import { parseUtcDate } from '~/utils/format'
 
 const THEME_COLOR = '#6366f1'
-const NUMERIC_FORMATS = new Set(['number', 'currency', 'percent'])
+const NUMERIC_FORMATS = new Set(['number', 'currency', 'percent', 'duration'])
 
 const props = defineProps<{
   config: TableWidgetConfig
@@ -205,6 +207,14 @@ function colColor(key: string): string {
   return props.config.columnColors?.[key] ?? THEME_COLOR
 }
 
+function rowStyle(i: number): Record<string, string> {
+  const style: Record<string, string> = {}
+  if (props.config.oddRowColor && i % 2 === 0) style.background = props.config.oddRowColor
+  if (props.config.evenRowColor && i % 2 === 1) style.background = props.config.evenRowColor
+  if (props.config.cellBorderColor) style.borderTopColor = props.config.cellBorderColor
+  return style
+}
+
 // Per-column max/min for bar width and heatmap intensity
 const colMaxValues = computed(() => {
   const map: Record<string, number> = {}
@@ -244,10 +254,84 @@ function heatmapCellStyle(value: any, key: string): Record<string, string> {
   const max = colMaxValues.value[key] ?? 0
   const intensity = max === min ? 0.5 : Math.max(0, Math.min(1, (Number(value) - min) / (max - min)))
   const color = colColor(key)
-  // Opacity range: 5% (min) → 35% (max) encoded as 2-digit hex appended to the hex color
   const opacityHex = Math.round(intensity * 76 + 13).toString(16).padStart(2, '0')
   return { background: `${color}${opacityHex}` }
 }
+
+// Column stats for comparison calculations
+const colStats = computed(() => {
+  const stats: Record<string, { total: number; max: number }> = {}
+  for (const col of props.config.columns) {
+    if (!col.comparisonCalc || col.comparisonCalc === 'none') continue
+    const vals = sortedRows.value.map(r => Number(r[col.key])).filter(v => isFinite(v))
+    stats[col.key] = {
+      total: vals.reduce((a, b) => a + b, 0),
+      max: vals.length ? Math.max(...vals) : 0,
+    }
+  }
+  return stats
+})
+
+// Running values — computed in sort order, before pagination
+const runningValues = computed(() => {
+  const result: Record<string, number[]> = {}
+  for (const col of props.config.columns) {
+    if (!col.runningCalc || col.runningCalc === 'none') continue
+    let runSum = 0, runCount = 0, runMin = Infinity, runMax = -Infinity, prev: number | null = null
+    result[col.key] = sortedRows.value.map((row) => {
+      const v = isFinite(Number(row[col.key])) ? Number(row[col.key]) : 0
+      runSum += v; runCount++
+      runMin = Math.min(runMin, v); runMax = Math.max(runMax, v)
+      let out: number
+      switch (col.runningCalc) {
+        case 'runningSum': out = runSum; break
+        case 'runningMin': out = runMin; break
+        case 'runningMax': out = runMax; break
+        case 'runningCount': out = runCount; break
+        case 'runningAverage': out = runSum / runCount; break
+        case 'runningDelta': out = prev === null ? 0 : v - prev; break
+        case 'runningPercentageDelta': out = prev === null || prev === 0 ? 0 : ((v - prev) / Math.abs(prev)) * 100; break
+        default: out = v
+      }
+      prev = v
+      return out
+    })
+  }
+  return result
+})
+
+// Apply comparison + running transforms on top of sorted rows
+const processedRows = computed(() => {
+  const hasCalcs = props.config.columns.some(
+    c => (c.comparisonCalc && c.comparisonCalc !== 'none') ||
+         (c.runningCalc && c.runningCalc !== 'none'),
+  )
+  if (!hasCalcs) return sortedRows.value
+  return sortedRows.value.map((row, i) => {
+    const out: Record<string, any> = { ...row }
+    for (const col of props.config.columns) {
+      if (col.comparisonCalc && col.comparisonCalc !== 'none') {
+        const stats = colStats.value[col.key]
+        if (!stats) continue
+        const v = Number(row[col.key])
+        if (!isFinite(v)) continue
+        switch (col.comparisonCalc) {
+          case 'percentOfTotal': out[col.key] = stats.total ? (v / stats.total) * 100 : 0; break
+          case 'diffFromTotal': out[col.key] = v - stats.total; break
+          case 'percentDiffFromTotal': out[col.key] = stats.total ? ((v - stats.total) / Math.abs(stats.total)) * 100 : 0; break
+          case 'percentOfMax': out[col.key] = stats.max ? (v / stats.max) * 100 : 0; break
+          case 'diffFromMax': out[col.key] = v - stats.max; break
+          case 'percentDiffFromMax': out[col.key] = stats.max ? ((v - stats.max) / Math.abs(stats.max)) * 100 : 0; break
+        }
+      }
+      if (col.runningCalc && col.runningCalc !== 'none') {
+        const vals = runningValues.value[col.key]
+        if (vals) out[col.key] = vals[i]
+      }
+    }
+    return out
+  })
+})
 
 // Filtering
 const filteredRows = computed(() => {
@@ -294,8 +378,8 @@ const rowOffset = computed(() =>
 )
 
 const displayRows = computed(() => {
-  if (!props.config.pagination) return sortedRows.value
-  return sortedRows.value.slice(rowOffset.value, rowOffset.value + rowsPerPage.value)
+  if (!props.config.pagination) return processedRows.value
+  return processedRows.value.slice(rowOffset.value, rowOffset.value + rowsPerPage.value)
 })
 
 watch([() => props.config.rows, columnFilters], () => { currentPage.value = 1 }, { deep: true })
@@ -303,11 +387,38 @@ watch([() => props.config.rows, columnFilters], () => { currentPage.value = 1 },
 // Summary row
 function summaryValue(col: TableColumn): string {
   if (!isNumericFormat(col)) return '—'
-  const sum = sortedRows.value.reduce((acc, row) => {
-    const v = Number(row[col.key])
-    return acc + (isFinite(v) ? v : 0)
-  }, 0)
-  return formatCell(sum, col)
+  const vals = sortedRows.value
+    .map(r => Number(r[col.key]))
+    .filter(v => isFinite(v))
+  if (!vals.length) return missingValue()
+
+  let result: number
+  switch (col.aggregation ?? 'sum') {
+    case 'sum': result = vals.reduce((a, b) => a + b, 0); break
+    case 'average': result = vals.reduce((a, b) => a + b, 0) / vals.length; break
+    case 'count': result = vals.length; break
+    case 'countDistinct': result = new Set(vals).size; break
+    case 'min': result = Math.min(...vals); break
+    case 'max': result = Math.max(...vals); break
+    case 'median': {
+      const s = [...vals].sort((a, b) => a - b)
+      const m = Math.floor(s.length / 2)
+      result = s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+      break
+    }
+    case 'stdDev': {
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length
+      result = Math.sqrt(vals.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / vals.length)
+      break
+    }
+    case 'variance': {
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length
+      result = vals.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / vals.length
+      break
+    }
+    default: result = vals.reduce((a, b) => a + b, 0)
+  }
+  return formatCell(result, col)
 }
 
 // Cell formatting
@@ -319,28 +430,46 @@ function missingValue(): string {
   }
 }
 
+function formatCompact(num: number): string {
+  const abs = Math.abs(num)
+  if (abs >= 1e9) return (num / 1e9).toFixed(1).replace(/\.0$/, '') + 'B'
+  if (abs >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (abs >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'K'
+  return num.toLocaleString()
+}
+
 function formatCell(value: any, col: TableColumn): string {
   if (value == null) return missingValue()
+  const num = Number(value)
+  if (col.compactNumbers && isFinite(num) && NUMERIC_FORMATS.has(col.format ?? '')) {
+    return formatCompact(num)
+  }
   const dp = col.decimalPlaces ?? 2
   const round = !!col.roundValue
   switch (col.format) {
     case 'currency': {
-      const num = Number(value)
       if (round) return '$' + num.toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
       return '$' + num.toLocaleString()
     }
     case 'number': {
-      const num = Number(value)
       if (round) return num.toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
       return num.toLocaleString()
     }
     case 'percent': {
-      const num = Number(value)
       const formatted = round ? num.toFixed(dp) : num.toFixed(1)
       return (num > 0 ? '+' : '') + formatted + '%'
     }
     case 'date':
       return parseUtcDate(value).toLocaleDateString()
+    case 'duration': {
+      const secs = Math.round(num)
+      const h = Math.floor(secs / 3600)
+      const m = Math.floor((secs % 3600) / 60)
+      const s = secs % 60
+      if (h > 0) return `${h}h ${m}m`
+      if (m > 0) return `${m}m ${s}s`
+      return `${s}s`
+    }
     default:
       return String(value)
   }
