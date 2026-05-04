@@ -10,25 +10,28 @@ export const useChatStreaming = () => {
   const sendMessage = async (message: string, fileIds: string[] = [], options?: { source?: Message['source'] }) => {
     chatStore.isStreaming = true
 
-    // Add user message optimistically
+    // Add user message optimistically — include CSV/Excel files that have a file_id
+    // (only files with a connection:N id, not files still uploading without one)
     const { attachedFiles } = useChatFileUpload()
+    const CSV_MIME_SET = new Set(['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
     const attachments = attachedFiles.value
-      .filter(f => f.status === 'ready' && f.file_id)
+      .filter(f => f.file_id && CSV_MIME_SET.has(f.file.type))
       .map(f => ({
         file_id: f.file_id!,
         name: f.file.name,
         type: f.file.type,
         size: f.file.size,
         preview_url: f.preview_url,
-        status: 'ready' as const,
+        status: f.status === 'ready' ? 'ready' as const : 'processing' as const,
       }))
+    const hasAttachments = attachments.length > 0
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: message,
       created_at: new Date().toISOString(),
-      attachments: attachments.length > 0 ? attachments : undefined,
+      attachments: hasAttachments ? attachments : undefined,
       source: options?.source,
     }
     chatStore.addMessage(userMessage)
@@ -401,6 +404,50 @@ export const useChatStreaming = () => {
         resetContentDrip()
         chatStore.updateMessageById(assistantMsgId, { content: 'You\'ve reached your free tier limit. Please wait or add your own API key in Settings.' })
         cleanup()
+      })
+
+      // ── chat.waiting / chat.ready: file-processing gate ──
+
+      let waitingStepIndex = -1
+
+      onEvent('chat.waiting', (data) => {
+        const content = data.content || {}
+        const fileName: string = content.name || 'file'
+        waitingStepIndex = agentSteps.length
+
+        agentSteps.push({
+          agent_type: 'orchestrator',
+          step_type: 'file_status',
+          content: { state: 'waiting', name: fileName },
+          status: 'streaming',
+          started_at: Date.now(),
+        })
+
+        stepsLog.push(`${formatTs()}  ⏳ Waiting for ${fileName} to finish processing…`)
+        syncStepsLog()
+        chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
+      })
+
+      onEvent('chat.ready', (_data) => {
+        // Finalize the waiting file_status step
+        if (waitingStepIndex !== -1 && agentSteps[waitingStepIndex]?.step_type === 'file_status') {
+          const started = agentSteps[waitingStepIndex].started_at
+          const dur = started ? Date.now() - started : 0
+          const durStr = dur < 1000 ? `${dur}ms` : `${(dur / 1000).toFixed(1)}s`
+
+          agentSteps[waitingStepIndex].status = 'completed'
+          agentSteps[waitingStepIndex].content = {
+            ...agentSteps[waitingStepIndex].content,
+            state: 'ready',
+          }
+
+          const logIdx = stepsLog.findLastIndex(l => l.includes('⏳ Waiting for') && !l.includes('('))
+          if (logIdx !== -1) {
+            stepsLog[logIdx] = stepsLog[logIdx] + ` (${durStr}) ✓`
+            syncStepsLog()
+          }
+          chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
+        }
       })
 
       // Collect ready dataset connection IDs from the dataset status composable

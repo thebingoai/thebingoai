@@ -6,9 +6,6 @@ export interface UploadingFile {
   status: 'uploading' | 'processing' | 'ready' | 'error'
   error?: string
   progress?: number  // 0-100, only meaningful when status === 'uploading'
-  sentWithMessage?: boolean  // true after clearFiles() — hides chip but keeps Source 0 alive
-  transferCompletedAt?: string   // ISO timestamp when progress first hit 100% (transfer done)
-  processingStartedAt?: string   // ISO timestamp when HTTP 200 returned (schema built, profiling starting)
 }
 
 interface FileRejection {
@@ -257,24 +254,31 @@ export const useChatFileUpload = () => {
   }
 
   const clearFiles = () => {
-    const retained: UploadingFile[] = []
-    for (const file of attachedFiles.value) {
-      // Keep processing dataset files alive so Source 0 in useDatasetStatus
-      // continues showing the panel entry until the WS ready event arrives.
-      if (file.status === 'processing' && file.connection_id != null) {
-        retained.push({ ...file, sentWithMessage: true })
-      } else {
-        if (file.preview_url) URL.revokeObjectURL(file.preview_url)
-      }
-    }
-    attachedFiles.value = retained
+    // Keep CSV/Excel files that are still uploading or processing so the
+    // dataset panel continues showing the upload timeline after the user
+    // sends a message.  They are filtered from the chip strip separately.
+    attachedFiles.value = attachedFiles.value.filter(f => {
+      if (DATASET_TYPES.has(f.file.type) && f.status !== 'ready') return true
+      if (f.preview_url) URL.revokeObjectURL(f.preview_url)
+      return false
+    })
   }
 
   const getFileIds = (): string[] => {
     return attachedFiles.value
-      .filter(f => (f.status === 'ready' || f.status === 'processing') && f.file_id !== null)
+      .filter(f => f.file_id !== null && DATASET_TYPES.has(f.file.type))
       .map(f => f.file_id as string)
   }
+
+  // When streaming ends, clear any ready dataset files that were retained
+  // by clearFiles() so they don't reappear as chips in the input strip.
+  watch(() => chatStore.isStreaming, (streaming) => {
+    if (!streaming) {
+      attachedFiles.value = attachedFiles.value.filter(
+        f => !DATASET_TYPES.has(f.file.type) || f.status !== 'ready',
+      )
+    }
+  })
 
   return {
     attachedFiles,

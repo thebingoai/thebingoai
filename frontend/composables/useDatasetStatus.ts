@@ -271,9 +271,9 @@ export const useDatasetStatus = () => {
           fileId: file.file_id,
           connectionId: file.connection_id,
           step: 'ready',
-          uploadedAt: file.transferCompletedAt ?? null,
-          schemaBuiltAt: file.processingStartedAt ?? null,
-          profilingStartedAt: file.processingStartedAt ?? null,
+          uploadedAt: new Date().toISOString(),
+          schemaBuiltAt: new Date().toISOString(),
+          profilingStartedAt: new Date().toISOString(),
           completedAt: profiling?.completedAt ?? null,
           rowCount: null,
           columnCount: null,
@@ -292,15 +292,16 @@ export const useDatasetStatus = () => {
         profiling?.status === 'ready' ? 'ready' :
         profiling?.status === 'failed' ? 'failed' : 'profiling'
 
+      const now = new Date().toISOString()
       results.push({
         name: file.file.name,
         size: file.file.size,
         fileId: file.file_id,
         connectionId: file.connection_id,
         step,
-        uploadedAt: file.transferCompletedAt ?? null,
-        schemaBuiltAt: file.processingStartedAt ?? null,
-        profilingStartedAt: file.processingStartedAt ?? null,
+        uploadedAt: now,
+        schemaBuiltAt: now,
+        profilingStartedAt: now,
         completedAt: step === 'ready' ? (profiling?.completedAt ?? null) : null,
         rowCount: null,
         columnCount: null,
@@ -379,7 +380,14 @@ export const useDatasetStatus = () => {
         if (!toolCall) {
           // No tool call found — extract connectionId from the 'connection:N' fileId if available
           ds.connectionId = extractConnectionId(ds.fileId)
-          if (chatStore.isStreaming) {
+          // Check profiling status so we don't show "Building schema…" when done
+          const profiling = ds.connectionId ? profilingStatuses.value.get(ds.connectionId) : null
+          if (profiling?.status === 'ready') {
+            ds.step = 'ready'
+            ds.schemaBuiltAt = msg.created_at
+            ds.profilingStartedAt = msg.created_at
+            ds.completedAt = profiling.completedAt ?? msg.created_at
+          } else if (chatStore.isStreaming) {
             ds.step = 'schema'
             ds.schemaBuiltAt = null
           } else {
@@ -483,7 +491,7 @@ export const useDatasetStatus = () => {
   // --- Watch for new connection IDs to poll ---
 
   watch(
-    () => datasets.value.filter(d => d.connectionId && (d.step === 'profiling')).map(d => d.connectionId!),
+    () => datasets.value.filter(d => d.connectionId && (d.step === 'profiling' || d.step === 'schema')).map(d => d.connectionId!),
     (connectionIds) => {
       for (const id of connectionIds) {
         startPolling(id)
