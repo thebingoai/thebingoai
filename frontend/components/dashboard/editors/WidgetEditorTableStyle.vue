@@ -1,6 +1,40 @@
 <template>
   <div class="h-full overflow-y-auto p-5 space-y-5">
 
+    <!-- Title -->
+    <div class="space-y-2">
+      <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Title</h3>
+      <div class="flex items-center justify-between py-1">
+        <span class="text-sm text-gray-700">Show title</span>
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="localShowTitle"
+          :disabled="!editMode"
+          class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="localShowTitle ? 'bg-indigo-600' : 'bg-gray-200'"
+          @click="editMode && (localShowTitle = !localShowTitle, emitUpdate())"
+        >
+          <span
+            class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+            :class="localShowTitle ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'"
+          />
+        </button>
+      </div>
+      <div v-if="localShowTitle" class="space-y-1">
+        <label class="text-xs text-gray-700">Title text</label>
+        <input
+          v-model="localTitle"
+          type="text"
+          placeholder="Table title…"
+          :readonly="!editMode"
+          class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+          :class="!editMode ? 'cursor-default bg-gray-50' : ''"
+          @input="emitUpdate()"
+        />
+      </div>
+    </div>
+
     <!-- Table Body -->
     <div class="space-y-1">
       <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide mb-3">Table Body</h3>
@@ -64,7 +98,7 @@
       </div>
     </div>
 
-    <!-- Colors -->
+    <!-- Colors (bar & heatmap columns) -->
     <div v-if="colorColumns.length > 0" class="space-y-3">
       <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
         Colors
@@ -100,6 +134,32 @@
       </div>
     </div>
 
+    <!-- Table Colors -->
+    <div class="space-y-3">
+      <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Table Colors</h3>
+      <div class="space-y-2">
+        <div v-for="colorOpt in tableColorOptions" :key="colorOpt.key" class="flex items-center justify-between">
+          <span class="text-xs text-gray-700">{{ colorOpt.label }}</span>
+          <div class="flex items-center gap-2">
+            <span v-if="!localTableColors[colorOpt.key]" class="text-[10px] text-gray-400">Default</span>
+            <input
+              type="color"
+              :value="localTableColors[colorOpt.key] || '#ffffff'"
+              :disabled="!editMode"
+              class="h-6 w-10 rounded border border-gray-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 p-0.5"
+              @input="onTableColorInput(colorOpt.key, ($event.target as HTMLInputElement).value)"
+            />
+            <button
+              v-if="localTableColors[colorOpt.key] && editMode"
+              class="text-[10px] text-gray-400 hover:text-gray-600"
+              title="Reset to default"
+              @click="resetTableColor(colorOpt.key)"
+            >✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -118,6 +178,8 @@ const emit = defineEmits<{
 
 const tableConfig = computed(() => props.modelValue.config as TableWidgetConfig)
 
+const localShowTitle = ref(!!tableConfig.value.showTitle)
+const localTitle = ref(tableConfig.value.title ?? '')
 const localFlags = ref({
   showHeader: tableConfig.value.showHeader !== false,
   showRowNumbers: !!tableConfig.value.showRowNumbers,
@@ -129,8 +191,26 @@ const localShowSummaryRow = ref(!!tableConfig.value.showSummaryRow)
 const localMissingData = ref<'dash' | 'blank' | 'noData'>(tableConfig.value.missingDataDisplay ?? 'dash')
 const localColors = ref<Record<string, string>>({ ...(tableConfig.value.columnColors ?? {}) })
 
+type TableColorKey = 'headerBackground' | 'cellBorderColor' | 'oddRowColor' | 'evenRowColor'
+
+const tableColorOptions: { key: TableColorKey; label: string }[] = [
+  { key: 'headerBackground', label: 'Header background' },
+  { key: 'cellBorderColor', label: 'Cell border color' },
+  { key: 'oddRowColor', label: 'Odd row color' },
+  { key: 'evenRowColor', label: 'Even row color' },
+]
+
+const localTableColors = ref<Partial<Record<TableColorKey, string>>>({
+  headerBackground: tableConfig.value.headerBackground ?? '',
+  cellBorderColor: tableConfig.value.cellBorderColor ?? '',
+  oddRowColor: tableConfig.value.oddRowColor ?? '',
+  evenRowColor: tableConfig.value.evenRowColor ?? '',
+})
+
 watch(() => props.modelValue, () => {
   const cfg = tableConfig.value
+  localShowTitle.value = !!cfg.showTitle
+  localTitle.value = cfg.title ?? ''
   localFlags.value = {
     showHeader: cfg.showHeader !== false,
     showRowNumbers: !!cfg.showRowNumbers,
@@ -141,6 +221,12 @@ watch(() => props.modelValue, () => {
   localShowSummaryRow.value = !!cfg.showSummaryRow
   localMissingData.value = cfg.missingDataDisplay ?? 'dash'
   localColors.value = { ...(cfg.columnColors ?? {}) }
+  localTableColors.value = {
+    headerBackground: cfg.headerBackground ?? '',
+    cellBorderColor: cfg.cellBorderColor ?? '',
+    oddRowColor: cfg.oddRowColor ?? '',
+    evenRowColor: cfg.evenRowColor ?? '',
+  }
 })
 
 const bodyOptions = [
@@ -176,6 +262,8 @@ function emitUpdate() {
     type: 'table',
     config: {
       ...tableConfig.value,
+      title: localTitle.value || undefined,
+      showTitle: localShowTitle.value || undefined,
       showHeader: localFlags.value.showHeader ? undefined : false,
       showRowNumbers: localFlags.value.showRowNumbers || undefined,
       stripedRows: localFlags.value.stripedRows || undefined,
@@ -184,6 +272,10 @@ function emitUpdate() {
       showSummaryRow: localShowSummaryRow.value || undefined,
       missingDataDisplay: localMissingData.value !== 'dash' ? localMissingData.value : undefined,
       columnColors: Object.keys(localColors.value).length ? localColors.value : undefined,
+      headerBackground: localTableColors.value.headerBackground || undefined,
+      cellBorderColor: localTableColors.value.cellBorderColor || undefined,
+      oddRowColor: localTableColors.value.oddRowColor || undefined,
+      evenRowColor: localTableColors.value.evenRowColor || undefined,
     },
   })
 }
@@ -197,6 +289,16 @@ function resetColor(key: string) {
   const colors = { ...localColors.value }
   delete colors[key]
   localColors.value = colors
+  emitUpdate()
+}
+
+function onTableColorInput(key: TableColorKey, color: string) {
+  localTableColors.value = { ...localTableColors.value, [key]: color }
+  emitUpdate()
+}
+
+function resetTableColor(key: TableColorKey) {
+  localTableColors.value = { ...localTableColors.value, [key]: '' }
   emitUpdate()
 }
 </script>
