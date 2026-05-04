@@ -181,7 +181,7 @@
           :disabled="!editMode"
           class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
           :class="local.showBarValue !== false ? 'bg-indigo-600' : 'bg-gray-200'"
-          @click="editMode && (local.showBarValue = local.showBarValue === false ? true : false, emitUpdate())"
+          @click="editMode && (local.showBarValue = !local.showBarValue, emitUpdate())"
         >
           <span
             class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
@@ -209,11 +209,18 @@ const emit = defineEmits<{
 }>()
 
 const NUMERIC_FORMATS = new Set(['number', 'currency', 'percent'])
-const isNumeric = computed(() => NUMERIC_FORMATS.has(props.modelValue.format ?? ''))
+const isNumeric = computed(() => NUMERIC_FORMATS.has(local.format ?? ''))
 
 const local = reactive<TableColumn>({ ...props.modelValue })
 
-watch(() => props.modelValue, (val) => Object.assign(local, val))
+watch(
+  () => props.modelValue,
+  (val) => {
+    Object.keys(local).forEach(k => { if (!(k in val)) delete (local as any)[k] })
+    Object.assign(local, val)
+  },
+  { deep: true },
+)
 
 function emitUpdate() {
   emit('update:modelValue', { ...local })
