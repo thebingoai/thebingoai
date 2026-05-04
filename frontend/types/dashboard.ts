@@ -40,31 +40,41 @@ export interface TableColumn {
   label: string
   sortable?: boolean
   filterable?: boolean
-  format?: 'number' | 'currency' | 'percent' | 'date' | 'text'
+  format?: 'number' | 'currency' | 'percent' | 'date' | 'text' | 'duration'
   roundValue?: boolean
   decimalPlaces?: number
   align?: 'left' | 'center' | 'right'
-  displayType?: 'number' | 'bar' | 'heatmap'   // applies to numeric formats only
-  showBarValue?: boolean                          // only read when displayType === 'bar'; ignored otherwise
+  displayType?: 'number' | 'bar' | 'heatmap'
+  showBarValue?: boolean
+  // Metrics
+  compactNumbers?: boolean
+  aggregation?: 'sum' | 'average' | 'count' | 'countDistinct' | 'min' | 'max' | 'median' | 'stdDev' | 'variance'
+  comparisonCalc?: 'none' | 'percentOfTotal' | 'diffFromTotal' | 'percentDiffFromTotal' | 'percentOfMax' | 'diffFromMax' | 'percentDiffFromMax'
+  runningCalc?: 'none' | 'runningSum' | 'runningMin' | 'runningMax' | 'runningCount' | 'runningAverage' | 'runningDelta' | 'runningPercentageDelta'
 }
 
 export interface TableWidgetConfig {
   title?: string
+  showTitle?: boolean
   columns: TableColumn[]
   rows: Record<string, any>[]
   pagination?: boolean
   rowsPerPage?: number
   // Style tab
-  showHeader?: boolean           // default true
-  showRowNumbers?: boolean       // default false
-  stripedRows?: boolean          // default false
-  wrapText?: boolean             // default false
-  horizontalScrolling?: boolean  // default false
+  showHeader?: boolean
+  showRowNumbers?: boolean
+  stripedRows?: boolean
+  wrapText?: boolean
+  horizontalScrolling?: boolean
   showSummaryRow?: boolean
-  missingDataDisplay?: 'dash' | 'blank' | 'noData'  // default 'dash'
-  columnColors?: Record<string, string>              // col.key → CSS colour string (e.g. '#6366f1'); for bar/heatmap columns
+  missingDataDisplay?: 'dash' | 'blank' | 'noData'
+  columnColors?: Record<string, string>
+  headerBackground?: string
+  cellBorderColor?: string
+  oddRowColor?: string
+  evenRowColor?: string
   // Configure tab
-  defaultSortKey?: string        // must match a col.key in columns; unmatched keys ignored at runtime
+  defaultSortKey?: string
   defaultSortDir?: 'asc' | 'desc'
 }
 
