@@ -55,7 +55,7 @@
 
         <!-- Starters section -->
         <div>
-          <p class="text-[11px] tracking-widest font-medium text-neutral-400 dark:text-neutral-500 uppercase mb-3">
+          <p class="text-sm tracking-widest font-medium text-neutral-400 dark:text-neutral-500 uppercase mb-3">
             Starters — Tailored to your schema
           </p>
 
@@ -69,8 +69,8 @@
                 : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-800/50'"
               @click="question = starter.question"
             >
-              <p class="text-xs font-semibold text-neutral-800 dark:text-neutral-100 leading-tight">{{ starter.title }}</p>
-              <p class="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed">{{ starter.description }}</p>
+              <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100 leading-tight">{{ starter.title }}</p>
+              <p class="text-xs text-neutral-400 dark:text-neutral-500 leading-relaxed">{{ starter.description }}</p>
             </button>
           </div>
         </div>
@@ -79,17 +79,12 @@
 
       <!-- Bottom action bar -->
       <div class="sticky bottom-0 border-t border-neutral-200 dark:border-neutral-800 px-10 py-4 flex items-center justify-between bg-white dark:bg-neutral-900">
-        <div class="flex items-center gap-4">
-          <button
-            class="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-            @click="navigateTo('/connect')"
-          >
-            Back
-          </button>
-          <span class="text-xs text-neutral-400 dark:text-neutral-500">
-            You can always come back here from Home.
-          </span>
-        </div>
+        <button
+          class="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+          @click="navigateTo('/connect')"
+        >
+          Back
+        </button>
 
         <button
           class="flex items-center gap-2 bg-purple-700 hover:bg-purple-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
