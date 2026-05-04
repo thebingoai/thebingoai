@@ -5,5 +5,9 @@ export default defineNuxtPlugin(async () => {
   await authStore.loadAuthConfig()
 
   // Restore user session from localStorage
-  await authStore.loadUser()
+  try {
+    await authStore.loadUser()
+  } catch {
+    // Session restore failed (e.g. inactive account) — start unauthenticated
+  }
 })

@@ -38,9 +38,11 @@ defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const authStore = useAuthStore()
+const router = useRouter()
 
 const handleLogout = async () => {
   emit('update:open', false)
   await authStore.logout()
+  router.push('/login')
 }
 </script>
