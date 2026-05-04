@@ -20,6 +20,7 @@
           :key="i"
           :model-value="col"
           :edit-mode="editMode"
+          :available-keys="availableKeys"
           @update:model-value="updateColumn(i, $event)"
           @remove="removeColumn(i)"
         />
@@ -106,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { WidgetConfig, TableWidgetConfig, TableColumn } from '~/types/dashboard'
 import TableColumnCard from './TableColumnCard.vue'
 
@@ -122,6 +123,11 @@ const emit = defineEmits<{
 function getTableConfig(): TableWidgetConfig {
   return props.modelValue.config as TableWidgetConfig
 }
+
+const availableKeys = computed(() => {
+  const rows = getTableConfig().rows ?? []
+  return rows.length ? Object.keys(rows[0]) : []
+})
 
 const localColumns = ref<TableColumn[]>(JSON.parse(JSON.stringify(getTableConfig().columns)))
 const localPagination = ref(getTableConfig().pagination ?? false)
