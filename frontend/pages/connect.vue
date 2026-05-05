@@ -4,7 +4,7 @@
     <AuthBrandingPanel :step="2" step-context="Connect Data" />
 
     <!-- Right panel -->
-    <div class="flex-1 flex flex-col bg-white dark:bg-neutral-900 overflow-y-auto">
+    <div class="flex-1 h-screen flex flex-col bg-white dark:bg-neutral-900 overflow-y-auto">
       <div class="flex-1 px-10 py-12 max-w-2xl mx-auto w-full">
         <!-- Header -->
         <h2 class="font-display text-4xl font-bold text-neutral-900 dark:text-neutral-50 mb-2">
