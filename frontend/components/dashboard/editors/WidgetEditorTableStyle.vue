@@ -138,6 +138,115 @@
       </div>
     </div>
 
+    <!-- Border -->
+    <div class="space-y-3">
+      <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Border</h3>
+
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-gray-700">Color</span>
+        <ColorPickerPopover
+          :model-value="localBorderColor || undefined"
+          :disabled="!editMode"
+          @update:model-value="(c) => { localBorderColor = c ?? ''; emitUpdate() }"
+        />
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-xs text-gray-700">Style</label>
+        <div class="flex rounded border border-gray-200 overflow-hidden">
+          <button
+            v-for="opt in borderStyleOptions"
+            :key="opt.value"
+            type="button"
+            :disabled="!editMode"
+            class="flex-1 py-1.5 text-[11px] font-medium transition-colors border-r border-gray-200 last:border-r-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="(localBorderStyle ?? 'solid') === opt.value
+              ? 'bg-indigo-600 text-white'
+              : 'bg-white text-gray-500 hover:bg-gray-50'"
+            @click="editMode && setBorderStyle(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs text-gray-700">Width</span>
+        <div class="flex items-center gap-2 flex-1 max-w-[140px]">
+          <input
+            v-model.number="localBorderWidth"
+            type="range"
+            min="0"
+            max="5"
+            :disabled="!editMode"
+            class="flex-1 disabled:opacity-40"
+            @input="emitUpdate()"
+          />
+          <span class="text-[11px] text-gray-500 tabular-nums w-6 text-right">{{ localBorderWidth }}px</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs text-gray-700">Radius</span>
+        <div class="flex items-center gap-2 flex-1 max-w-[140px]">
+          <input
+            v-model.number="localBorderRadius"
+            type="range"
+            min="0"
+            max="16"
+            :disabled="!editMode"
+            class="flex-1 disabled:opacity-40"
+            @input="emitUpdate()"
+          />
+          <span class="text-[11px] text-gray-500 tabular-nums w-6 text-right">{{ localBorderRadius }}px</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Font -->
+    <div class="space-y-3">
+      <h3 class="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Font</h3>
+
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs text-gray-700">Family</span>
+        <select
+          v-model="localFontFamily"
+          :disabled="!editMode"
+          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
+          @change="emitUpdate()"
+        >
+          <option value="system">System</option>
+          <option value="sans">Sans-serif</option>
+          <option value="serif">Serif</option>
+          <option value="mono">Monospace</option>
+        </select>
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="text-xs text-gray-700">Size</label>
+        <div class="flex rounded border border-gray-200 overflow-hidden">
+          <button
+            v-for="opt in fontSizeOptions"
+            :key="opt.value"
+            type="button"
+            :disabled="!editMode"
+            class="flex-1 py-1.5 text-[11px] font-medium transition-colors border-r border-gray-200 last:border-r-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="(localFontSize ?? 'sm') === opt.value
+              ? 'bg-indigo-600 text-white'
+              : 'bg-white text-gray-500 hover:bg-gray-50'"
+            @click="editMode && setFontSize(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-gray-700">Color</span>
+        <ColorPickerPopover
+          :model-value="localFontColor || undefined"
+          :disabled="!editMode"
+          @update:model-value="(c) => { localFontColor = c ?? ''; emitUpdate() }"
+        />
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -185,6 +294,39 @@ const localTableColors = ref<Partial<Record<TableColorKey, string>>>({
   oddRowColor: tableConfig.value.oddRowColor ?? '',
   evenRowColor: tableConfig.value.evenRowColor ?? '',
 })
+
+// Border + font local state
+const localBorderColor = ref(tableConfig.value.borderColor ?? '')
+const localBorderStyle = ref<'solid' | 'dashed' | 'dotted' | 'none'>(tableConfig.value.borderStyle ?? 'solid')
+const localBorderWidth = ref(tableConfig.value.borderWidth ?? 0)
+const localBorderRadius = ref(tableConfig.value.borderRadius ?? 0)
+const localFontFamily = ref<'system' | 'sans' | 'serif' | 'mono'>(tableConfig.value.fontFamily ?? 'system')
+const localFontSize = ref<'xs' | 'sm' | 'md' | 'lg'>(tableConfig.value.fontSize ?? 'sm')
+const localFontColor = ref(tableConfig.value.fontColor ?? '')
+
+const borderStyleOptions = [
+  { value: 'solid' as const, label: 'Solid' },
+  { value: 'dashed' as const, label: 'Dashed' },
+  { value: 'dotted' as const, label: 'Dotted' },
+  { value: 'none' as const, label: 'None' },
+]
+
+const fontSizeOptions = [
+  { value: 'xs' as const, label: 'XS' },
+  { value: 'sm' as const, label: 'S' },
+  { value: 'md' as const, label: 'M' },
+  { value: 'lg' as const, label: 'L' },
+]
+
+function setBorderStyle(v: 'solid' | 'dashed' | 'dotted' | 'none') {
+  localBorderStyle.value = v
+  emitUpdate()
+}
+
+function setFontSize(v: 'xs' | 'sm' | 'md' | 'lg') {
+  localFontSize.value = v
+  emitUpdate()
+}
 
 
 const bodyOptions = [
@@ -244,6 +386,13 @@ function emitUpdate() {
       cellBorderColor: localTableColors.value.cellBorderColor || undefined,
       oddRowColor: localTableColors.value.oddRowColor || undefined,
       evenRowColor: localTableColors.value.evenRowColor || undefined,
+      borderColor: localBorderColor.value || undefined,
+      borderStyle: localBorderStyle.value !== 'solid' ? localBorderStyle.value : undefined,
+      borderWidth: localBorderWidth.value > 0 ? localBorderWidth.value : undefined,
+      borderRadius: localBorderRadius.value > 0 ? localBorderRadius.value : undefined,
+      fontFamily: localFontFamily.value !== 'system' ? localFontFamily.value : undefined,
+      fontSize: localFontSize.value !== 'sm' ? localFontSize.value : undefined,
+      fontColor: localFontColor.value || undefined,
     },
   })
 }

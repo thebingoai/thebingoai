@@ -73,6 +73,15 @@ export interface TableWidgetConfig {
   cellBorderColor?: string
   oddRowColor?: string
   evenRowColor?: string
+  // Border (around table widget)
+  borderColor?: string
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'none'
+  borderWidth?: number       // 0–5 px
+  borderRadius?: number      // 0–16 px
+  // Font (cell text)
+  fontFamily?: 'system' | 'sans' | 'serif' | 'mono'
+  fontSize?: 'xs' | 'sm' | 'md' | 'lg'
+  fontColor?: string
   // Configure tab
   defaultSortKey?: string
   defaultSortDir?: 'asc' | 'desc'

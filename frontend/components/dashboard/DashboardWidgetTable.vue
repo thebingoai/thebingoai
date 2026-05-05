@@ -1,12 +1,19 @@
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
+  <div
+    class="flex h-full flex-col overflow-hidden"
+    :style="containerStyle"
+  >
     <div v-if="config.showTitle && config.title" class="flex-shrink-0 px-4 pt-3 pb-1">
       <span class="widget-label">{{ config.title }}</span>
     </div>
 
     <!-- Table wrapper: horizontal scroll is opt-in -->
     <div class="flex-1 overflow-auto" :class="config.horizontalScrolling ? 'overflow-x-auto' : ''">
-      <table class="w-full text-sm">
+      <table
+        class="w-full"
+        :class="fontClass"
+        :style="config.fontColor ? { color: config.fontColor } : undefined"
+      >
 
         <!-- Header -->
         <thead
@@ -206,6 +213,35 @@ function colAlignClass(col: TableColumn): string {
 function colColor(key: string): string {
   return props.config.columnColors?.[key] ?? THEME_COLOR
 }
+
+const containerStyle = computed(() => {
+  const style: Record<string, string> = {}
+  if (props.config.borderWidth && props.config.borderWidth > 0) {
+    const color = props.config.borderColor ?? '#e5e7eb'
+    const styleVal = props.config.borderStyle ?? 'solid'
+    style.border = `${props.config.borderWidth}px ${styleVal} ${color}`
+  }
+  if (props.config.borderRadius && props.config.borderRadius > 0) {
+    style.borderRadius = `${props.config.borderRadius}px`
+  }
+  return style
+})
+
+const fontClass = computed(() => {
+  const classes: string[] = []
+  switch (props.config.fontFamily) {
+    case 'sans': classes.push('font-sans'); break
+    case 'serif': classes.push('font-serif'); break
+    case 'mono': classes.push('font-mono'); break
+  }
+  switch (props.config.fontSize ?? 'sm') {
+    case 'xs': classes.push('text-[11px]'); break
+    case 'sm': classes.push('text-xs'); break
+    case 'md': classes.push('text-[13px]'); break
+    case 'lg': classes.push('text-sm'); break
+  }
+  return classes.join(' ')
+})
 
 function rowStyle(i: number): Record<string, string> {
   const style: Record<string, string> = {}
