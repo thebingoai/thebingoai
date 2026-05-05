@@ -14,6 +14,10 @@ def _register_beat():
             "task": "dispatch_pipelines",
             "schedule": 60.0,  # every 60 seconds — croniter gates actual per-pipeline execution
         })
+        celery_app.conf.beat_schedule.setdefault("pipeline-health-check", {
+            "task": "pipeline_health_check",
+            "schedule": 300.0,  # every 300 seconds (5 minutes)
+        })
     except Exception:
         pass  # Worker processes may not have beat_schedule yet
 
@@ -85,3 +89,90 @@ def run_pipeline_task(pipeline_id: str, triggered_by: str, triggered_by_user_id:
     if run_id:
         logger.info("Pipeline %s run completed: run_id=%s", pipeline_id, run_id)
     return run_id
+
+
+@shared_task(name="pipeline_health_check")
+def pipeline_health_check():
+    """
+    Health check for all enabled pipelines.
+
+    For each enabled pipeline:
+    - Check if the HEAD Parquet table exists on the DataPlane
+    - Check if the pipeline is stale (last_run_at > 2× cron_interval ago)
+    - If unhealthy (missing OR stale): update pipeline.last_run_status = "stale"
+      and set connection.health_status = "unhealthy"
+
+    Runs every 300 seconds via beat schedule.
+    """
+    from backend.database.session import SessionLocal
+    from backend.models.pipeline import Pipeline
+    from backend.models.database_connection import DatabaseConnection
+    from backend.data_plane.scope import OwnerScope
+    from backend.services.data_plane_service import get_default_plane
+    from croniter import croniter
+
+    db = SessionLocal()
+    now = datetime.now(timezone.utc)
+
+    try:
+        pipelines = db.query(Pipeline).filter(Pipeline.enabled == True).all()
+        unhealthy_count = 0
+
+        for pipeline in pipelines:
+            try:
+                # Determine scope for this pipeline
+                scope = OwnerScope(pipeline.owner_scope_kind, pipeline.owner_scope_id)
+                plane = get_default_plane(scope, db)
+
+                # Check if target table exists
+                table_exists = plane.table_exists(scope, pipeline.target_table)
+
+                # Check staleness: last_run_at > 2× cron_interval?
+                is_stale = False
+                if pipeline.cron and pipeline.last_run_at:
+                    try:
+                        # Get next run time from current cron expression
+                        cron = croniter(pipeline.cron, now)
+                        last_expected_run = cron.get_prev(datetime)
+                        # If last_run_at is before last_expected_run - 1× interval, it's stale
+                        # Simple heuristic: if last_run_at is > 2× the interval old, mark stale
+                        next_run = cron.get_next(datetime)
+                        interval = (next_run - now).total_seconds()
+                        time_since_last_run = (now - pipeline.last_run_at).total_seconds()
+                        is_stale = time_since_last_run > (2 * interval)
+                    except Exception as e:
+                        logger.warning(
+                            "pipeline_health_check: failed to check staleness for pipeline %s: %s",
+                            pipeline.id, e
+                        )
+                        is_stale = False
+
+                # Determine health
+                is_unhealthy = (not table_exists) or is_stale
+
+                if is_unhealthy:
+                    # Update pipeline status
+                    pipeline.last_run_status = "stale"
+
+                    # Update connection health
+                    connection = db.query(DatabaseConnection).filter(
+                        DatabaseConnection.id == pipeline.source_connection_id
+                    ).first()
+                    if connection:
+                        connection.health_status = "unhealthy"
+
+                    unhealthy_count += 1
+
+            except Exception as e:
+                logger.error("pipeline_health_check: failed for pipeline %s: %s", pipeline.id, e)
+
+        if unhealthy_count:
+            logger.info("pipeline_health_check: marked %d pipeline(s) as unhealthy", unhealthy_count)
+
+        db.commit()
+
+    except Exception:
+        logger.exception("pipeline_health_check failed")
+        db.rollback()
+    finally:
+        db.close()

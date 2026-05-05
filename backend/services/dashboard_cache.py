@@ -116,7 +116,8 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
 
     Routes to DataPlane (Parquet) when the new_data_plane flag is on for the
     dashboard owner's Org; falls back to the legacy SQLite-on-DO-Spaces path
-    when the flag is off.
+    when the flag is off. When substrate_migration_complete is enabled, only
+    DataPlane is used even if new_data_plane is false.
     """
     from backend.database.session import SessionLocal
     from backend.models.dashboard import Dashboard
@@ -131,7 +132,10 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
     org_id = _get_org_for_user(owner_id) or owner_id
 
     from backend.config.feature_flags import enabled
-    if enabled(org_id, "new_data_plane"):
+    migration_complete = enabled(org_id, "substrate_migration_complete")
+    use_data_plane = migration_complete or enabled(org_id, "new_data_plane")
+
+    if use_data_plane:
         return _materialize_via_data_plane(dashboard_id)
     return _materialize_legacy(dashboard_id)
 
@@ -282,7 +286,10 @@ def _materialize_via_data_plane(dashboard_id: int) -> MaterializeResult:
 
 
 def _materialize_legacy(dashboard_id: int) -> MaterializeResult:
-    """Legacy materializer — SQLite blob on DO Spaces (pre-Phase-1 path)."""
+    """Legacy materializer — SQLite blob on DO Spaces (pre-Phase-1 path).
+
+    Legacy path — unreachable for orgs with substrate_migration_complete=True.
+    """
     from backend.config import settings
     from backend.connectors.factory import get_connector_for_connection, get_connector_registration
     from backend.database.session import SessionLocal
@@ -562,7 +569,10 @@ def read_widget_data_plane(
     org_id: str | None,
     user_id: str,
 ) -> dict | None:
-    """Read widget data from DataPlane. Returns None if no Parquet cache exists yet."""
+    """Read widget data from DataPlane. Returns None if no Parquet cache exists yet.
+
+    Primary path when substrate_migration_complete is true for the org.
+    """
     from backend.data_plane.scope import OwnerScope
     from backend.services.data_plane_service import get_default_plane
 

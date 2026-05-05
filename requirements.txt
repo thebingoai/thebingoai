@@ -54,5 +54,8 @@ google-cloud-storage>=2.14
 google-cloud-bigquery>=3.14
 dlt[parquet]>=0.4
 
+# SQL parsing and rewriting
+sqlglot
+
 # Optional LLM providers
 # anthropic==0.18.0
