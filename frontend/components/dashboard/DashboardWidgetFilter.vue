@@ -57,7 +57,10 @@
               />
               {{ opt }}
             </label>
-            <div v-if="getOptions(control).length === 0" class="px-3 py-2 text-xs text-gray-400 dark:text-neutral-500">
+            <div v-if="loadingOptions.has(control.key)" class="px-3 py-2 text-xs text-gray-400 dark:text-neutral-500">
+              Loading...
+            </div>
+            <div v-else-if="getOptions(control).length === 0" class="px-3 py-2 text-xs text-gray-400 dark:text-neutral-500">
               No options available
             </div>
           </div>
@@ -134,6 +137,9 @@ function autoResize() {
 
 // Map from control.key → dynamically loaded option values
 const dynamicOptions = ref<Map<string, string[]>>(new Map())
+
+// Controls currently fetching their options
+const loadingOptions = ref<Set<string>>(new Set())
 
 // Search debounce timers
 const searchTimers = ref<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -219,6 +225,7 @@ function onScroll(e: Event) {
 async function loadDynamicOptions() {
   for (const control of props.config.controls) {
     if (control.type !== 'dropdown' || !control.optionsSource) continue
+    loadingOptions.value = new Set(loadingOptions.value).add(control.key)
     try {
       const { connectionId, sql } = control.optionsSource
       const response = await api.dashboards.refreshWidget({
@@ -233,6 +240,10 @@ async function loadDynamicOptions() {
       dynamicOptions.value = new Map(dynamicOptions.value).set(control.key, options)
     } catch (err) {
       // Fall back to static options on error
+    } finally {
+      const next = new Set(loadingOptions.value)
+      next.delete(control.key)
+      loadingOptions.value = next
     }
   }
 }
