@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Optional, Type, Callable
+from dataclasses import dataclass, field
+from typing import Literal, Optional, Type, Callable
 
 from fastapi import APIRouter
 
@@ -22,6 +22,9 @@ class ConnectorRegistration:
     sql_dialect_hint: Optional[str] = None
     version: Optional[str] = None
     card_meta_items: Optional[list[str]] = None
+    # Phase 1: scope routing + dedup fingerprint
+    default_scope_hint: Literal["user", "team", "org"] = "user"
+    fingerprint: Optional[Callable] = None  # (DatabaseConnection) -> str | None
 
 
 class BingoPlugin(ABC):

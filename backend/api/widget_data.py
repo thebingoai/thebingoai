@@ -282,17 +282,38 @@ def _read_widget_from_cache(
     filters: list[FilterParam] | None = None,
     data_context: dict | None = None,
     widget_sources: list[str] | None = None,
+    org_id: str | None = None,
+    user_id: str | None = None,
 ) -> "QueryResult":
-    """Read widget data from SQLite cache, with optional filter injection.
+    """Read widget data from cache.
 
-    Returns a QueryResult compatible with transform_widget_data().
-    Raises FileNotFoundError if cache is unavailable, ValueError if widget table missing.
+    Tries DataPlane (Parquet) when new_data_plane flag is on, then falls back
+    to the legacy SQLite path. Returns a QueryResult.
     """
     import sqlite3
     import time
     from backend.connectors.base import QueryResult
     from backend.services.dashboard_cache import get_cache_path, _sanitize_widget_id
 
+    # ── DataPlane path ────────────────────────────────────────────────────
+    if org_id or user_id:
+        from backend.config.feature_flags import enabled
+        flag_subject = org_id or user_id
+        if enabled(flag_subject, "new_data_plane"):
+            from backend.services.dashboard_cache import read_widget_data_plane
+            start_dp = time.time()
+            dp_data = read_widget_data_plane(dashboard_id, widget_id, org_id, user_id or "")
+            if dp_data is not None:
+                execution_time_ms = (time.time() - start_dp) * 1000
+                return QueryResult(
+                    columns=dp_data["columns"],
+                    rows=dp_data["rows"],
+                    row_count=dp_data["row_count"],
+                    execution_time_ms=execution_time_ms,
+                )
+            # Cache miss on DataPlane → fall through to legacy for soft-cutover
+
+    # ── Legacy SQLite path ────────────────────────────────────────────────
     cache_path = get_cache_path(dashboard_id)
     table_name = _sanitize_widget_id(widget_id)
 
@@ -307,7 +328,6 @@ def _read_widget_from_cache(
     uri = f"file:{cache_path}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     try:
-        # Verify table exists
         cursor = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
             (table_name,),
@@ -370,6 +390,8 @@ async def refresh_widget(
                 filters=request.filters,
                 data_context=dashboard.data_context,
                 widget_sources=request.widget_sources,
+                org_id=getattr(current_user, "org_id", None),
+                user_id=current_user.id,
             )
             config = transform_widget_data(result, request.mapping)
             return WidgetRefreshResponse(

@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     do_spaces_key_id: Optional[str] = None
     do_spaces_secret_key: Optional[str] = None
 
+    # DataPlane (Phase 1)
+    data_plane_local_root: str = "/data/data_plane"
+
     # Server settings
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
     app_version: str = "0.1.0"

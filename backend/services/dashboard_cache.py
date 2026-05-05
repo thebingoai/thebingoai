@@ -1,8 +1,11 @@
-"""Dashboard SQLite cache service.
+"""Dashboard cache service.
 
-Materializes all SQL-backed widgets from a dashboard into a single SQLite
-file, uploads it to DO Spaces, and serves reads from a local cache with
-1-hour TTL (same pattern as DatasetSQLiteConnector.from_connection()).
+Materializes SQL-backed widgets from a dashboard.
+
+* new_data_plane = true  → Parquet on the Org's DataPlane (Phase 1+)
+* new_data_plane = false → legacy SQLite blob on DO Spaces (legacy path)
+
+Both paths maintain read fallback for dashboards not yet migrated.
 """
 
 import logging
@@ -92,15 +95,171 @@ def _apply_date_filter(sql: str, date_col: str, days: int) -> str:
 
 
 def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
-    """Execute all widget SQLs against source DB, build SQLite, upload to DO Spaces.
+    """Materialize all SQL-backed widgets for a dashboard.
 
-    Features:
-    - Connection sharing: widgets grouped by connectionId, one connector per group
-    - Date range scoping: appends date filter using trendDateColumn or data_context
-    - Error isolation: partial success -> 'ready', all fail -> 'failed'
-
-    Returns a MaterializeResult with the DO key and widget statistics.
+    Routes to DataPlane (Parquet) when the new_data_plane flag is on for the
+    dashboard owner's Org; falls back to the legacy SQLite-on-DO-Spaces path
+    when the flag is off.
     """
+    from backend.database.session import SessionLocal
+    from backend.models.dashboard import Dashboard
+
+    with SessionLocal() as db:
+        dashboard = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+        if not dashboard:
+            raise ValueError(f"Dashboard {dashboard_id} not found")
+        owner_id = dashboard.user_id
+
+    # Determine org_id for feature-flag lookup (best-effort; falls back to user_id)
+    org_id = _get_org_for_user(owner_id) or owner_id
+
+    from backend.config.feature_flags import enabled
+    if enabled(org_id, "new_data_plane"):
+        return _materialize_via_data_plane(dashboard_id)
+    return _materialize_legacy(dashboard_id)
+
+
+def _get_org_for_user(user_id: str) -> str | None:
+    """Return the org_id for *user_id* (None if not in an org)."""
+    try:
+        from backend.database.session import SessionLocal
+        from backend.models.user import User
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            return getattr(user, "org_id", None) if user else None
+    except Exception:
+        return None
+
+
+def _materialize_via_data_plane(dashboard_id: int) -> MaterializeResult:
+    """Phase 1 materializer — writes Parquet tables on the Org's DataPlane."""
+    import pyarrow as pa
+
+    from backend.config import settings
+    from backend.connectors.factory import get_connector_for_connection, get_connector_registration
+    from backend.data_plane.scope import OwnerScope
+    from backend.database.session import SessionLocal
+    from backend.models.dashboard import Dashboard
+    from backend.models.database_connection import DatabaseConnection
+    from backend.services.data_plane_service import get_default_plane
+
+    db = SessionLocal()
+    try:
+        dashboard = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+        if not dashboard:
+            raise ValueError(f"Dashboard {dashboard_id} not found")
+
+        dashboard.cache_status = "building"
+        db.commit()
+
+        widgets = dashboard.widgets or []
+        data_context = dashboard.data_context
+        date_range_days = dashboard.cache_date_range_days or 90
+
+        # Determine owner scope
+        org_id = _get_org_for_user(dashboard.user_id)
+        scope = OwnerScope("org", org_id) if org_id else OwnerScope("user", dashboard.user_id)
+        plane = get_default_plane(scope)
+
+        connection_groups: dict[int, list[dict]] = {}
+        for widget in widgets:
+            data_source = widget.get("dataSource")
+            if not data_source:
+                continue
+            widget_id = widget.get("id")
+            connection_id = data_source.get("connectionId")
+            sql = data_source.get("sql")
+            if not widget_id or not connection_id or not sql:
+                continue
+            connection_groups.setdefault(connection_id, []).append(widget)
+
+        widgets_total = sum(len(wl) for wl in connection_groups.values())
+        widgets_succeeded = 0
+        widgets_failed = 0
+        widget_errors: dict[str, str] = {}
+
+        for connection_id, group_widgets in connection_groups.items():
+            connection = db.query(DatabaseConnection).filter(
+                DatabaseConnection.id == connection_id,
+                DatabaseConnection.user_id == dashboard.user_id,
+            ).first()
+
+            if not connection:
+                for widget in group_widgets:
+                    w_id = widget["id"]
+                    error_msg = f"Connection {connection_id} not found"
+                    widget_errors[w_id] = error_msg
+                    widgets_failed += 1
+                continue
+
+            reg = get_connector_registration(connection.db_type)
+            if reg and reg.skip_schema_refresh:
+                widgets_total -= len(group_widgets)
+                continue
+
+            connector = get_connector_for_connection(connection)
+            try:
+                for widget in group_widgets:
+                    w_id = widget["id"]
+                    data_source = widget["dataSource"]
+                    original_sql = data_source["sql"]
+                    table_name = f"_dash_{dashboard_id}__{_sanitize_widget_id(w_id)}"
+
+                    try:
+                        query_sql = original_sql
+                        date_col = _get_date_column(widget, data_context)
+                        if date_col:
+                            query_sql = _apply_date_filter(original_sql, date_col, date_range_days)
+
+                        result = connector.execute_query(query_sql)
+
+                        arrow_table = pa.table(
+                            {col: [row[i] for row in result.rows] for i, col in enumerate(result.columns)}
+                        )
+                        plane.write_parquet(scope, table_name, arrow_table)
+
+                        widgets_succeeded += 1
+                        logger.info("Materialized widget %s → DataPlane table %s (%d rows)", w_id, table_name, result.row_count)
+                    except Exception as widget_err:
+                        logger.error("Failed to materialize widget %s: %s", w_id, widget_err)
+                        widget_errors[w_id] = str(widget_err)
+                        widgets_failed += 1
+            finally:
+                connector.close()
+
+        if widgets_total == 0 or widgets_succeeded > 0:
+            status = "ready"
+        else:
+            status = "failed"
+
+        dashboard.cache_built_at = datetime.utcnow()
+        dashboard.cache_status = status
+        db.commit()
+
+        logger.info("Dashboard %d materialized via DataPlane", dashboard_id)
+        return MaterializeResult(
+            do_key="",
+            widgets_total=widgets_total,
+            widgets_succeeded=widgets_succeeded,
+            widgets_failed=widgets_failed,
+            widget_errors=widget_errors,
+        )
+
+    except Exception:
+        try:
+            dashboard = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+            if dashboard:
+                dashboard.cache_status = "failed"
+                db.commit()
+        except Exception:
+            db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _materialize_legacy(dashboard_id: int) -> MaterializeResult:
+    """Legacy materializer — SQLite blob on DO Spaces (pre-Phase-1 path)."""
     from backend.config import settings
     from backend.connectors.factory import get_connector_for_connection, get_connector_registration
     from backend.database.session import SessionLocal
@@ -372,6 +531,31 @@ def read_widget_data(cache_path: str, widget_id: str) -> dict:
         }
     finally:
         conn.close()
+
+
+def read_widget_data_plane(
+    dashboard_id: int,
+    widget_id: str,
+    org_id: str | None,
+    user_id: str,
+) -> dict | None:
+    """Read widget data from DataPlane. Returns None if no Parquet cache exists yet."""
+    from backend.data_plane.scope import OwnerScope
+    from backend.services.data_plane_service import get_default_plane
+
+    scope = OwnerScope("org", org_id) if org_id else OwnerScope("user", user_id)
+    plane = get_default_plane(scope)
+    table_name = f"_dash_{dashboard_id}__{_sanitize_widget_id(widget_id)}"
+
+    if not plane.table_exists(scope, table_name):
+        return None
+
+    result = plane.query(scope, f'SELECT * FROM "{table_name}"')
+    return {
+        "columns": result.columns,
+        "rows": result.rows,
+        "row_count": result.row_count,
+    }
 
 
 def delete_cache(dashboard_id: int) -> None:

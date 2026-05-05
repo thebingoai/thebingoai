@@ -69,6 +69,10 @@ class DatabaseConnection(Base, TimestampMixin):
     is_ephemeral = Column(Boolean, default=False, nullable=False)
     schema_fingerprint = Column(String(64), nullable=True)
 
+    # Phase 1: owner scope routing
+    owner_scope_kind = Column(String(8), nullable=True)   # user | team | org
+    owner_scope_id = Column(String, nullable=True)        # matching PK of respective table
+
     # Health monitoring (populated by dataset heartbeat)
     health_status = Column(String, nullable=True)        # healthy|unhealthy
     health_checked_at = Column(DateTime, nullable=True)
