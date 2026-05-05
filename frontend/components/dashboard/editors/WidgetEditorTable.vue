@@ -15,15 +15,24 @@
       </div>
 
       <div class="space-y-2">
-        <TableColumnCard
+        <div
           v-for="(col, i) in localColumns"
           :key="i"
-          :model-value="col"
-          :edit-mode="editMode"
-          :available-keys="availableKeys"
-          @update:model-value="updateColumn(i, $event)"
-          @remove="removeColumn(i)"
-        />
+          :class="dragIndex !== null && dragIndex !== i ? 'rounded-lg ring-1 ring-dashed ring-indigo-200' : ''"
+          @dragover.prevent
+          @drop="onDrop(i)"
+        >
+          <TableColumnCard
+            :model-value="col"
+            :edit-mode="editMode"
+            :available-keys="availableKeys"
+            :index="i"
+            @update:model-value="updateColumn(i, $event)"
+            @remove="removeColumn(i)"
+            @dragstart="onCardDragstart"
+            @dragend="dragIndex = null"
+          />
+        </div>
         <p v-if="localColumns.length === 0" class="text-xs text-gray-400 text-center py-4">
           No columns defined. Add a column to get started.
         </p>
@@ -162,6 +171,23 @@ function addColumn() {
 
 function removeColumn(i: number) {
   localColumns.value.splice(i, 1)
+  emitUpdate()
+}
+
+const dragIndex = ref<number | null>(null)
+
+function onCardDragstart(i: number) {
+  dragIndex.value = i
+}
+
+function onDrop(targetIndex: number) {
+  const src = dragIndex.value
+  dragIndex.value = null
+  if (src === null || src === targetIndex) return
+  const cols = [...localColumns.value]
+  const [moved] = cols.splice(src, 1)
+  cols.splice(targetIndex, 0, moved)
+  localColumns.value = cols
   emitUpdate()
 }
 </script>

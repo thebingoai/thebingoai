@@ -1,5 +1,24 @@
 <template>
-  <div class="rounded-lg border border-gray-200 p-3 space-y-2 bg-gray-50">
+  <div
+    class="relative rounded-lg border border-gray-200 p-3 pl-7 space-y-2 bg-gray-50 transition-shadow"
+    :class="dragging ? 'shadow-lg ring-2 ring-indigo-300' : ''"
+    :draggable="dragging"
+    @dragstart="onDragStart"
+    @dragend="onDragEnd"
+  >
+    <!-- Drag handle -->
+    <button
+      v-if="editMode"
+      type="button"
+      class="absolute left-1 top-2 flex h-5 w-5 items-center justify-center text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
+      title="Drag to reorder"
+      @mousedown="dragging = true"
+      @mouseup="dragging = false"
+      @mouseleave="dragging = false"
+    >
+      <GripVertical class="h-4 w-4" />
+    </button>
+
     <!-- Key + Label -->
     <div class="flex gap-2">
       <div class="flex-1 space-y-1">
@@ -279,27 +298,45 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
-import { X, AlignLeft, AlignCenter, AlignRight } from 'lucide-vue-next'
+import { reactive, computed, ref } from 'vue'
+import { X, AlignLeft, AlignCenter, AlignRight, GripVertical } from 'lucide-vue-next'
 import type { TableColumn } from '~/types/dashboard'
 
 const props = defineProps<{
   modelValue: TableColumn
   editMode: boolean
   availableKeys?: string[]
+  index?: number
 }>()
 
 const datalistId = `col-keys-${Math.random().toString(36).slice(2)}`
+const dragging = ref(false)
 
 const emit = defineEmits<{
   'update:modelValue': [value: TableColumn]
   remove: []
+  dragstart: [index: number]
+  dragend: []
 }>()
 
 const NUMERIC_FORMATS = new Set(['number', 'currency', 'percent', 'duration'])
 const isNumeric = computed(() => NUMERIC_FORMATS.has(local.format ?? ''))
 
 const local = reactive<TableColumn>({ ...props.modelValue })
+
+function onDragStart(e: DragEvent) {
+  if (!dragging.value || props.index === undefined) {
+    e.preventDefault()
+    return
+  }
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  emit('dragstart', props.index)
+}
+
+function onDragEnd() {
+  dragging.value = false
+  emit('dragend')
+}
 
 function emitUpdate() {
   emit('update:modelValue', { ...local })
