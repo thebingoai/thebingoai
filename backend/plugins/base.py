@@ -26,6 +26,9 @@ class ConnectorRegistration:
     default_scope_hint: Literal["user", "team", "org"] = "user"
     fingerprint: Optional[Callable] = None  # (DatabaseConnection) -> str | None
     extraction_config_model: Optional[Type] = None  # type[BaseModel] | None — P2.1 validation
+    # Phase 3: post-run hook + legacy connector for migration window
+    post_run: Optional[Callable] = None          # (connection, run) -> None — called after successful Pipeline run
+    legacy_connector_class: Optional[Type] = None  # kept for migration window; replaced by connector_class
 
 
 class BingoPlugin(ABC):
