@@ -114,22 +114,11 @@
             {{ col.label || col.key }}
             <span class="text-gray-400 text-[10px] ml-1">({{ col.displayType }})</span>
           </span>
-          <div class="flex items-center gap-2">
-            <span v-if="!localColors[col.key]" class="text-[10px] text-gray-400">Theme</span>
-            <input
-              type="color"
-              :value="localColors[col.key] ?? '#6366f1'"
-              :disabled="!editMode"
-              class="h-6 w-10 rounded border border-gray-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 p-0.5"
-              @input="onColorInput(col.key, ($event.target as HTMLInputElement).value)"
-            />
-            <button
-              v-if="localColors[col.key] && editMode"
-              class="text-[10px] text-gray-400 hover:text-gray-600"
-              title="Reset to theme default"
-              @click="resetColor(col.key)"
-            >✕</button>
-          </div>
+          <ColorPickerPopover
+            :model-value="localColors[col.key] || undefined"
+            :disabled="!editMode"
+            @update:model-value="(c) => c === undefined ? resetColor(col.key) : onColorInput(col.key, c)"
+          />
         </div>
       </div>
     </div>
@@ -140,22 +129,11 @@
       <div class="space-y-2">
         <div v-for="colorOpt in tableColorOptions" :key="colorOpt.key" class="flex items-center justify-between">
           <span class="text-xs text-gray-700">{{ colorOpt.label }}</span>
-          <div class="flex items-center gap-2">
-            <span v-if="!localTableColors[colorOpt.key]" class="text-[10px] text-gray-400">Default</span>
-            <input
-              type="color"
-              :value="localTableColors[colorOpt.key] || '#ffffff'"
-              :disabled="!editMode"
-              class="h-6 w-10 rounded border border-gray-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 p-0.5"
-              @input="onTableColorInput(colorOpt.key, ($event.target as HTMLInputElement).value)"
-            />
-            <button
-              v-if="localTableColors[colorOpt.key] && editMode"
-              class="text-[10px] text-gray-400 hover:text-gray-600"
-              title="Reset to default"
-              @click="resetTableColor(colorOpt.key)"
-            >✕</button>
-          </div>
+          <ColorPickerPopover
+            :model-value="localTableColors[colorOpt.key] || undefined"
+            :disabled="!editMode"
+            @update:model-value="(c) => c === undefined ? resetTableColor(colorOpt.key) : onTableColorInput(colorOpt.key, c)"
+          />
         </div>
       </div>
     </div>
@@ -166,6 +144,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { WidgetConfig, TableWidgetConfig } from '~/types/dashboard'
+import ColorPickerPopover from './ColorPickerPopover.vue'
 
 const props = defineProps<{
   modelValue: WidgetConfig
