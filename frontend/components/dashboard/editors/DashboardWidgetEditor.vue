@@ -64,7 +64,11 @@
           :key="props.widget.id"
           :model-value="currentConfig"
           :edit-mode="editMode"
-          v-bind="props.widget.widget.type === 'kpi' ? { dataSource: props.widget.dataSource, sourceColumns, sourceRows: previewRows } : {}"
+          v-bind="props.widget.widget.type === 'kpi'
+            ? { dataSource: props.widget.dataSource, sourceColumns, sourceRows: previewRows }
+            : props.widget.widget.type === 'table'
+              ? { sourceColumns }
+              : {}"
           class="h-full"
           @update:model-value="onConfigUpdate"
           @update:mapping="onMappingUpdate"

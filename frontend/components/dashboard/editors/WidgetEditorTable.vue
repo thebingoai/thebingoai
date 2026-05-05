@@ -17,7 +17,7 @@
       <div class="space-y-2">
         <div
           v-for="(col, i) in localColumns"
-          :key="i"
+          :key="localColumnIds[i]"
           :class="dragIndex !== null && dragIndex !== i ? 'rounded-lg ring-1 ring-dashed ring-indigo-200' : ''"
           @dragover.prevent
           @drop="onDrop(i)"
@@ -123,6 +123,7 @@ import TableColumnCard from './TableColumnCard.vue'
 const props = defineProps<{
   modelValue: WidgetConfig
   editMode: boolean
+  sourceColumns?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -134,11 +135,17 @@ function getTableConfig(): TableWidgetConfig {
 }
 
 const availableKeys = computed(() => {
+  if (props.sourceColumns?.length) return props.sourceColumns
   const rows = getTableConfig().rows ?? []
   return rows.length ? Object.keys(rows[0]) : []
 })
 
+function genColId() {
+  return `col-${Math.random().toString(36).slice(2, 11)}`
+}
+
 const localColumns = ref<TableColumn[]>(JSON.parse(JSON.stringify(getTableConfig().columns)))
+const localColumnIds = ref<string[]>(localColumns.value.map(genColId))
 const localPagination = ref(getTableConfig().pagination ?? false)
 const localRowsPerPage = ref(getTableConfig().rowsPerPage ?? 25)
 const localDefaultSortKey = ref(getTableConfig().defaultSortKey ?? '')
@@ -160,17 +167,25 @@ function emitUpdate() {
 }
 
 function updateColumn(i: number, col: TableColumn) {
-  localColumns.value[i] = col
+  const cols = [...localColumns.value]
+  cols[i] = col
+  localColumns.value = cols
   emitUpdate()
 }
 
 function addColumn() {
-  localColumns.value.push({ key: '', label: '' })
+  localColumns.value = [...localColumns.value, { key: '', label: '' }]
+  localColumnIds.value = [...localColumnIds.value, genColId()]
   emitUpdate()
 }
 
 function removeColumn(i: number) {
-  localColumns.value.splice(i, 1)
+  const cols = [...localColumns.value]
+  const ids = [...localColumnIds.value]
+  cols.splice(i, 1)
+  ids.splice(i, 1)
+  localColumns.value = cols
+  localColumnIds.value = ids
   emitUpdate()
 }
 
@@ -185,9 +200,13 @@ function onDrop(targetIndex: number) {
   dragIndex.value = null
   if (src === null || src === targetIndex) return
   const cols = [...localColumns.value]
-  const [moved] = cols.splice(src, 1)
-  cols.splice(targetIndex, 0, moved)
+  const ids = [...localColumnIds.value]
+  const [movedCol] = cols.splice(src, 1)
+  const [movedId] = ids.splice(src, 1)
+  cols.splice(targetIndex, 0, movedCol)
+  ids.splice(targetIndex, 0, movedId)
   localColumns.value = cols
+  localColumnIds.value = ids
   emitUpdate()
 }
 </script>
