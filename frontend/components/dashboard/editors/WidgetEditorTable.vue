@@ -107,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, computed } from 'vue'
 import type { WidgetConfig, TableWidgetConfig, TableColumn } from '~/types/dashboard'
 import TableColumnCard from './TableColumnCard.vue'
 
@@ -134,15 +134,6 @@ const localPagination = ref(getTableConfig().pagination ?? false)
 const localRowsPerPage = ref(getTableConfig().rowsPerPage ?? 25)
 const localDefaultSortKey = ref(getTableConfig().defaultSortKey ?? '')
 const localDefaultSortDir = ref<'asc' | 'desc'>(getTableConfig().defaultSortDir ?? 'asc')
-
-watch(() => props.modelValue, () => {
-  const cfg = getTableConfig()
-  localColumns.value = JSON.parse(JSON.stringify(cfg.columns))
-  localPagination.value = cfg.pagination ?? false
-  localRowsPerPage.value = cfg.rowsPerPage ?? 25
-  localDefaultSortKey.value = cfg.defaultSortKey ?? ''
-  localDefaultSortDir.value = cfg.defaultSortDir ?? 'asc'
-})
 
 function emitUpdate() {
   const cfg = getTableConfig()

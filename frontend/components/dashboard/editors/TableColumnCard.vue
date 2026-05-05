@@ -278,7 +278,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch, computed } from 'vue'
+import { reactive, computed } from 'vue'
 import { X, AlignLeft, AlignCenter, AlignRight } from 'lucide-vue-next'
 import type { TableColumn } from '~/types/dashboard'
 
@@ -299,15 +299,6 @@ const NUMERIC_FORMATS = new Set(['number', 'currency', 'percent', 'duration'])
 const isNumeric = computed(() => NUMERIC_FORMATS.has(local.format ?? ''))
 
 const local = reactive<TableColumn>({ ...props.modelValue })
-
-watch(
-  () => props.modelValue,
-  (val) => {
-    Object.keys(local).forEach(k => { if (!(k in val)) delete (local as any)[k] })
-    Object.assign(local, val)
-  },
-  { deep: true },
-)
 
 function emitUpdate() {
   emit('update:modelValue', { ...local })

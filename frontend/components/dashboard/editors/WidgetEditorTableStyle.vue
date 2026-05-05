@@ -13,7 +13,7 @@
           :disabled="!editMode"
           class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
           :class="localShowTitle ? 'bg-indigo-600' : 'bg-gray-200'"
-          @click="editMode && (localShowTitle = !localShowTitle, emitUpdate())"
+          @click="editMode && toggleShowTitle()"
         >
           <span
             class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
@@ -71,7 +71,7 @@
           :disabled="!editMode"
           class="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
           :class="localShowSummaryRow ? 'bg-indigo-600' : 'bg-gray-200'"
-          @click="editMode && (localShowSummaryRow = !localShowSummaryRow, emitUpdate())"
+          @click="editMode && toggleShowSummaryRow()"
         >
           <span
             class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
@@ -164,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import type { WidgetConfig, TableWidgetConfig } from '~/types/dashboard'
 
 const props = defineProps<{
@@ -207,27 +207,6 @@ const localTableColors = ref<Partial<Record<TableColorKey, string>>>({
   evenRowColor: tableConfig.value.evenRowColor ?? '',
 })
 
-watch(() => props.modelValue, () => {
-  const cfg = tableConfig.value
-  localShowTitle.value = !!cfg.showTitle
-  localTitle.value = cfg.title ?? ''
-  localFlags.value = {
-    showHeader: cfg.showHeader !== false,
-    showRowNumbers: !!cfg.showRowNumbers,
-    stripedRows: !!cfg.stripedRows,
-    wrapText: !!cfg.wrapText,
-    horizontalScrolling: !!cfg.horizontalScrolling,
-  }
-  localShowSummaryRow.value = !!cfg.showSummaryRow
-  localMissingData.value = cfg.missingDataDisplay ?? 'dash'
-  localColors.value = { ...(cfg.columnColors ?? {}) }
-  localTableColors.value = {
-    headerBackground: cfg.headerBackground ?? '',
-    cellBorderColor: cfg.cellBorderColor ?? '',
-    oddRowColor: cfg.oddRowColor ?? '',
-    evenRowColor: cfg.evenRowColor ?? '',
-  }
-})
 
 const bodyOptions = [
   { key: 'showHeader' as const, label: 'Show header' },
@@ -249,6 +228,16 @@ const colorColumns = computed(() =>
 
 function toggleFlag(key: keyof typeof localFlags.value) {
   localFlags.value[key] = !localFlags.value[key]
+  emitUpdate()
+}
+
+function toggleShowTitle() {
+  localShowTitle.value = !localShowTitle.value
+  emitUpdate()
+}
+
+function toggleShowSummaryRow() {
+  localShowSummaryRow.value = !localShowSummaryRow.value
   emitUpdate()
 }
 

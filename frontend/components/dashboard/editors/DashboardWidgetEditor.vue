@@ -61,6 +61,7 @@
         <component
           :is="editorComponent"
           v-if="editorComponent"
+          :key="props.widget.id"
           :model-value="currentConfig"
           :edit-mode="editMode"
           v-bind="props.widget.widget.type === 'kpi' ? { dataSource: props.widget.dataSource, sourceColumns, sourceRows: previewRows } : {}"
@@ -79,6 +80,7 @@
         class="h-full overflow-hidden"
       >
         <WidgetEditorTableStyle
+          :key="props.widget.id"
           :model-value="currentConfig"
           :edit-mode="editMode"
           class="h-full"
