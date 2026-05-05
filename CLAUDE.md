@@ -11,6 +11,40 @@ This is the community edition. It can run standalone or as a git submodule insid
 Enterprise extends community via plugins/overlays. Never assume enterprise features live on a branch.
 When used as a submodule, this repo lives at `bingo-enterprise/bingo/`.
 
+## Phase 0 Primitives
+
+These two cross-cutting helpers shipped in Phase 0 (data-platform-v1 branch). Every later phase relies on them.
+
+### `backend/auth/system_context.py` — system actor marker
+
+Background tasks (Pipeline runner, dbt subprocess, profiling) wrap code that the enterprise governance plugin (Phase G) would otherwise gate on per-user RBAC:
+
+```python
+from backend.auth.system_context import system_context, current_system_context
+
+with system_context(reason="pipeline.run", scope=owner_scope) as ctx:
+    ...  # current_system_context() returns ctx inside this block
+```
+
+Phase G reads `current_system_context()` → when set, skips RBAC and writes an `audit_events` row with `actor_user_id = NULL`. Phase 0 ships only the marker; the audit write is in Phase G.
+
+### `backend/config/feature_flags.py` — per-Org feature gates
+
+Flags live in `organizations.feature_flags` (JSONB), cached in Redis (`org:{id}:feature_flags`, TTL 60s).
+
+```python
+from backend.config.feature_flags import enabled, set_flag, requires_flag, FLAG_DISABLED
+
+enabled("org-uuid", "new_data_plane")             # bool, default False
+set_flag("org-uuid", "new_data_plane", True)       # write Postgres + bust Redis
+
+@requires_flag("new_data_plane")
+def materialize_new(org_id: str, ...):             # returns FLAG_DISABLED when flag is off
+    ...
+```
+
+Flag registry lives as `KNOWN_FLAGS` in `feature_flags.py`. Guarded by a canary test — add to the set when introducing a new flag. `org_id` is a UUID string (matches `organizations.id`).
+
 ## Docker
 - Use `docker compose` (v2), not `docker-compose` (v1).
 - Redis URLs inside Docker network use service names (e.g., `redis://redis:6379`), not `localhost`.
