@@ -88,6 +88,23 @@ def _get_date_column(widget: dict, data_context: dict | None) -> str | None:
     return None
 
 
+def _is_pipeline_output_widget(sql: str, org_id: str, db) -> bool:
+    """Return True if *sql* is a simple SELECT from a Pipeline-output table in this Org."""
+    import re
+    from backend.models.pipeline import Pipeline
+    # Match: SELECT ... FROM <table_name> (optionally AS alias, WHERE, etc.)
+    m = re.search(r'\bFROM\s+["`]?(\w+)["`]?\b', sql, re.IGNORECASE)
+    if not m:
+        return False
+    table_name = m.group(1).lower()
+    # Check if any Pipeline in this org has that target_table
+    exists = db.query(Pipeline).filter(
+        Pipeline.target_table == table_name,
+        Pipeline.owner_scope_id == org_id,
+    ).first()
+    return exists is not None
+
+
 def _apply_date_filter(sql: str, date_col: str, days: int) -> str:
     """Wrap SQL in a subquery with a date range filter."""
     cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -206,6 +223,12 @@ def _materialize_via_data_plane(dashboard_id: int) -> MaterializeResult:
                     table_name = f"_dash_{dashboard_id}__{_sanitize_widget_id(w_id)}"
 
                     try:
+                        # Phase 2: skip materialization if this widget's SQL reads from a Pipeline-output table
+                        if _is_pipeline_output_widget(original_sql, org_id or dashboard.user_id, db):
+                            logger.debug("Skipping materialization for pipeline-backed widget %s", w_id)
+                            widgets_total -= 1  # don't count as a materializable widget
+                            continue
+
                         query_sql = original_sql
                         date_col = _get_date_column(widget, data_context)
                         if date_col:

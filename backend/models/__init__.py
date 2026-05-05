@@ -48,3 +48,6 @@ from backend.models.agent_profile import AgentProfile
 
 # Conversation Summaries
 from backend.models.conversation_summary import ConversationSummary
+
+# Phase 2: Pipelines
+from backend.models.pipeline import Pipeline, PipelineRun, DltPipelineState

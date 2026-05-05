@@ -23,43 +23,33 @@ def dispatch_dashboard_refreshes():
     Queries all active dashboard schedules whose next_run_at is due and
     dispatches execute_dashboard_refresh for each, then advances next_run_at.
     """
-    from croniter import croniter
+    from backend.tasks.cron_dispatcher import dispatch_due_rows
 
     db = SessionLocal()
     now = datetime.utcnow()
 
-    try:
-        due_dashboards = (
-            db.query(Dashboard)
-            .filter(
-                Dashboard.schedule_active == True,
-                Dashboard.next_run_at <= now,
-            )
-            .all()
+    def _dispatch_dashboard(dashboard):
+        countdown = random.uniform(0, STAGGER_MAX_SECONDS)
+        execute_dashboard_refresh.apply_async(
+            args=[dashboard.id], countdown=countdown,
         )
+        dashboard.last_run_at = now
 
-        if not due_dashboards:
-            return
-
-        logger.info(f"Dispatching refresh for {len(due_dashboards)} due dashboard(s)")
-
-        for idx, dashboard in enumerate(due_dashboards):
-            try:
-                # Stagger tasks to avoid thundering herd
-                countdown = random.uniform(0, STAGGER_MAX_SECONDS) + idx * 2
-                execute_dashboard_refresh.apply_async(
-                    args=[dashboard.id], countdown=countdown,
-                )
-                # Advance next_run_at using croniter
-                dashboard.next_run_at = croniter(dashboard.cron_expression, now).get_next(datetime)
-                dashboard.last_run_at = now
-            except Exception as dispatch_err:
-                logger.error(f"Failed to dispatch refresh for dashboard {dashboard.id}: {dispatch_err}")
-
+    try:
+        count = dispatch_due_rows(
+            db,
+            model_cls=Dashboard,
+            enabled_field="schedule_active",
+            cron_field="cron_expression",
+            next_run_field="next_run_at",
+            dispatch_fn=_dispatch_dashboard,
+            now=now,
+        )
+        if count:
+            logger.info("Dispatched refresh for %d due dashboard(s)", count)
         db.commit()
-
     except Exception as e:
-        logger.error(f"dispatch_dashboard_refreshes failed: {e}")
+        logger.error("dispatch_dashboard_refreshes failed: %s", e)
         db.rollback()
     finally:
         db.close()

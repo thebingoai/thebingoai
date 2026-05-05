@@ -214,6 +214,86 @@ def profile_chat_file(file_id: str):
     logger.info("profile_chat_file: completed for file %s", file_id)
 
 
+def _profile_table(scope, plane, table_name: str, source_type: str) -> dict:
+    """Read column types from DataPlane for *table_name* and return a profile dict."""
+    try:
+        schema = plane.get_schema(scope, table_name)
+        columns = {
+            field.name: {"type": str(field.type), "nullable": field.nullable}
+            for field in schema
+        }
+        return {"columns": columns, "source_type": source_type, "table_name": table_name}
+    except Exception as exc:
+        logger.warning("_profile_table: failed for %s/%s: %s", source_type, table_name, exc)
+        return {}
+
+
+@shared_task(name="profile_pipeline_output", bind=True, max_retries=1, time_limit=300)
+def profile_pipeline_output(self, pipeline_id: str, run_id: str):
+    """Profile the output table of a pipeline run and emit profile.diff if columns changed."""
+    from backend.database.session import SessionLocal
+    from backend.models.pipeline import Pipeline
+    from backend.data_plane.scope import OwnerScope
+    from backend.services.data_plane_service import get_default_plane
+    from backend.notifications import publish
+
+    db = SessionLocal()
+    try:
+        pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
+        if not pipeline:
+            logger.warning("profile_pipeline_output: pipeline %s not found", pipeline_id)
+            return
+
+        scope = OwnerScope(pipeline.owner_scope_kind, pipeline.owner_scope_id)
+        plane = get_default_plane(scope, db)
+
+        # Read previous profile (stored on pipeline row as last_profile_columns JSONB)
+        prev_columns = getattr(pipeline, "last_profile_columns", None) or {}
+
+        # Get current profile
+        new_profile = _profile_table(scope, plane, pipeline.target_table, "pipeline")
+        new_columns = new_profile.get("columns", {})
+
+        if new_columns:
+            # Compute diff
+            added = [{"name": k, "type": v["type"]} for k, v in new_columns.items() if k not in prev_columns]
+            removed = [{"name": k, "type": v["type"]} for k, v in prev_columns.items() if k not in new_columns]
+            type_changes = [
+                {"name": k, "old_type": prev_columns[k]["type"], "new_type": v["type"]}
+                for k, v in new_columns.items()
+                if k in prev_columns and prev_columns[k]["type"] != v["type"]
+            ]
+
+            if added or removed or type_changes:
+                publish({
+                    "event_type": "profile.diff",
+                    "scope": {"kind": pipeline.owner_scope_kind, "id": pipeline.owner_scope_id},
+                    "resource_type": "pipeline",
+                    "resource_id": pipeline_id,
+                    "table_name": pipeline.target_table,
+                    "added_columns": added,
+                    "removed_columns": removed,
+                    "type_changes": type_changes,
+                    "run_id": run_id,
+                    "run_finished_at": datetime.now(timezone.utc).isoformat(),
+                })
+                logger.info("profile.diff published for pipeline %s: +%d -%d ~%d cols",
+                            pipeline_id, len(added), len(removed), len(type_changes))
+
+            # Update stored profile on the pipeline row
+            # Note: Pipeline model doesn't have last_profile_columns yet — use column_count as proxy
+            pipeline.column_count = len(new_columns) if hasattr(pipeline, "column_count") else None
+
+        db.commit()
+        logger.info("profile_pipeline_output done for pipeline %s run %s", pipeline_id, run_id)
+
+    except Exception as exc:
+        logger.error("profile_pipeline_output failed for pipeline %s: %s", pipeline_id, exc)
+        # Profile failure does NOT fail the run — just log
+    finally:
+        db.close()
+
+
 @shared_task(name="backfill_profile_all_connections")
 def backfill_profile_all_connections():
     """One-time task: queue profiling for all existing connections that have

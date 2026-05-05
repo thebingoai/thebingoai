@@ -21,43 +21,33 @@ def dispatch_heartbeat_jobs():
     Queries all active jobs whose next_run_at is due and dispatches
     an execute_heartbeat_job task for each, then advances next_run_at.
     """
-    from croniter import croniter
+    from backend.tasks.cron_dispatcher import dispatch_due_rows
 
     db = SessionLocal()
     now = datetime.utcnow()
 
+    def _dispatch_heartbeat_row(job, _now=now):
+        if job.agent_type and job.agent_type != "orchestrator":
+            execute_agent_heartbeat_job.delay(job.id)
+        else:
+            execute_heartbeat_job.delay(job.id)
+        job.last_run_at = _now
+
     try:
-        due_jobs = (
-            db.query(HeartbeatJob)
-            .filter(
-                HeartbeatJob.is_active == True,
-                HeartbeatJob.next_run_at <= now,
-            )
-            .all()
+        count = dispatch_due_rows(
+            db,
+            model_cls=HeartbeatJob,
+            enabled_field="is_active",
+            cron_field="cron_expression",
+            next_run_field="next_run_at",
+            dispatch_fn=_dispatch_heartbeat_row,
+            now=now,
         )
-
-        if not due_jobs:
-            return
-
-        logger.info(f"Dispatching {len(due_jobs)} due heartbeat job(s)")
-
-        for job in due_jobs:
-            try:
-                # Route to agent-specific task if agent_type is set
-                if job.agent_type and job.agent_type != "orchestrator":
-                    execute_agent_heartbeat_job.delay(job.id)
-                else:
-                    execute_heartbeat_job.delay(job.id)
-                # Advance next_run_at
-                job.next_run_at = croniter(job.cron_expression, now).get_next(datetime)
-                job.last_run_at = now
-            except Exception as dispatch_err:
-                logger.error(f"Failed to dispatch job {job.id}: {dispatch_err}")
-
+        if count:
+            logger.info("Dispatched %d due heartbeat job(s)", count)
         db.commit()
-
     except Exception as e:
-        logger.error(f"dispatch_heartbeat_jobs failed: {e}")
+        logger.error("dispatch_heartbeat_jobs failed: %s", e)
         db.rollback()
     finally:
         db.close()

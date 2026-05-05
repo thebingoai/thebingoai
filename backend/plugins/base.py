@@ -25,6 +25,7 @@ class ConnectorRegistration:
     # Phase 1: scope routing + dedup fingerprint
     default_scope_hint: Literal["user", "team", "org"] = "user"
     fingerprint: Optional[Callable] = None  # (DatabaseConnection) -> str | None
+    extraction_config_model: Optional[Type] = None  # type[BaseModel] | None — P2.1 validation
 
 
 class BingoPlugin(ABC):

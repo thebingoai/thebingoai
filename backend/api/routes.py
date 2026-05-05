@@ -4,6 +4,7 @@ from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboa
 from backend.api import feature_config
 from backend.auth.webhooks import router as webhook_router
 from backend.api import query_results, agent_sessions
+from backend.pipelines.api import router as pipelines_router
 
 router = APIRouter()
 
@@ -66,6 +67,9 @@ router.include_router(feature_config.router)
 
 # Query Result Fetch (schema-only side-channel)
 router.include_router(query_results.router)
+
+# Pipelines (Phase 2)
+router.include_router(pipelines_router)
 
 
 # Upload
