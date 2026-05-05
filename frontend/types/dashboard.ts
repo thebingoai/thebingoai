@@ -48,7 +48,7 @@ export interface TableColumn {
   showBarValue?: boolean
   // Metrics
   compactNumbers?: boolean
-  aggregation?: 'sum' | 'average' | 'count' | 'countDistinct' | 'min' | 'max' | 'median' | 'stdDev' | 'variance'
+  aggregation?: 'none' | 'sum' | 'average' | 'count' | 'countDistinct' | 'min' | 'max' | 'median' | 'stdDev' | 'variance'
   comparisonCalc?: 'none' | 'percentOfTotal' | 'diffFromTotal' | 'percentDiffFromTotal' | 'percentOfMax' | 'diffFromMax' | 'percentDiffFromMax'
   runningCalc?: 'none' | 'runningSum' | 'runningMin' | 'runningMax' | 'runningCount' | 'runningAverage' | 'runningDelta' | 'runningPercentageDelta'
 }

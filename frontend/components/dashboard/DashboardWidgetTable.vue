@@ -387,6 +387,7 @@ watch([() => props.config.rows, columnFilters], () => { currentPage.value = 1 },
 // Summary row
 function summaryValue(col: TableColumn): string {
   if (!isNumericFormat(col)) return '—'
+  if (col.aggregation === 'none') return '—'
   const vals = sortedRows.value
     .map(r => Number(r[col.key]))
     .filter(v => isFinite(v))

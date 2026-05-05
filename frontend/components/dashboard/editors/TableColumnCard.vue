@@ -225,6 +225,7 @@
           class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
           @change="emitUpdate()"
         >
+          <option value="none">None</option>
           <option value="sum">Sum</option>
           <option value="average">Average</option>
           <option value="count">Count</option>
