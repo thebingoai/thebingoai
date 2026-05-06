@@ -121,7 +121,7 @@
         </tbody>
 
         <!-- Summary row -->
-        <tfoot v-if="config.showSummaryRow">
+        <tfoot v-if="showSummaryFooter">
           <tr class="border-t-2 border-gray-200 bg-gray-50 dark:border-neutral-600 dark:bg-neutral-800">
             <td v-if="config.showRowNumbers" class="px-3 py-2.5 text-[11px] text-gray-300">Σ</td>
             <td
@@ -213,6 +213,15 @@ function colAlignClass(col: TableColumn): string {
 function colColor(key: string): string {
   return props.config.columnColors?.[key] ?? THEME_COLOR
 }
+
+// Show footer when the global toggle is on, OR when any numeric column has an
+// explicit aggregation set (so users see the calc without hunting the toggle).
+const showSummaryFooter = computed(() => {
+  if (props.config.showSummaryRow) return true
+  return props.config.columns.some(c =>
+    isNumericFormat(c) && c.aggregation && c.aggregation !== 'none',
+  )
+})
 
 const containerStyle = computed(() => {
   const style: Record<string, string> = {}

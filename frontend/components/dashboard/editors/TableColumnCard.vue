@@ -1,7 +1,10 @@
 <template>
   <div
-    class="relative rounded-lg border border-gray-200 p-3 pl-7 space-y-2 bg-gray-50 transition-shadow"
-    :class="dragging ? 'shadow-lg ring-2 ring-indigo-300' : ''"
+    class="relative rounded-lg border border-gray-200 bg-gray-50 transition-shadow"
+    :class="[
+      dragging ? 'shadow-lg ring-2 ring-indigo-300' : '',
+      expanded ? 'p-3 pl-7 space-y-2' : '',
+    ]"
     :draggable="dragging"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
@@ -10,13 +13,56 @@
     <button
       v-if="editMode"
       type="button"
-      class="absolute left-1 top-2 flex h-5 w-5 items-center justify-center text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
+      class="absolute left-1 flex h-5 w-5 items-center justify-center text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
+      :class="expanded ? 'top-2' : 'top-1.5'"
       title="Drag to reorder"
       @mousedown="dragging = true"
       @mouseup="dragging = false"
       @mouseleave="dragging = false"
     >
       <GripVertical class="h-4 w-4" />
+    </button>
+
+    <!-- Collapsed header bar (always visible) -->
+    <button
+      v-if="!expanded"
+      type="button"
+      class="flex w-full items-center justify-between pl-7 pr-3 py-2 text-left hover:bg-gray-100 rounded-lg transition-colors"
+      @click="expanded = true"
+    >
+      <div class="flex items-center gap-2 min-w-0">
+        <ChevronRight class="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+        <span class="text-sm font-medium text-gray-700 truncate">
+          {{ local.label || local.key || 'Untitled column' }}
+        </span>
+        <span v-if="local.format" class="text-[10px] text-gray-400 uppercase tracking-wide flex-shrink-0">
+          {{ local.format }}
+        </span>
+        <span v-if="local.aggregation && local.aggregation !== 'none'" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 flex-shrink-0">
+          {{ aggLabel(local.aggregation) }}
+        </span>
+      </div>
+      <button
+        v-if="editMode"
+        type="button"
+        class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-rose-50 hover:text-rose-500 transition-colors flex-shrink-0"
+        title="Remove column"
+        @click.stop="emit('remove')"
+      >
+        <X class="h-3.5 w-3.5" />
+      </button>
+    </button>
+
+    <!-- Expanded body -->
+    <template v-if="expanded">
+    <!-- Collapse button (top-right) -->
+    <button
+      type="button"
+      class="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors z-10"
+      title="Collapse"
+      @click="expanded = false"
+    >
+      <ChevronDown class="h-3.5 w-3.5" />
     </button>
 
     <!-- Key + Label -->
@@ -294,13 +340,30 @@
         </select>
       </div>
     </template>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { reactive, computed, ref } from 'vue'
-import { X, AlignLeft, AlignCenter, AlignRight, GripVertical } from 'lucide-vue-next'
+import { X, AlignLeft, AlignCenter, AlignRight, GripVertical, ChevronRight, ChevronDown } from 'lucide-vue-next'
 import type { TableColumn } from '~/types/dashboard'
+
+const AGG_LABELS: Record<string, string> = {
+  sum: 'Sum',
+  average: 'Avg',
+  count: 'Count',
+  countDistinct: 'Count Distinct',
+  min: 'Min',
+  max: 'Max',
+  median: 'Median',
+  stdDev: 'Std Dev',
+  variance: 'Variance',
+}
+
+function aggLabel(v?: string): string {
+  return AGG_LABELS[v ?? ''] ?? v ?? ''
+}
 
 const props = defineProps<{
   modelValue: TableColumn
@@ -311,6 +374,8 @@ const props = defineProps<{
 
 const datalistId = `col-keys-${Math.random().toString(36).slice(2)}`
 const dragging = ref(false)
+// New (empty-key) columns default to expanded for easier first-time editing
+const expanded = ref(!props.modelValue.key)
 
 const emit = defineEmits<{
   'update:modelValue': [value: TableColumn]

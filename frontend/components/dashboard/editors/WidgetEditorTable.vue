@@ -14,25 +14,41 @@
         </button>
       </div>
 
-      <div class="space-y-2">
-        <div
-          v-for="(col, i) in localColumns"
-          :key="localColumnIds[i]"
-          :class="dragIndex !== null && dragIndex !== i ? 'rounded-lg ring-1 ring-dashed ring-indigo-200' : ''"
-          @dragover.prevent
-          @drop="onDrop(i)"
-        >
-          <TableColumnCard
-            :model-value="col"
-            :edit-mode="editMode"
-            :available-keys="availableKeys"
-            :index="i"
-            @update:model-value="updateColumn(i, $event)"
-            @remove="removeColumn(i)"
-            @dragstart="onCardDragstart"
-            @dragend="dragIndex = null"
+      <div class="space-y-2 relative" @dragleave="onContainerDragLeave">
+        <template v-for="(col, i) in localColumns" :key="localColumnIds[i]">
+          <!-- Drop indicator above this card -->
+          <div
+            v-if="dragIndex !== null && dropIndex === i"
+            class="h-0.5 -my-1 bg-indigo-500 rounded-full transition-all"
           />
-        </div>
+          <div
+            @dragover.prevent="onCardDragover($event, i)"
+            @drop.prevent="onDrop"
+          >
+            <TableColumnCard
+              :model-value="col"
+              :edit-mode="editMode"
+              :available-keys="availableKeys"
+              :index="i"
+              @update:model-value="updateColumn(i, $event)"
+              @remove="removeColumn(i)"
+              @dragstart="onCardDragstart"
+              @dragend="dragIndex = null; dropIndex = null"
+            />
+          </div>
+        </template>
+        <!-- Drop indicator below the last card -->
+        <div
+          v-if="dragIndex !== null && dropIndex === localColumns.length"
+          class="h-0.5 -my-1 bg-indigo-500 rounded-full transition-all"
+        />
+        <!-- Tail drop zone (for dropping after the last card) -->
+        <div
+          v-if="dragIndex !== null"
+          class="h-4"
+          @dragover.prevent="onTailDragover"
+          @drop.prevent="onDrop"
+        />
         <p v-if="localColumns.length === 0" class="text-xs text-gray-400 text-center py-4">
           No columns defined. Add a column to get started.
         </p>
@@ -190,21 +206,47 @@ function removeColumn(i: number) {
 }
 
 const dragIndex = ref<number | null>(null)
+const dropIndex = ref<number | null>(null)
 
 function onCardDragstart(i: number) {
   dragIndex.value = i
 }
 
-function onDrop(targetIndex: number) {
+function onCardDragover(e: DragEvent, i: number) {
+  if (dragIndex.value === null) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const midpoint = rect.top + rect.height / 2
+  // Drop above this card if cursor is in upper half, below if lower half
+  dropIndex.value = e.clientY < midpoint ? i : i + 1
+}
+
+function onTailDragover() {
+  if (dragIndex.value === null) return
+  dropIndex.value = localColumns.value.length
+}
+
+function onContainerDragLeave(e: DragEvent) {
+  // Only clear when leaving the container entirely, not when entering a child
+  const related = e.relatedTarget as Node | null
+  if (related && (e.currentTarget as Node).contains(related)) return
+  dropIndex.value = null
+}
+
+function onDrop() {
   const src = dragIndex.value
+  let target = dropIndex.value
   dragIndex.value = null
-  if (src === null || src === targetIndex) return
+  dropIndex.value = null
+  if (src === null || target === null) return
+  // Adjust target if it's after src (since src will be removed first)
+  if (target > src) target -= 1
+  if (src === target) return
   const cols = [...localColumns.value]
   const ids = [...localColumnIds.value]
   const [movedCol] = cols.splice(src, 1)
   const [movedId] = ids.splice(src, 1)
-  cols.splice(targetIndex, 0, movedCol)
-  ids.splice(targetIndex, 0, movedId)
+  cols.splice(target, 0, movedCol)
+  ids.splice(target, 0, movedId)
   localColumns.value = cols
   localColumnIds.value = ids
   emitUpdate()

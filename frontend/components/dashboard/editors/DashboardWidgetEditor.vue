@@ -328,6 +328,23 @@ const editorComponent = computed(() =>
   editorComponents[props.widget.widget.type] ?? null,
 )
 
+/** Auto-fetch raw SQL columns/rows so the editor's column-key dropdowns stay populated. */
+async function fetchSourceColumns() {
+  const ds = props.widget.dataSource
+  if (!ds?.sql) return
+  try {
+    const response = await api.dashboards.refreshWidget({
+      connection_id: ds.connectionId,
+      sql: ds.sql,
+      mapping: ds.mapping as any,
+    }) as { source_columns?: string[]; source_rows?: any[][] }
+    sourceColumns.value = response.source_columns ?? []
+    previewRows.value = response.source_rows ?? []
+  } catch {
+    // silently ignore — columns will just be empty
+  }
+}
+
 /** Reset local state when a different widget is selected */
 watch(() => props.widget.id, () => {
   localSql.value = tryFormatSql(props.widget.dataSource?.sql ?? '')
@@ -337,6 +354,7 @@ watch(() => props.widget.id, () => {
   previewError.value = null
   suggestion.value = null
   sourceColumns.value = []
+  if (isDataWidget.value) fetchSourceColumns()
   activeTab.value = 'configure'
 })
 
@@ -483,20 +501,7 @@ onMounted(async () => {
     }
 
     // Auto-fetch source columns if data source exists
-    const ds = props.widget.dataSource
-    if (ds?.sql) {
-      try {
-        const response = await api.dashboards.refreshWidget({
-          connection_id: ds.connectionId,
-          sql: ds.sql,
-          mapping: ds.mapping as any,
-        }) as { source_columns?: string[]; source_rows?: any[][] }
-        sourceColumns.value = response.source_columns ?? []
-        previewRows.value = response.source_rows ?? []
-      } catch {
-        // silently ignore — columns will just be empty
-      }
-    }
+    await fetchSourceColumns()
   }
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))

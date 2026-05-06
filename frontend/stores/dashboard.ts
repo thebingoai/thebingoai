@@ -162,6 +162,14 @@ export const useDashboardStore = defineStore('dashboard', {
           widgets: dashboard.widgets,
         })
         this.dirty = false
+      } catch (err: any) {
+        const detail = err?.data?.detail ?? err?.message ?? 'Save failed'
+        // eslint-disable-next-line no-console
+        console.error('[saveDashboard] failed:', err)
+        if (typeof window !== 'undefined') {
+          window.alert(`Save failed: ${detail}`)
+        }
+        throw err
       } finally {
         this.saving = false
       }
