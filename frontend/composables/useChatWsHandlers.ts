@@ -32,6 +32,16 @@ export const useChatWsHandlers = () => {
       const existing = chatStore.conversations.find(c => c.id === threadId)
       if (existing) {
         chatStore.updateConversationTitle(threadId, data.content)
+      } else if (chatStore.pendingNewConversationId) {
+        // chat.title fired before chat.done — replace pending placeholder directly
+        chatStore.replacePendingConversation({
+          id: threadId,
+          title: data.content,
+          type: 'task',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          message_count: 2,
+        })
       } else {
         chatStore.addConversation({
           id: threadId,

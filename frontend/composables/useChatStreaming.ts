@@ -84,7 +84,7 @@ export const useChatStreaming = () => {
 
     /** Push steps_log to the message so ChatMessageBubble can render it. */
     const syncStepsLog = () => {
-      chatStore.updateMessageById(assistantMsgId, { steps_log: [...stepsLog] })
+      chatStore.updateMessageById(assistantMsgId, { steps_log: [...stepsLog], steps_log_expanded: true })
     }
 
     const startContentDrip = () => {
@@ -94,7 +94,7 @@ export const useChatStreaming = () => {
         if (backlog <= 0) return
         const step = backlog > CATCHUP_BACKLOG ? Math.ceil(backlog / 50) : CHARS_PER_TICK
         displayedContent = accumulatedContent.slice(0, displayedContent.length + step)
-        chatStore.updateMessageById(assistantMsgId, { content: displayedContent, steps_log_expanded: false })
+        chatStore.updateMessageById(assistantMsgId, { content: displayedContent })
       }, DRIP_INTERVAL_MS)
     }
 
@@ -145,6 +145,7 @@ export const useChatStreaming = () => {
       const cleanup = () => {
         if (dripTimer) { clearInterval(dripTimer); dripTimer = null }
         unsubs.forEach(fn => fn())
+        chatStore.updateMessageById(assistantMsgId, { steps_log_expanded: false })
         chatStore.isStreaming = false
         resolve()
       }
@@ -153,7 +154,7 @@ export const useChatStreaming = () => {
         if (data.replace) {
           accumulatedContent = data.content || ''
           displayedContent = ''
-          chatStore.updateMessageById(assistantMsgId, { content: '', steps_log_expanded: false })
+          chatStore.updateMessageById(assistantMsgId, { content: '' })
         } else {
           accumulatedContent += (data.content || '')
         }
@@ -355,7 +356,7 @@ export const useChatStreaming = () => {
         }
 
         const threadId: string = data.thread_id
-        if (threadId && !chatStore.currentThreadId) {
+        if (threadId && (!chatStore.currentThreadId || chatStore.pendingNewConversationId)) {
           chatStore.setCurrentThread(threadId)
           const realConv = {
             id: threadId,
@@ -367,9 +368,10 @@ export const useChatStreaming = () => {
           }
           if (chatStore.pendingNewConversationId) {
             chatStore.replacePendingConversation(realConv)
-          } else {
+          } else if (!chatStore.conversations.find((c: any) => c.id === threadId)) {
             chatStore.addConversation(realConv)
           }
+          // else: chat.title already replaced the pending — skip to avoid duplicate
         } else if (threadId) {
           chatStore.updateConversationActivity(threadId, new Date().toISOString())
         }
