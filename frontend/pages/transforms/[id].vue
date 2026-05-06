@@ -111,6 +111,11 @@
         <p v-if="saveError" class="mt-1.5 text-sm text-red-600">{{ saveError }}</p>
       </UiCard>
 
+      <!-- Last write (lineage) -->
+      <div v-if="transform?.name">
+        <LineageLastWritePanel :table="transform.name" />
+      </div>
+
       <!-- Run history -->
       <div>
         <div class="mb-3 flex items-center justify-between">

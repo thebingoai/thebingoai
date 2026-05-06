@@ -90,6 +90,11 @@
         </dl>
       </UiCard>
 
+      <!-- Last write (lineage) -->
+      <div v-if="pipeline?.target_table" class="mb-4">
+        <LineageLastWritePanel :table="pipeline.target_table" />
+      </div>
+
       <!-- Run trigger feedback -->
       <div
         v-if="runFeedback"

@@ -14,6 +14,7 @@ from backend.agents.data_agent.tools import (
     build_execute_query_tool,
 )
 from backend.agents.dashboard_tools import build_create_dashboard_tool
+from backend.agents.lineage_tools import build_lineage_tools
 import logging
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,10 @@ TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {
     "sessions_send": _build_communication_tools,
     "sessions_history": _build_communication_tools,
     "sessions_broadcast": _build_communication_tools,
+    # Phase 6: lineage tools
+    "get_lineage_upstream": build_lineage_tools,
+    "get_lineage_downstream": build_lineage_tools,
+    "get_last_write": build_lineage_tools,
 }
 
 

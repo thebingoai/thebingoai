@@ -6,6 +6,7 @@ from backend.auth.webhooks import router as webhook_router
 from backend.api import query_results, agent_sessions
 from backend.pipelines.api import router as pipelines_router
 from backend.transforms.api import router as transforms_router
+from backend.lineage.api import router as lineage_router
 
 router = APIRouter()
 
@@ -74,6 +75,9 @@ router.include_router(pipelines_router)
 
 # Transforms / dbt models (Phase 4)
 router.include_router(transforms_router)
+
+# Lineage (Phase 6)
+router.include_router(lineage_router)
 
 
 # Upload

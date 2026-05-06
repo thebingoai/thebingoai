@@ -38,9 +38,21 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Failed to queue backfill profiling task", exc_info=True)
 
+    # Phase 6: lineage cache invalidation subscriber
+    try:
+        from backend.lineage.cache import start_subscriber as _start_lineage_subscriber
+        _start_lineage_subscriber()
+    except Exception:
+        logger.warning("Failed to start lineage cache subscriber", exc_info=True)
+
     yield
     # Shutdown
     logger.info("Shutting down...")
+    try:
+        from backend.lineage.cache import stop_subscriber as _stop_lineage_subscriber
+        _stop_lineage_subscriber()
+    except Exception:
+        pass
     shutdown_plugins()
 
 app = FastAPI(
