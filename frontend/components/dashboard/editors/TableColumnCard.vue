@@ -35,10 +35,18 @@
         <span class="text-sm font-medium text-gray-700 truncate">
           {{ local.label || local.key || 'Untitled column' }}
         </span>
+        <span
+          class="text-[9px] px-1.5 py-0.5 rounded font-semibold tracking-wide flex-shrink-0"
+          :class="effectiveRole === 'metric'
+            ? 'bg-indigo-50 text-indigo-600'
+            : 'bg-emerald-50 text-emerald-600'"
+        >
+          {{ effectiveRole === 'metric' ? 'MET' : 'DIM' }}
+        </span>
         <span v-if="local.format" class="text-[10px] text-gray-400 uppercase tracking-wide flex-shrink-0">
           {{ local.format }}
         </span>
-        <span v-if="local.aggregation && local.aggregation !== 'none'" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 flex-shrink-0">
+        <span v-if="effectiveRole === 'metric' && local.aggregation && local.aggregation !== 'none'" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 flex-shrink-0">
           {{ aggLabel(local.aggregation) }}
         </span>
       </div>
@@ -95,6 +103,24 @@
           :class="!editMode ? 'cursor-default bg-gray-50' : ''"
           @input="emitUpdate()"
         />
+      </div>
+    </div>
+
+    <!-- Role: Dimension / Metric -->
+    <div class="space-y-1">
+      <label class="text-[10px] text-gray-400">Role</label>
+      <div class="flex rounded border border-gray-200 overflow-hidden">
+        <button
+          v-for="r in (['dimension', 'metric'] as const)"
+          :key="r"
+          type="button"
+          :disabled="!editMode"
+          class="flex-1 py-1.5 text-[11px] font-medium transition-colors border-r border-gray-200 last:border-r-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          :class="effectiveRole === r
+            ? 'bg-indigo-600 text-white'
+            : 'bg-white text-gray-500 hover:bg-gray-50'"
+          @click="editMode && setRole(r)"
+        >{{ r === 'dimension' ? 'Dimension' : 'Metric' }}</button>
       </div>
     </div>
 
@@ -225,63 +251,9 @@
       </button>
     </div>
 
-    <!-- Display type (numeric columns only) -->
-    <template v-if="isNumeric">
-      <div class="space-y-1.5">
-        <label class="text-[10px] text-gray-400">Display Type</label>
-        <div class="flex rounded border border-gray-200 overflow-hidden">
-          <button
-            v-for="dt in (['number', 'bar', 'heatmap'] as const)"
-            :key="dt"
-            type="button"
-            :disabled="!editMode"
-            class="flex-1 py-1 text-[10px] font-medium capitalize transition-colors border-r border-gray-200 last:border-r-0 disabled:opacity-40 disabled:cursor-not-allowed"
-            :class="(local.displayType ?? 'number') === dt
-              ? 'bg-indigo-600 text-white'
-              : 'bg-white text-gray-500 hover:bg-gray-50'"
-            @click="editMode && setDisplayType(dt)"
-          >{{ dt }}</button>
-        </div>
-      </div>
-
-      <!-- Show value toggle (bar only) -->
-      <div v-if="(local.displayType ?? 'number') === 'bar'" class="flex items-center justify-between py-0.5">
-        <span class="text-xs text-gray-700">Show value</span>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="local.showBarValue !== false"
-          :disabled="!editMode"
-          class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
-          :class="local.showBarValue !== false ? 'bg-indigo-600' : 'bg-gray-200'"
-          @click="editMode && (local.showBarValue = !local.showBarValue, emitUpdate())"
-        >
-          <span
-            class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
-            :class="local.showBarValue !== false ? 'translate-x-3 ml-0.5' : 'translate-x-0 ml-0.5'"
-          />
-        </button>
-      </div>
-
-      <!-- Metrics calculations -->
-      <div class="flex items-center justify-between py-0.5">
-        <span class="text-xs text-gray-700">Compact numbers</span>
-        <button
-          type="button"
-          role="switch"
-          :aria-checked="!!local.compactNumbers"
-          :disabled="!editMode"
-          class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
-          :class="local.compactNumbers ? 'bg-indigo-600' : 'bg-gray-200'"
-          @click="editMode && (local.compactNumbers = !local.compactNumbers, emitUpdate())"
-        >
-          <span
-            class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
-            :class="local.compactNumbers ? 'translate-x-3 ml-0.5' : 'translate-x-0 ml-0.5'"
-          />
-        </button>
-      </div>
-
+    <!-- Metric-only controls -->
+    <template v-if="effectiveRole === 'metric'">
+      <!-- Aggregation (always visible for metrics; options vary by format) -->
       <div class="space-y-1">
         <label class="text-[10px] text-gray-400">Aggregation</label>
         <select
@@ -290,55 +262,107 @@
           class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
           @change="emitUpdate()"
         >
-          <option value="none">None</option>
-          <option value="sum">Sum</option>
-          <option value="average">Average</option>
-          <option value="count">Count</option>
-          <option value="countDistinct">Count Distinct</option>
-          <option value="min">Min</option>
-          <option value="max">Max</option>
-          <option value="median">Median</option>
-          <option value="stdDev">Std Deviation</option>
-          <option value="variance">Variance</option>
+          <option v-for="opt in aggregationOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
 
-      <div class="space-y-1">
-        <label class="text-[10px] text-gray-400">Comparison</label>
-        <select
-          v-model="local.comparisonCalc"
-          :disabled="!editMode"
-          class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
-          @change="emitUpdate()"
-        >
-          <option value="none">None</option>
-          <option value="percentOfTotal">% of Total</option>
-          <option value="diffFromTotal">Diff from Total</option>
-          <option value="percentDiffFromTotal">% Diff from Total</option>
-          <option value="percentOfMax">% of Max</option>
-          <option value="diffFromMax">Diff from Max</option>
-          <option value="percentDiffFromMax">% Diff from Max</option>
-        </select>
-      </div>
+      <!-- Numeric-only metric extras -->
+      <template v-if="isNumeric">
+        <!-- Display type -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] text-gray-400">Display Type</label>
+          <div class="flex rounded border border-gray-200 overflow-hidden">
+            <button
+              v-for="dt in (['number', 'bar', 'heatmap'] as const)"
+              :key="dt"
+              type="button"
+              :disabled="!editMode"
+              class="flex-1 py-1 text-[10px] font-medium capitalize transition-colors border-r border-gray-200 last:border-r-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              :class="(local.displayType ?? 'number') === dt
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-500 hover:bg-gray-50'"
+              @click="editMode && setDisplayType(dt)"
+            >{{ dt }}</button>
+          </div>
+        </div>
 
-      <div class="space-y-1">
-        <label class="text-[10px] text-gray-400">Running Calc</label>
-        <select
-          v-model="local.runningCalc"
-          :disabled="!editMode"
-          class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
-          @change="emitUpdate()"
-        >
-          <option value="none">None</option>
-          <option value="runningSum">Running Sum</option>
-          <option value="runningMin">Running Min</option>
-          <option value="runningMax">Running Max</option>
-          <option value="runningCount">Running Count</option>
-          <option value="runningAverage">Running Average</option>
-          <option value="runningDelta">Running Delta</option>
-          <option value="runningPercentageDelta">Running % Delta</option>
-        </select>
-      </div>
+        <!-- Show value toggle (bar only) -->
+        <div v-if="(local.displayType ?? 'number') === 'bar'" class="flex items-center justify-between py-0.5">
+          <span class="text-xs text-gray-700">Show value</span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="local.showBarValue !== false"
+            :disabled="!editMode"
+            class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="local.showBarValue !== false ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (local.showBarValue = !local.showBarValue, emitUpdate())"
+          >
+            <span
+              class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="local.showBarValue !== false ? 'translate-x-3 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
+
+        <!-- Compact numbers -->
+        <div class="flex items-center justify-between py-0.5">
+          <span class="text-xs text-gray-700">Compact numbers</span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="!!local.compactNumbers"
+            :disabled="!editMode"
+            class="relative inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="local.compactNumbers ? 'bg-indigo-600' : 'bg-gray-200'"
+            @click="editMode && (local.compactNumbers = !local.compactNumbers, emitUpdate())"
+          >
+            <span
+              class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5"
+              :class="local.compactNumbers ? 'translate-x-3 ml-0.5' : 'translate-x-0 ml-0.5'"
+            />
+          </button>
+        </div>
+
+        <!-- Comparison -->
+        <div class="space-y-1">
+          <label class="text-[10px] text-gray-400">Comparison</label>
+          <select
+            v-model="local.comparisonCalc"
+            :disabled="!editMode"
+            class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
+            @change="emitUpdate()"
+          >
+            <option value="none">None</option>
+            <option value="percentOfTotal">% of Total</option>
+            <option value="diffFromTotal">Diff from Total</option>
+            <option value="percentDiffFromTotal">% Diff from Total</option>
+            <option value="percentOfMax">% of Max</option>
+            <option value="diffFromMax">Diff from Max</option>
+            <option value="percentDiffFromMax">% Diff from Max</option>
+          </select>
+        </div>
+
+        <!-- Running Calc -->
+        <div class="space-y-1">
+          <label class="text-[10px] text-gray-400">Running Calc</label>
+          <select
+            v-model="local.runningCalc"
+            :disabled="!editMode"
+            class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:cursor-default disabled:bg-gray-50"
+            @change="emitUpdate()"
+          >
+            <option value="none">None</option>
+            <option value="runningSum">Running Sum</option>
+            <option value="runningMin">Running Min</option>
+            <option value="runningMax">Running Max</option>
+            <option value="runningCount">Running Count</option>
+            <option value="runningAverage">Running Average</option>
+            <option value="runningDelta">Running Delta</option>
+            <option value="runningPercentageDelta">Running % Delta</option>
+          </select>
+        </div>
+      </template>
     </template>
     </template>
   </div>
@@ -386,6 +410,41 @@ const emit = defineEmits<{
 
 const NUMERIC_FORMATS = new Set(['number', 'currency', 'percent', 'duration'])
 const isNumeric = computed(() => NUMERIC_FORMATS.has(local.format ?? ''))
+
+const effectiveRole = computed<'dimension' | 'metric'>(
+  () => local.role ?? (isNumeric.value ? 'metric' : 'dimension'),
+)
+
+const NUMERIC_AGG_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'sum', label: 'Sum' },
+  { value: 'average', label: 'Average' },
+  { value: 'count', label: 'Count' },
+  { value: 'countDistinct', label: 'Count Distinct' },
+  { value: 'min', label: 'Min' },
+  { value: 'max', label: 'Max' },
+  { value: 'median', label: 'Median' },
+  { value: 'stdDev', label: 'Std Deviation' },
+  { value: 'variance', label: 'Variance' },
+]
+const NON_NUMERIC_AGG_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'count', label: 'Count' },
+  { value: 'countDistinct', label: 'Count Distinct' },
+]
+const aggregationOptions = computed(() =>
+  isNumeric.value ? NUMERIC_AGG_OPTIONS : NON_NUMERIC_AGG_OPTIONS,
+)
+
+function setRole(r: 'dimension' | 'metric') {
+  local.role = r
+  // If switching to a non-numeric metric and aggregation was numeric-only, reset.
+  if (r === 'metric' && !isNumeric.value && local.aggregation
+    && !['none', 'count', 'countDistinct'].includes(local.aggregation)) {
+    local.aggregation = 'none'
+  }
+  emitUpdate()
+}
 
 const local = reactive<TableColumn>({ ...props.modelValue })
 

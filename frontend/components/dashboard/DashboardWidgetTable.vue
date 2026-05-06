@@ -7,8 +7,13 @@
       <span class="widget-label">{{ config.title }}</span>
     </div>
 
+    <!-- Empty state: all columns are metrics with no dimensions -->
+    <div v-if="isEmptyState" class="flex h-full items-center justify-center p-10 text-sm text-gray-400 text-center">
+      Add at least one Dimension column to display grouped data.
+    </div>
+
     <!-- Table wrapper: horizontal scroll is opt-in -->
-    <div class="flex-1 overflow-auto" :class="config.horizontalScrolling ? 'overflow-x-auto' : ''">
+    <div v-if="!isEmptyState" class="flex-1 overflow-auto" :class="config.horizontalScrolling ? 'overflow-x-auto' : ''">
       <table
         class="w-full"
         :class="fontClass"
@@ -204,6 +209,45 @@ function isNumericFormat(col: TableColumn): boolean {
   return NUMERIC_FORMATS.has(col.format ?? '')
 }
 
+function effectiveRole(col: TableColumn): 'dimension' | 'metric' {
+  if (col.role) return col.role
+  return isNumericFormat(col) ? 'metric' : 'dimension'
+}
+
+function defaultAgg(col: TableColumn): string {
+  return isNumericFormat(col) ? 'sum' : 'count'
+}
+
+function aggregateColumn(rows: any[], col: TableColumn): any {
+  const agg = col.aggregation && col.aggregation !== 'none' ? col.aggregation : defaultAgg(col)
+  const allVals = rows.map(r => r[col.key])
+  if (agg === 'count') return allVals.filter(v => v != null && v !== '').length
+  if (agg === 'countDistinct') return new Set(allVals.filter(v => v != null && v !== '')).size
+  // numeric aggregations
+  const nums = allVals.map(v => Number(v)).filter(v => isFinite(v))
+  if (!nums.length) return null
+  switch (agg) {
+    case 'sum': return nums.reduce((a, b) => a + b, 0)
+    case 'average': return nums.reduce((a, b) => a + b, 0) / nums.length
+    case 'min': return Math.min(...nums)
+    case 'max': return Math.max(...nums)
+    case 'median': {
+      const s = [...nums].sort((a, b) => a - b)
+      const m = Math.floor(s.length / 2)
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+    }
+    case 'stdDev': {
+      const mean = nums.reduce((a, b) => a + b, 0) / nums.length
+      return Math.sqrt(nums.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / nums.length)
+    }
+    case 'variance': {
+      const mean = nums.reduce((a, b) => a + b, 0) / nums.length
+      return nums.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / nums.length
+    }
+    default: return allVals[0]
+  }
+}
+
 function colAlignClass(col: TableColumn): string {
   if (col.align === 'right') return 'text-right'
   if (col.align === 'center') return 'text-center'
@@ -389,12 +433,47 @@ const filteredRows = computed(() => {
   return rows
 })
 
-// Sorting
+// Dimension/Metric split (cached)
+const dimensionCols = computed(() => props.config.columns.filter(c => effectiveRole(c) === 'dimension'))
+const metricCols = computed(() => props.config.columns.filter(c => effectiveRole(c) === 'metric'))
+
+// Empty-state signal: only metrics, no dimensions → can't group
+const isEmptyState = computed(() => dimensionCols.value.length === 0 && metricCols.value.length > 0)
+
+// Grouping: always group by every dimension. With zero dimensions and zero
+// metrics (fresh widget), pass through raw rows so the editor isn't blank.
+const groupedRows = computed(() => {
+  const dims = dimensionCols.value
+  const metrics = metricCols.value
+  if (dims.length === 0) return filteredRows.value     // pass-through (empty-state handled separately)
+  const groups = new Map<string, { dimVals: any[]; rows: any[] }>()
+  for (const row of filteredRows.value) {
+    const key = dims.map(d => String(row[d.key] ?? '')).join(' ')
+    let g = groups.get(key)
+    if (!g) {
+      g = { dimVals: dims.map(d => row[d.key]), rows: [] }
+      groups.set(key, g)
+    }
+    g.rows.push(row)
+  }
+  return Array.from(groups.values()).map(group => {
+    const out: Record<string, any> = {}
+    for (let i = 0; i < dims.length; i++) {
+      out[dims[i].key] = group.dimVals[i]
+    }
+    for (const m of metrics) {
+      out[m.key] = aggregateColumn(group.rows, m)
+    }
+    return out
+  })
+})
+
+// Sorting (operates on grouped rows)
 const sortedRows = computed(() => {
-  if (!sortKey.value) return filteredRows.value
+  if (!sortKey.value) return groupedRows.value
   const key = sortKey.value
   const dir = sortDir.value === 'asc' ? 1 : -1
-  return [...filteredRows.value].sort((a, b) => {
+  return [...groupedRows.value].sort((a, b) => {
     const av = a[key]; const bv = b[key]
     if (av == null) return 1
     if (bv == null) return -1

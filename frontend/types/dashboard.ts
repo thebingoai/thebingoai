@@ -41,6 +41,7 @@ export interface TableColumn {
   sortable?: boolean
   filterable?: boolean
   format?: 'number' | 'currency' | 'percent' | 'date' | 'text' | 'duration'
+  role?: 'dimension' | 'metric'   // dimension = group-by; metric = aggregated
   roundValue?: boolean
   decimalPlaces?: number
   align?: 'left' | 'center' | 'right'
