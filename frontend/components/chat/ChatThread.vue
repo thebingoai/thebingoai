@@ -3,28 +3,8 @@
     <!-- Header bar -->
     <div class="flex-shrink-0 flex items-center h-[68px] bg-[var(--paper-0)] border-b border-[var(--line)] px-6">
       <div v-if="chatStore.currentThreadId" class="flex w-full items-center gap-3">
-        <!-- Title -->
-        <div class="flex-1 min-w-0 pointer-events-none">
-          <input
-            v-if="isEditingTitle"
-            ref="titleInput"
-            v-model="editTitle"
-            @blur="saveTitle"
-            @keydown.enter="saveTitle"
-            @keydown.escape="cancelEdit"
-            class="pointer-events-auto w-48 bg-transparent border-b border-[var(--line)] outline-none text-[22px] font-serif tracking-tight text-[var(--ink-0)] leading-[1.2] py-0.5"
-          />
-          <span
-            v-else
-            @click="startEditTitle"
-            class="pointer-events-auto text-[22px] font-serif tracking-tight text-[var(--ink-0)] leading-[1.2] py-0.5 cursor-pointer hover:opacity-70 transition-opacity truncate block"
-          >
-            {{ currentTitle }}
-          </span>
-        </div>
-
         <!-- Action buttons (icon-only) -->
-        <div class="flex items-center gap-1 shrink-0">
+        <div class="flex items-center gap-1 shrink-0 ml-auto">
           <!-- Telegram indicator -->
           <button
             v-if="isTelegramEnabled && chatStore.currentConversation?.type === 'permanent'"
@@ -127,7 +107,7 @@ const chatStore = useChatStore()
 const chat = useChat()
 const router = useRouter()
 const { config: featureConfig } = useFeatureConfig()
-const { telegram } = useApi()
+const api = useApi()
 
 const isTelegramEnabled = computed(() => featureConfig.value?.telegram_enabled === true)
 const telegramConnected = ref(false)
@@ -135,8 +115,8 @@ const telegramConnected = ref(false)
 onMounted(async () => {
   if (isTelegramEnabled.value && chatStore.currentConversation?.type === 'permanent') {
     try {
-      const status = await telegram.getStatus()
-      telegramConnected.value = status.connected
+      const status = await api.connections.list()
+      telegramConnected.value = status?.some((c: any) => c.type === 'telegram' && c.connected) ?? false
     } catch {
       // silently ignore — icon stays gray
     }
