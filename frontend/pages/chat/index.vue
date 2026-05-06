@@ -16,10 +16,15 @@
              :name="''" when currentThreadId is null suppresses CSS during outer transitions
              (going to/from New Task), preventing the previous double-animation. -->
         <Transition :name="chatStore.currentThreadId ? 'page-fade-slide' : ''" mode="out-in">
-          <ChatThread :key="chatStore.currentThreadId" @send-action="handleAction" />
+          <ChatThread v-if="chatStore.currentThreadId" :key="chatStore.currentThreadId" @send-action="handleAction" />
         </Transition>
         <ChatInputBar @send="handleSend" @reset="handleReset" />
       </div>
+
+      <!-- Loading placeholder: keeps right pane pinned to the right while
+           conversationsLoaded is false and no thread is active yet. Without
+           this, the flex row has no flex-1 sibling and the pane shifts left. -->
+      <div v-else key="loading" class="flex flex-1" />
     </Transition>
 
     <!-- Desktop right pane (Datasets) — shared across both states -->
@@ -61,6 +66,8 @@ const chatStore = useChatStore()
 const chat = useChat()
 const { getFileIds, clearFiles } = useChatFileUpload()
 const { isMobile } = useIsMobile()
+const router = useRouter()
+const route = useRoute()
 
 // ── Right pane resize ─────────────────────────────────────
 const RIGHT_MIN = 280
@@ -100,6 +107,9 @@ onMounted(() => {
   } else {
     chatStore.infoPanelOpen = true
   }
+  if (chatStore.inputText.trim()) {
+    handleSend()
+  }
 })
 
 // ── View transition ───────────────────────────────────────
@@ -113,6 +123,9 @@ const showNewTaskScreen = computed(() =>
 )
 watch(() => chatStore.currentThreadId, (id) => {
   if (!id) { isTransitioning.value = false; sendingFromNewTask.value = false }
+  else if (route.path === '/chat' && route.query.id !== id) {
+    router.replace({ path: '/chat', query: { id } })
+  }
 })
 
 // ── Message handlers ──────────────────────────────────────
@@ -166,8 +179,7 @@ definePageMeta({
    completes before enter starts, so position:absolute is unnecessary. */
 .view-switch-leave-active,
 .view-switch-enter-active { transition: opacity 0.3s ease-out, transform 0.3s ease-out; }
-.view-switch-leave-to  { opacity: 0; transform: translateX(-20px); }
-.view-switch-enter-from { opacity: 0; transform: translateX(20px); }
+.view-switch-leave-active { position: absolute; inset: 0; }
 
 /* When sending from New Task: the New Task wrapper has already animated
    its contents internally — suppress the leave so there's no horizontal snap */
