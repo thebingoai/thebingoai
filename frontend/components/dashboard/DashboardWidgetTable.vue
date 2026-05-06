@@ -34,22 +34,22 @@
             >#</th>
 
             <th
-              v-for="col in config.columns"
-              :key="col.key"
+              v-for="(col, i) in config.columns"
+              :key="i"
               class="px-4 py-2.5 text-xs font-medium text-gray-400 uppercase tracking-wide dark:text-neutral-400"
               :class="[
                 col.sortable ? 'cursor-pointer hover:text-gray-600 dark:hover:text-neutral-200 select-none' : '',
                 colAlignClass(col),
                 config.wrapText ? '' : 'whitespace-nowrap',
               ]"
-              @click="col.sortable && toggleSort(col.key)"
+              @click="col.sortable && toggleSort(i)"
             >
               <div
                 class="flex items-center gap-1"
                 :class="col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''"
               >
                 {{ col.label }}
-                <span v-if="col.sortable && sortKey === col.key" class="text-gray-500 dark:text-neutral-400">
+                <span v-if="col.sortable && sortKey === i" class="text-gray-500 dark:text-neutral-400">
                   {{ sortDir === 'asc' ? '↑' : '↓' }}
                 </span>
               </div>
@@ -59,10 +59,10 @@
           <!-- Column filter row -->
           <tr v-if="hasFilterableColumns">
             <th v-if="config.showRowNumbers" />
-            <th v-for="col in config.columns" :key="col.key" class="px-4 py-1">
+            <th v-for="(col, i) in config.columns" :key="i" class="px-4 py-1">
               <input
                 v-if="col.filterable"
-                v-model="columnFilters[col.key]"
+                v-model="columnFilters[i]"
                 type="text"
                 placeholder="Filter..."
                 class="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 font-normal focus:outline-none focus:ring-1 focus:ring-indigo-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-300 dark:placeholder-neutral-500"
@@ -87,38 +87,38 @@
             >{{ rowOffset + i + 1 }}</td>
 
             <td
-              v-for="col in config.columns"
-              :key="col.key"
+              v-for="(col, ci) in config.columns"
+              :key="ci"
               class="px-4 py-2.5 dark:text-neutral-300"
               :class="[
                 colAlignClass(col),
                 config.wrapText ? '' : 'whitespace-nowrap',
                 isNumericFormat(col) ? 'tabular-nums' : '',
               ]"
-              :style="col.displayType === 'heatmap' ? heatmapCellStyle(row[col.key], col.key) : undefined"
+              :style="col.displayType === 'heatmap' ? heatmapCellStyle(row[ci], ci) : undefined"
             >
               <!-- Bar display -->
-              <template v-if="col.displayType === 'bar' && row[col.key] != null">
+              <template v-if="col.displayType === 'bar' && row[ci] != null">
                 <div class="flex items-center gap-2">
                   <div class="flex-1 h-2 rounded-full overflow-hidden" style="background:rgba(99,102,241,0.12);">
                     <div
                       class="h-full rounded-full transition-all"
                       :style="{
-                        width: barWidth(row[col.key], col.key) + '%',
-                        background: colColor(col.key),
+                        width: barWidth(row[ci], ci) + '%',
+                        background: colColor(ci),
                       }"
                     />
                   </div>
                   <span v-if="col.showBarValue !== false" class="text-xs min-w-[40px] text-right">
-                    {{ formatCell(row[col.key], col) }}
+                    {{ formatCell(row[ci], col) }}
                   </span>
                 </div>
               </template>
 
               <!-- Default / number / heatmap text -->
               <template v-else>
-                <span :class="getCellClass(row[col.key], col.format)">
-                  {{ formatCell(row[col.key], col) }}
+                <span :class="getCellClass(row[ci], col.format)">
+                  {{ formatCell(row[ci], col) }}
                 </span>
               </template>
             </td>
@@ -130,12 +130,12 @@
           <tr class="border-t-2 border-gray-200 bg-gray-50 dark:border-neutral-600 dark:bg-neutral-800">
             <td v-if="config.showRowNumbers" class="px-3 py-2.5 text-[11px] text-gray-300">Σ</td>
             <td
-              v-for="col in config.columns"
-              :key="col.key"
+              v-for="(col, i) in config.columns"
+              :key="i"
               class="px-4 py-2.5 text-xs font-semibold text-gray-700 dark:text-neutral-300"
               :class="[colAlignClass(col), isNumericFormat(col) ? 'tabular-nums' : '']"
             >
-              {{ summaryValue(col) }}
+              {{ summaryValue(col, i) }}
             </td>
           </tr>
         </tfoot>
@@ -180,15 +180,20 @@ const props = defineProps<{
   config: TableWidgetConfig
 }>()
 
-const sortKey = ref<string | null>(null)
+// sortKey is now a column position index, not a col.key string
+const sortKey = ref<number | null>(null)
 const sortDir = ref<'asc' | 'desc'>('asc')
 const currentPage = ref(1)
-const columnFilters = ref<Record<string, string>>({})
+// columnFilters keyed by column position index so duplicate-key columns get independent inputs
+const columnFilters = ref<Record<number, string>>({})
 
 onMounted(() => {
   if (props.config.defaultSortKey) {
-    sortKey.value = props.config.defaultSortKey
-    sortDir.value = props.config.defaultSortDir ?? 'asc'
+    const idx = props.config.columns.findIndex(c => c.key === props.config.defaultSortKey)
+    if (idx >= 0) {
+      sortKey.value = idx
+      sortDir.value = props.config.defaultSortDir ?? 'asc'
+    }
   }
 })
 
@@ -196,8 +201,11 @@ watch(
   () => [props.config.defaultSortKey, props.config.defaultSortDir] as const,
   ([key, dir]) => {
     if (key && sortKey.value === null) {
-      sortKey.value = key
-      sortDir.value = dir ?? 'asc'
+      const idx = props.config.columns.findIndex(c => c.key === key)
+      if (idx >= 0) {
+        sortKey.value = idx
+        sortDir.value = dir ?? 'asc'
+      }
     }
   },
 )
@@ -248,14 +256,24 @@ function aggregateColumn(rows: any[], col: TableColumn): any {
   }
 }
 
+// Convert a source row (keyed by col.key) to an index-keyed row so each column
+// position reads independently even when two columns share the same source key.
+function indexRow(row: Record<string, any>, cols: TableColumn[]): Record<number, any> {
+  const out: Record<number, any> = {}
+  for (let i = 0; i < cols.length; i++) out[i] = row[cols[i].key]
+  return out
+}
+
 function colAlignClass(col: TableColumn): string {
   if (col.align === 'right') return 'text-right'
   if (col.align === 'center') return 'text-center'
   return 'text-left'
 }
 
-function colColor(key: string): string {
-  return props.config.columnColors?.[key] ?? THEME_COLOR
+// columnColors is user-configured by source key; same-key columns intentionally share color
+function colColor(colIndex: number): string {
+  const col = props.config.columns[colIndex]
+  return (col && props.config.columnColors?.[col.key]) ?? THEME_COLOR
 }
 
 // Show footer when the global toggle is on, OR when any numeric column has an
@@ -304,56 +322,62 @@ function rowStyle(i: number): Record<string, string> {
   return style
 }
 
-// Per-column max/min for bar width and heatmap intensity
+// Per-column max/min for bar width and heatmap intensity, keyed by column position index
 const colMaxValues = computed(() => {
-  const map: Record<string, number> = {}
-  for (const col of props.config.columns) {
+  const map: Record<number, number> = {}
+  const cols = props.config.columns
+  for (let i = 0; i < cols.length; i++) {
+    const col = cols[i]
     if (col.displayType === 'bar' || col.displayType === 'heatmap') {
       const vals = (props.config.rows ?? [])
         .map(r => Number(r[col.key]))
         .filter(v => isFinite(v))
-      map[col.key] = vals.length ? Math.max(...vals) : 0
+      map[i] = vals.length ? Math.max(...vals) : 0
     }
   }
   return map
 })
 
 const colMinValues = computed(() => {
-  const map: Record<string, number> = {}
-  for (const col of props.config.columns) {
+  const map: Record<number, number> = {}
+  const cols = props.config.columns
+  for (let i = 0; i < cols.length; i++) {
+    const col = cols[i]
     if (col.displayType === 'heatmap') {
       const vals = (props.config.rows ?? [])
         .map(r => Number(r[col.key]))
         .filter(v => isFinite(v))
-      map[col.key] = vals.length ? Math.min(...vals) : 0
+      map[i] = vals.length ? Math.min(...vals) : 0
     }
   }
   return map
 })
 
-function barWidth(value: any, key: string): number {
-  const max = colMaxValues.value[key]
+function barWidth(value: any, colIndex: number): number {
+  const max = colMaxValues.value[colIndex]
   if (!max) return 0
   return Math.max(0, Math.min(100, (Number(value) / max) * 100))
 }
 
-function heatmapCellStyle(value: any, key: string): Record<string, string> {
+function heatmapCellStyle(value: any, colIndex: number): Record<string, string> {
   if (value == null) return {}
-  const min = colMinValues.value[key] ?? 0
-  const max = colMaxValues.value[key] ?? 0
+  const min = colMinValues.value[colIndex] ?? 0
+  const max = colMaxValues.value[colIndex] ?? 0
   const intensity = max === min ? 0.5 : Math.max(0, Math.min(1, (Number(value) - min) / (max - min)))
-  const color = colColor(key)
+  const color = colColor(colIndex)
   const opacityHex = Math.round(intensity * 76 + 13).toString(16).padStart(2, '0')
   return { background: `${color}${opacityHex}` }
 }
 
-// Column stats for comparison calculations
+// Column stats for comparison calculations, keyed by column position index
 const colStats = computed(() => {
-  const stats: Record<string, { total: number; max: number }> = {}
-  for (const col of props.config.columns) {
+  const stats: Record<number, { total: number; max: number }> = {}
+  const cols = props.config.columns
+  for (let i = 0; i < cols.length; i++) {
+    const col = cols[i]
     if (!col.comparisonCalc || col.comparisonCalc === 'none') continue
-    const vals = sortedRows.value.map(r => Number(r[col.key])).filter(v => isFinite(v))
-    stats[col.key] = {
+    const vals = sortedRows.value.map(r => Number(r[i])).filter(v => isFinite(v))
+    stats[i] = {
       total: vals.reduce((a, b) => a + b, 0),
       max: vals.length ? Math.max(...vals) : 0,
     }
@@ -361,14 +385,16 @@ const colStats = computed(() => {
   return stats
 })
 
-// Running values — computed in sort order, before pagination
+// Running values — computed in sort order, before pagination, keyed by column position index
 const runningValues = computed(() => {
-  const result: Record<string, number[]> = {}
-  for (const col of props.config.columns) {
+  const result: Record<number, number[]> = {}
+  const cols = props.config.columns
+  for (let i = 0; i < cols.length; i++) {
+    const col = cols[i]
     if (!col.runningCalc || col.runningCalc === 'none') continue
     let runSum = 0, runCount = 0, runMin = Infinity, runMax = -Infinity, prev: number | null = null
-    result[col.key] = sortedRows.value.map((row) => {
-      const v = isFinite(Number(row[col.key])) ? Number(row[col.key]) : 0
+    result[i] = sortedRows.value.map((row) => {
+      const v = isFinite(Number(row[i])) ? Number(row[i]) : 0
       runSum += v; runCount++
       runMin = Math.min(runMin, v); runMax = Math.max(runMax, v)
       let out: number
@@ -391,90 +417,105 @@ const runningValues = computed(() => {
 
 // Apply comparison + running transforms on top of sorted rows
 const processedRows = computed(() => {
-  const hasCalcs = props.config.columns.some(
+  const cols = props.config.columns
+  const hasCalcs = cols.some(
     c => (c.comparisonCalc && c.comparisonCalc !== 'none') ||
          (c.runningCalc && c.runningCalc !== 'none'),
   )
   if (!hasCalcs) return sortedRows.value
-  return sortedRows.value.map((row, i) => {
-    const out: Record<string, any> = { ...row }
-    for (const col of props.config.columns) {
+  return sortedRows.value.map((row, rowIdx) => {
+    const out: Record<number, any> = { ...row }
+    for (let i = 0; i < cols.length; i++) {
+      const col = cols[i]
       if (col.comparisonCalc && col.comparisonCalc !== 'none') {
-        const stats = colStats.value[col.key]
+        const stats = colStats.value[i]
         if (!stats) continue
-        const v = Number(row[col.key])
+        const v = Number(row[i])
         if (!isFinite(v)) continue
         switch (col.comparisonCalc) {
-          case 'percentOfTotal': out[col.key] = stats.total ? (v / stats.total) * 100 : 0; break
-          case 'diffFromTotal': out[col.key] = v - stats.total; break
-          case 'percentDiffFromTotal': out[col.key] = stats.total ? ((v - stats.total) / Math.abs(stats.total)) * 100 : 0; break
-          case 'percentOfMax': out[col.key] = stats.max ? (v / stats.max) * 100 : 0; break
-          case 'diffFromMax': out[col.key] = v - stats.max; break
-          case 'percentDiffFromMax': out[col.key] = stats.max ? ((v - stats.max) / Math.abs(stats.max)) * 100 : 0; break
+          case 'percentOfTotal': out[i] = stats.total ? (v / stats.total) * 100 : 0; break
+          case 'diffFromTotal': out[i] = v - stats.total; break
+          case 'percentDiffFromTotal': out[i] = stats.total ? ((v - stats.total) / Math.abs(stats.total)) * 100 : 0; break
+          case 'percentOfMax': out[i] = stats.max ? (v / stats.max) * 100 : 0; break
+          case 'diffFromMax': out[i] = v - stats.max; break
+          case 'percentDiffFromMax': out[i] = stats.max ? ((v - stats.max) / Math.abs(stats.max)) * 100 : 0; break
         }
       }
       if (col.runningCalc && col.runningCalc !== 'none') {
-        const vals = runningValues.value[col.key]
-        if (vals) out[col.key] = vals[i]
+        const vals = runningValues.value[i]
+        if (vals) out[i] = vals[rowIdx]
       }
     }
     return out
   })
 })
 
-// Filtering
+// Filtering on source rows (still keyed by col.key); filter input is per column position
 const filteredRows = computed(() => {
   let rows = props.config.rows ?? []
-  for (const [key, filterVal] of Object.entries(columnFilters.value)) {
+  for (const [iStr, filterVal] of Object.entries(columnFilters.value)) {
     if (!filterVal) continue
+    const col = props.config.columns[Number(iStr)]
+    if (!col) continue
     const lower = filterVal.toLowerCase()
-    rows = rows.filter(row => String(row[key] ?? '').toLowerCase().includes(lower))
+    rows = rows.filter(row => String(row[col.key] ?? '').toLowerCase().includes(lower))
   }
   return rows
 })
 
-// Dimension/Metric split (cached)
-const dimensionCols = computed(() => props.config.columns.filter(c => effectiveRole(c) === 'dimension'))
-const metricCols = computed(() => props.config.columns.filter(c => effectiveRole(c) === 'metric'))
+// Dimension/Metric split (cached) — includes column position index
+const dimensionCols = computed(() =>
+  props.config.columns.map((c, i) => ({ col: c, i })).filter(({ col }) => effectiveRole(col) === 'dimension'),
+)
+const metricCols = computed(() =>
+  props.config.columns.map((c, i) => ({ col: c, i })).filter(({ col }) => effectiveRole(col) === 'metric'),
+)
 
 // Empty-state signal: only metrics, no dimensions → can't group
 const isEmptyState = computed(() => dimensionCols.value.length === 0 && metricCols.value.length > 0)
 
-// Grouping: always group by every dimension. With zero dimensions and zero
-// metrics (fresh widget), pass through raw rows so the editor isn't blank.
-const groupedRows = computed(() => {
+// Grouping: always group by every dimension. Output rows are index-keyed so same-source-key
+// columns are written to distinct numeric slots without overwriting each other.
+const groupedRows = computed((): Record<number, any>[] => {
   const dims = dimensionCols.value
   const metrics = metricCols.value
-  if (dims.length === 0) return filteredRows.value     // pass-through (empty-state handled separately)
+  const cols = props.config.columns
+
+  // No dimensions: pass through raw rows converted to index-keyed form
+  if (dims.length === 0) return filteredRows.value.map(r => indexRow(r, cols))
+
   const groups = new Map<string, { dimVals: any[]; rows: any[] }>()
   for (const row of filteredRows.value) {
-    const key = dims.map(d => String(row[d.key] ?? '')).join(' ')
-    let g = groups.get(key)
+    const groupKey = dims.map(({ col: d }) => String(row[d.key] ?? '')).join('\x00')
+    let g = groups.get(groupKey)
     if (!g) {
-      g = { dimVals: dims.map(d => row[d.key]), rows: [] }
-      groups.set(key, g)
+      g = { dimVals: dims.map(({ col: d }) => row[d.key]), rows: [] }
+      groups.set(groupKey, g)
     }
     g.rows.push(row)
   }
-  return Array.from(groups.values()).map(group => {
-    const out: Record<string, any> = {}
-    for (let i = 0; i < dims.length; i++) {
-      out[dims[i].key] = group.dimVals[i]
+
+  return Array.from(groups.values()).map((group) => {
+    const out: Record<number, any> = {}
+    // Write dimension values at their column positions
+    for (let di = 0; di < dims.length; di++) {
+      out[dims[di].i] = group.dimVals[di]
     }
-    for (const m of metrics) {
-      out[m.key] = aggregateColumn(group.rows, m)
+    // Write aggregated metric values at their column positions
+    for (const { col: m, i: mi } of metrics) {
+      out[mi] = aggregateColumn(group.rows, m)
     }
     return out
   })
 })
 
-// Sorting (operates on grouped rows)
+// Sorting (operates on grouped index-keyed rows; sortKey is a column position index)
 const sortedRows = computed(() => {
-  if (!sortKey.value) return groupedRows.value
-  const key = sortKey.value
+  if (sortKey.value === null) return groupedRows.value
+  const sk = sortKey.value
   const dir = sortDir.value === 'asc' ? 1 : -1
   return [...groupedRows.value].sort((a, b) => {
-    const av = a[key]; const bv = b[key]
+    const av = a[sk]; const bv = b[sk]
     if (av == null) return 1
     if (bv == null) return -1
     if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
@@ -482,12 +523,12 @@ const sortedRows = computed(() => {
   })
 })
 
-function toggleSort(key: string) {
-  if (sortKey.value === key) {
+function toggleSort(colIndex: number) {
+  if (sortKey.value === colIndex) {
     sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   }
   else {
-    sortKey.value = key
+    sortKey.value = colIndex
     sortDir.value = 'asc'
   }
 }
@@ -508,12 +549,12 @@ const displayRows = computed(() => {
 
 watch([() => props.config.rows, columnFilters], () => { currentPage.value = 1 }, { deep: true })
 
-// Summary row
-function summaryValue(col: TableColumn): string {
+// Summary row — col index needed to read from index-keyed sorted rows
+function summaryValue(col: TableColumn, colIndex: number): string {
   if (!isNumericFormat(col)) return '—'
   if (col.aggregation === 'none') return '—'
   const vals = sortedRows.value
-    .map(r => Number(r[col.key]))
+    .map(r => Number(r[colIndex]))
     .filter(v => isFinite(v))
   if (!vals.length) return missingValue()
 
@@ -607,11 +648,11 @@ function getCellClass(value: any, format?: string): string {
   return ''
 }
 
-// CSV export (exposed for parent)
+// CSV export uses index-keyed sorted rows so each column position exports independently
 function exportCsv() {
   const headers = props.config.columns.map(c => escapeCsvField(c.label))
   const rows = sortedRows.value.map(row =>
-    props.config.columns.map(col => escapeCsvField(String(row[col.key] ?? ''))).join(','),
+    props.config.columns.map((_, i) => escapeCsvField(String(row[i] ?? ''))).join(','),
   )
   const csv = [headers.join(','), ...rows].join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
