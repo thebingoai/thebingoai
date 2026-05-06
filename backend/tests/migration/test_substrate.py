@@ -294,9 +294,10 @@ class TestWidgetRewrite:
 
         result = migrate_connection(1, dry_run=False, db=db)
 
-        # At least one widget rewrite recorded containing the legacy table name
-        assert len(result.widget_rewrites) >= 1
-        assert any("legacy_table" in r.old_sql for r in result.widget_rewrites)
+        # DataPlane keeps same table names, so no SQL rewrite needed — migration still succeeds
+        assert result.status == "migrated"
+        assert result.tables_migrated == 1
+        assert result.widgets_queued_for_review == 0
 
     @patch("backend.services.object_storage.download_bytes")
     @patch("backend.services.object_storage.delete_object")

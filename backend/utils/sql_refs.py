@@ -33,7 +33,9 @@ def rewrite_table_refs(sql: str, mapping: dict[str, str]) -> tuple[str, bool]:
     def _rewriter(node: exp.Expression) -> exp.Expression:
         if isinstance(node, exp.Table) and node.name and node.name.lower() in normalized_mapping:
             new_name = normalized_mapping[node.name.lower()]
-            return node.copy().set("this", exp.Identifier(this=new_name))
+            new_node = node.copy()
+            new_node.this.args["this"] = new_name  # mutate the Identifier's raw string
+            return new_node
         return node
 
     try:

@@ -38,9 +38,10 @@ def test_rewrite_case_insensitive():
 
 
 def test_rewrite_unparseable():
-    result_sql, success = rewrite_table_refs("garbage", {"a": "b"})
+    bad_sql = "SELECT @@@;###"
+    result_sql, success = rewrite_table_refs(bad_sql, {"a": "b"})
     assert success is False
-    assert result_sql == "garbage"
+    assert result_sql == bad_sql
 
 
 def test_can_parse_valid():
