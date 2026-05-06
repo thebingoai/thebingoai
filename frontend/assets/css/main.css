@@ -566,6 +566,10 @@
 .page-fade-slide-leave-active {
   transition: opacity 0.3s ease-out, transform 0.3s ease-out;
 }
+.page-fade-slide-leave-active {
+  position: absolute;
+  inset: 0;
+}
 .page-fade-slide-enter-from {
   opacity: 0;
   transform: translateX(20px);
