@@ -224,7 +224,7 @@ export const useChatStore = defineStore('chat', {
       const idx = this.conversations.findIndex(c => c.id === this.pendingNewConversationId)
       if (idx !== -1) {
         this.conversations.splice(idx, 1, realConv)
-      } else {
+      } else if (!this.conversations.find(c => c.id === realConv.id)) {
         this.conversations.unshift(realConv)
       }
       this.pendingNewConversationId = null
