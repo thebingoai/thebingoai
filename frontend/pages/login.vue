@@ -133,6 +133,7 @@ const isDark = computed({
 })
 import TrialExpiredDialog from '~/components/TrialExpiredDialog.vue'
 
+const config = useRuntimeConfig()
 const authStore = useAuthStore()
 const router = useRouter()
 
