@@ -15,9 +15,11 @@
         <!-- Inner page-fade-slide handles task A → task B (mirrors Bingo↔Dashboard).
              :name="''" when currentThreadId is null suppresses CSS during outer transitions
              (going to/from New Task), preventing the previous double-animation. -->
-        <Transition :name="chatStore.currentThreadId ? 'page-fade-slide' : ''" mode="out-in">
-          <ChatThread v-if="chatStore.currentThreadId" :key="chatStore.currentThreadId" @send-action="handleAction" />
-        </Transition>
+        <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <Transition :name="chatStore.currentThreadId ? 'page-fade-slide' : ''" mode="out-in">
+            <ChatThread v-if="chatStore.currentThreadId" :key="chatStore.currentThreadId" @send-action="handleAction" />
+          </Transition>
+        </div>
         <ChatInputBar @send="handleSend" @reset="handleReset" />
       </div>
 
@@ -178,8 +180,9 @@ definePageMeta({
    (Bingo↔Dashboard). With mode="out-in" on the Transition, leave fully
    completes before enter starts, so position:absolute is unnecessary. */
 .view-switch-leave-active,
-.view-switch-enter-active { transition: opacity 0.3s ease-out, transform 0.3s ease-out; }
-.view-switch-leave-active { position: absolute; inset: 0; }
+.view-switch-enter-active { transition: opacity 0.3s ease-out; }
+.view-switch-enter-from,
+.view-switch-leave-to { opacity: 0; }
 
 /* When sending from New Task: the New Task wrapper has already animated
    its contents internally — suppress the leave so there's no horizontal snap */
