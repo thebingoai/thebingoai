@@ -246,7 +246,7 @@
       <button
         @click="router.push('/settings')"
         class="flex h-12 w-full items-center justify-center border-t border-[var(--line)] bg-[var(--paper-0)] hover:bg-[var(--paper-1)] transition-colors flex-shrink-0"
-        title="Settings"
+        :title="featureConfig?.credits_enabled !== false ? `${Math.round(remaining)} credits` : 'Settings'"
       >
         <div class="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ink-0)] text-[var(--paper-0)] text-[11px] font-semibold">
           {{ userInitial }}
@@ -301,8 +301,13 @@
     </div>
 
     <button @click="router.push('/settings'); closeSidebarOnMobile()" class="border-t border-[var(--line)] px-4 py-3 flex items-center gap-2.5 hover:bg-[var(--paper-1)]">
-      <div class="h-8 w-8 rounded-full bg-[var(--ink-0)] text-[var(--paper-0)] flex items-center justify-center text-[12px] font-semibold">{{ userInitial }}</div>
-      <span class="text-[12.5px] text-[var(--ink-0)] truncate">{{ authStore.user?.email }}</span>
+      <div class="h-8 w-8 rounded-full bg-[var(--ink-0)] text-[var(--paper-0)] flex items-center justify-center text-[12px] font-semibold flex-shrink-0">{{ userInitial }}</div>
+      <div class="min-w-0">
+        <span class="text-[12.5px] text-[var(--ink-0)] truncate block">{{ authStore.user?.email }}</span>
+        <span v-if="featureConfig?.credits_enabled !== false" class="font-mono text-[10px] text-[var(--ink-2)]">
+          <span class="text-[var(--ember)]">●</span> {{ Math.round(remaining) }} credits
+        </span>
+      </div>
     </button>
   </aside>
 </template>
