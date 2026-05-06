@@ -1,18 +1,18 @@
 <template>
-  <div class="border-b border-gray-100 dark:border-neutral-800">
+  <div class="border-b border-[var(--line)]">
     <!-- Header -->
     <button
       @click="chatStore.toggleInfoSection('datasets')"
-      class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
+      class="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--paper-2)] transition-colors"
     >
       <div class="flex items-center gap-1.5">
-        <span class="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Datasets</span>
-        <span v-if="datasets.length" class="text-[9px] bg-gray-100 dark:bg-neutral-700 text-gray-500 dark:text-neutral-300 px-1.5 py-px rounded-full">
+        <span class="text-[10px] uppercase tracking-wider text-[var(--ink-2)] font-semibold">Datasets</span>
+        <span v-if="datasets.length" class="text-[9px] bg-[var(--paper-3)] text-[var(--ink-2)] px-1.5 py-px rounded-full">
           {{ datasets.length }}
         </span>
       </div>
       <svg
-        class="w-3 h-3 text-gray-300 transition-transform duration-200"
+        class="w-3 h-3 text-[var(--ink-3)] transition-transform duration-200"
         :class="{ 'rotate-180': chatStore.infoPanelSections.datasets }"
         fill="none" viewBox="0 0 24 24" stroke="currentColor"
       >
@@ -24,10 +24,10 @@
     <div v-show="chatStore.infoPanelSections.datasets" class="px-4 pb-3">
       <!-- Empty state -->
       <div v-if="!datasets.length" class="text-center py-4">
-        <svg class="w-5 h-5 mx-auto text-gray-200 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg class="w-5 h-5 mx-auto text-[var(--ink-3)] mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        <p class="text-[11px] text-gray-300">No datasets uploaded yet</p>
+        <p class="text-[11px] text-[var(--ink-3)]">No datasets uploaded yet</p>
       </div>
 
       <!-- Dataset list -->
@@ -86,12 +86,12 @@
           <!-- Timeline card: in-progress or failed -->
           <div
             v-else
-            class="rounded-lg bg-white border px-2.5 py-2"
-            :class="ds.step === 'failed' ? 'border-red-200' : 'border-gray-200'"
+            class="rounded-lg bg-[var(--paper-1)] border px-2.5 py-2"
+            :class="ds.step === 'failed' ? 'border-red-200' : 'border-[var(--line)]'"
           >
             <!-- File header -->
             <div class="flex items-center gap-2 mb-2">
-              <svg class="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="w-3.5 h-3.5 text-[var(--ink-2)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <span class="text-[11px] font-medium text-gray-600 truncate min-w-0 flex-1">{{ ds.name }}</span>
@@ -133,7 +133,7 @@
             <button
               v-if="ds.step === 'failed' && ds.connectionId && stepStatus(ds, 'profiling') === 'failed'"
               @click="retryProfiling(ds.connectionId!)"
-              class="mt-1.5 ml-6 text-[9px] text-gray-500 bg-gray-100 border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-200 transition-colors"
+              class="mt-1.5 ml-6 text-[9px] text-[var(--ink-2)] bg-[var(--paper-2)] border border-[var(--line)] rounded px-2 py-0.5 hover:bg-[var(--paper-3)] transition-colors"
             >
               Retry
             </button>
