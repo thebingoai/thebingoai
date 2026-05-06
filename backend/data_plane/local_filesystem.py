@@ -169,6 +169,13 @@ class LocalFilesystemDataPlane:
             return False
         return any(f.endswith(".parquet") for f in os.listdir(latest))
 
+    def to_dbt_profile(self) -> dict:
+        return {
+            "type": "duckdb",
+            "path": "{duckdb_path}",   # synthesizer substitutes the real path
+            "threads": 2,
+        }
+
     def get_schema(self, scope: OwnerScope, table: str) -> pa.Schema:
         latest = self._latest_partition(scope, table)
         if latest is None:

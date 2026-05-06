@@ -294,6 +294,77 @@ def profile_pipeline_output(self, pipeline_id: str, run_id: str):
         db.close()
 
 
+@shared_task(name="profile_dbt_model", bind=True, max_retries=1, time_limit=300)
+def profile_dbt_model(self, run_id: str, model_name: str, scope_kind: str, scope_id: str):
+    """Profile the output table of a dbt model run and emit profile.diff if columns changed.
+
+    Mirrors profile_pipeline_output but for dbt models.
+    """
+    from backend.database.session import SessionLocal
+    from backend.models.transforms import DbtModel, DbtRun
+    from backend.data_plane.scope import OwnerScope
+    from backend.services.data_plane_service import get_default_plane
+    from backend.notifications import publish
+
+    db = SessionLocal()
+    try:
+        # Find the DbtModel by name+scope
+        model = db.query(DbtModel).filter(
+            DbtModel.owner_scope_kind == scope_kind,
+            DbtModel.owner_scope_id == scope_id,
+            DbtModel.name == model_name,
+        ).first()
+        if not model:
+            logger.warning("profile_dbt_model: model %s not found in scope %s/%s", model_name, scope_kind, scope_id)
+            return
+
+        scope = OwnerScope(scope_kind, scope_id)
+        plane = get_default_plane(scope, db)
+
+        # Read previous profile (stored on model row — add last_profile_columns attribute if missing)
+        prev_columns = getattr(model, "last_profile_columns", None) or {}
+
+        # Get current profile
+        new_profile = _profile_table(scope, plane, model_name, "dbt_model")
+        new_columns = new_profile.get("columns", {})
+
+        if new_columns:
+            added = [{"name": k, "type": v["type"]} for k, v in new_columns.items() if k not in prev_columns]
+            removed = [{"name": k, "type": v["type"]} for k, v in prev_columns.items() if k not in new_columns]
+            type_changes = [
+                {"name": k, "old_type": prev_columns[k]["type"], "new_type": v["type"]}
+                for k, v in new_columns.items()
+                if k in prev_columns and prev_columns[k]["type"] != v["type"]
+            ]
+
+            if added or removed or type_changes:
+                publish({
+                    "event_type": "profile.diff",
+                    "scope": {"kind": scope_kind, "id": scope_id},
+                    "resource_type": "dbt_model",
+                    "resource_id": str(model.id),
+                    "table_name": model_name,
+                    "added_columns": added,
+                    "removed_columns": removed,
+                    "type_changes": type_changes,
+                    "run_id": run_id,
+                    "run_finished_at": datetime.now(timezone.utc).isoformat(),
+                })
+                logger.info("profile.diff published for dbt model %s: +%d -%d ~%d cols",
+                            model_name, len(added), len(removed), len(type_changes))
+
+            # Persist the profile so future runs can diff against it
+            model.last_profile_columns = new_columns
+
+        db.commit()
+        logger.info("profile_dbt_model done for model %s run %s", model_name, run_id)
+
+    except Exception as exc:
+        logger.error("profile_dbt_model failed for model %s: %s", model_name, exc)
+    finally:
+        db.close()
+
+
 @shared_task(name="backfill_profile_all_connections")
 def backfill_profile_all_connections():
     """One-time task: queue profiling for all existing connections that have

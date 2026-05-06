@@ -34,7 +34,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=settings.celery_task_time_limit,
     worker_prefetch_multiplier=1,  # Process one task at a time per worker
-    include=["backend.tasks.memory_tasks", "backend.tasks.heartbeat_tasks", "backend.tasks.skill_detection_tasks", "backend.tasks.dashboard_refresh_tasks", "backend.tasks.agent_tasks", "backend.tasks.profiling_tasks", "backend.pipelines.tasks"],
+    include=["backend.tasks.memory_tasks", "backend.tasks.heartbeat_tasks", "backend.tasks.skill_detection_tasks", "backend.tasks.dashboard_refresh_tasks", "backend.tasks.agent_tasks", "backend.tasks.profiling_tasks", "backend.pipelines.tasks", "backend.transforms.tasks"],
 )
 
 celery_app.conf.beat_schedule = {
@@ -60,6 +60,10 @@ celery_app.conf.beat_schedule = {
     },
     "dispatch-pipelines": {
         "task": "dispatch_pipelines",
+        "schedule": 60.0,  # every 60 seconds
+    },
+    "dispatch-dbt-runs": {
+        "task": "dispatch_dbt_runs",
         "schedule": 60.0,  # every 60 seconds
     },
 }

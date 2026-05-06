@@ -60,6 +60,60 @@ def delete_pipeline(pipeline_id: str, db) -> None:
         logger.warning("delete_pipeline: failed to publish lineage:invalidate for pipeline %s", pipeline_id)
 
 
+def delete_dbt_model(model_id: str, db) -> None:
+    """Delete a dbt model and its DataPlane materialized table.
+
+    Steps:
+    1. Load model row — raise 404 if not found.
+    2. Drop DataPlane target table for the model's scope (model.name IS the table name).
+    3. Manually delete dbt_runs (no FK cascade — runs are scope-level), then delete model row.
+    4. Publish lineage:invalidate.
+    """
+    import json
+    from backend.models.transforms import DbtModel
+    from backend.data_plane.scope import OwnerScope
+    from backend.services.data_plane_service import get_default_plane
+
+    model = db.query(DbtModel).filter(DbtModel.id == model_id).first()
+    if model is None:
+        raise LookupError(f"DbtModel {model_id!r} not found")
+
+    scope = OwnerScope(model.owner_scope_kind, model.owner_scope_id)
+    plane = get_default_plane(scope, db)
+
+    # Drop DataPlane table — best effort
+    try:
+        if plane.table_exists(scope, model.name):
+            plane.drop_table(scope, model.name)
+            logger.info("delete_dbt_model: dropped DataPlane table %s for model %s", model.name, model_id)
+    except Exception as exc:
+        logger.warning("delete_dbt_model: failed to drop DataPlane table for model %s: %s", model_id, exc)
+
+    # Manually delete dbt_runs (no FK cascade — runs are scope-level)
+    from backend.models.transforms import DbtRun
+    db.query(DbtRun).filter(
+        DbtRun.owner_scope_kind == model.owner_scope_kind,
+        DbtRun.owner_scope_id == model.owner_scope_id,
+    ).delete(synchronize_session=False)
+
+    db.delete(model)
+    db.flush()
+
+    # Publish lineage:invalidate
+    try:
+        import redis
+        from backend.config import settings
+        r = redis.from_url(settings.redis_url)
+        r.publish("lineage:invalidate", json.dumps({
+            "model_id": model_id,
+            "scope_kind": scope.kind,
+            "scope_id": scope.id,
+        }))
+        r.close()
+    except Exception:
+        logger.warning("delete_dbt_model: failed to publish lineage:invalidate for model %s", model_id)
+
+
 def guard_connection_delete(connection_id: int, db, *, cascade: bool = False) -> None:
     """Raise 409 if connection has dependent Pipelines (unless cascade=True).
 

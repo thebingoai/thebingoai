@@ -184,6 +184,18 @@ class BigQueryGCSPlane:
         except NotFound:
             return False
 
+    def to_dbt_profile(self) -> dict:
+        import json
+        return {
+            "type": "bigquery",
+            "method": "service-account-json",
+            "project": self._project,
+            "dataset": self._dataset,
+            "keyfile_json": json.loads(self._sa_json),
+            "timeout_seconds": 300,
+            "threads": 4,
+        }
+
     def get_schema(self, scope: OwnerScope, table: str) -> pa.Schema:
         from google.cloud.exceptions import NotFound
         full_table_id = f"{self._project}.{self._dataset}.{self._bq_table_name(scope, table)}"

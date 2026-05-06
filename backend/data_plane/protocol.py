@@ -61,3 +61,13 @@ class DataPlane(Protocol):
     def table_exists(self, scope: OwnerScope, table: str) -> bool: ...
 
     def get_schema(self, scope: OwnerScope, table: str) -> pa.Schema: ...
+
+    def to_dbt_profile(self) -> dict:
+        """Return a dbt profiles.yml target config dict for this DataPlane.
+
+        The dict is written directly under the profile's `outputs.default:` key.
+        Keys vary by adapter:
+          - dbt-duckdb: {"type": "duckdb", "path": "..."}
+          - dbt-bigquery: {"type": "bigquery", "method": "service-account-json", ...}
+        """
+        ...

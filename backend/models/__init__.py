@@ -51,3 +51,6 @@ from backend.models.conversation_summary import ConversationSummary
 
 # Phase 2: Pipelines
 from backend.models.pipeline import Pipeline, PipelineRun, DltPipelineState
+
+# Phase 4: dbt Transforms
+from backend.models.transforms import DbtModel, DbtRun
