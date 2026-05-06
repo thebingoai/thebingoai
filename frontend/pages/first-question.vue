@@ -4,7 +4,7 @@
     <AuthBrandingPanel :step="3" step-context="First Task" />
 
     <!-- Right panel -->
-    <div class="flex-1 flex flex-col bg-white dark:bg-neutral-900 overflow-y-auto">
+    <div class="flex-1 h-screen flex flex-col bg-white dark:bg-neutral-900 overflow-y-auto">
       <div class="flex-1 px-10 py-12 max-w-2xl mx-auto w-full">
 
         <!-- Header -->
@@ -88,7 +88,7 @@
 
         <button
           class="flex items-center gap-2 bg-purple-700 hover:bg-purple-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
-          @click="navigateTo('/chat')"
+          @click="handleFinish"
         >
           <span>Finish &amp; open workbench</span>
           <span>›</span>
@@ -150,6 +150,11 @@ function handleSend() {
   navigateTo('/chat')
 }
 
+function handleFinish() {
+  chatStore.inputText = question.value
+  navigateTo('/chat')
+}
+
 onMounted(async () => {
   try {
     const conns: DatabaseConnection[] = await api.connections.list()
@@ -164,6 +169,8 @@ onMounted(async () => {
 
 definePageMeta({
   layout: false,
-  middleware: 'auth'
+  middleware: 'auth',
+  pageTransition: false,
+  layoutTransition: false,
 })
 </script>
