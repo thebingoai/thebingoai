@@ -3,7 +3,7 @@ from backend.api import upload, query, health, jobs, auth, connections, usage, c
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule, dashboard_analyze
 from backend.api import feature_config
 from backend.auth.webhooks import router as webhook_router
-from backend.api import query_results, agent_sessions
+from backend.api import query_results, agent_sessions, agent_profile, llm_models
 
 router = APIRouter()
 
@@ -63,6 +63,12 @@ router.include_router(agent_sessions.router)
 
 # Feature Config
 router.include_router(feature_config.router)
+
+# Agent Profile
+router.include_router(agent_profile.router)
+
+# LLM Models (drives Agent Settings dropdown)
+router.include_router(llm_models.router)
 
 # Query Result Fetch (schema-only side-channel)
 router.include_router(query_results.router)

@@ -48,7 +48,8 @@
 
     <!-- Settings Content -->
     <div class="flex-1 overflow-y-auto">
-      <SettingsConnections v-if="currentSection === 'connections'" />
+      <SettingsAgent       v-if="currentSection === 'agent'" />
+      <SettingsConnections v-else-if="currentSection === 'connections'" />
       <SettingsSkills v-else-if="currentSection === 'skills'" />
       <SettingsJobs v-else-if="currentSection === 'jobs'" />
       <SettingsMemory v-else-if="currentSection === 'memory'" />
@@ -84,6 +85,7 @@ const pluginTabs = computed(() =>
 
 const sections = computed(() => {
   const base = [
+    { id: 'agent',       name: 'Agent' },
     { id: 'connections', name: 'Connections' },
     { id: 'skills', name: 'Skills' },
     { id: 'jobs', name: 'Jobs' },
@@ -103,9 +105,9 @@ const sections = computed(() => {
 })
 
 const route = useRoute()
-const initialTab = (route.query.tab as string) || 'connections'
+const initialTab = (route.query.tab as string) || 'agent'
 const currentSection = ref(
-  sections.value.some(s => s.id === initialTab) ? initialTab : 'connections'
+  sections.value.some(s => s.id === initialTab) ? initialTab : 'agent'
 )
 
 const currentSectionName = computed(() => {

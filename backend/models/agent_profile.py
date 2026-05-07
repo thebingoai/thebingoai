@@ -10,7 +10,7 @@ building. The 8 sections map to the OpenClaw-inspired cognitive architecture:
 Profiles support org → team → user inheritance for enterprise.
 """
 
-from sqlalchemy import Column, String, Boolean, Integer, Text, JSON, ForeignKey
+from sqlalchemy import Column, String, Boolean, Integer, Text, JSON, ForeignKey, Float, DateTime
 from sqlalchemy.orm import relationship
 from backend.database.base import Base, TimestampMixin
 import uuid
@@ -40,6 +40,26 @@ class AgentProfile(Base, TimestampMixin):
     heartbeat = Column(Text, nullable=True)        # Recurring checks, context refresh rules
     user_context = Column(Text, nullable=True)     # User-specific preferences and notes
     guardrails = Column(Text, nullable=True)       # Constraints, boundaries, forbidden behaviors
+
+    # ── Identity structured fields ──────────────────────────────────
+    display_name      = Column(String(100), nullable=True)
+    pronouns          = Column(String(50),  nullable=True)
+    tagline           = Column(String(200), nullable=True)
+    avatar_url        = Column(String(500), nullable=True)
+    default_model     = Column(String(100), nullable=True)
+    temperature       = Column(Float,       nullable=True)
+    max_output_tokens = Column(Integer,     nullable=True)
+
+    # ── User context structured fields ──────────────────────────────
+    user_profile   = Column(JSON, nullable=True)   # {address_as, pronouns, role, team, timezone, working_hours}
+    user_narrative = Column(Text,  nullable=True)
+    vocabulary     = Column(JSON, nullable=True)   # [{term, definition}]
+    sensitivities  = Column(JSON, nullable=True)   # ["Don't cite raw counts <5", ...]
+
+    # ── Draft/publish workflow ───────────────────────────────────────
+    published_at       = Column(DateTime, nullable=True)
+    published_snapshot = Column(JSON,    nullable=True)   # snapshot of text cols at last publish
+    published_version  = Column(Integer,  nullable=True)
 
     # Section-level locking for enterprise governance
     # {"identity": "locked", "soul": "open", "guardrails": "locked", ...}
