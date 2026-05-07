@@ -25,19 +25,25 @@
         : 'w-56 border-r border-gray-200 dark:border-neutral-700 p-4 flex flex-col justify-between'"
     >
       <nav :class="isMobile ? 'flex gap-1' : 'space-y-1'">
-        <button
-          v-for="section in sections"
-          :key="section.id"
-          @click="currentSection = section.id"
-          :class="[
-            isMobile
-              ? 'whitespace-nowrap px-3 py-1.5 text-xs rounded-full'
-              : 'w-full rounded-lg px-3 py-2 text-left text-sm font-light',
-            currentSection === section.id ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-800'
-          ]"
-        >
-          {{ section.name }}
-        </button>
+        <template v-for="(section, index) in sections" :key="section.id">
+          <div
+            v-if="!isMobile && section.group && (index === 0 || sections[index - 1].group !== section.group)"
+            class="pt-3 pb-1 px-3 mt-1 border-t border-dashed border-gray-200 dark:border-neutral-700 eyebrow"
+          >
+            {{ section.group }}
+          </div>
+          <button
+            @click="currentSection = section.id"
+            :class="[
+              isMobile
+                ? 'whitespace-nowrap px-3 py-1.5 text-xs rounded-full'
+                : 'w-full rounded-lg px-3 py-2 text-left text-sm font-light',
+              currentSection === section.id ? 'bg-gray-100 dark:bg-neutral-700 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-neutral-800'
+            ]"
+          >
+            {{ section.name }}
+          </button>
+        </template>
       </nav>
 
       <div v-if="!isMobile" class="pt-4 border-t border-gray-200 dark:border-neutral-700 text-xs text-gray-400 dark:text-gray-300 space-y-1">
@@ -94,19 +100,28 @@ const sections = computed(() => {
   if (featureConfig.value?.telegram_enabled) {
     base.push({ id: 'channels', name: 'Channels' })
   }
+  const leading: typeof base = []
   for (const tab of pluginTabs.value) {
-    if (!base.find(s => s.id === tab.id)) {
-      base.push({ id: tab.id, name: tab.label })
+    if (base.find(s => s.id === tab.id)) continue
+    const entry = { id: tab.id, name: tab.label, group: tab.group } as any
+    if ((tab.order ?? 100) < 100) {
+      leading.push(entry)
+    } else {
+      base.push(entry)
     }
   }
-  return base
+  return [...leading, ...base]
 })
 
 const route = useRoute()
-const initialTab = (route.query.tab as string) || 'connections'
-const currentSection = ref(
-  sections.value.some(s => s.id === initialTab) ? initialTab : 'connections'
-)
+const currentSection = ref('connections')
+
+watch([() => route.query.tab, sections], ([tab, secs]) => {
+  const id = (tab as string) || 'connections'
+  if (secs.some(s => s.id === id)) {
+    currentSection.value = id
+  }
+}, { immediate: true })
 
 const currentSectionName = computed(() => {
   return sections.value.find(s => s.id === currentSection.value)?.name || ''

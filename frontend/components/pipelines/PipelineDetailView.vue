@@ -3,7 +3,7 @@
     <!-- Back nav -->
     <button
       class="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-neutral-100 transition-colors"
-      @click="navigateTo('/pipelines')"
+      @click="emit('back')"
     >
       <ArrowLeft class="h-4 w-4" />
       All Pipelines
@@ -168,16 +168,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { ArrowLeft, Database, Play } from 'lucide-vue-next'
 import { useUserPipelines, type Pipeline, type PipelineRun } from '~/composables/useUserPipelines'
 
-definePageMeta({
-  middleware: 'auth',
-})
+const props = defineProps<{
+  id: string
+}>()
 
-const route = useRoute()
-const pipelineId = route.params.id as string
+const emit = defineEmits<{ back: [] }>()
 
 const { pipelines, fetchPipelines, triggerRun, fetchRuns } = useUserPipelines()
 
@@ -191,16 +190,17 @@ const loadingRuns = ref(false)
 const triggering = ref(false)
 const runFeedback = ref<string | null>(null)
 
-onMounted(async () => {
+watch(() => props.id, async (id) => {
+  if (!id) return
   await Promise.all([loadPipeline(), loadRuns()])
-})
+}, { immediate: true })
 
 async function loadPipeline() {
   loadingPipeline.value = true
   pipelineError.value = null
   try {
     await fetchPipelines()
-    pipeline.value = pipelines.value.find(p => p.id === pipelineId) ?? null
+    pipeline.value = pipelines.value.find(p => p.id === props.id) ?? null
     if (!pipeline.value) {
       pipelineError.value = 'Pipeline not found.'
     }
@@ -214,7 +214,7 @@ async function loadPipeline() {
 async function loadRuns() {
   loadingRuns.value = true
   try {
-    runs.value = await fetchRuns(pipelineId)
+    runs.value = await fetchRuns(props.id)
   } catch {
     // non-fatal
   } finally {
@@ -226,7 +226,7 @@ async function handleRun() {
   triggering.value = true
   runFeedback.value = null
   try {
-    const result = await triggerRun(pipelineId)
+    const result = await triggerRun(props.id)
     runFeedback.value = `Run triggered successfully (ID: ${result.run_id}).`
     await loadRuns()
   } catch (e: unknown) {

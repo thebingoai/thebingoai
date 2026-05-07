@@ -3,7 +3,7 @@
     <!-- Back nav -->
     <button
       class="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-neutral-100 transition-colors"
-      @click="navigateTo('/transforms')"
+      @click="emit('back')"
     >
       <ArrowLeft class="h-4 w-4" />
       All Transforms
@@ -135,16 +135,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { ArrowLeft, Play } from 'lucide-vue-next'
 import { useUserTransforms, type Transform, type TransformRun } from '~/composables/useUserTransforms'
 
-definePageMeta({
-  middleware: 'auth',
-})
+const props = defineProps<{
+  id: string
+}>()
 
-const route = useRoute()
-const transformId = route.params.id as string
+const emit = defineEmits<{ back: [] }>()
 
 const { fetchTransform, triggerRun, fetchRuns, updateTransform } = useUserTransforms()
 
@@ -162,15 +161,16 @@ const sqlDraft = ref('')
 const saving = ref(false)
 const saveError = ref<string | null>(null)
 
-onMounted(async () => {
+watch(() => props.id, async (id) => {
+  if (!id) return
   await Promise.all([loadTransform(), loadRuns()])
-})
+}, { immediate: true })
 
 async function loadTransform() {
   loadingTransform.value = true
   transformError.value = null
   try {
-    transform.value = await fetchTransform(transformId)
+    transform.value = await fetchTransform(props.id)
     sqlDraft.value = transform.value?.sql ?? ''
   } catch (e: unknown) {
     transformError.value = e instanceof Error ? e.message : 'Failed to load transform.'
@@ -182,7 +182,7 @@ async function loadTransform() {
 async function loadRuns() {
   loadingRuns.value = true
   try {
-    runs.value = await fetchRuns(transformId)
+    runs.value = await fetchRuns(props.id)
   } catch {
     // non-fatal
   } finally {
@@ -194,7 +194,7 @@ async function handleRun() {
   triggering.value = true
   runFeedback.value = null
   try {
-    const result = await triggerRun(transformId)
+    const result = await triggerRun(props.id)
     runFeedback.value = `Run triggered successfully (ID: ${result.run_id}).`
     await loadRuns()
   } catch (e: unknown) {
@@ -208,7 +208,7 @@ async function handleSave() {
   saving.value = true
   saveError.value = null
   try {
-    transform.value = await updateTransform(transformId, { sql: sqlDraft.value })
+    transform.value = await updateTransform(props.id, { sql: sqlDraft.value })
   } catch (e: unknown) {
     saveError.value = e instanceof Error ? e.message : 'Failed to save SQL.'
   } finally {

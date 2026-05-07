@@ -49,6 +49,9 @@ from backend.models.agent_profile import AgentProfile
 # Conversation Summaries
 from backend.models.conversation_summary import ConversationSummary
 
+# Phase 1: DataPlane (must precede Pipeline — FK pipelines.data_plane_id)
+from backend.models.data_plane import DataPlaneModel
+
 # Phase 2: Pipelines
 from backend.models.pipeline import Pipeline, PipelineRun, DltPipelineState
 

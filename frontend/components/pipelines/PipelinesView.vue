@@ -1,5 +1,7 @@
 <template>
-  <div class="p-4 md:p-6">
+  <PipelineDetailView v-if="detailId" :id="detailId" @back="closeDetail" />
+
+  <div v-else class="p-4 md:p-6">
     <!-- Header -->
     <div class="mb-6 flex items-center justify-between">
       <div>
@@ -49,7 +51,7 @@
         v-for="pipeline in pipelines"
         :key="pipeline.id"
         class="px-5 py-4 cursor-pointer hover:shadow-lg transition-shadow"
-        @click="navigateTo(`/pipelines/${pipeline.id}`)"
+        @click="openDetail(pipeline.id)"
       >
         <div class="flex items-start justify-between gap-4">
           <!-- Left: name + meta -->
@@ -117,13 +119,24 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Plus, Database, Clock, Play, Table2, Workflow } from 'lucide-vue-next'
 import { useUserPipelines, type Pipeline } from '~/composables/useUserPipelines'
 
-definePageMeta({
-  middleware: 'auth',
-})
+const route = useRoute()
+const router = useRouter()
+
+const detailId = computed(() => (route.query.id as string) || '')
+
+function openDetail(id: string) {
+  router.push({ query: { ...route.query, id } })
+}
+
+function closeDetail() {
+  const next = { ...route.query }
+  delete next.id
+  router.replace({ query: next })
+}
 
 const { pipelines, loading, error, fetchPipelines, triggerRun } = useUserPipelines()
 const showCreateModal = ref(false)

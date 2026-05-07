@@ -1,7 +1,7 @@
 """Add preferences column to users table
 
 Revision ID: a9b8c7d6e5f4
-Revises: a1b2c3d4e5f6
+Revises: s3e3d4f5a6b7
 Create Date: 2026-02-25 17:00:00.000000
 
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = 'a9b8c7d6e5f4'
-down_revision = 'a1b2c3d4e5f6'
+down_revision = 's3e3d4f5a6b7'
 branch_labels = None
 depends_on = None
 

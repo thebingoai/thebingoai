@@ -1,6 +1,6 @@
 """Seed default team tool policies from tool catalog
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: s3e3d4f5a6b7
 Revises: f4d5e6f7a8b9
 Create Date: 2026-02-25 06:10:00.000000
 
@@ -11,7 +11,7 @@ from datetime import datetime
 
 
 # revision identifiers, used by Alembic.
-revision = 'a1b2c3d4e5f6'
+revision = 's3e3d4f5a6b7'
 down_revision = 'f4d5e6f7a8b9'
 branch_labels = None
 depends_on = None

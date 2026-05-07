@@ -86,13 +86,13 @@ const lastRunStatus = computed(() => meta.value.last_run_status as string | null
       </div>
 
       <div v-if="meta.pipeline_id">
-        <NuxtLink :to="`/pipelines/${meta.pipeline_id}`" class="text-xs text-blue-600 hover:underline">
+        <NuxtLink :to="{ path: '/settings', query: { tab: 'pipelines', id: meta.pipeline_id } }" class="text-xs text-blue-600 hover:underline">
           Open pipeline →
         </NuxtLink>
       </div>
 
       <div v-if="meta.model_id">
-        <NuxtLink :to="`/transforms/${meta.model_id}`" class="text-xs text-blue-600 hover:underline">
+        <NuxtLink :to="{ path: '/settings', query: { tab: 'transforms', id: meta.model_id } }" class="text-xs text-blue-600 hover:underline">
           Open transform →
         </NuxtLink>
       </div>

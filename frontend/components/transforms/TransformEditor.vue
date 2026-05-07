@@ -86,6 +86,8 @@ import { useUserTransforms, type Transform, type CreateTransformPayload } from '
 const props = defineProps<{
   open: boolean
   modelValue?: Transform | null
+  ownerScopeKind?: string
+  ownerScopeId?: string
 }>()
 
 const emit = defineEmits<{
@@ -163,8 +165,8 @@ async function handleSubmit() {
       name: form.name.trim(),
       sql: form.sql.trim(),
       materialization: form.materialization,
-      owner_scope_kind: 'user',
-      owner_scope_id: user?.id ?? '',
+      owner_scope_kind: props.ownerScopeKind ?? 'user',
+      owner_scope_id: props.ownerScopeId ?? (user?.id ?? ''),
     }
 
     if (form.cron.trim()) {

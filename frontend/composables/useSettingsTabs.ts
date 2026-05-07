@@ -7,6 +7,7 @@ export interface SettingsTab {
   component: Component
   condition?: () => boolean
   order?: number
+  group?: string
 }
 
 const tabs = reactive<SettingsTab[]>([])
