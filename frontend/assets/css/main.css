@@ -74,6 +74,42 @@
   --ember-wash: color-mix(in oklch, #6E489D 12%, #18181b);
 }
 
+/* ─── Settings paper-theme palettes ──────────────────────────── */
+/* Applied as a class on <html> by useAppTheme(). Overrides only paper +
+   ember tokens; .dark composes on top via separate .dark.theme-* rules. */
+.theme-kraft {
+  /* Default — alias of the existing violet/cream palette. No-op overrides. */
+}
+.theme-cool {
+  --paper-1: oklch(0.98 0.012 255);
+  --paper-2: oklch(0.96 0.018 255);
+  --ember:      var(--brand-peri);
+  --ember-soft: oklch(0.86 0.06 265);
+  --ember-wash: oklch(0.965 0.022 265);
+}
+.theme-ink {
+  --paper-1: #f1edea;
+  --paper-2: #e7e1dc;
+  --ember:      #2C2969;
+  --ember-soft: #c8c4dc;
+  --ember-wash: oklch(0.94 0.025 285);
+}
+
+.dark.theme-cool {
+  --ember-wash: color-mix(in oklch, var(--brand-peri) 14%, #18181b);
+}
+.dark.theme-ink {
+  --ember-wash: color-mix(in oklch, #2C2969 18%, #18181b);
+}
+
+/* Settings page H1 — serif display font */
+.settings-h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
 /* ─── Semantic utility classes ─────────────────────────────────── */
 .eyebrow {
   font-size: 10.5px;

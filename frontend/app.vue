@@ -10,4 +10,6 @@
 <script setup lang="ts">
 // Initialize keyboard shortcuts
 useKeyboardShortcuts()
+// Apply persisted paper theme (kraft / cool / ink) on first client load
+useAppTheme()
 </script>
