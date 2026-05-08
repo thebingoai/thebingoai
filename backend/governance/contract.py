@@ -6,12 +6,30 @@ When the plugin is absent, `check` is a no-op (Permit) and no listeners fire,
 so community-edition behavior is unchanged.
 
 The plugin overrides `check` via `register_check` and subscribes to lifecycle
-events (`register_org_created_listener`, etc.) during its `on_startup`.
+events (`register_org_created_listener` / `register_resource_created_listener`)
+during its `on_startup`.
 
 Honors the system-context bypass from Phase 0 directly: when a background task
 runs inside `with system_context(...)`, `check` short-circuits to Permit before
 ever reaching the registered impl, so plugin code doesn't have to repeat the
 pattern.
+
+## Pragmatic note on the v1 "decorator"
+
+The Phase G plan calls for `@requires(action, resource_loader)` on FastAPI
+endpoints. The shipped form is the explicit `require(...)` guard called inline
+at the top of each route handler. Reasons:
+
+- FastAPI's `Depends` injection happens BEFORE the wrapped function runs, so a
+  decorator can't reliably resolve `current_user` from kwargs across endpoints
+  with varying parameter names.
+- The resource frequently needs the DB session + path params to resolve, which
+  is awkward to express in a static decorator.
+- The inline form is identical at the call site (one line) and easier to read.
+
+The "via lazy-import / no-op contract" requirement still holds: `require` is
+the function called from community endpoints; the registered `check` impl
+lives in the plugin and falls back to Permit when the plugin is absent.
 """
 from __future__ import annotations
 
@@ -46,6 +64,28 @@ def check(*, user: Any, action: str, resource: Any) -> bool:
     return _check_fn(user=user, action=action, resource=resource)
 
 
+def require(*, user: Any, action: str, resource: Any) -> None:
+    """Inline guard. Raises HTTPException 403 if check returns False.
+
+    Call at the top of any FastAPI route that needs governance gating:
+
+        @router.post("/connections")
+        async def create(...):
+            require(user=current_user, action="create", resource={"type": "connection"})
+            ...
+    """
+    if check(user=user, action=action, resource=resource):
+        return
+    # Lazy import: keep contract module import-time-cheap and free of
+    # FastAPI dependencies until the deny path actually fires.
+    from fastapi import HTTPException, status as http_status
+
+    raise HTTPException(
+        status_code=http_status.HTTP_403_FORBIDDEN,
+        detail=f"Governance policy denies {action!r} on this resource",
+    )
+
+
 def register_check(fn: CheckFn) -> None:
     """Override the check function — called by the governance plugin on_startup."""
     global _check_fn
@@ -65,6 +105,7 @@ def reset_check() -> None:
 # Lifecycle events ------------------------------------------------------------
 
 _org_created_listeners: list[Callable[..., None]] = []
+_resource_created_listeners: list[Callable[..., None]] = []
 
 
 def register_org_created_listener(fn: Callable[..., None]) -> None:
@@ -77,9 +118,7 @@ def emit_org_created(*, org: Any, creator_user: Any) -> None:
     """Fire after a new Organization row is committed in api/organizations.py.
 
     Listener errors are logged and swallowed — org creation must not fail just
-    because the governance plugin has a bug. The listener can re-raise its own
-    transactional errors, which the caller is free to handle, but exceptions
-    here always degrade to "no governance hook ran for this org."
+    because the governance plugin has a bug.
     """
     for fn in _org_created_listeners:
         try:
@@ -91,6 +130,32 @@ def emit_org_created(*, org: Any, creator_user: Any) -> None:
             )
 
 
+def register_resource_created_listener(fn: Callable[..., None]) -> None:
+    """Subscribe to resource.created events. Idempotent.
+
+    Listener signature: `fn(*, resource_type: str, resource: Any, creator_user: Any)`.
+    Used by the governance plugin to seed default ACL grants when a new
+    org-scoped resource lands.
+    """
+    if fn not in _resource_created_listeners:
+        _resource_created_listeners.append(fn)
+
+
+def emit_resource_created(*, resource_type: str, resource: Any, creator_user: Any) -> None:
+    """Fire after any governable resource (connection, pipeline, dbt_model, …)
+    is committed. Listener errors are logged and swallowed.
+    """
+    for fn in _resource_created_listeners:
+        try:
+            fn(resource_type=resource_type, resource=resource, creator_user=creator_user)
+        except Exception:
+            logger.exception(
+                "governance.contract: resource_created listener %r raised; ignoring",
+                getattr(fn, "__qualname__", repr(fn)),
+            )
+
+
 def reset_listeners() -> None:
     """Drop all registered listeners. Used by tests; never by production code."""
     _org_created_listeners.clear()
+    _resource_created_listeners.clear()

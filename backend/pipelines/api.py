@@ -105,6 +105,17 @@ async def create_pipeline(
     deduplicates by fingerprint within the owner scope, and sets next_run_at
     from the cron expression when provided.
     """
+    from backend.governance.contract import require as governance_require
+    governance_require(
+        user=current_user,
+        action="create",
+        resource={
+            "type": "pipeline",
+            "owner_scope_kind": body.owner_scope_kind,
+            "owner_scope_id": body.owner_scope_id,
+        },
+    )
+
     from backend.models.database_connection import DatabaseConnection
     from backend.connectors.factory import get_connector_registration
     from backend.pipelines.runner import compute_pipeline_fingerprint
@@ -172,6 +183,13 @@ async def create_pipeline(
     db.add(pipeline)
     db.commit()
     db.refresh(pipeline)
+
+    from backend.governance.contract import emit_resource_created
+    emit_resource_created(
+        resource_type="pipeline",
+        resource=pipeline,
+        creator_user=current_user,
+    )
 
     logger.info(
         "Pipeline %r (id=%s) created by user %s",

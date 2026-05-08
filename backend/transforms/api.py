@@ -123,6 +123,17 @@ async def create_transform(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from backend.governance.contract import require as governance_require
+    governance_require(
+        user=current_user,
+        action="create",
+        resource={
+            "type": "dbt_model",
+            "owner_scope_kind": body.owner_scope_kind,
+            "owner_scope_id": body.owner_scope_id,
+        },
+    )
+
     # Check for duplicate name in scope
     existing = db.query(DbtModel).filter(
         DbtModel.owner_scope_kind == body.owner_scope_kind,
@@ -155,6 +166,13 @@ async def create_transform(
     db.add(model)
     db.commit()
     db.refresh(model)
+
+    from backend.governance.contract import emit_resource_created
+    emit_resource_created(
+        resource_type="dbt_model",
+        resource=model,
+        creator_user=current_user,
+    )
 
     # Lazy synth: update the dbt project on disk
     try:
