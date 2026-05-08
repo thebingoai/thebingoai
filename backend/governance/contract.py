@@ -159,6 +159,7 @@ def reset_listeners() -> None:
     """Drop all registered listeners. Used by tests; never by production code."""
     _org_created_listeners.clear()
     _resource_created_listeners.clear()
+    _user_offboarded_listeners.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -200,3 +201,35 @@ def reset_dedup_check() -> None:
     """Restore the no-op default. Used by tests; never by production code."""
     global _dedup_check_fn
     _dedup_check_fn = _default_dedup_check
+
+
+# ---------------------------------------------------------------------------
+# v1.c.3 — User offboarding lifecycle
+# ---------------------------------------------------------------------------
+
+_user_offboarded_listeners: list[Callable[..., None]] = []
+
+
+def register_user_offboarded_listener(fn: Callable[..., None]) -> None:
+    """Subscribe to user.offboarded events. Idempotent.
+
+    Listener signature: `fn(*, user_id: str, org_id: str)`. Used by the
+    governance plugin to transfer user-scoped resources to the org and
+    revoke role assignments.
+    """
+    if fn not in _user_offboarded_listeners:
+        _user_offboarded_listeners.append(fn)
+
+
+def emit_user_offboarded(*, user_id: str, org_id: str) -> None:
+    """Fire when a user is removed from an Organization (deactivated, kicked,
+    etc.). Listener errors are logged and swallowed.
+    """
+    for fn in _user_offboarded_listeners:
+        try:
+            fn(user_id=user_id, org_id=org_id)
+        except Exception:
+            logger.exception(
+                "governance.contract: user_offboarded listener %r raised; ignoring",
+                getattr(fn, "__qualname__", repr(fn)),
+            )
