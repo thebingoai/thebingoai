@@ -109,6 +109,17 @@ async def create_connection(
     logger.info("Creating connection '%s' (type=%s, host=%s, port=%s, db=%s, ssl=%s)",
         request.name, request.db_type, request.host, request.port, request.database, request.ssl_enabled)
 
+    from backend.governance.contract import check as governance_check
+    if not governance_check(
+        user=current_user,
+        action="create",
+        resource={"type": "connection", "db_type": request.db_type},
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Governance policy denies creating this connection",
+        )
+
     # Create connection (without schema info yet)
     # password and ssl_ca_cert use hybrid_property setters and cannot be passed
     # as constructor kwargs (SQLAlchemy only accepts mapped column attribute names)
