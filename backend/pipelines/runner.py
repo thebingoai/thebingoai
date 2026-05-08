@@ -105,7 +105,14 @@ def run_pipeline(
                     raise RuntimeError(f"No connector registration for db_type={connection.db_type!r}")
 
                 connector_cls = reg.connector_class
-                if not hasattr(connector_cls, "dlt_source_for"):
+
+                # Resolve dlt_source_for: prefer the registration field (new shape),
+                # fall back to a connector_class attribute (legacy shape) for plugins
+                # that haven't been ported to the new template scaffold yet.
+                source_fn = reg.dlt_source_for
+                if source_fn is None and hasattr(connector_cls, "dlt_source_for"):
+                    source_fn = connector_cls.dlt_source_for
+                if source_fn is None:
                     raise RuntimeError(
                         f"Connector {connection.db_type!r} does not implement dlt_source_for — "
                         "cannot run as a Pipeline"
@@ -117,7 +124,7 @@ def run_pipeline(
 
                 # Build dlt source
                 extraction_config = pipeline.extraction_config or {}
-                source = connector_cls.dlt_source_for(connection, extraction_config)
+                source = source_fn(connection, extraction_config)
 
                 # Build dlt destination wrapping DataPlane
                 from backend.pipelines.dlt_destination import make_dataplane_destination

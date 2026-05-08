@@ -82,12 +82,61 @@ def discover_and_load_plugins() -> None:
                     logger.exception("Failed to register tool builders from plugin '%s'", plugin.name)
 
                 plugin.on_startup()
+                _backfill_templates_for_plugin(plugin)
                 _loaded_plugins[plugin.name] = plugin
                 logger.info("Loaded plugin: %s v%s", plugin.name, plugin.version)
             except Exception:
                 logger.exception("Failed to initialize plugin '%s', skipping", plugin.name)
     finally:
         _is_discovering = False
+
+
+def _backfill_templates_for_plugin(plugin: BingoPlugin) -> None:
+    """For each templated connector this plugin registers, materialize templates
+    against every existing connection of that type.
+
+    Idempotent — relies on the materializer's dedup logic. Safe to run on every
+    boot. Gated by settings.template_backfill_on_startup so it can be disabled.
+    """
+    from backend.config import settings
+    if not settings.template_backfill_on_startup:
+        return
+
+    templated_regs = [
+        reg for reg in plugin.connectors()
+        if reg.pipeline_templates or reg.transform_templates
+    ]
+    if not templated_regs:
+        return
+
+    from backend.database.session import SessionLocal
+    from backend.models.database_connection import DatabaseConnection
+    from backend.services.template_materializer import materialize_templates_for_connection
+
+    with SessionLocal() as db:
+        for reg in templated_regs:
+            connections = db.query(DatabaseConnection).filter(
+                DatabaseConnection.db_type == reg.type_id,
+            ).all()
+            if not connections:
+                continue
+            backfilled = 0
+            for conn in connections:
+                try:
+                    new_p, new_t = materialize_templates_for_connection(conn, reg, db)
+                    if new_p or new_t:
+                        backfilled += 1
+                except Exception:
+                    logger.exception(
+                        "Template backfill failed for connection %s (%s)",
+                        conn.id, reg.type_id,
+                    )
+            if backfilled:
+                db.commit()
+                logger.info(
+                    "Backfilled templates for %d %s connection(s) (plugin '%s')",
+                    backfilled, reg.type_id, plugin.name,
+                )
 
 
 def import_plugin_celery_tasks() -> list[str]:

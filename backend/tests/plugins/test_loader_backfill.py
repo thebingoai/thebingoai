@@ -1,0 +1,179 @@
+"""Tests for the loader-side template backfill on plugin startup."""
+import importlib.util
+import sys
+import types as _types
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+# conftest stubs fastapi as ModuleType but lacks APIRouter; patch before loading base/loader.
+if "fastapi" not in sys.modules:
+    sys.modules["fastapi"] = _types.ModuleType("fastapi")
+if not hasattr(sys.modules["fastapi"], "APIRouter"):
+    sys.modules["fastapi"].APIRouter = MagicMock
+
+
+# Load plugins.base for real dataclasses.
+_spec_base = importlib.util.spec_from_file_location(
+    "backend.plugins.base",
+    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/plugins/base.py",
+)
+sys.modules.pop("backend.plugins.base", None)
+_base = importlib.util.module_from_spec(_spec_base)
+sys.modules["backend.plugins.base"] = _base
+_spec_base.loader.exec_module(_base)
+
+ConnectorRegistration = _base.ConnectorRegistration
+PipelineTemplate = _base.PipelineTemplate
+BingoPlugin = _base.BingoPlugin
+
+
+# Stub fastapi (loader imports APIRouter from it).
+sys.modules.setdefault("fastapi", MagicMock(APIRouter=MagicMock()))
+
+
+# Load loader.py with stubbed downstream imports.
+def _load_loader_module():
+    spec = importlib.util.spec_from_file_location(
+        "loader_under_test",
+        "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/plugins/loader.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+loader = _load_loader_module()
+
+
+class _DummyPlugin(BingoPlugin):
+    def __init__(self, *, regs):
+        self._regs = regs
+
+    @property
+    def name(self):
+        return "dummy"
+
+    @property
+    def version(self):
+        return "0.1.0"
+
+    def connectors(self):
+        return self._regs
+
+
+def _registration_with_template():
+    return ConnectorRegistration(
+        type_id="my_source",
+        display_name="My Source",
+        description="",
+        default_port=0,
+        badge_variant="blue",
+        connector_class=MagicMock,
+        pipeline_templates=[
+            PipelineTemplate(name="P", target_table="t", extraction_config={"k": "v"}),
+        ],
+    )
+
+
+def _registration_no_templates():
+    return ConnectorRegistration(
+        type_id="other",
+        display_name="Other",
+        description="",
+        default_port=0,
+        badge_variant="blue",
+        connector_class=MagicMock,
+    )
+
+
+@contextmanager
+def _patched_env(*, settings_flag, connections, materialize_returns=([MagicMock()], [])):
+    """Patch the settings, DB session, and materializer the loader pulls in lazily."""
+    settings = MagicMock(template_backfill_on_startup=settings_flag)
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = connections
+    db.commit = MagicMock()
+
+    @contextmanager
+    def session_factory():
+        yield db
+
+    materializer = MagicMock(return_value=materialize_returns)
+
+    with patch.dict(sys.modules, {
+        "backend.config": MagicMock(settings=settings),
+        "backend.database.session": MagicMock(SessionLocal=session_factory),
+        "backend.models.database_connection": MagicMock(DatabaseConnection=MagicMock()),
+        "backend.services.template_materializer": MagicMock(
+            materialize_templates_for_connection=materializer,
+        ),
+    }):
+        yield db, materializer
+
+
+def test_backfill_skipped_when_flag_is_off():
+    plugin = _DummyPlugin(regs=[_registration_with_template()])
+    with _patched_env(settings_flag=False, connections=[MagicMock(id=1)]) as (db, materializer):
+        loader._backfill_templates_for_plugin(plugin)
+    materializer.assert_not_called()
+    db.commit.assert_not_called()
+
+
+def test_backfill_skipped_when_no_templated_registrations():
+    plugin = _DummyPlugin(regs=[_registration_no_templates()])
+    with _patched_env(settings_flag=True, connections=[MagicMock(id=1)]) as (_db, materializer):
+        loader._backfill_templates_for_plugin(plugin)
+    materializer.assert_not_called()
+
+
+def test_backfill_calls_materializer_per_connection_and_commits_once():
+    plugin = _DummyPlugin(regs=[_registration_with_template()])
+    conns = [MagicMock(id=1), MagicMock(id=2), MagicMock(id=3)]
+    with _patched_env(settings_flag=True, connections=conns) as (db, materializer):
+        loader._backfill_templates_for_plugin(plugin)
+    assert materializer.call_count == 3
+    db.commit.assert_called_once()
+
+
+def test_backfill_does_not_commit_when_nothing_was_materialized():
+    plugin = _DummyPlugin(regs=[_registration_with_template()])
+    with _patched_env(
+        settings_flag=True,
+        connections=[MagicMock(id=1)],
+        materialize_returns=([], []),
+    ) as (db, _materializer):
+        loader._backfill_templates_for_plugin(plugin)
+    db.commit.assert_not_called()
+
+
+def test_backfill_continues_on_per_connection_failure():
+    plugin = _DummyPlugin(regs=[_registration_with_template()])
+    conns = [MagicMock(id=1), MagicMock(id=2)]
+    materializer = MagicMock(side_effect=[RuntimeError("boom"), ([MagicMock()], [])])
+
+    with patch.dict(sys.modules, {
+        "backend.config": MagicMock(settings=MagicMock(template_backfill_on_startup=True)),
+        "backend.database.session": MagicMock(
+            SessionLocal=lambda: _make_ctx(_make_db_with_connections(conns)),
+        ),
+        "backend.models.database_connection": MagicMock(DatabaseConnection=MagicMock()),
+        "backend.services.template_materializer": MagicMock(
+            materialize_templates_for_connection=materializer,
+        ),
+    }):
+        loader._backfill_templates_for_plugin(plugin)
+    assert materializer.call_count == 2  # second call still ran after first raised
+
+
+def _make_db_with_connections(connections):
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = connections
+    return db
+
+
+@contextmanager
+def _make_ctx(db):
+    yield db

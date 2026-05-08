@@ -140,6 +140,22 @@ async def create_connection(
 
     db.refresh(connection)
 
+    # Materialize plugin-shipped pipeline + transform templates for this connector type.
+    # Idempotent — safe even if a later retry hits the same connection.
+    reg = get_connector_registration(connection.db_type)
+    if reg and (reg.pipeline_templates or reg.transform_templates):
+        try:
+            from backend.services.template_materializer import materialize_templates_for_connection
+            materialize_templates_for_connection(connection, reg, db)
+            db.commit()
+            db.refresh(connection)
+        except Exception as e:
+            logger.warning(
+                "Template materialization failed for connection %s (%s): %s",
+                connection.id, connection.db_type, e,
+            )
+            db.rollback()
+
     # Auto-discover schema for all connector types except BigQuery (too many datasets)
     if request.db_type != "bigquery":
         try:

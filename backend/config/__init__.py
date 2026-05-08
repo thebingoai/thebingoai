@@ -137,6 +137,7 @@ class Settings(BaseSettings):
     enable_governance: bool = False
     agent_mesh_enabled: bool = False
     orchestrator_lean_tools: bool = False  # ≤10 primary tools + manage meta-tool + @-mention scope
+    template_backfill_on_startup: bool = True  # plugin-template framework: backfill existing connections at boot
 
     # Agent mesh settings (Redis DB 4)
     agent_mesh_redis_url: str = "redis://localhost:6379/4"

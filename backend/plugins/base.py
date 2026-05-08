@@ -1,8 +1,44 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Type, Callable
+from typing import Any, Literal, Optional, Type, Callable, Union
 
 from fastapi import APIRouter
+
+
+@dataclass(frozen=True)
+class PipelineTemplate:
+    """Declarative pipeline a plugin ships per connector type.
+
+    Materializes into a `pipelines` row at connection-create (and on plugin
+    startup for pre-existing connections). Idempotent: dedup is by computed
+    fingerprint via the existing `uq_pipeline_scope_fingerprint` constraint.
+
+    `extraction_config` accepts either a static dict or a callable
+    `(connection) -> dict` for per-connection values (e.g. workspace_id).
+    """
+    name: str
+    target_table: Union[str, Callable[[Any], str]]
+    extraction_config: Union[dict, Callable[[Any], dict]]
+    cron: Optional[str] = None             # null = run-on-demand
+    mode: Literal["full", "incremental"] = "full"
+    incremental_key: Optional[str] = None
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class TransformTemplate:
+    """Declarative dbt model a plugin ships alongside its pipelines.
+
+    Materializes into a `dbt_models` row. Dedup is by `(scope, name)` via the
+    existing `uq_dbt_model_scope_name` constraint. `name` becomes the DataPlane
+    table name; `sql` may reference Pipeline outputs via dbt source refs.
+    """
+    name: str
+    sql: str
+    materialization: Literal["table", "view", "incremental"] = "table"
+    unique_key: Optional[str] = None
+    cron: Optional[str] = None
+    enabled: bool = True
 
 
 @dataclass
@@ -29,6 +65,12 @@ class ConnectorRegistration:
     # Phase 3: post-run hook + legacy connector for migration window
     post_run: Optional[Callable] = None          # (connection, run) -> None — called after successful Pipeline run
     legacy_connector_class: Optional[Type] = None  # kept for migration window; replaced by connector_class
+    # Plugin-template framework: declarative pipelines + transforms shipped with the connector.
+    # Surface dlt_source_for here so all connectors use one form (vs the class-method-vs-module-level drift).
+    # If None the runner falls back to `connector_class.dlt_source_for` for backward compatibility.
+    dlt_source_for: Optional[Callable] = None    # (connection, extraction_config) -> dlt source
+    pipeline_templates: Optional[list[PipelineTemplate]] = None
+    transform_templates: Optional[list[TransformTemplate]] = None
 
 
 class BingoPlugin(ABC):
