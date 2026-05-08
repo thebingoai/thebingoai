@@ -28,8 +28,12 @@
         <template v-for="(section, index) in sections" :key="section.id">
           <div
             v-if="!isMobile && section.group && (index === 0 || sections[index - 1].group !== section.group)"
-            class="pt-3 pb-1 px-3 mt-1 border-t border-dashed border-gray-200 dark:border-neutral-700 eyebrow"
+            :class="[
+              'flex items-center gap-2 px-3 pt-4 pb-2 eyebrow font-semibold text-gray-700 dark:text-gray-200',
+              index === 0 ? 'mt-0' : 'mt-3 border-t border-gray-200 dark:border-neutral-700',
+            ]"
           >
+            <span class="h-1 w-1 rounded-full bg-gray-400 dark:bg-neutral-500" />
             {{ section.group }}
           </div>
           <button
@@ -88,36 +92,66 @@ const pluginTabs = computed(() =>
   settingsTabs.list().filter(tab => !tab.condition || tab.condition())
 )
 
-const sections = computed(() => {
-  const base = [
-    { id: 'connections', name: 'Connections' },
-    { id: 'skills', name: 'Skills' },
-    { id: 'jobs', name: 'Jobs' },
-    { id: 'memory', name: 'Memory' },
-    { id: 'credits', name: featureConfig.value?.credits_enabled === false ? 'API Keys' : 'Credits & API Keys' },
-    { id: 'profile', name: 'Profile' },
+interface Section {
+  id: string
+  name: string
+  group?: string
+  order: number
+}
+
+const GROUP_ORDER: Record<string, number> = {
+  Workspace: 1,
+  'Data Platform': 2,
+  Account: 3,
+  Administration: 4,
+}
+
+const sections = computed<Section[]>(() => {
+  const base: Section[] = [
+    { id: 'connections', name: 'Connections', group: 'Workspace', order: 10 },
+    { id: 'channels', name: 'Channels', group: 'Workspace', order: 20 },
+    { id: 'skills', name: 'Skills', group: 'Workspace', order: 30 },
+    { id: 'memory', name: 'Memory', group: 'Workspace', order: 40 },
+    { id: 'jobs', name: 'Jobs', group: 'Workspace', order: 50 },
+    { id: 'profile', name: 'Profile', group: 'Account', order: 10 },
+    {
+      id: 'credits',
+      name: featureConfig.value?.credits_enabled === false ? 'API Keys' : 'Credits & API Keys',
+      group: 'Account',
+      order: 20,
+    },
   ]
-  if (featureConfig.value?.telegram_enabled) {
-    base.push({ id: 'channels', name: 'Channels' })
-  }
-  const leading: typeof base = []
+  const channelsHidden = !featureConfig.value?.telegram_enabled
+  const all: Section[] = base.filter(s => !(s.id === 'channels' && channelsHidden))
   for (const tab of pluginTabs.value) {
-    if (base.find(s => s.id === tab.id)) continue
-    const entry = { id: tab.id, name: tab.label, group: tab.group } as any
-    if ((tab.order ?? 100) < 100) {
-      leading.push(entry)
-    } else {
-      base.push(entry)
-    }
+    if (all.find(s => s.id === tab.id)) continue
+    all.push({
+      id: tab.id,
+      name: tab.label,
+      group: tab.group,
+      order: tab.order ?? 100,
+    })
   }
-  return [...leading, ...base]
+  return all.sort((a, b) => {
+    const ga = GROUP_ORDER[a.group ?? ''] ?? 99
+    const gb = GROUP_ORDER[b.group ?? ''] ?? 99
+    return ga !== gb ? ga - gb : a.order - b.order
+  })
 })
 
 const route = useRoute()
 const currentSection = ref('connections')
 
+// Legacy deep links: users/members/invitations were merged into the People page.
+const LEGACY_TAB_REDIRECTS: Record<string, string> = {
+  users: 'people',
+  members: 'people',
+  invitations: 'people',
+}
+
 watch([() => route.query.tab, sections], ([tab, secs]) => {
-  const id = (tab as string) || 'connections'
+  const raw = (tab as string) || 'connections'
+  const id = LEGACY_TAB_REDIRECTS[raw] ?? raw
   if (secs.some(s => s.id === id)) {
     currentSection.value = id
   }
