@@ -41,41 +41,15 @@ class SqliteFileConnector:
         DO Spaces), the connection's ``health_status`` is set to ``"unhealthy"``
         before the error is raised.
         """
-        do_spaces_key = connection.dataset_table_name
-
-        # Local file (e.g., bundled sample data) — absolute paths are local
-        if do_spaces_key and os.path.isabs(do_spaces_key) and os.path.isfile(do_spaces_key):
-            return cls(do_spaces_key)
-
-        from backend.services import object_storage
         from backend.config import settings
+        from backend.connectors._sqlite_cache import download_and_cache_sqlite_blob
 
-        cache_dir = settings.dataset_cache_dir
-        cache_path = os.path.join(cache_dir, f"{connection.id}.sqlite")
-
-        cache_valid = (
-            os.path.exists(cache_path)
-            and os.path.getmtime(cache_path) > time.time() - 3600
+        path = download_and_cache_sqlite_blob(
+            connection,
+            cache_dir=settings.dataset_cache_dir,
+            db_session=db_session,
         )
-
-        if not cache_valid:
-            data = object_storage.download_bytes(do_spaces_key)
-            if data is None:
-                if db_session is not None:
-                    from datetime import datetime, timezone
-                    connection.health_status = "unhealthy"
-                    connection.health_checked_at = datetime.now(timezone.utc)
-                    db_session.commit()
-                raise FileNotFoundError(
-                    f"SQLite file not found in DO Spaces: {do_spaces_key}"
-                )
-            os.makedirs(cache_dir, exist_ok=True)
-            tmp_path = cache_path + ".tmp"
-            with open(tmp_path, "wb") as f:
-                f.write(data)
-            os.rename(tmp_path, cache_path)
-
-        return cls(cache_path)
+        return cls(path)
 
     def test_connection(self) -> bool:
         """Test if the SQLite file is valid and has at least one user table."""
@@ -158,7 +132,8 @@ class SqliteFileConnector:
 
     def execute_query(self, query: str, params=None) -> QueryResult:
         """Execute a read-only SELECT query against the SQLite database."""
-        self._validate_readonly_query(query)
+        from backend.connectors.sqlite_utils import validate_readonly_query
+        validate_readonly_query(query)
 
         start_time = time.time()
         uri = f"file:{self.db_path}?mode=ro"
@@ -197,48 +172,6 @@ class SqliteFileConnector:
             )
         finally:
             conn.close()
-
-    def _validate_readonly_query(self, query: str) -> None:
-        """Validate that query is read-only (SELECT/WITH only)."""
-        query_upper = query.strip().upper()
-
-        if len(query) > 10_000:
-            raise ValueError("Query exceeds maximum allowed length of 10,000 characters.")
-
-        lines = [line.split('--')[0] for line in query_upper.split('\n')]
-        query_clean = ' '.join(lines)
-        query_clean = re.sub(r'/\*.*?\*/', ' ', query_clean, flags=re.DOTALL)
-        query_clean = ' '.join(query_clean.split())
-
-        if ';' in query_clean.rstrip(';'):
-            raise ValueError("Multiple statements not allowed. Only single SELECT queries permitted.")
-
-        # Strip quoted identifiers and string literals so column names
-        # like "cluster" don't trigger the dangerous-keyword check.
-        query_for_keyword_check = re.sub(r'"[^"]*"', ' ', query_clean)
-        query_for_keyword_check = re.sub(r"'[^']*'", ' ', query_for_keyword_check)
-
-        dangerous_keywords = [
-            'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER',
-            'TRUNCATE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE',
-            'COPY', 'LOAD', 'SET', 'CALL', 'RENAME',
-            'INTO', 'EXPLAIN', 'VACUUM', 'REINDEX', 'CLUSTER',
-            'COMMENT', 'NOTIFY', 'LISTEN', 'UNLISTEN', 'DO',
-            'PREPARE', 'DEALLOCATE',
-        ]
-        for keyword in dangerous_keywords:
-            if re.search(rf'\b{keyword}\b', query_for_keyword_check):
-                raise ValueError(f"Query contains forbidden keyword: {keyword}. Only SELECT queries are allowed.")
-
-        dangerous_sqlite_functions = [
-            r'\bLOAD_EXTENSION\b', r'\bREADFILE\b', r'\bWRITEFILE\b',
-        ]
-        for pattern in dangerous_sqlite_functions:
-            if re.search(pattern, query_clean):
-                raise ValueError("Query contains a forbidden SQLite function.")
-
-        if not re.match(r'^(SELECT|WITH)\b', query_clean):
-            raise ValueError("Query must start with SELECT or WITH (for CTEs)")
 
     def close(self):
         pass
