@@ -14,6 +14,15 @@ if "fastapi" not in sys.modules:
 if not hasattr(sys.modules["fastapi"], "APIRouter"):
     sys.modules["fastapi"].APIRouter = MagicMock
 
+# sqlalchemy.exc isn't in conftest's stub hierarchy — add IntegrityError so the
+# materializer's `from sqlalchemy.exc import IntegrityError` resolves.
+if "sqlalchemy.exc" not in sys.modules:
+    sys.modules["sqlalchemy.exc"] = _types.ModuleType("sqlalchemy.exc")
+if not hasattr(sys.modules["sqlalchemy.exc"], "IntegrityError"):
+    class _StubIntegrityError(Exception):
+        pass
+    sys.modules["sqlalchemy.exc"].IntegrityError = _StubIntegrityError
+
 _BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -120,6 +129,8 @@ def _make_db(existing_pipelines=None, existing_transforms=None):
     db.query = MagicMock(side_effect=query)
     db.add = MagicMock()
     db.flush = MagicMock()
+    # Per-row savepoint pattern: db.begin_nested() returns a context with rollback().
+    db.begin_nested = MagicMock(return_value=MagicMock())
     return db
 
 
@@ -148,7 +159,8 @@ def test_materialize_creates_pipeline_with_static_config():
 
     assert len(new_p) == 1
     assert new_t == []
-    db.flush.assert_called_once()
+    # Per-row savepoint pattern: each insert begins a nested transaction.
+    db.begin_nested.assert_called_once()
 
 
 def test_materialize_resolves_callable_extraction_config():
@@ -182,7 +194,7 @@ def test_materialize_skips_when_pipeline_fingerprint_exists():
     new_p, _ = materialize_templates_for_connection(conn, reg, db)
 
     assert new_p == []
-    db.flush.assert_not_called()
+    db.begin_nested.assert_not_called()  # SELECT-based dedup short-circuits before SAVEPOINT
 
 
 def test_materialize_skips_when_dbt_model_name_exists():
@@ -220,7 +232,7 @@ def test_materialize_no_templates_is_noop():
 
     assert new_p == []
     assert new_t == []
-    db.flush.assert_not_called()
+    db.begin_nested.assert_not_called()
 
 
 def test_materialize_uses_connection_fingerprint_when_present():
@@ -279,6 +291,27 @@ def test_materialize_resolves_callable_target_table():
 
     assert captured == [42]
     assert len(new_p) == 1
+
+
+def test_materialize_swallows_integrity_error_via_savepoint():
+    """Concurrent backend + celery-worker startup can both pass SELECT dedup
+    and race the INSERT. The savepoint pattern catches IntegrityError per row
+    and treats it as 'another process won — skip'.
+    """
+    IntegrityError = sys.modules["sqlalchemy.exc"].IntegrityError
+
+    reg = _registration(pipeline_templates=[
+        PipelineTemplate(name="P", target_table="t", extraction_config={}),
+    ])
+    conn = _make_connection()
+    db = _make_db()
+    # flush() raises IntegrityError — simulating a concurrent INSERT.
+    db.flush.side_effect = IntegrityError("uq_pipeline_scope_fingerprint", None, None)
+
+    new_p, _ = materialize_templates_for_connection(conn, reg, db)
+
+    assert new_p == []                                     # row treated as already existing
+    db.begin_nested.return_value.rollback.assert_called()  # savepoint rolled back
 
 
 def test_materialize_skips_when_connection_target_table_already_exists():

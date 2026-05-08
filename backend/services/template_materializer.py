@@ -19,6 +19,7 @@ import logging
 import uuid as _uuid
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.data_plane.scope import OwnerScope
@@ -28,6 +29,21 @@ from backend.pipelines.runner import compute_pipeline_fingerprint
 from backend.plugins.base import ConnectorRegistration, PipelineTemplate, TransformTemplate
 
 logger = logging.getLogger(__name__)
+
+
+def _try_insert(db: Session, row) -> bool:
+    """Insert `row` inside a SAVEPOINT. Return True on success, False if a
+    unique constraint fired (another process won the race — that's success
+    from our perspective: the row exists).
+    """
+    sp = db.begin_nested()
+    try:
+        db.add(row)
+        db.flush()
+    except IntegrityError:
+        sp.rollback()
+        return False
+    return True
 
 
 def _resolve_extraction_config(template: PipelineTemplate, connection) -> dict:
@@ -87,8 +103,9 @@ def _materialize_pipeline(
         enabled=template.enabled,
         created_by_user_id=connection.user_id,
     )
-    db.add(row)
-    return row
+    if _try_insert(db, row):
+        return row
+    return None
 
 
 def _materialize_transform(
@@ -117,8 +134,9 @@ def _materialize_transform(
         enabled=template.enabled,
         created_by_user_id=connection.user_id,
     )
-    db.add(row)
-    return row
+    if _try_insert(db, row):
+        return row
+    return None
 
 
 def materialize_templates_for_connection(
@@ -161,7 +179,6 @@ def materialize_templates_for_connection(
             )
 
     if new_pipelines or new_transforms:
-        db.flush()
         logger.info(
             "Materialized %d pipeline(s) + %d transform(s) for connection %s (%s)",
             len(new_pipelines), len(new_transforms), connection.id, registration.type_id,

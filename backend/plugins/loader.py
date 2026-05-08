@@ -131,6 +131,9 @@ def _backfill_templates_for_plugin(plugin: BingoPlugin) -> None:
                         "Template backfill failed for connection %s (%s)",
                         conn.id, reg.type_id,
                     )
+                    # Reset the session so the next connection in the loop
+                    # isn't blocked by a poisoned transaction state.
+                    db.rollback()
             if backfilled:
                 db.commit()
                 logger.info(
