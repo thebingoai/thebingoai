@@ -76,6 +76,13 @@ async def get_current_user(
             # Auto-create new user
             user = _create_user(db, sso_user)
 
+    # Bind the user to the request-scoped contextvar so the governance
+    # plugin's DataPlane wrap can enforce ACL without threading `user`
+    # through every caller. The contextvar resets at request end via FastAPI's
+    # task-scoped contextvars; we don't need an explicit reset here.
+    from backend.auth.request_context import set_current_request_user
+    set_current_request_user(user)
+
     return user
 
 
