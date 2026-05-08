@@ -34,7 +34,7 @@ lives in the plugin and falls back to Permit when the plugin is absent.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 from backend.auth.system_context import current_system_context
 
@@ -159,3 +159,44 @@ def reset_listeners() -> None:
     """Drop all registered listeners. Used by tests; never by production code."""
     _org_created_listeners.clear()
     _resource_created_listeners.clear()
+
+
+# ---------------------------------------------------------------------------
+# v1.c.1 — Connector dedup nudge
+# ---------------------------------------------------------------------------
+
+class DedupCheckFn(Protocol):
+    def __call__(self, *, user: Any, connection_payload: dict) -> Optional[str]: ...
+
+
+def _default_dedup_check(*, user: Any, connection_payload: dict) -> Optional[str]:
+    return None
+
+
+_dedup_check_fn: DedupCheckFn = _default_dedup_check
+
+
+def find_duplicate_connection(*, user: Any, connection_payload: dict) -> Optional[str]:
+    """Look for an existing connection in caller's org with the same fingerprint.
+
+    Returns the matching connection id (string) or None. Default is no-op
+    (None); the bingo-org-governance plugin registers an impl that uses the
+    connector's fingerprint(connection) helper to compute and SELECT.
+    """
+    return _dedup_check_fn(user=user, connection_payload=connection_payload)
+
+
+def register_dedup_check(fn: DedupCheckFn) -> None:
+    """Override the dedup-check function — called by the governance plugin on_startup."""
+    global _dedup_check_fn
+    _dedup_check_fn = fn
+    logger.info(
+        "governance.contract: dedup_check fn registered (%s)",
+        getattr(fn, "__qualname__", repr(fn)),
+    )
+
+
+def reset_dedup_check() -> None:
+    """Restore the no-op default. Used by tests; never by production code."""
+    global _dedup_check_fn
+    _dedup_check_fn = _default_dedup_check

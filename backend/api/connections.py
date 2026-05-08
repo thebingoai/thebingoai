@@ -94,6 +94,7 @@ router = APIRouter(prefix="/connections", tags=["connections"])
 @router.post("", response_model=ConnectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_connection(
     request: ConnectionCreate,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -109,12 +110,32 @@ async def create_connection(
     logger.info("Creating connection '%s' (type=%s, host=%s, port=%s, db=%s, ssl=%s)",
         request.name, request.db_type, request.host, request.port, request.database, request.ssl_enabled)
 
-    from backend.governance.contract import require as governance_require
+    from backend.governance.contract import (
+        find_duplicate_connection,
+        require as governance_require,
+    )
     governance_require(
         user=current_user,
         action="create",
         resource={"type": "connection", "db_type": request.db_type},
     )
+
+    if not force:
+        existing_id = find_duplicate_connection(
+            user=current_user,
+            connection_payload=request.model_dump(),
+        )
+        if existing_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": (
+                        "An organization-scoped connection with the same identity "
+                        "already exists. Pass ?force=true to create a duplicate."
+                    ),
+                    "existing_connection_id": existing_id,
+                },
+            )
 
     # Create connection (without schema info yet)
     # password and ssl_ca_cert use hybrid_property setters and cannot be passed
