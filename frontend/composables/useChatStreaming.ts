@@ -355,7 +355,8 @@ export const useChatStreaming = () => {
         }
 
         const threadId: string = data.thread_id
-        if (threadId && !chatStore.currentThreadId) {
+        const isNewOrPending = !chatStore.currentThreadId || chatStore.currentThreadId?.startsWith('pending-')
+        if (threadId && isNewOrPending) {
           chatStore.setCurrentThread(threadId)
           const realConv = {
             id: threadId,

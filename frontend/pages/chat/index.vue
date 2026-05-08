@@ -11,7 +11,7 @@
       </div>
 
       <!-- Active thread (conversation in progress) -->
-      <div v-else-if="chatStore.currentThreadId || isTransitioning" key="chat" class="flex flex-1 flex-col min-w-0 min-h-0">
+      <div v-else-if="chatStore.currentThreadId || isTransitioning || chatStore.pendingNewConversationId" key="chat" class="flex flex-1 flex-col min-w-0 min-h-0">
         <!-- Inner page-fade-slide handles task A → task B (mirrors Bingo↔Dashboard).
              :name="''" when currentThreadId is null suppresses CSS during outer transitions
              (going to/from New Task), preventing the previous double-animation. -->
@@ -109,7 +109,8 @@ const enterFromSend = ref(false)
 const showNewTaskScreen = computed(() =>
   chatStore.conversationsLoaded &&
   !chatStore.currentThreadId &&
-  !isTransitioning.value
+  !isTransitioning.value &&
+  !chatStore.pendingNewConversationId
 )
 watch(() => chatStore.currentThreadId, (id) => {
   if (!id) { isTransitioning.value = false; sendingFromNewTask.value = false }
