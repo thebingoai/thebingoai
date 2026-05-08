@@ -62,6 +62,15 @@
                 </button>
               </div>
             </div>
+            <!-- Share button (visible when ShareButton component is registered by the
+                 governance plugin; auto-importable across the Nuxt layer). -->
+            <ShareButton
+              v-if="connection.uuid"
+              resource-type="connection"
+              :resource-id="connection.uuid"
+              class="mt-0.5 shrink-0"
+              @click.stop
+            />
             <!-- Spinner while sync or profile is running -->
             <Loader2
               v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
