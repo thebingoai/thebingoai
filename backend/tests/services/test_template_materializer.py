@@ -1,5 +1,6 @@
 """Tests for template_materializer service."""
 import importlib.util
+import os
 import sys
 from unittest.mock import MagicMock
 
@@ -13,11 +14,13 @@ if "fastapi" not in sys.modules:
 if not hasattr(sys.modules["fastapi"], "APIRouter"):
     sys.modules["fastapi"].APIRouter = MagicMock
 
+_BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 
 # Import target module directly to bypass app-level model imports.
 spec = importlib.util.spec_from_file_location(
     "template_materializer",
-    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/services/template_materializer.py",
+    os.path.join(_BACKEND_DIR, "services", "template_materializer.py"),
 )
 
 # Stub the heavy backend imports the module performs at top-level.
@@ -59,7 +62,7 @@ import importlib
 sys.modules.pop("backend.plugins.base", None)
 spec_base = importlib.util.spec_from_file_location(
     "backend.plugins.base",
-    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/plugins/base.py",
+    os.path.join(_BACKEND_DIR, "plugins", "base.py"),
 )
 base_module = importlib.util.module_from_spec(spec_base)
 sys.modules["backend.plugins.base"] = base_module

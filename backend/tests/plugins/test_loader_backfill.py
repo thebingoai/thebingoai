@@ -1,5 +1,6 @@
 """Tests for the loader-side template backfill on plugin startup."""
 import importlib.util
+import os
 import sys
 import types as _types
 from contextlib import contextmanager
@@ -13,11 +14,13 @@ if "fastapi" not in sys.modules:
 if not hasattr(sys.modules["fastapi"], "APIRouter"):
     sys.modules["fastapi"].APIRouter = MagicMock
 
+_BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 
 # Load plugins.base for real dataclasses.
 _spec_base = importlib.util.spec_from_file_location(
     "backend.plugins.base",
-    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/plugins/base.py",
+    os.path.join(_BACKEND_DIR, "plugins", "base.py"),
 )
 sys.modules.pop("backend.plugins.base", None)
 _base = importlib.util.module_from_spec(_spec_base)
@@ -29,15 +32,11 @@ PipelineTemplate = _base.PipelineTemplate
 BingoPlugin = _base.BingoPlugin
 
 
-# Stub fastapi (loader imports APIRouter from it).
-sys.modules.setdefault("fastapi", MagicMock(APIRouter=MagicMock()))
-
-
 # Load loader.py with stubbed downstream imports.
 def _load_loader_module():
     spec = importlib.util.spec_from_file_location(
         "loader_under_test",
-        "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/plugins/loader.py",
+        os.path.join(_BACKEND_DIR, "plugins", "loader.py"),
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
