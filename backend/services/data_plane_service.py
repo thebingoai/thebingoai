@@ -60,7 +60,7 @@ def _instantiate(row):
         root = row.config.get("root_path", "/data/data_plane")
         return LocalFilesystemDataPlane(root_path=root)
 
-    if row.type == "bigquery_gcs":
+    if row.type == "google_cloud_project":
         from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
         sa_json = decrypt_password(row.credentials_encrypted) if row.credentials_encrypted else ""
         return BigQueryGCSPlane(

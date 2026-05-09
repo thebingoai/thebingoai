@@ -5,7 +5,7 @@ export interface DataPlane {
   id: string
   owner_scope_kind: string
   owner_scope_id: string
-  type: 'local_filesystem' | 'bigquery_gcs'
+  type: 'local_filesystem' | 'google_cloud_project'
   config: Record<string, unknown>
   is_default: boolean
   created_at: string
@@ -15,7 +15,7 @@ export interface DataPlane {
 export interface CreateDataPlanePayload {
   owner_scope_kind: string
   owner_scope_id: string
-  type: 'local_filesystem' | 'bigquery_gcs'
+  type: 'local_filesystem' | 'google_cloud_project'
   config: Record<string, unknown>
   credentials?: string
   is_default: boolean

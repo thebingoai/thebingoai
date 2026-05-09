@@ -5,7 +5,7 @@
       <p class="mt-1 text-sm text-gray-500">
         Configure where Bingo stores materialized dashboard data.
         Choose <strong>Local Filesystem</strong> for self-hosted or dev, or
-        <strong>BigQuery + GCS</strong> for cloud production.
+        <strong>Google Cloud Project</strong> for cloud production.
       </p>
     </div>
 
@@ -69,7 +69,7 @@
             class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="local_filesystem">Local Filesystem (dev / self-hosted)</option>
-            <option value="bigquery_gcs">BigQuery + GCS (cloud production)</option>
+            <option value="google_cloud_project">Google Cloud Project (cloud production)</option>
           </select>
         </div>
 
@@ -78,7 +78,7 @@
           v-model="newConfig"
         />
         <BigQueryGCSForm
-          v-else-if="newType === 'bigquery_gcs'"
+          v-else-if="newType === 'google_cloud_project'"
           v-model="newConfig"
           @update:credentials="newCredentials = $event"
         />
@@ -111,7 +111,7 @@ const props = defineProps<{
 
 const { planes, loading, error, fetchPlanes, createPlane, deletePlane, setDefault } = useDataPlanes()
 
-const newType = ref<'local_filesystem' | 'bigquery_gcs'>('local_filesystem')
+const newType = ref<'local_filesystem' | 'google_cloud_project'>('local_filesystem')
 const newConfig = ref<Record<string, unknown>>({})
 const newCredentials = ref('')
 const newIsDefault = ref(false)
@@ -121,7 +121,7 @@ const saveError = ref<string | null>(null)
 onMounted(() => fetchPlanes(props.orgId))
 
 function planeLabel(type: string): string {
-  return type === 'local_filesystem' ? 'Local Filesystem' : 'BigQuery + GCS'
+  return type === 'local_filesystem' ? 'Local Filesystem' : 'Google Cloud Project'
 }
 
 function planeSummary(plane: { type: string; config: Record<string, unknown> }): string {

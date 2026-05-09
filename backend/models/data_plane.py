@@ -11,7 +11,7 @@ class DataPlaneModel(Base, TimestampMixin):
     id = Column(String, primary_key=True, default=lambda: str(_uuid.uuid4()))
     owner_scope_kind = Column(String(8), nullable=False)   # user | team | org
     owner_scope_id = Column(String, nullable=False)        # matches the respective table's PK
-    type = Column(String(32), nullable=False)              # local_filesystem | bigquery_gcs
+    type = Column(String(32), nullable=False)              # local_filesystem | google_cloud_project
     config = Column(
         JSONB, nullable=False, server_default=text("'{}'"), default=dict,
     )
