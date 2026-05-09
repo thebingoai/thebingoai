@@ -69,7 +69,7 @@ export function createChatApi(fetchWithRefresh: Function, authStore: any, router
       })
     },
     async cancelDataset(fileId: string) {
-      return fetchWithRefresh(`/api/chat/files/${fileId}/dataset`, {
+      return fetchWithRefresh(`/api/chat/files/${encodeURIComponent(fileId)}/dataset`, {
         method: 'DELETE',
       })
     },

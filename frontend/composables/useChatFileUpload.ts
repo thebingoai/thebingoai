@@ -3,9 +3,10 @@ export interface UploadingFile {
   file_id: string | null
   connection_id?: number | null  // for dataset files uploaded via connections API
   preview_url: string | null  // object URL for images
-  status: 'uploading' | 'ready' | 'error'
+  status: 'uploading' | 'processing' | 'ready' | 'error'
   error?: string
   progress?: number  // 0-100, only meaningful when status === 'uploading'
+  sent?: boolean  // true after first send — skip in subsequent message embeddings
 }
 
 interface FileRejection {
@@ -60,10 +61,12 @@ function resolveFileType(file: File): string | null {
 }
 
 // Module-level singleton state (shared across all callers)
-const attachedFiles = ref<UploadingFile[]>([])
+// Exported so useDatasetStatus can read it reactively without a circular import.
+export const attachedFiles = ref<UploadingFile[]>([])
 
 const allFilesReady = computed<boolean>(() => {
-  return attachedFiles.value.length > 0 && attachedFiles.value.every(f => f.status === 'ready')
+  return attachedFiles.value.length > 0 &&
+    attachedFiles.value.every(f => f.status === 'ready' || f.status === 'processing')
 })
 
 export const useChatFileUpload = () => {
@@ -147,8 +150,13 @@ export const useChatFileUpload = () => {
     // Helper to update progress for a specific file
     const updateProgress = (fileIndex: number, percent: number) => {
       const updated = [...attachedFiles.value]
-      if (updated[fileIndex]?.status === 'uploading') {
-        updated[fileIndex] = { ...updated[fileIndex], progress: percent }
+      const existing = updated[fileIndex]
+      if (existing?.status === 'uploading') {
+        updated[fileIndex] = {
+          ...existing,
+          progress: percent,
+          ...(percent >= 100 && !existing.transferCompletedAt ? { transferCompletedAt: new Date().toISOString() } : {}),
+        }
         attachedFiles.value = updated
       }
     }
@@ -169,6 +177,14 @@ export const useChatFileUpload = () => {
       }
     }
 
+    const markProcessing = (fileIndex: number, extra: Partial<UploadingFile>) => {
+      const updated = [...attachedFiles.value]
+      if (updated[fileIndex]) {
+        updated[fileIndex] = { ...updated[fileIndex], ...extra, status: 'processing', processingStartedAt: new Date().toISOString() }
+        attachedFiles.value = updated
+      }
+    }
+
     // Upload dataset files via connections API (reuses existing proven endpoint)
     for (const file of datasetFiles) {
       const idx = startIndex + validFiles.indexOf(file)
@@ -181,7 +197,7 @@ export const useChatFileUpload = () => {
           (percent: number) => updateProgress(idx, percent),
           threadId,
         ) as { id: number; name: string; row_count: number }
-        markReady(idx, { file_id: `connection:${result.id}`, connection_id: result.id })
+        markProcessing(idx, { file_id: `connection:${result.id}`, connection_id: result.id })
       } catch (err: any) {
         markError(idx, err?.message || 'Dataset upload failed')
       }
@@ -239,17 +255,20 @@ export const useChatFileUpload = () => {
   }
 
   const clearFiles = () => {
-    for (const file of attachedFiles.value) {
-      if (file.preview_url) {
-        URL.revokeObjectURL(file.preview_url)
-      }
-    }
-    attachedFiles.value = []
+    // Keep all CSV/Excel files so the dataset panel continues showing them
+    // across multiple messages in the same conversation. Mark them as sent so
+    // subsequent messages don't re-embed them. The conversation-change watch
+    // in useDatasetStatus clears them when switching chats.
+    attachedFiles.value = attachedFiles.value.map(f => {
+      if (DATASET_TYPES.has(f.file.type)) return { ...f, sent: true }
+      if (f.preview_url) URL.revokeObjectURL(f.preview_url)
+      return null as any
+    }).filter(Boolean)
   }
 
   const getFileIds = (): string[] => {
     return attachedFiles.value
-      .filter(f => f.status === 'ready' && f.file_id !== null)
+      .filter(f => !f.sent && f.file_id !== null && DATASET_TYPES.has(f.file.type))
       .map(f => f.file_id as string)
   }
 

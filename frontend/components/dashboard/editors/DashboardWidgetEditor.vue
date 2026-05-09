@@ -30,6 +30,16 @@
         Configure
       </button>
       <button
+        v-if="props.widget.widget.type === 'table'"
+        class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
+        :class="activeTab === 'style'
+          ? 'border-indigo-500 text-indigo-600'
+          : 'border-transparent text-gray-500 hover:text-gray-700'"
+        @click="activeTab = 'style'"
+      >
+        Style
+      </button>
+      <button
         class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
         :class="activeTab === 'data'
           ? 'border-indigo-500 text-indigo-600'
@@ -51,9 +61,14 @@
         <component
           :is="editorComponent"
           v-if="editorComponent"
+          :key="props.widget.id"
           :model-value="currentConfig"
           :edit-mode="editMode"
-          v-bind="props.widget.widget.type === 'kpi' ? { dataSource: props.widget.dataSource, sourceColumns, sourceRows: previewRows } : {}"
+          v-bind="props.widget.widget.type === 'kpi'
+            ? { dataSource: props.widget.dataSource, sourceColumns, sourceRows: previewRows }
+            : props.widget.widget.type === 'table'
+              ? { sourceColumns }
+              : {}"
           class="h-full"
           @update:model-value="onConfigUpdate"
           @update:mapping="onMappingUpdate"
@@ -61,6 +76,20 @@
         <div v-else class="flex h-full items-center justify-center p-10 text-sm text-gray-400">
           Configuration editor not yet available for this widget type.
         </div>
+      </div>
+
+      <!-- Style tab (table only) -->
+      <div
+        v-else-if="activeTab === 'style' && props.widget.widget.type === 'table'"
+        class="h-full overflow-hidden"
+      >
+        <WidgetEditorTableStyle
+          :key="props.widget.id"
+          :model-value="currentConfig"
+          :edit-mode="editMode"
+          class="h-full"
+          @update:model-value="onConfigUpdate"
+        />
       </div>
 
       <!-- Data Source tab -->
@@ -226,6 +255,7 @@
 
 <script lang="ts">
 import { defineAsyncComponent } from 'vue'
+import WidgetEditorTableStyle from './WidgetEditorTableStyle.vue'
 
 // Defined at module level so they're singletons, not re-created on each setup call
 const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> = {
@@ -263,7 +293,7 @@ const store = useDashboardStore()
 const api = useApi()
 
 // Tab state (only relevant for data widgets)
-const activeTab = ref<'configure' | 'data'>('configure')
+const activeTab = ref<'configure' | 'style' | 'data'>('configure')
 
 // Local meta state
 const localTitle = computed(() => props.widget.title ?? '')
@@ -349,6 +379,23 @@ const editorComponent = computed(() =>
   editorComponents[props.widget.widget.type] ?? null,
 )
 
+/** Auto-fetch raw SQL columns/rows so the editor's column-key dropdowns stay populated. */
+async function fetchSourceColumns() {
+  const ds = props.widget.dataSource
+  if (!ds?.sql) return
+  try {
+    const response = await api.dashboards.refreshWidget({
+      connection_id: ds.connectionId,
+      sql: ds.sql,
+      mapping: ds.mapping as any,
+    }) as { source_columns?: string[]; source_rows?: any[][] }
+    sourceColumns.value = response.source_columns ?? []
+    previewRows.value = response.source_rows ?? []
+  } catch {
+    // silently ignore — columns will just be empty
+  }
+}
+
 /** Reset local state when a different widget is selected */
 watch(() => props.widget.id, () => {
   localSql.value = tryFormatSql(props.widget.dataSource?.sql ?? '')
@@ -358,6 +405,7 @@ watch(() => props.widget.id, () => {
   previewError.value = null
   suggestion.value = null
   sourceColumns.value = []
+  if (isDataWidget.value) fetchSourceColumns()
   activeTab.value = 'configure'
 })
 
@@ -547,20 +595,7 @@ onMounted(async () => {
     loadOrgTables()
 
     // Auto-fetch source columns if data source exists
-    const ds = props.widget.dataSource
-    if (ds?.sql) {
-      try {
-        const response = await api.dashboards.refreshWidget({
-          connection_id: ds.connectionId,
-          sql: ds.sql,
-          mapping: ds.mapping as any,
-        }) as { source_columns?: string[]; source_rows?: any[][] }
-        sourceColumns.value = response.source_columns ?? []
-        previewRows.value = response.source_rows ?? []
-      } catch {
-        // silently ignore — columns will just be empty
-      }
-    }
+    await fetchSourceColumns()
   }
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))

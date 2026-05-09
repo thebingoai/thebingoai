@@ -14,10 +14,11 @@ const route = useRoute()
 onMounted(async () => {
   const accessToken = route.query.access_token as string
   const refreshToken = route.query.refresh_token as string
+  const isFirstLogin = route.query.is_first_login === 'true'
 
   if (accessToken && refreshToken) {
-    await authStore.handleOAuthSuccess(accessToken, refreshToken)
-    router.push('/chat')
+    await authStore.handleOAuthSuccess(accessToken, refreshToken, isFirstLogin)
+    router.push(authStore.isFirstLogin ? '/connect' : '/chat')
   } else {
     router.push('/auth/error?reason=missing_tokens')
   }

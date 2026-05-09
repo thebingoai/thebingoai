@@ -7,11 +7,10 @@
   >
     <!-- ── EXPANDED state ─────────────────────────────────── -->
     <template v-if="!layoutStore.sidebarCollapsed">
-
       <!-- Logo row + collapse button -->
       <div class="flex h-14 items-center px-4 gap-2 flex-shrink-0">
-        <img src="/logo/logo-black.png" alt="Bingo" class="h-9 w-auto dark:hidden flex-shrink-0" />
-        <img src="/logo/logo-white.png" alt="Bingo" class="h-9 w-auto hidden dark:block flex-shrink-0" />
+        <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 24px; width: auto;" class="dark:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block" />
         <div class="flex-1" />
         <button
           @click="layoutStore.toggleSidebarCollapsed()"
@@ -204,8 +203,8 @@
         title="Open sidebar"
       >
         <!-- Logo visible by default, swap to expand icon on hover -->
-        <img src="/logo/logo-black.png" alt="Bingo" class="h-6 w-auto dark:hidden group-hover:hidden" />
-        <img src="/logo/logo-white.png" alt="Bingo" class="h-6 w-auto hidden dark:block group-hover:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
         <PanelLeftOpen class="h-4 w-4 text-[var(--ink-2)] hidden group-hover:block" />
       </div>
 
@@ -247,7 +246,7 @@
       <button
         @click="router.push('/settings')"
         class="flex h-12 w-full items-center justify-center border-t border-[var(--line)] bg-[var(--paper-0)] hover:bg-[var(--paper-1)] transition-colors flex-shrink-0"
-        title="Settings"
+        :title="featureConfig?.credits_enabled !== false ? `${Math.round(remaining)} credits` : 'Settings'"
       >
         <div class="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ink-0)] text-[var(--paper-0)] text-[11px] font-semibold">
           {{ userInitial }}
@@ -265,8 +264,8 @@
     style="width: 220px"
   >
     <div class="flex h-14 items-center px-4">
-      <img src="/logo/logo-black.png" alt="Bingo" class="h-9 w-auto dark:hidden" />
-      <img src="/logo/logo-white.png" alt="Bingo" class="h-9 w-auto hidden dark:block" />
+      <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 36px; width: auto;" class="hidden dark:block" />
+      <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 36px; width: auto;" class="hidden dark:block" />
       <div class="flex-1" />
       <button @click="layoutStore.setMainExpanded(true)" class="p-1 text-[var(--ink-3)] hover:text-[var(--ink-1)]">
         <X class="h-4 w-4" />
@@ -302,8 +301,13 @@
     </div>
 
     <button @click="router.push('/settings'); closeSidebarOnMobile()" class="border-t border-[var(--line)] px-4 py-3 flex items-center gap-2.5 hover:bg-[var(--paper-1)]">
-      <div class="h-8 w-8 rounded-full bg-[var(--ink-0)] text-[var(--paper-0)] flex items-center justify-center text-[12px] font-semibold">{{ userInitial }}</div>
-      <span class="text-[12.5px] text-[var(--ink-0)] truncate">{{ authStore.user?.email }}</span>
+      <div class="h-8 w-8 rounded-full bg-[var(--ink-0)] text-[var(--paper-0)] flex items-center justify-center text-[12px] font-semibold flex-shrink-0">{{ userInitial }}</div>
+      <div class="min-w-0">
+        <span class="text-[12.5px] text-[var(--ink-0)] truncate block">{{ authStore.user?.email }}</span>
+        <span v-if="featureConfig?.credits_enabled !== false" class="font-mono text-[10px] text-[var(--ink-2)]">
+          <span class="text-[var(--ember)]">●</span> {{ Math.round(remaining) }} credits
+        </span>
+      </div>
     </button>
   </aside>
 </template>

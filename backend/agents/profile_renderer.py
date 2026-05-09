@@ -113,6 +113,20 @@ class ProfileRenderer:
                 if _lock_priority(lock_level) > _lock_priority(existing):
                     merged_locks[section] = lock_level
 
+        # Apply published snapshot for user-level profile if available.
+        # This ensures draft edits don't affect live agent sessions until published.
+        if user_id:
+            user_prof = next(
+                (p for p in profiles if getattr(p, 'user_id', None) == user_id),
+                None,
+            )
+            if user_prof:
+                snapshot = getattr(user_prof, 'published_snapshot', None) or {}
+                if snapshot:
+                    for section in SECTIONS:
+                        if section in snapshot and snapshot[section] is not None:
+                            merged_values[section] = snapshot[section]
+
         # Build a transient AgentProfile with merged values
         resolved = AgentProfile(
             agent_type=agent_type,

@@ -35,9 +35,9 @@ export default defineNuxtConfig({
 
   googleFonts: {
     families: {
-      'Manrope': [300, 400, 500, 600, 700],
+      'DM Sans': [200, 300, 400, 500, 600, 700],
       'JetBrains Mono': [400, 500, 600],
-      'Fraunces': [400, 500, 600]
+      'Instrument Serif': [400]
     },
     display: 'swap',
     download: true
@@ -47,6 +47,7 @@ export default defineNuxtConfig({
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8000',
       chatFileMaxSizeMb: Number(process.env.NUXT_PUBLIC_CHAT_FILE_MAX_SIZE_MB) || 50,
+      workspaceName: process.env.NUXT_PUBLIC_WORKSPACE_NAME || 'your workspace',
     }
   },
 
@@ -56,7 +57,6 @@ export default defineNuxtConfig({
     '/api/connections/upload-dataset': {
       proxy: {
         to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/connections/upload-dataset`,
-        timeout: 120_000,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }
@@ -65,7 +65,6 @@ export default defineNuxtConfig({
     '/api/connections/upload-sqlite': {
       proxy: {
         to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/connections/upload-sqlite`,
-        timeout: 120_000,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }
@@ -76,7 +75,6 @@ export default defineNuxtConfig({
     '/api/chat/files/upload': {
       proxy: {
         to: `${process.env.BACKEND_INTERNAL_URL || 'http://localhost:8000'}/api/chat/files/upload`,
-        timeout: 120_000,
         headers: {
           'X-Forwarded-Host': 'localhost:3000'
         }

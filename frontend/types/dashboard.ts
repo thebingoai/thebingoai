@@ -40,17 +40,52 @@ export interface TableColumn {
   label: string
   sortable?: boolean
   filterable?: boolean
-  format?: 'number' | 'currency' | 'percent' | 'date' | 'text'
+  format?: 'number' | 'currency' | 'percent' | 'date' | 'text' | 'duration'
+  role?: 'dimension' | 'metric'   // dimension = group-by; metric = aggregated
   roundValue?: boolean
   decimalPlaces?: number
+  align?: 'left' | 'center' | 'right'
+  displayType?: 'number' | 'bar' | 'heatmap'
+  showBarValue?: boolean
+  // Metrics
+  compactNumbers?: boolean
+  aggregation?: 'none' | 'sum' | 'average' | 'count' | 'countDistinct' | 'min' | 'max' | 'median' | 'stdDev' | 'variance'
+  comparisonCalc?: 'none' | 'percentOfTotal' | 'diffFromTotal' | 'percentDiffFromTotal' | 'percentOfMax' | 'diffFromMax' | 'percentDiffFromMax'
+  runningCalc?: 'none' | 'runningSum' | 'runningMin' | 'runningMax' | 'runningCount' | 'runningAverage' | 'runningDelta' | 'runningPercentageDelta'
 }
 
 export interface TableWidgetConfig {
   title?: string
+  showTitle?: boolean
   columns: TableColumn[]
   rows: Record<string, any>[]
   pagination?: boolean
   rowsPerPage?: number
+  // Style tab
+  showHeader?: boolean
+  showRowNumbers?: boolean
+  stripedRows?: boolean
+  wrapText?: boolean
+  horizontalScrolling?: boolean
+  showSummaryRow?: boolean
+  missingDataDisplay?: 'dash' | 'blank' | 'noData'
+  columnColors?: Record<string, string>
+  headerBackground?: string
+  cellBorderColor?: string
+  oddRowColor?: string
+  evenRowColor?: string
+  // Border (around table widget)
+  borderColor?: string
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'none'
+  borderWidth?: number       // 0–5 px
+  borderRadius?: number      // 0–16 px
+  // Font (cell text)
+  fontFamily?: 'system' | 'sans' | 'serif' | 'mono'
+  fontSize?: 'xs' | 'sm' | 'md' | 'lg'
+  fontColor?: string
+  // Configure tab
+  defaultSortKey?: string
+  defaultSortDir?: 'asc' | 'desc'
 }
 
 // Text/markdown widget

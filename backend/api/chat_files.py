@@ -198,24 +198,42 @@ async def cancel_dataset(
     from backend.models.database_connection import DatabaseConnection
     from backend.services.ws_connection_manager import ConnectionManager
 
-    # Find the file in Redis to get thread_id and verify ownership
-    file_data = chat_file_service.get_file(file_id)
-    if not file_data:
-        raise HTTPException(status_code=404, detail="File not found")
+    connection = None
 
-    thread_id = file_data.get("thread_id")
+    thread_id = None
 
-    # Find the associated DatabaseConnection
-    connection = (
-        db.query(DatabaseConnection)
-        .filter(
-            DatabaseConnection.source_filename == file_data.get("original_name"),
-            DatabaseConnection.user_id == current_user.id,
-            DatabaseConnection.is_ephemeral.is_(True),
+    # Handle connection:N file IDs — look up DatabaseConnection directly
+    if file_id.startswith("connection:"):
+        try:
+            cid = int(file_id.split(":", 1)[1])
+            connection = db.query(DatabaseConnection).filter(
+                DatabaseConnection.id == cid,
+                DatabaseConnection.user_id == current_user.id,
+            ).first()
+        except (ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="Invalid connection reference")
+
+        if connection is None:
+            raise HTTPException(status_code=404, detail="Connection not found")
+    else:
+        # Find the file in Redis to get thread_id and verify ownership
+        file_data = chat_file_service.get_file(file_id)
+        if not file_data:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        thread_id = file_data.get("thread_id")
+
+        # Find the associated DatabaseConnection
+        connection = (
+            db.query(DatabaseConnection)
+            .filter(
+                DatabaseConnection.source_filename == file_data.get("original_name"),
+                DatabaseConnection.user_id == current_user.id,
+                DatabaseConnection.is_ephemeral.is_(True),
+            )
+            .order_by(DatabaseConnection.id.desc())
+            .first()
         )
-        .order_by(DatabaseConnection.id.desc())
-        .first()
-    )
 
     if connection:
         # Revoke any running Celery task

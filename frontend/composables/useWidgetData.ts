@@ -38,6 +38,18 @@ export function useWidgetData(widget: Ref<DashboardWidget>) {
       }) as { config: Record<string, any>; refreshed_at: string }
 
       if (seq !== refreshSeq) return
+      // For table widgets, preserve editor-only column fields (aggregation,
+      // align, displayType, comparisonCalc, runningCalc, etc.) that the
+      // backend transform doesn't know about. Merge by column key.
+      if (widget.value.widget.type === 'table' && Array.isArray(response.config?.columns)) {
+        const existingByKey = new Map<string, any>(
+          ((widget.value.widget.config as any)?.columns ?? []).map((c: any) => [c.key, c]),
+        )
+        response.config.columns = response.config.columns.map((rc: any) => {
+          const existing = existingByKey.get(rc.key)
+          return existing ? { ...rc, ...existing, key: rc.key, label: rc.label ?? existing.label } : rc
+        })
+      }
       Object.assign(widget.value.widget.config, response.config)
       ds.lastRefreshedAt = response.refreshed_at
     } catch (err: any) {

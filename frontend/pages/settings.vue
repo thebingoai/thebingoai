@@ -58,7 +58,8 @@
 
     <!-- Settings Content -->
     <div class="flex-1 overflow-y-auto">
-      <SettingsConnections v-if="currentSection === 'connections'" />
+      <SettingsAgent       v-if="currentSection === 'agent'" />
+      <SettingsConnections v-else-if="currentSection === 'connections'" />
       <SettingsSkills v-else-if="currentSection === 'skills'" />
       <SettingsJobs v-else-if="currentSection === 'jobs'" />
       <SettingsMemory v-else-if="currentSection === 'memory'" />
@@ -108,6 +109,7 @@ const GROUP_ORDER: Record<string, number> = {
 
 const sections = computed<Section[]>(() => {
   const base: Section[] = [
+    { id: 'agent', name: 'Agent', group: 'Workspace', order: 5 },
     { id: 'connections', name: 'Connections', group: 'Workspace', order: 10 },
     { id: 'channels', name: 'Channels', group: 'Workspace', order: 20 },
     { id: 'skills', name: 'Skills', group: 'Workspace', order: 30 },
@@ -140,7 +142,7 @@ const sections = computed<Section[]>(() => {
 })
 
 const route = useRoute()
-const currentSection = ref('connections')
+const currentSection = ref('agent')
 
 // Legacy deep links: users/members/invitations were merged into the People page.
 const LEGACY_TAB_REDIRECTS: Record<string, string> = {
@@ -150,7 +152,7 @@ const LEGACY_TAB_REDIRECTS: Record<string, string> = {
 }
 
 watch([() => route.query.tab, sections], ([tab, secs]) => {
-  const raw = (tab as string) || 'connections'
+  const raw = (tab as string) || 'agent'
   const id = LEGACY_TAB_REDIRECTS[raw] ?? raw
   if (secs.some(s => s.id === id)) {
     currentSection.value = id

@@ -23,6 +23,7 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "slow: Slow tests",
+    "asyncio: async tests",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

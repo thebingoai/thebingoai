@@ -18,7 +18,7 @@
     />
 
     <!-- Main content — fills remaining space -->
-    <main class="flex flex-1 flex-col overflow-hidden min-w-0">
+    <main class="flex flex-1 flex-col overflow-hidden min-w-0 relative">
       <slot />
     </main>
   </div>

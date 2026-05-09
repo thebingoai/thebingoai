@@ -31,6 +31,8 @@ export const useAuthStore = defineStore('auth', {
     loading: false,
     error: null as string | null,
     isInactive: false,
+    _isFirstLogin: false,
+    _authInitialized: false,
   }),
 
   getters: {
@@ -38,6 +40,8 @@ export const useAuthStore = defineStore('auth', {
     currentUser: (state) => state.user,
     hasGoogleOAuth: (state) => !!state.authConfig?.google_oauth_url,
     isAccountInactive: (state) => state.isInactive,
+    isFirstLogin: (state) => state._isFirstLogin,
+    authInitialized: (state) => state._authInitialized,
   },
 
   actions: {
@@ -104,7 +108,7 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
 
       try {
-        const data = await $fetch<{ access_token: string; refresh_token: string }>(
+        const data = await $fetch<{ access_token: string; refresh_token: string; is_first_login?: boolean }>(
           '/sso-api/auth/login',
           {
             method: 'POST',
@@ -114,6 +118,7 @@ export const useAuthStore = defineStore('auth', {
         )
         this.token = data.access_token
         this.refreshToken = data.refresh_token
+        this._isFirstLogin = data.is_first_login ?? false
         this._persistTokens()
         await this.fetchUser()
         return { success: true }
@@ -149,9 +154,10 @@ export const useAuthStore = defineStore('auth', {
 
     // ─── SSO OAuth callback ─────────────────────────────────────
 
-    async handleOAuthSuccess(accessToken: string, refreshToken: string) {
+    async handleOAuthSuccess(accessToken: string, refreshToken: string, isFirstLogin?: boolean) {
       this.token = accessToken
       this.refreshToken = refreshToken
+      this._isFirstLogin = isFirstLogin ?? false
       this._persistTokens()
       await this.fetchUser()
     },
@@ -163,7 +169,7 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
 
       try {
-        const data = await $fetch<{ access_token: string; refresh_token: string }>(
+        const data = await $fetch<{ access_token: string; refresh_token: string; is_first_login?: boolean }>(
           '/sso-api/auth/verify-email',
           {
             method: 'POST',
@@ -173,6 +179,7 @@ export const useAuthStore = defineStore('auth', {
         )
         this.token = data.access_token
         this.refreshToken = data.refresh_token
+        this._isFirstLogin = data.is_first_login ?? false
         this._persistTokens()
         await this.fetchUser()
         return { success: true }
@@ -283,6 +290,12 @@ export const useAuthStore = defineStore('auth', {
         if (error?.statusCode === 403 || error?.status === 403) {
           this.isInactive = true
           this.error = 'Account is inactive'
+          this.token = null
+          this.refreshToken = null
+          if (process.client) {
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('auth_refresh_token')
+          }
           throw error
         } else if (error?.statusCode === 401 || error?.status === 401) {
           const refreshed = await this.refreshAccessToken()
@@ -310,11 +323,14 @@ export const useAuthStore = defineStore('auth', {
       if (process.client) {
         const token = localStorage.getItem('auth_token')
         const refreshToken = localStorage.getItem('auth_refresh_token')
+        const isFirstLogin = localStorage.getItem('auth_is_first_login')
         if (token) {
           this.token = token
           if (refreshToken) this.refreshToken = refreshToken
+          if (isFirstLogin !== null) this._isFirstLogin = isFirstLogin === 'true'
           await this.fetchUser()
         }
+        this._authInitialized = true
       }
     },
 
@@ -347,10 +363,13 @@ export const useAuthStore = defineStore('auth', {
       this.refreshToken = null
       this.error = null
       this.isInactive = false
+      this._isFirstLogin = false
+      this._authInitialized = false
 
       if (process.client) {
         localStorage.removeItem('auth_token')
         localStorage.removeItem('auth_refresh_token')
+        localStorage.removeItem('auth_is_first_login')
       }
     },
 
@@ -360,6 +379,7 @@ export const useAuthStore = defineStore('auth', {
       if (process.client) {
         if (this.token) localStorage.setItem('auth_token', this.token)
         if (this.refreshToken) localStorage.setItem('auth_refresh_token', this.refreshToken)
+        localStorage.setItem('auth_is_first_login', String(!!this._isFirstLogin))
       }
     },
   },

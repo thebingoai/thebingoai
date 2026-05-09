@@ -37,6 +37,13 @@
           <Copy class="h-3 w-3" />
         </button>
         <button
+          class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
+          title="Edit widget"
+          @click.stop="emit('edit-config', widget.id)"
+        >
+          <Settings class="h-3 w-3" />
+        </button>
+        <button
           class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-rose-50 hover:text-rose-500 transition-colors"
           @click="emit('remove', widget.id)"
         >
@@ -142,7 +149,7 @@
 
 <script setup lang="ts">
 import { computed, ref, toRef } from 'vue'
-import { GripVertical, X, RefreshCw, Code, Copy } from 'lucide-vue-next'
+import { GripVertical, X, RefreshCw, Code, Copy, Settings } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useWidgetData } from '~/composables/useWidgetData'
 import { parseUtcDate } from '~/utils/format'

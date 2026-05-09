@@ -246,9 +246,9 @@ export const useChatConversations = () => {
         }
       }
 
-      // Auto-select permanent conversation if no active thread
+      // Auto-select permanent conversation if no active thread and no new task in flight
       const permanent = conversations.find((c: any) => c.type === 'permanent')
-      if (permanent && !chatStore.currentThreadId) {
+      if (permanent && !chatStore.currentThreadId && !chatStore.pendingNewConversationId) {
         chatStore.setCurrentThread(permanent.id)
         await loadMessages(permanent.id)
       }
