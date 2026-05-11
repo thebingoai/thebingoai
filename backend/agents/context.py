@@ -31,6 +31,9 @@ class AgentContext:
     # Agent mesh: session identity
     session_id: Optional[str] = None
 
+    # Briefing mode: set when orchestrator is running for a scheduled briefing
+    briefing_id: Optional[int] = None  # set when running orchestrator for a briefing
+
     def can_access_connection(self, connection_id: int) -> bool:
         """Check if user can access a connection."""
         return connection_id in self.available_connections

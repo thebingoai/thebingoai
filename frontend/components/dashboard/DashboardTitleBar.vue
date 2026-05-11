@@ -44,6 +44,7 @@
         <!-- View mode -->
         <template v-if="!editMode">
           <DashboardSchedulePopover v-if="dashboardId" :dashboard-id="dashboardId" />
+          <BriefMeButton v-if="dashboardId" :dashboard-id="dashboardId" />
           <button
             class="hdr-btn"
             :disabled="refreshing"

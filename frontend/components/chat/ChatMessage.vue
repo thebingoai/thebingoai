@@ -33,6 +33,9 @@
             Thinking...
           </div>
           <UiMarkdownRenderer v-else :content="message.content" />
+          <div v-if="message.briefing_id" class="mt-3">
+            <BriefingCard :briefing-id="message.briefing_id" />
+          </div>
         </div>
       </div>
 

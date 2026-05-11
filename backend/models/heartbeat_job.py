@@ -14,6 +14,7 @@ class HeartbeatJob(Base, TimestampMixin):
     schedule_value = Column(String(100), nullable=False)  # e.g. "30m", "0 */2 * * *"
     cron_expression = Column(String(100), nullable=False)  # normalized cron string
     agent_type = Column(String(50), nullable=True)  # None = orchestrator (default), "monitor_agent", etc.
+    kind = Column(String(20), nullable=False, server_default="chat")  # 'chat' | 'briefing'
     is_active = Column(Boolean, default=True, nullable=False)
     next_run_at = Column(DateTime, nullable=True)
     last_run_at = Column(DateTime, nullable=True)

@@ -98,6 +98,11 @@
       <!-- Assistant message with markdown -->
       <UiMarkdownRenderer v-else :content="message.content" />
 
+      <!-- Briefing card -->
+      <div v-if="message.briefing_id" class="mt-3">
+        <BriefingCard :briefing-id="message.briefing_id" />
+      </div>
+
       <!-- Live steps log (collapses when final answer arrives) -->
       <div v-if="message.steps_log?.length" class="mt-1 font-mono text-[11px] text-gray-400 dark:text-neutral-400 bg-gray-50/80 dark:bg-neutral-800/60 border border-gray-100 dark:border-neutral-700 rounded-md px-3 py-2 leading-relaxed">
         <button

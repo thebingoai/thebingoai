@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-neutral-700 flex-shrink-0">
       <div class="flex items-center gap-2">
         <BarChart2 class="h-4 w-4 text-indigo-500" />
-        <span class="text-sm font-semibold text-gray-800 dark:text-neutral-100">Dashboard Analysis</span>
+        <span class="text-sm font-semibold text-gray-800 dark:text-neutral-100">Brief this dashboard</span>
       </div>
       <button
         class="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors dark:text-neutral-500 dark:hover:text-neutral-300 dark:hover:bg-neutral-800"
@@ -14,60 +14,70 @@
       </button>
     </div>
 
-    <!-- Loading state -->
-    <div v-if="loading" class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <div class="relative">
-        <div class="h-10 w-10 rounded-full border-2 border-indigo-100 dark:border-indigo-900/40" />
-        <div class="absolute inset-0 h-10 w-10 rounded-full border-2 border-transparent border-t-indigo-500 animate-spin" />
-      </div>
-      <p class="text-sm text-gray-500 dark:text-neutral-400">Analyzing dashboard…</p>
-    </div>
-
-    <!-- Error state -->
-    <div v-else-if="error" class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <AlertCircle class="h-8 w-8 text-red-400" />
-      <p class="text-sm text-gray-600 dark:text-neutral-300">{{ error }}</p>
-      <button
-        class="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
-        @click="emit('retry')"
-      >Try again</button>
-    </div>
-
-    <!-- Result -->
-    <div v-else-if="message" class="flex-1 min-h-0 overflow-y-auto px-4 py-4">
-      <UiMarkdownRenderer :content="message" class="text-sm" />
-    </div>
-
-    <!-- Empty / initial state -->
-    <div v-else class="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-      <BarChart2 class="h-8 w-8 text-gray-300 dark:text-neutral-600" />
-      <p class="text-sm text-gray-400 dark:text-neutral-500">No analysis yet</p>
-    </div>
-
-    <!-- Footer timestamp -->
-    <div v-if="message && !loading" class="px-4 py-2.5 border-t border-gray-100 dark:border-neutral-700 flex-shrink-0">
-      <p class="text-xs text-gray-400 dark:text-neutral-500">Analyzed {{ analysisTime }}</p>
+    <!-- Body -->
+    <div class="flex-1 overflow-y-auto">
+      <template v-if="briefingId">
+        <BriefingCard :briefing-id="briefingId" />
+        <div class="px-4 pb-4">
+          <NuxtLink
+            :to="`/chat?briefing=${briefingId}`"
+            class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center gap-1"
+          >
+            <ExternalLink class="h-3.5 w-3.5" />
+            Open full reading view
+          </NuxtLink>
+        </div>
+      </template>
+      <template v-else>
+        <div class="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+          <FileText class="h-10 w-10 text-gray-300 dark:text-neutral-600" />
+          <p class="text-sm text-gray-500 dark:text-neutral-400 max-w-xs">
+            Generate an AI-powered briefing for this dashboard. We'll analyze all widgets and create a readable report.
+          </p>
+          <button
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            :disabled="busy"
+            @click="handleBrief"
+          >
+            <Loader2 v-if="busy" class="h-4 w-4 animate-spin" />
+            <Sparkles v-else class="h-4 w-4" />
+            {{ busy ? 'Creating briefing…' : 'Brief this dashboard' }}
+          </button>
+          <p v-if="error" class="text-xs text-red-500">{{ error }}</p>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { BarChart2, X, AlertCircle } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { BarChart2, X, FileText, Sparkles, Loader2, ExternalLink } from 'lucide-vue-next'
 
 const props = defineProps<{
-  loading: boolean
-  message: string
-  error: string
+  dashboardId: number
 }>()
 
 const emit = defineEmits<{
   close: []
-  retry: []
 }>()
 
-const analysisTime = computed(() => {
-  const now = new Date()
-  return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-})
+const { dashboards: dashboardsApi } = useApi()
+
+const busy = ref(false)
+const error = ref('')
+const briefingId = ref<number | null>(null)
+
+async function handleBrief() {
+  busy.value = true
+  error.value = ''
+  try {
+    const result = await dashboardsApi.brief(props.dashboardId)
+    briefingId.value = result.briefing_id
+  } catch {
+    error.value = 'Failed to create briefing. Please try again.'
+  } finally {
+    busy.value = false
+  }
+}
 </script>

@@ -27,7 +27,9 @@ def dispatch_heartbeat_jobs():
     now = datetime.utcnow()
 
     def _dispatch_heartbeat_row(job, _now=now):
-        if job.agent_type and job.agent_type != "orchestrator":
+        if getattr(job, "kind", "chat") == "briefing":
+            execute_heartbeat_briefing.delay(job.id)
+        elif job.agent_type and job.agent_type != "orchestrator":
             execute_agent_heartbeat_job.delay(job.id)
         else:
             execute_heartbeat_job.delay(job.id)
@@ -362,5 +364,56 @@ async def _run_agent_for_job(job: HeartbeatJob, user: User) -> str:
         result = await runtime.execute(job.prompt, tools, prompt)
         return result.get("message", "")
 
+    finally:
+        db.close()
+
+
+@shared_task(name="execute_heartbeat_briefing", time_limit=60)
+def execute_heartbeat_briefing(job_id: str):
+    """For a briefing-kind HeartbeatJob: create a Briefing row and dispatch generate_briefing."""
+    from backend.models.briefing import Briefing
+    from backend.tasks.briefing_tasks import generate_briefing
+    import re
+
+    db = SessionLocal()
+    try:
+        job = db.query(HeartbeatJob).filter(HeartbeatJob.id == job_id).first()
+        if not job:
+            logger.error("execute_heartbeat_briefing: job %s missing", job_id)
+            return
+
+        # Extract dashboard_id from prompt: "analyze dashboard {id} ..."
+        m = re.search(r"dashboard\s+(\d+)", job.prompt or "")
+        if not m:
+            logger.error("execute_heartbeat_briefing: cannot find dashboard id in prompt %r", job.prompt)
+            return
+        dashboard_id = int(m.group(1))
+
+        # Idempotency: skip if there's already an in-flight briefing for this job within the last minute
+        from datetime import timedelta
+        recent = (
+            db.query(Briefing)
+            .filter(
+                Briefing.heartbeat_job_id == job.id,
+                Briefing.created_at >= datetime.utcnow() - timedelta(minutes=1),
+            )
+            .first()
+        )
+        if recent:
+            logger.info("execute_heartbeat_briefing: recent run exists (briefing %s), skipping", recent.id)
+            return
+
+        briefing = Briefing(
+            user_id=job.user_id,
+            dashboard_id=dashboard_id,
+            source="scheduled",
+            heartbeat_job_id=job.id,
+            status="generating",
+        )
+        db.add(briefing)
+        db.commit()
+        db.refresh(briefing)
+
+        generate_briefing.delay(briefing.id)
     finally:
         db.close()

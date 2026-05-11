@@ -86,12 +86,9 @@
           <Transition name="panel-slide">
             <DashboardAnalyzePanel
               v-if="analyzePanel"
-              :loading="analyzeLoading"
-              :message="analyzeMessage"
-              :error="analyzeError"
+              :dashboard-id="store.currentDashboard?.id ?? 0"
               :class="isMobile ? 'fixed inset-0 z-50 w-full' : ''"
               @close="analyzePanel = false"
-              @retry="runAnalysis"
             />
           </Transition>
         </div>
@@ -190,31 +187,9 @@ const sqlEditorError = ref<string | null>(null)
 const configEditorWidget = ref<DashboardWidget | null>(null)
 
 const analyzePanel = ref(false)
-const analyzeLoading = ref(false)
-const analyzeMessage = ref('')
-const analyzeError = ref('')
-
-const { dashboards: dashboardsApi } = useApi()
-
-async function runAnalysis() {
-  const id = store.currentDashboard?.id
-  if (!id) return
-  analyzeLoading.value = true
-  analyzeMessage.value = ''
-  analyzeError.value = ''
-  try {
-    const result = await dashboardsApi.analyze(id)
-    analyzeMessage.value = result.message
-  } catch {
-    analyzeError.value = 'Analysis failed. Please try again.'
-  } finally {
-    analyzeLoading.value = false
-  }
-}
 
 function openAnalyzePanel() {
   analyzePanel.value = true
-  runAnalysis()
 }
 
 const showDeleteDialog = ref(false)

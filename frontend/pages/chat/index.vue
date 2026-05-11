@@ -10,6 +10,22 @@
         <HomeNewTaskScreen :is-sending="sendingFromNewTask" @send="handleSend" />
       </div>
 
+      <!-- Briefing reading view inline -->
+      <div v-else-if="activeBriefingId" :key="'briefing-' + activeBriefingId" class="flex flex-1 flex-col min-w-0 min-h-0">
+        <div class="flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] flex-shrink-0">
+          <button
+            class="text-[12px] text-[var(--ink-2)] hover:text-[var(--ink-0)] flex items-center gap-1"
+            @click="closeBriefing"
+          >
+            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            Back to chat
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <ChatBriefingView :briefing-id="activeBriefingId" />
+        </div>
+      </div>
+
       <!-- Active thread (conversation in progress) -->
       <div v-else-if="chatStore.currentThreadId || isTransitioning" key="chat" class="flex flex-1 flex-col min-w-0 min-h-0">
         <!-- Inner page-fade-slide handles task A → task B (mirrors Bingo↔Dashboard).
@@ -30,7 +46,7 @@
     </Transition>
 
     <!-- Desktop right pane (Datasets) — shared across both states -->
-    <template v-if="!isMobile">
+    <template v-if="!isMobile && chatStore.infoPanelOpen">
       <div class="right-pane-handle" @mousedown="startRightResize" />
       <div
         class="shrink-0 border-l border-[var(--line)] overflow-hidden flex flex-col"
@@ -169,6 +185,9 @@ const handleAction = (text: string, source?: string) => {
 const handleReset = () => {
   chat.resetContext()
 }
+
+// ── Inline briefing view ──────────────────────────────────
+const { id: activeBriefingId, close: closeBriefing } = useActiveBriefing()
 
 definePageMeta({
   middleware: 'auth'

@@ -504,7 +504,7 @@ def build_orchestrator_tools(
         return json.dumps({"questions": parsed})
 
     if settings.orchestrator_lean_tools:
-        return _build_lean_tools(
+        tools = _build_lean_tools(
             context=context,
             db_session_factory=db_session_factory,
             custom_agents=custom_agents,
@@ -513,12 +513,22 @@ def build_orchestrator_tools(
             memory_tools=memory_tools,
             llm_provider=llm_provider,
         )
+    else:
+        shared_tools = skill_tools + profile_tools_list + dashboard_tools + memory_tools + [ask_user_question]
 
-    shared_tools = skill_tools + profile_tools_list + dashboard_tools + memory_tools + [ask_user_question]
+        if custom_agents:
+            tools = _build_dynamic_tools(context, custom_agents, db_session_factory, llm_provider=llm_provider) + shared_tools
+        else:
+            tools = _build_legacy_tools(context, db_session_factory) + shared_tools
 
-    if custom_agents:
-        return _build_dynamic_tools(context, custom_agents, db_session_factory, llm_provider=llm_provider) + shared_tools
-    return _build_legacy_tools(context, db_session_factory) + shared_tools
+    if getattr(context, "briefing_id", None):
+        from backend.agents.orchestrator.orchestrator_briefing_tool import build_briefing_tools
+        tools.extend(build_briefing_tools(context, db_session_factory, context.briefing_id))
+
+    from backend.agents.orchestrator.schedule_briefing_tool import build_schedule_briefing_tool
+    tools.extend(build_schedule_briefing_tool(context, db_session_factory))
+
+    return tools
 
 
 # Names that custom agents must not shadow when bound as top-level tools.

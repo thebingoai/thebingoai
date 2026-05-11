@@ -134,6 +134,7 @@ export const useChatConversations = () => {
         role: msg.role,
         content: msg.content,
         source: msg.source || 'chat',
+        briefing_id: msg.briefing_id ?? null,
         created_at: msg.timestamp,
         attachments: msg.attachments?.map((a: any) => ({
           file_id: a.file_id,

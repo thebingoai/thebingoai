@@ -43,6 +43,7 @@ class ChatMessage(BaseModel):
     timestamp: datetime
     source: str = "chat"
     attachments: Optional[List[ChatAttachment]] = None
+    briefing_id: Optional[int] = None
 
     class Config:
         from_attributes = True
