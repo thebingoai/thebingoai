@@ -90,6 +90,7 @@ def sample_cache(cache_dir):
 # Patch targets (lazy imports in function bodies → patch at source module)
 _PATCH_GET_CACHE_PATH = "backend.services.dashboard_cache.get_cache_path"
 _PATCH_CONNECTOR_FACTORY = "backend.connectors.factory.get_connector_for_connection"
+_PATCH_FEATURE_FLAG_ENABLED = "backend.config.feature_flags.enabled"
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +229,9 @@ def _make_db_returning(*results):
 @pytest.mark.asyncio
 class TestRefreshWidgetCachePath:
 
+    @patch(_PATCH_FEATURE_FLAG_ENABLED, return_value=False)
     @patch(_PATCH_GET_CACHE_PATH)
-    async def test_reads_from_cache_when_ready(self, mock_get_cache, sample_cache):
+    async def test_reads_from_cache_when_ready(self, mock_get_cache, _mock_flag, sample_cache):
         mock_get_cache.return_value = sample_cache
         dashboard = _make_dashboard(cache_status="ready")
         db = _make_db_returning(dashboard)
