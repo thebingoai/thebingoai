@@ -73,8 +73,17 @@ def synthesize_project(scope, db) -> str:
     )
     source_tables = [p.target_table for p in pipelines]
 
+    # For LocalFilesystemDataPlane: build external_location glob so dbt-duckdb
+    # can read pipeline Parquet outputs as external tables.
+    sources_external_location = None
+    if isinstance(plane, LocalFilesystemDataPlane):
+        scope_root = os.path.join(plane._root, scope.as_path())
+        sources_external_location = (
+            f"read_parquet('{scope_root}/" + "{name}/dt=*/*.parquet', hive_partitioning=true)"
+        )
+
     # Write models/sources.yml
-    _write_sources_yml(models_dir, source_tables)
+    _write_sources_yml(models_dir, source_tables, sources_external_location)
 
     # Write one .sql file per DbtModel
     models = (
@@ -125,20 +134,26 @@ def _write_profiles_yml(project_dir: str, project_name: str, target_config: dict
     _safe_write(os.path.join(project_dir, "profiles.yml"), yaml.dump(content, default_flow_style=False))
 
 
-def _write_sources_yml(models_dir: str, table_names: list[str]) -> None:
-    """Write sources.yml declaring each Pipeline output as a dbt source."""
+def _write_sources_yml(
+    models_dir: str,
+    table_names: list[str],
+    external_location: str | None = None,
+) -> None:
+    """Write sources.yml declaring each Pipeline output as a dbt source.
+
+    When *external_location* is provided (LocalFilesystemDataPlane), each source
+    table gets an external_location meta so dbt-duckdb reads the Parquet directly.
+    """
     if not table_names:
         sources_content = {"version": 2, "sources": []}
     else:
-        sources_content = {
-            "version": 2,
-            "sources": [
-                {
-                    "name": "pipelines",
-                    "tables": [{"name": t} for t in sorted(set(table_names))],
-                }
-            ],
+        source = {
+            "name": "pipelines",
+            "tables": [{"name": t} for t in sorted(set(table_names))],
         }
+        if external_location:
+            source["meta"] = {"external_location": external_location}
+        sources_content = {"version": 2, "sources": [source]}
     _safe_write(os.path.join(models_dir, "sources.yml"), yaml.dump(sources_content, default_flow_style=False))
 
 
