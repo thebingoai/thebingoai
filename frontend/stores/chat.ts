@@ -27,6 +27,7 @@ export interface Message {
   source?: 'chat' | 'heartbeat' | 'system' | 'context_reset' | 'qa_answer' | 'skill_suggestion'
   skillSuggestions?: SkillSuggestion[]
   loop_detected?: boolean
+  briefing_id?: number | null
 }
 
 export interface ThinkingStep {

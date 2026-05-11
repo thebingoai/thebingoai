@@ -11,6 +11,7 @@ class Conversation(Base, TimestampMixin):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=True)  # Auto-generated from first message
     type = Column(String(20), nullable=False, default="task", server_default="task")
+    kind = Column(String(20), nullable=False, server_default="chat")  # 'chat' | 'assistant'
     is_archived = Column(Boolean, default=False, server_default="false", nullable=False)
 
     __table_args__ = (

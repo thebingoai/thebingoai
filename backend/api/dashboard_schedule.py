@@ -194,6 +194,7 @@ async def set_analysis_schedule(
         existing.cron_expression = cron_expr
         existing.next_run_at = next_run
         existing.is_active = True
+        existing.kind = "briefing"
         job = existing
     else:
         job = HeartbeatJob(
@@ -206,6 +207,7 @@ async def set_analysis_schedule(
             schedule_value=payload.schedule_value,
             cron_expression=cron_expr,
             agent_type=None,  # orchestrator (default)
+            kind="briefing",
             is_active=True,
             next_run_at=next_run,
         )

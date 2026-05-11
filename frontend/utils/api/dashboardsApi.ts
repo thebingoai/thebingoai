@@ -68,10 +68,10 @@ export function createDashboardsApi(fetchWithRefresh: Function) {
     async getSqliteUrl(connectionId: number) {
       return fetchWithRefresh(`/api/connections/datasets/${connectionId}/sqlite-url`, {}) as Promise<{ url: string; expires_in: number }>
     },
-    async analyze(id: number) {
-      return fetchWithRefresh(`/api/dashboards/${id}/analyze`, {
+    async brief(id: number) {
+      return fetchWithRefresh(`/api/dashboards/${id}/brief`, {
         method: 'POST',
-      }) as Promise<{ success: boolean; dashboard_id: number; message: string }>
+      }) as Promise<{ briefing_id: number; status: string }>
     },
   }
 }
