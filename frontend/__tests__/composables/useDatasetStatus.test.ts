@@ -2,15 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref, computed, watch } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
-const mockAttachedFiles = vi.hoisted(() => {
-  const { ref } = require('vue')
-  return ref<any[]>([])
-})
-
-vi.mock('~/composables/useChatFileUpload', () => ({
-  attachedFiles: mockAttachedFiles,
-}))
-
 // ── Stub Nuxt auto-imports as globals ──────────────────────────────
 
 vi.stubGlobal('localStorage', {
@@ -106,7 +97,6 @@ describe('useDatasetStatus', () => {
     setActivePinia(createPinia())
     mockGetProfilingStatus.mockReset()
     mockReprofile.mockReset()
-    mockAttachedFiles.value = []
   })
 
   it('returns empty datasets when there are no messages', () => {
@@ -114,7 +104,7 @@ describe('useDatasetStatus', () => {
     expect(datasets.value).toEqual([])
   })
 
-  it('Source 2 skips attachments without a file_id (upload-phase files shown via Source 0)', () => {
+  it('returns uploading status for attachment with status "uploading"', () => {
     const store = useChatStore()
     store.messages = [
       makeMessage({
@@ -123,8 +113,9 @@ describe('useDatasetStatus', () => {
     ]
 
     const { datasets } = useDatasetStatus()
-    // Upload-phase files without a real file_id are shown via Source 0, not Source 2
-    expect(datasets.value).toHaveLength(0)
+    expect(datasets.value).toHaveLength(1)
+    expect(datasets.value[0].step).toBe('uploading')
+    expect(datasets.value[0].name).toBe('data.csv')
   })
 
   it('returns failed status for attachment with status "error"', () => {
@@ -311,116 +302,5 @@ describe('useDatasetStatus', () => {
     expect(datasets.value[0].fileId).toBe('rest-1')
     expect(datasets.value[0].name).toBe('uploaded.csv')
     expect(datasets.value[0].step).toBe('ready')
-  })
-
-  it('injects a profiling-step entry when a processing upload is in attachedFiles', () => {
-    const store = useChatStore()
-    store.currentThreadId = 'thread-1'
-    store.messages = []
-    mockAttachedFiles.value = [
-      {
-        file: new File([''], 'sales.csv', { type: 'text/csv' }),
-        file_id: 'connection:42',
-        connection_id: 42,
-        status: 'processing',
-        progress: undefined,
-        preview_url: null,
-        error: undefined,
-      },
-    ]
-
-    const { datasets } = useDatasetStatus()
-
-    expect(datasets.value).toHaveLength(1)
-    expect(datasets.value[0].step).toBe('profiling')
-    expect(datasets.value[0].connectionId).toBe(42)
-    expect(datasets.value[0].fileId).toBe('connection:42')
-    expect(datasets.value[0].name).toBe('sales.csv')
-    expect(datasets.value[0].uploadedAt).not.toBeNull()
-    expect(datasets.value[0].schemaBuiltAt).not.toBeNull()
-  })
-
-  it('Source 2 skips __pending__: placeholder file_ids', () => {
-    const store = useChatStore()
-    store.currentThreadId = 'thread-1'
-    store.messages = [
-      makeMessage({
-        attachments: [csvAttachment({ file_id: '__pending__:sales.csv', status: 'processing' })],
-      }),
-    ]
-
-    const { datasets } = useDatasetStatus()
-    expect(datasets.value).toHaveLength(0)
-  })
-
-  it('extracts connectionId from connection:N file_id in message attachments', () => {
-    const store = useChatStore()
-    store.isStreaming = true
-    store.currentThreadId = 'thread-1'
-    store.messages = [
-      makeMessage({
-        attachments: [csvAttachment({ file_id: 'connection:42', status: 'processing' })],
-      }),
-    ]
-
-    const { datasets } = useDatasetStatus()
-    expect(datasets.value).toHaveLength(1)
-    expect(datasets.value[0].connectionId).toBe(42)
-    expect(datasets.value[0].fileId).toBe('connection:42')
-  })
-
-  it('cancelDataset removes from attachedFiles regardless of sent flag', async () => {
-    const store = useChatStore()
-    store.currentThreadId = 'thread-1'
-    store.messages = []
-    mockAttachedFiles.value = [
-      {
-        file: new File([''], 'sales.csv', { type: 'text/csv' }),
-        file_id: 'connection:42',
-        connection_id: 42,
-        status: 'ready',
-        progress: undefined,
-        preview_url: null,
-        error: undefined,
-        sent: true,
-      },
-    ]
-    mockCancelDataset.mockResolvedValue({})
-
-    const { datasets, cancelDataset } = useDatasetStatus()
-    expect(datasets.value).toHaveLength(1)
-
-    await cancelDataset('connection:42')
-    expect(mockAttachedFiles.value).toHaveLength(0)
-  })
-
-  it('clears attachedFiles when switching conversations away from existing thread', async () => {
-    const store = useChatStore()
-    store.currentThreadId = 'old-thread'
-    store.messages = []
-    mockAttachedFiles.value = [
-      {
-        file: new File([''], 'sales.csv', { type: 'text/csv' }),
-        file_id: 'connection:42',
-        connection_id: 42,
-        status: 'ready',
-        progress: undefined,
-        preview_url: null,
-        error: undefined,
-        sent: true,
-      },
-    ]
-
-    useDatasetStatus()
-    // Trigger the watch by changing threadId from a truthy value to a different one
-    // The watch in useDatasetStatus fires on currentThreadId change
-    expect(mockAttachedFiles.value).toHaveLength(1)
-
-    // Simulate switching away from old-thread to new-thread
-    store.currentThreadId = 'new-thread'
-    // After the watch fires, attachedFiles should be cleared
-    // Note: watch is not synchronously flushed in vitest, so we advance microtasks
-    await Promise.resolve()
-    expect(mockAttachedFiles.value).toHaveLength(0)
   })
 })

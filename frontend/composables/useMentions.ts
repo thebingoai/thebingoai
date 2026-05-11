@@ -34,8 +34,6 @@ interface MentionsState {
   filteredGroups: ReturnType<typeof computed<MentionGroup[]>>
   activeGroupItems: ReturnType<typeof computed<MentionItem[]>>
   activeGroup: ReturnType<typeof computed<MentionGroup | null>>
-  scopedPill: ReturnType<typeof ref<HTMLElement | null>>
-  isChildMode: ReturnType<typeof ref<boolean>>
 }
 
 let _state: MentionsState | null = null
@@ -109,30 +107,6 @@ async function _doLoad(api: ReturnType<typeof useApi>, state: MentionsState) {
   state.notionSyncHint.value = syncHint
 }
 
-// ── Selection save/restore for mention panel ───────────────
-let savedRange: Range | null = null
-
-function restoreSelectionRange(): boolean {
-  if (!savedRange) return false
-  const sel = window.getSelection()
-  if (!sel) return false
-  sel.removeAllRanges()
-  sel.addRange(savedRange)
-  savedRange = null
-  return true
-}
-
-// ── Pill editing for parent/child — module-level avoids reactivity issues ─
-let editingPill: HTMLElement | null = null
-
-function getEditingPill(): HTMLElement | null {
-  return editingPill
-}
-
-function clearEditingPill() {
-  editingPill = null
-}
-
 export const useMentions = () => {
   const api = useApi()
 
@@ -148,8 +122,6 @@ export const useMentions = () => {
     const notionPagesCache = ref<MentionItem[]>([])
     const notionSyncHint = ref('')
     const notionConnectionNames = ref(new Map<number, string>())
-    const scopedPill = ref<HTMLElement | null>(null)
-    const isChildMode = ref(false)
 
     // Build groups from cached data
     const mentionGroups = computed((): MentionGroup[] => {
@@ -240,28 +212,13 @@ export const useMentions = () => {
       resolvedMentions, dashboardsCache, connectionsCache, notionPagesCache,
       notionSyncHint, notionConnectionNames,
       mentionGroups, filteredGroups, activeGroup, activeGroupItems,
-      scopedPill, isChildMode,
     }
   }
 
   const state = _state
 
   const openMention = (anchorPos: number) => {
-    // Save cursor selection so handleMentionSelect can find the @ position
-    try { savedRange = window.getSelection()?.getRangeAt(0) ?? null } catch { savedRange = null }
-    clearEditingPill()
-    state.isChildMode.value = false
     state.mentionAnchor.value = anchorPos
-    state.isMentionOpen.value = true
-    state.mentionLevel.value = 'root'
-    state.activeGroupId.value = null
-    state.mentionQuery.value = ''
-    _doLoad(api, state)
-  }
-
-  const openMentionForPill = (pillEl: HTMLElement) => {
-    editingPill = pillEl
-    state.isChildMode.value = true
     state.isMentionOpen.value = true
     state.mentionLevel.value = 'root'
     state.activeGroupId.value = null
@@ -274,8 +231,6 @@ export const useMentions = () => {
     state.mentionQuery.value = ''
     state.mentionLevel.value = 'root'
     state.activeGroupId.value = null
-    clearEditingPill()
-    state.isChildMode.value = false
   }
 
   const setQuery = (q: string) => {
@@ -353,10 +308,7 @@ export const useMentions = () => {
     filteredGroups: state.filteredGroups,
     activeGroup: state.activeGroup,
     activeGroupItems: state.activeGroupItems,
-    resolvedMentions: state.resolvedMentions,
-    isChildMode: state.isChildMode,
     openMention,
-    openMentionForPill,
     closeMention,
     setQuery,
     drillIntoGroup,
@@ -365,7 +317,5 @@ export const useMentions = () => {
     extractMentionConnectionIds,
     extractMentions,
     clearResolvedMentions,
-    restoreSelectionRange,
-    getEditingPill,
   }
 }

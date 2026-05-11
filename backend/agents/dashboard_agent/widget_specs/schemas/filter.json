@@ -30,12 +30,6 @@
             "connectionId": { "type": "number", "description": "Database connection ID" },
             "sql":          { "type": "string", "description": "SQL query returning min_date and max_date columns, e.g. SELECT MIN(t.date_col) AS min_date, MAX(t.date_col) AS max_date FROM table t" }
           }
-        },
-        "dateRangeDefault": {
-          "type": "enum",
-          "required": false,
-          "values": ["full", "7d", "30d", "90d", "ytd"],
-          "description": "Initial date range when the dashboard loads. 'full'=min→max (all data), '7d'=last 7 days from max, '30d'=last 30 days, '90d'=last 90 days, 'ytd'=year-to-date from max. Defaults to 'full' when dateRangeSource is present, '7d' otherwise."
         }
       }
     }

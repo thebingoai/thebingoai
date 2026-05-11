@@ -1,8 +1,5 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <div v-if="config.title" class="flex-shrink-0 px-4 pt-3 pb-1">
-      <span class="widget-label">{{ config.title }}</span>
-    </div>
     <div class="flex-1 overflow-auto">
       <table class="w-full text-sm">
         <thead class="sticky top-0 bg-white border-b border-gray-100 dark:bg-neutral-800 dark:border-neutral-700">

@@ -26,13 +26,7 @@ When generating SQL for DATASET connections (CSV/Excel files), the table is alwa
 - **Date functions**: use `strftime('%Y-%m', date_col)` instead of `to_char()`
 - **Date truncation**: use `strftime('%Y-%m-01', date_col)` instead of `date_trunc()`
 - **No schema prefix**: write `FROM data` not `FROM datasets.ds_42_myfile`
-- **String concat**: use `||` operator instead of `CONCAT()`
-- **Window functions**: SQLite supports `OVER (ORDER BY col ROWS BETWEEN N PRECEDING AND CURRENT ROW)` — use these for rolling calculations instead of correlated subqueries
-  - Rolling average: `AVG(col) OVER (ORDER BY rn ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)`
-  - Rolling sum: `SUM(col) OVER (ORDER BY rn ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)`
-  - Rolling count: `COUNT(*) OVER (ORDER BY rn ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)`
-  - Rolling variance (sample): compute as `(SUM(col*col) OVER w - COUNT(*) OVER w * AVG(col) OVER w * AVG(col) OVER w) / (COUNT(*) OVER w - 1)`
-  - **Never use `(expr)(expr)` to multiply** — always write `(expr) * (expr)`"""
+- **String concat**: use `||` operator instead of `CONCAT()`"""
 
 
 def _csv_plugin_loaded() -> bool:

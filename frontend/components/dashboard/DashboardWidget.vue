@@ -1,43 +1,48 @@
 <template>
   <div class="relative flex h-full flex-col overflow-hidden">
-
-    <!-- Edit mode: drag handle + controls overlay -->
+    <!-- Edit mode controls overlay -->
     <div
       v-if="editMode"
-      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-[var(--paper-0)]/90 dark:bg-neutral-800/90 px-3 py-1.5 border-b border-[var(--line)] dark:border-neutral-700 backdrop-blur-sm"
+      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-white/90 dark:bg-neutral-800/90 px-3 py-1.5 border-b border-gray-100 dark:border-neutral-700 backdrop-blur-sm"
     >
+      <!-- Drag handle -->
       <div class="widget-drag-handle flex cursor-grab items-center gap-1.5 active:cursor-grabbing">
-        <GripVertical class="h-3.5 w-3.5 text-[var(--ink-3)]" />
-        <span v-if="widget.title" class="text-[11px] font-medium text-[var(--ink-2)] truncate max-w-[140px]">{{ widget.title }}</span>
-        <span v-else class="text-[11px] text-[var(--ink-3)]">{{ widgetDisplayName }}</span>
+        <GripVertical class="h-3.5 w-3.5 text-gray-300" />
+        <span v-if="widget.title" class="text-[11px] font-medium text-gray-500 dark:text-neutral-400 truncate max-w-[140px]">{{ widget.title }}</span>
+        <span v-else class="text-[11px] text-gray-400 dark:text-neutral-500">{{ widgetDisplayName }}</span>
       </div>
+      <!-- Edit controls -->
       <div class="flex items-center gap-1">
+        <!-- SQL editor button — shown when widget has a data source -->
         <button
           v-if="hasDataSource"
-          class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-[var(--ember-wash)] hover:text-[var(--ember)] transition-colors"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
           title="View SQL query"
           @click="emit('open-sql-editor', widget.id)"
         >
           <Code class="h-3 w-3" />
         </button>
+        <!-- Refresh button — shown when widget has a data source -->
         <button
           v-if="hasDataSource"
-          class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-[var(--ember-wash)] hover:text-[var(--ember)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="loading"
           title="Refresh data"
           @click.stop="refresh()"
         >
           <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
         </button>
+        <!-- Duplicate button -->
         <button
-          class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-[var(--ember-wash)] hover:text-[var(--ember)] transition-colors"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
           title="Duplicate widget"
           @click="emit('duplicate', widget.id)"
         >
           <Copy class="h-3 w-3" />
         </button>
+        <!-- Remove button -->
         <button
-          class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-rose-50 hover:text-rose-500 transition-colors"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-300 hover:bg-rose-50 hover:text-rose-500 transition-colors"
           @click="emit('remove', widget.id)"
         >
           <X class="h-3 w-3" />
@@ -45,29 +50,41 @@
       </div>
     </div>
 
-    <!-- View mode: full header row only when widget has a custom title -->
-    <div v-if="!editMode && widget.title" class="widget-header">
-      <span class="widget-label">{{ widget.title }}</span>
-      <button
-        v-if="hasDataSource"
-        class="icon-btn"
-        title="Refresh data"
-        :disabled="loading"
-        @click="refresh()"
-      >
-        <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
-      </button>
-    </div>
-    <!-- Floating refresh for data widgets without a custom title (view mode) -->
-    <button
-      v-else-if="!editMode && hasDataSource"
-      class="refresh-float"
-      title="Refresh data"
-      :disabled="loading"
-      @click="refresh()"
+    <!-- View mode action bar — only for SQL-backed widgets outside edit mode -->
+    <div
+      v-if="!editMode && hasDataSource"
+      class="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-3 py-1 opacity-0 hover:opacity-100 transition-opacity bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm border-b border-gray-100 dark:border-neutral-700"
     >
-      <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
-    </button>
+      <span v-if="lastRefreshedAt" class="text-[10px] text-gray-400">
+        Updated {{ formatRelativeTime(lastRefreshedAt) }}
+      </span>
+      <span v-else class="text-[10px] text-gray-400">Live data</span>
+      <div class="flex items-center gap-1">
+        <button
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          title="View SQL"
+          @click="emit('open-sql-editor', widget.id)"
+        >
+          <Code class="h-3 w-3" />
+        </button>
+        <button
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          :disabled="loading"
+          title="Refresh data"
+          @click="refresh()"
+        >
+          <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
+        </button>
+        <button
+          v-if="isTable"
+          class="flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          title="Export CSV"
+          @click="tableRef?.exportCsv()"
+        >
+          <Download class="h-3 w-3" />
+        </button>
+      </div>
+    </div>
 
     <!-- Widget body -->
     <div
@@ -85,6 +102,7 @@
       />
       <DashboardWidgetTable
         v-else-if="widget.widget.type === 'table'"
+        ref="tableRef"
         :config="widget.widget.config"
       />
       <DashboardWidgetText
@@ -100,20 +118,8 @@
       />
     </div>
 
-    <!-- Provenance footer (view mode only) -->
-    <div
-      v-if="!editMode && (widget.sources?.length || lastRefreshedAt)"
-      class="widget-footer"
-    >
-      <span v-if="widget.sources?.length" class="provenance">
-        ↗ from <a>{{ widget.sources[0] }}</a>
-      </span>
-      <span v-else class="provenance-empty" />
-      <span v-if="lastRefreshedAt" class="age">{{ formatRelativeTime(lastRefreshedAt) }}</span>
-    </div>
-
     <!-- Loading skeleton -->
-    <div v-if="loading" class="absolute inset-0 z-20 bg-[var(--paper-0)] dark:bg-neutral-800">
+    <div v-if="loading" class="absolute inset-0 z-20 bg-white dark:bg-neutral-800">
       <DashboardWidgetSkeleton :type="widget.widget.type" />
     </div>
 
@@ -131,7 +137,7 @@
       </button>
       <button
         v-if="hasDataSource"
-        class="flex-shrink-0 text-[11px] font-medium text-[var(--ember)] hover:text-[var(--d-moss)]"
+        class="flex-shrink-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
         @click="emit('open-sql-editor', widget.id, error ?? undefined)"
       >
         Fix
@@ -142,7 +148,7 @@
 
 <script setup lang="ts">
 import { computed, ref, toRef } from 'vue'
-import { GripVertical, X, RefreshCw, Code, Copy } from 'lucide-vue-next'
+import { GripVertical, X, RefreshCw, Code, Copy, Download } from 'lucide-vue-next'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useWidgetData } from '~/composables/useWidgetData'
 import { parseUtcDate } from '~/utils/format'
@@ -162,8 +168,11 @@ const emit = defineEmits<{
 const widgetRef = toRef(props, 'widget')
 const { loading, error, lastRefreshedAt, hasDataSource, refresh } = useWidgetData(widgetRef)
 
+const tableRef = ref<{ exportCsv: () => void } | null>(null)
+const isTable = computed(() => props.widget.widget.type === 'table')
+
 const WIDGET_TYPE_LABELS: Record<string, string> = {
-  kpi: 'KPI',
+  kpi: 'Score Chart',
   chart: 'Chart',
   table: 'Table',
   text: 'Text',
@@ -178,87 +187,9 @@ function formatRelativeTime(isoString: string): string {
   const diff = Date.now() - parseUtcDate(isoString).getTime()
   const minutes = Math.floor(diff / 60_000)
   if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60) return `${minutes}m ago`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  return `${Math.floor(hours / 24)}d`
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 </script>
-
-<style scoped>
-.widget-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px 4px;
-  flex-shrink: 0;
-}
-
-.refresh-float {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 5px;
-  color: var(--ink-3);
-  transition: background 0.1s, color 0.1s;
-}
-.refresh-float:hover { background: var(--paper-2); color: var(--ink-2); }
-.refresh-float:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.widget-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 18px 12px;
-  flex-shrink: 0;
-  border-top: 1px solid var(--line);
-  margin-top: auto;
-}
-
-.icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 5px;
-  color: var(--ink-3);
-  transition: background 0.1s, color 0.1s;
-}
-.icon-btn:hover { background: var(--paper-2); color: var(--ink-2); }
-.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.provenance {
-  font-family: var(--font-sans);
-  font-size: 10px;
-  color: var(--ink-3);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.provenance a {
-  color: var(--ember);
-  font-weight: 500;
-  cursor: pointer;
-}
-.provenance a:hover { text-decoration: underline; text-underline-offset: 2px; }
-
-.age {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  color: var(--ink-3);
-  opacity: 0.55;
-}
-</style>

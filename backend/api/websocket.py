@@ -336,105 +336,6 @@ async def _persist_and_postprocess(
         ))
 
 
-async def _wait_for_file_processing(
-    file_ids: list,
-    db: Session,
-    user: User,
-    send,
-    request_id: str,
-    thread_id: str,
-) -> bool:
-    """Gate: wait until all connection:N file_ids have profiling_status == 'ready'.
-
-    Pushes chat.waiting events while polling, chat.ready when done,
-    chat.error on failure/timeout. Returns True if all files are ready,
-    False if the turn should abort.
-    """
-    if not file_ids:
-        return True
-
-    MAX_WAIT_S = 300  # 5-minute timeout per file
-    POLL_INTERVAL_S = 2
-
-    pending: dict[int, str] = {}  # connection_id → name
-    for fid in file_ids:
-        if not fid.startswith("connection:"):
-            continue
-        try:
-            cid = int(fid.split(":", 1)[1])
-            conn = db.query(DatabaseConnection).filter(
-                DatabaseConnection.id == cid,
-                DatabaseConnection.user_id == user.id,
-            ).first()
-            if conn and conn.profiling_status not in ("ready", "failed"):
-                pending[cid] = conn.source_filename or conn.name or f"file #{cid}"
-        except (ValueError, Exception):
-            continue
-
-    if not pending:
-        return True
-
-    for cid, name in pending.items():
-        await send({
-            "type": "chat.waiting",
-            "request_id": request_id,
-            "thread_id": thread_id,
-            "content": {
-                "file_id": f"connection:{cid}",
-                "name": name,
-                "connection_id": cid,
-            },
-        })
-
-    elapsed = 0
-    while pending:
-        await asyncio.sleep(POLL_INTERVAL_S)
-        elapsed += POLL_INTERVAL_S
-
-        resolved: list[int] = []
-        for cid in list(pending.keys()):
-            conn = db.query(DatabaseConnection).filter(
-                DatabaseConnection.id == cid,
-                DatabaseConnection.user_id == user.id,
-            ).first()
-            if conn is None:
-                resolved.append(cid)
-                continue
-            db.refresh(conn)  # see updates from Celery worker session
-            if conn.profiling_status == "ready":
-                resolved.append(cid)
-            elif conn.profiling_status == "failed":
-                name = pending[cid]
-                await send({
-                    "type": "chat.error",
-                    "request_id": request_id,
-                    "thread_id": thread_id,
-                    "content": f"Processing failed for {name}",
-                })
-                return False
-
-        for cid in resolved:
-            del pending[cid]
-
-        if elapsed >= MAX_WAIT_S:
-            names = ", ".join(pending.values())
-            await send({
-                "type": "chat.error",
-                "request_id": request_id,
-                "thread_id": thread_id,
-                "content": f"Timed out waiting for {names} to finish processing",
-            })
-            return False
-
-    await send({
-        "type": "chat.ready",
-        "request_id": request_id,
-        "thread_id": thread_id,
-        "content": "All files ready",
-    })
-    return True
-
-
 async def _handle_chat_send(
     ws: WebSocket,
     user: User,
@@ -490,12 +391,6 @@ async def _handle_chat_send(
             if history[i].source == "context_reset":
                 history = history[i + 1:]
                 break
-
-        # Wait for any connection:N files still being profiled by Celery
-        if not await _wait_for_file_processing(
-            file_ids, db, user, send, request_id, active_thread_id,
-        ):
-            return  # processing failed — error already pushed
 
         # Resolve attachments
         file_contents, attachments = await _resolve_attachments(file_ids, chat_file_service, db=db, user=user)

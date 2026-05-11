@@ -540,27 +540,6 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
             if "dataSource" in w:
                 await _execute_widget_sql(w, db_session_factory, data_context=data_context, user_id=context.user_id)
 
-        # Record thread provenance so the dashboard list can link back to the spawning conversation
-        if context.thread_id:
-            if data_context is None:
-                data_context = {}
-            if "source_thread_id" not in data_context:
-                data_context["source_thread_id"] = context.thread_id
-            if "source_title" not in data_context:
-                try:
-                    from backend.models.conversation import Conversation as _Conversation
-                    _conv_db = db_session_factory()
-                    try:
-                        _conv = _conv_db.query(_Conversation).filter(
-                            _Conversation.thread_id == context.thread_id
-                        ).first()
-                        if _conv and _conv.title:
-                            data_context["source_title"] = _conv.title
-                    finally:
-                        _conv_db.close()
-                except Exception as _prov_err:
-                    logger.warning(f"Could not look up conversation title for thread {context.thread_id}: {_prov_err}")
-
         db = db_session_factory()
         try:
             dashboard = Dashboard(
@@ -710,24 +689,6 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
             dashboard.widgets = widgets
             flag_modified(dashboard, "widgets")
             if data_context is not None:
-                # Carry forward thread provenance (only stamp missing keys, never overwrite)
-                if context.thread_id:
-                    if "source_thread_id" not in data_context:
-                        data_context["source_thread_id"] = context.thread_id
-                    if "source_title" not in data_context:
-                        try:
-                            from backend.models.conversation import Conversation as _Conversation
-                            _conv_db = db_session_factory()
-                            try:
-                                _conv = _conv_db.query(_Conversation).filter(
-                                    _Conversation.thread_id == context.thread_id
-                                ).first()
-                                if _conv and _conv.title:
-                                    data_context["source_title"] = _conv.title
-                            finally:
-                                _conv_db.close()
-                        except Exception as _prov_err:
-                            logger.warning(f"Could not look up conversation title for thread {context.thread_id}: {_prov_err}")
                 dashboard.data_context = data_context
                 flag_modified(dashboard, "data_context")
 

@@ -20,9 +20,7 @@ Phase 2 — Design (informed by context):
 4. Call `get_widget_spec(widget_type)` for each widget type you plan to use
 5. Select metrics and choose chart types based on the data context:
    - Use cardinality from context to pick chart types (< 8 → pie, 8-20 → horizontal bar, > 20 → top-N)
-   - Date dimensions in the context include `min` and `max` values (the actual data range). Use these to:
-     a) Set time-series chart granularity (daily for short ranges, monthly for multi-year data)
-     b) Generate `dateRangeSource` SQL on every `date_range` filter control (REQUIRED — see below)
+   - Use date ranges from context for time-series granularity
 6. Design widget SQL using the baseJoin template from the context:
    - EVERY data widget's SQL MUST include the base JOINs so filters reach all dimensions
    - Use table aliases from the baseJoin (e.g., `o.region`, `p.amount`)
@@ -43,19 +41,10 @@ Structure every dashboard as a top-to-bottom data story:
 **Section 1 — Executive Summary (y=0):** 3-4 KPI cards answering "how are we doing at a glance?"
 
 **Section 2 — Filters (y=2):** A filter bar with dropdown, date_range, or search controls for the key dimensions.
-  - Every `date_range` control MUST include `dateRangeSource` (SQL returning `min_date`/`max_date`) and `dateRangeDefault`.
-  - Without `dateRangeSource`, the filter defaults to "last 7 days from today" — empty charts on historical data.
-  - `dateRangeDefault` values: `"full"` (min→max, safe default for historical data), `"7d"`, `"30d"`, `"90d"` (last N days from max), `"ytd"` (year-to-date).
-  - Example control:
-    ```json
-    {"type": "date_range", "label": "Date", "key": "date", "column": "order_date", "dimension": "order_date",
-     "dateRangeSource": {"connectionId": 1, "sql": "SELECT MIN(o.order_date) AS min_date, MAX(o.order_date) AS max_date FROM orders o"},
-     "dateRangeDefault": "full"}
-    ```
 
 **Section 3 — Analysis & Trends (y=4 to y=14):** Text section header, then 3-5 charts with varied types, placed side-by-side.
 
-**Section 4 — Detail & Drill-Down (y=15+):** One Text section header (e.g. "## Detail & Records"), then 1-2 detail tables. Use `config.title` on each table widget for its specific title — do NOT add extra Text widgets just to title individual tables.
+**Section 4 — Detail & Drill-Down (y=15+):** Text section header, then 1-2 detail tables.
 
 ### Layout Patterns (12-column grid)
 
@@ -74,8 +63,7 @@ Rows 16+:   Detail tables — w=12, h=5
 ### Widget Count Guidelines
 
 - Target **9-13 widgets** total (min 7, max 14)
-- 3-4 KPIs + 1 filter bar + 2 text section headers + 3-5 charts + 1-2 tables
-- Text widgets are section headers only (one before charts, one before tables) — tables use `config.title` for their own title
+- 3-4 KPIs + 1 filter bar + 1-2 text headers + 3-5 charts + 1-2 tables
 
 ### Chart Type Selection Guide
 

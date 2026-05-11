@@ -121,12 +121,6 @@ export const useChatConversations = () => {
   }
 
   const loadMessages = async (threadId: string) => {
-    // Set thread + URL immediately so the view-switch transition fires on click,
-    // not after the API round-trip (which would cause a delayed or missing animation)
-    chatStore.setCurrentThread(threadId)
-    if (route.path === '/chat' && route.query.id !== threadId) {
-      router.replace({ path: '/chat', query: { id: threadId } })
-    }
     try {
       const conversation = await api.chat.getMessages(threadId) as any
       const messages: Message[] = (conversation.messages || []).map((msg: any, index: number) => ({
@@ -149,6 +143,10 @@ export const useChatConversations = () => {
       }))
       messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       chatStore.setMessages(messages)
+      chatStore.setCurrentThread(threadId)
+      if (route.path === '/chat' && route.query.id !== threadId) {
+        router.replace({ path: '/chat', query: { id: threadId } })
+      }
 
       // Resolve presigned URLs for image attachments
       const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
@@ -249,7 +247,6 @@ export const useChatConversations = () => {
       // Auto-select permanent conversation if no active thread
       const permanent = conversations.find((c: any) => c.type === 'permanent')
       if (permanent && !chatStore.currentThreadId) {
-        chatStore.setCurrentThread(permanent.id)
         await loadMessages(permanent.id)
       }
     } catch (error) {

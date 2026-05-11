@@ -1,12 +1,7 @@
 <template>
   <div
-    class="relative flex items-center gap-2 rounded-lg border bg-neutral-50 dark:bg-neutral-800"
-    :class="[
-      isImage ? 'h-16 w-16 p-0 overflow-hidden' : 'h-12 px-3 py-2 max-w-48',
-      displayStatus === 'ready' && !isImage
-        ? 'border-[#22c55e44]'
-        : 'border-neutral-200 dark:border-neutral-700',
-    ]"
+    class="relative flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800"
+    :class="isImage ? 'h-16 w-16 p-0 overflow-hidden' : 'h-12 px-3 py-2 max-w-48'"
   >
     <!-- Image thumbnail -->
     <template v-if="isImage">
@@ -42,32 +37,25 @@
 
     <!-- Status overlays -->
 
-    <!-- Upload progress: shows % + bar while transferring, spinner when awaiting server response at 100% -->
+    <!-- Upload progress -->
     <div
-      v-if="displayStatus === 'uploading'"
+      v-if="file.status === 'uploading'"
       class="absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-white/70 dark:bg-neutral-900/70"
     >
-      <template v-if="(file.progress ?? 0) < 100">
-        <span class="text-xs font-medium text-neutral-700 dark:text-neutral-200">
-          {{ file.progress ?? 0 }}%
-        </span>
-        <div class="absolute bottom-0 left-0 right-0 h-1 bg-neutral-200 dark:bg-neutral-700 rounded-b-lg overflow-hidden">
-          <div
-            class="h-full bg-blue-500 transition-all duration-200 ease-out"
-            :style="{ width: `${file.progress ?? 0}%` }"
-          />
-        </div>
-      </template>
-      <!-- 100%: transfer done, server is parsing/building schema — show spinner instead of frozen bar -->
-      <template v-else>
-        <span class="text-[10px] font-medium text-amber-500">Processing…</span>
-        <div class="w-3 h-3 flex-shrink-0 rounded-full border-2 border-neutral-300 dark:border-neutral-600 border-t-violet-400 animate-spin" aria-hidden="true" />
-      </template>
+      <span class="text-xs font-medium text-neutral-700 dark:text-neutral-200">
+        {{ file.progress ?? 0 }}%
+      </span>
+      <div class="absolute bottom-0 left-0 right-0 h-1 bg-neutral-200 dark:bg-neutral-700 rounded-b-lg overflow-hidden">
+        <div
+          class="h-full bg-blue-500 transition-all duration-200 ease-out"
+          :style="{ width: `${file.progress ?? 0}%` }"
+        />
+      </div>
     </div>
 
     <!-- Error indicator -->
     <div
-      v-else-if="displayStatus === 'error'"
+      v-else-if="file.status === 'error'"
       class="absolute inset-0 flex items-center justify-center rounded-lg bg-red-50/80 dark:bg-red-950/60"
       :title="file.error ?? 'Upload failed'"
     >
@@ -77,18 +65,9 @@
       />
     </div>
 
-    <!-- Processing spinner: schema build + profiling in progress -->
-    <div
-      v-else-if="displayStatus === 'processing'"
-      class="absolute inset-0 flex items-center justify-center gap-1.5 rounded-lg bg-white/70 dark:bg-neutral-900/70"
-    >
-      <span class="text-[10px] font-medium text-amber-500">Processing…</span>
-      <div class="w-3 h-3 flex-shrink-0 rounded-full border-2 border-neutral-300 dark:border-neutral-600 border-t-violet-400 animate-spin" aria-hidden="true" />
-    </div>
-
     <!-- Remove button — shown on hover, always visible when error/uploading is not active -->
     <button
-      v-if="displayStatus !== 'uploading'"
+      v-if="file.status !== 'uploading'"
       type="button"
       class="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-600 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-neutral-800 dark:bg-neutral-500 dark:hover:bg-neutral-300 dark:hover:text-neutral-900"
       :title="`Remove ${file.file.name}`"
@@ -106,12 +85,9 @@ import type { UploadingFile } from '~/composables/useChatFileUpload'
 interface Props {
   file: UploadingFile
   index: number
-  effectiveStatus?: UploadingFile['status']
 }
 
 const props = defineProps<Props>()
-
-const displayStatus = computed(() => props.effectiveStatus ?? props.file.status)
 
 const emit = defineEmits<{
   remove: [index: number]

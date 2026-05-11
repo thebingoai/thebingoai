@@ -1,6 +1,5 @@
 import { useChatStore } from '~/stores/chat'
 import type { AgentStep } from '~/stores/chat'
-import { attachedFiles } from '~/composables/useChatFileUpload'
 
 export interface DatasetStatus {
   name: string
@@ -31,13 +30,6 @@ function stepTimestamp(step: AgentStep): string | null {
   return null
 }
 
-/** Extract connectionId from the 'connection:N' fileId format used by useChatFileUpload. */
-function extractConnectionId(fileId: string | null): number | null {
-  if (!fileId?.startsWith('connection:')) return null
-  const n = parseInt(fileId.split(':')[1])
-  return isNaN(n) ? null : n
-}
-
 /**
  * Composable that derives per-dataset processing status by joining
  * message attachments, agent steps, and profiling status polling.
@@ -59,43 +51,18 @@ export const useDatasetStatus = () => {
   const profilingStatuses = ref<Map<number, { status: string; error: string | null; completedAt: string | null }>>(new Map())
   // WebSocket-driven dataset status keyed by file_id
   const wsDatasets = ref<Map<string, WsDatasetEvent>>(new Map())
-  // Per-step timestamps recorded when each WS event actually arrives (not at computed eval time)
-  const wsTimestamps = ref<Map<string, { uploadedAt: string | null; schemaBuiltAt: string | null; completedAt: string | null }>>(new Map())
   // Non-reactive bookkeeping — interval IDs don't need Vue reactivity
   const pollers: Record<number, ReturnType<typeof setInterval>> = {}
 
   // --- WebSocket handler for dataset.status events ---
   const unsubWs = ws.on('dataset.status', (data: WsDatasetEvent) => {
     if (data.thread_id !== chatStore.currentThreadId) return
-
-    // Accumulate per-step timestamps as events arrive; earlier timestamps are preserved
-    const now = new Date().toISOString()
-    const existing = wsTimestamps.value.get(data.file_id)
-    wsTimestamps.value.set(data.file_id, {
-      uploadedAt: existing?.uploadedAt ?? now,
-      schemaBuiltAt: (data.step === 'profiling' || data.step === 'ready' || data.step === 'failed')
-        ? (existing?.schemaBuiltAt ?? now)
-        : (existing?.schemaBuiltAt ?? null),
-      completedAt: data.step === 'ready' ? now : (existing?.completedAt ?? null),
-    })
-    wsTimestamps.value = new Map(wsTimestamps.value)
-
     wsDatasets.value.set(data.file_id, data)
     wsDatasets.value = new Map(wsDatasets.value)
 
     // If profiling step received with connection_id, start polling profiling status
     if (data.step === 'profiling' && data.connection_id) {
       startPolling(data.connection_id)
-    }
-
-    // Transition the attachedFiles chip to 'ready' so the state machine closes
-    if (data.step === 'ready') {
-      const idx = attachedFiles.value.findIndex(f => f.file_id === data.file_id && f.status === 'processing')
-      if (idx !== -1) {
-        const updated = [...attachedFiles.value]
-        updated[idx] = { ...updated[idx], status: 'ready' }
-        attachedFiles.value = updated
-      }
     }
   })
 
@@ -104,33 +71,22 @@ export const useDatasetStatus = () => {
   async function fetchProfilingStatus(connectionId: number) {
     try {
       const result = await api.connections.getProfilingStatus(connectionId) as {
-        status: string          // API field name (not profiling_status)
-        progress: string | null
-        error: string | null
+        profiling_status: string
+        profiling_progress: string | null
+        profiling_error: string | null
         completed_at: string | null
       }
 
       profilingStatuses.value.set(connectionId, {
-        status: result.status,
-        error: result.error,
+        status: result.profiling_status,
+        error: result.profiling_error,
         completedAt: result.completed_at,
       })
       // Trigger reactivity
       profilingStatuses.value = new Map(profilingStatuses.value)
 
-      if (result.status === 'ready' || result.status === 'failed') {
+      if (result.profiling_status === 'ready' || result.profiling_status === 'failed') {
         stopPolling(connectionId)
-      }
-
-      if (result.status === 'ready') {
-        // Transition matching attachedFiles chip from processing → ready
-        const fileId = `connection:${connectionId}`
-        const fidx = attachedFiles.value.findIndex(f => f.file_id === fileId && f.status === 'processing')
-        if (fidx !== -1) {
-          const updated = [...attachedFiles.value]
-          updated[fidx] = { ...updated[fidx], status: 'ready' }
-          attachedFiles.value = updated
-        }
       }
     } catch {
       // Silently ignore polling errors
@@ -192,17 +148,16 @@ export const useDatasetStatus = () => {
       if (evt.step === 'cancelled') continue
       seenFileIds.add(fileId)
 
-      const ts = wsTimestamps.value.get(fileId)
       const ds: DatasetStatus = {
         name: '',
         size: 0,
         fileId,
         connectionId: evt.connection_id ?? null,
         step: evt.step === 'failed' ? 'failed' : evt.step as DatasetStatus['step'],
-        uploadedAt: ts?.uploadedAt ?? null,
-        schemaBuiltAt: ts?.schemaBuiltAt ?? null,
-        profilingStartedAt: ts?.schemaBuiltAt ?? null,
-        completedAt: ts?.completedAt ?? null,
+        uploadedAt: new Date().toISOString(),
+        schemaBuiltAt: evt.step !== 'schema' ? new Date().toISOString() : null,
+        profilingStartedAt: evt.step === 'profiling' ? new Date().toISOString() : null,
+        completedAt: evt.step === 'ready' ? new Date().toISOString() : null,
         rowCount: null,
         columnCount: null,
         error: evt.error ?? null,
@@ -228,85 +183,6 @@ export const useDatasetStatus = () => {
       }
 
       results.push(ds)
-    }
-
-    // Pending uploads (injected after WS events, before message history).
-    // Three sub-cases handled here:
-    //   uploading + progress=100%  → transfer done, server building schema → show step:'schema'
-    //   processing                 → HTTP 200 returned, profiling started  → show step:'profiling'
-    //   ready                      → profiling complete, keep panel until clearFiles() — show schema tree
-    for (const file of attachedFiles.value) {
-      const transferComplete = file.status === 'uploading' && (file.progress ?? 0) >= 100
-      const serverProcessing = file.status === 'processing'
-      const fileReady = file.status === 'ready' && file.connection_id != null
-      if (!transferComplete && !serverProcessing && !fileReady) continue
-
-      // Transfer-complete window: no fileId/connectionId yet — use filename as temporary panel key
-      if (transferComplete) {
-        results.push({
-          name: file.file.name,
-          size: file.file.size,
-          fileId: null,
-          connectionId: null,
-          step: 'schema',
-          uploadedAt: file.transferCompletedAt ?? null,
-          schemaBuiltAt: null,
-          profilingStartedAt: null,
-          completedAt: null,
-          rowCount: null,
-          columnCount: null,
-          error: null,
-        })
-        continue
-      }
-
-      // Ready: profiling done — keep entry visible so schema tree shows until user navigates/clears
-      if (fileReady) {
-        if (!file.file_id || seenFileIds.has(file.file_id)) continue
-        seenFileIds.add(file.file_id)
-        const profiling = file.connection_id ? profilingStatuses.value.get(file.connection_id) : null
-        results.push({
-          name: file.file.name,
-          size: file.file.size,
-          fileId: file.file_id,
-          connectionId: file.connection_id,
-          step: 'ready',
-          uploadedAt: new Date().toISOString(),
-          schemaBuiltAt: new Date().toISOString(),
-          profilingStartedAt: new Date().toISOString(),
-          completedAt: profiling?.completedAt ?? null,
-          rowCount: null,
-          columnCount: null,
-          error: null,
-        })
-        continue
-      }
-
-      // serverProcessing: HTTP 200 returned — connectionId and fileId are known
-      if (!file.connection_id || !file.file_id) continue
-      if (seenFileIds.has(file.file_id)) continue
-      seenFileIds.add(file.file_id)
-
-      const profiling = profilingStatuses.value.get(file.connection_id)
-      const step: DatasetStatus['step'] =
-        profiling?.status === 'ready' ? 'ready' :
-        profiling?.status === 'failed' ? 'failed' : 'profiling'
-
-      const now = new Date().toISOString()
-      results.push({
-        name: file.file.name,
-        size: file.file.size,
-        fileId: file.file_id,
-        connectionId: file.connection_id,
-        step,
-        uploadedAt: now,
-        schemaBuiltAt: now,
-        profilingStartedAt: now,
-        completedAt: step === 'ready' ? (profiling?.completedAt ?? null) : null,
-        rowCount: null,
-        columnCount: null,
-        error: step === 'failed' ? (profiling?.error || 'Profiling failed') : null,
-      })
     }
 
     // Source 2: Message attachments + agent steps (existing logic for active sessions)
@@ -338,9 +214,8 @@ export const useDatasetStatus = () => {
 
       for (const att of msg.attachments) {
         if (!CSV_MIME_TYPES.has(att.type)) continue
-        if (!att.file_id || att.file_id.startsWith('__pending__:')) continue
-        if (seenFileIds.has(att.file_id)) continue
-        seenFileIds.add(att.file_id)
+        if (att.file_id && seenFileIds.has(att.file_id)) continue
+        if (att.file_id) seenFileIds.add(att.file_id)
 
         const ds: DatasetStatus = {
           name: att.name,
@@ -379,16 +254,7 @@ export const useDatasetStatus = () => {
           : null
 
         if (!toolCall) {
-          // No tool call found — extract connectionId from the 'connection:N' fileId if available
-          ds.connectionId = extractConnectionId(ds.fileId)
-          // Check profiling status so we don't show "Building schema…" when done
-          const profiling = ds.connectionId ? profilingStatuses.value.get(ds.connectionId) : null
-          if (profiling?.status === 'ready') {
-            ds.step = 'ready'
-            ds.schemaBuiltAt = msg.created_at
-            ds.profilingStartedAt = msg.created_at
-            ds.completedAt = profiling.completedAt ?? msg.created_at
-          } else if (chatStore.isStreaming) {
+          if (chatStore.isStreaming) {
             ds.step = 'schema'
             ds.schemaBuiltAt = null
           } else {
@@ -419,7 +285,7 @@ export const useDatasetStatus = () => {
         }
 
         ds.schemaBuiltAt = stepTimestamp(toolCall)
-        ds.connectionId = result?.connection_id ?? extractConnectionId(ds.fileId)
+        ds.connectionId = result?.connection_id ?? null
         ds.rowCount = result?.row_count ?? null
         ds.columnCount = result?.columns?.length ?? null
 
@@ -474,7 +340,7 @@ export const useDatasetStatus = () => {
         name: rest.name,
         size: 0,
         fileId,
-        connectionId: rest.connection_id ?? extractConnectionId(fileId),
+        connectionId: rest.connection_id,
         step,
         uploadedAt: null,
         schemaBuiltAt: null,
@@ -492,7 +358,7 @@ export const useDatasetStatus = () => {
   // --- Watch for new connection IDs to poll ---
 
   watch(
-    () => datasets.value.filter(d => d.connectionId && (d.step === 'profiling' || d.step === 'schema')).map(d => d.connectionId!),
+    () => datasets.value.filter(d => d.connectionId && (d.step === 'profiling')).map(d => d.connectionId!),
     (connectionIds) => {
       for (const id of connectionIds) {
         startPolling(id)
@@ -502,17 +368,11 @@ export const useDatasetStatus = () => {
   )
 
   // Stop all polling and reload data when conversation changes
-  watch(() => chatStore.currentThreadId, (newId, oldId) => {
+  watch(() => chatStore.currentThreadId, () => {
     stopAllPolling()
     profilingStatuses.value = new Map()
     wsDatasets.value = new Map()
-    wsTimestamps.value = new Map()
     restDatasets.value = new Map()
-    // Only clear attached files when switching AWAY from an existing conversation,
-    // not when first entering a chat (e.g. after ensureThread creates one on upload).
-    if (oldId && oldId !== newId) {
-      attachedFiles.value = []
-    }
     // Load datasets from REST for the new conversation (page refresh scenario)
     loadConversationDatasets()
   })
@@ -541,11 +401,6 @@ export const useDatasetStatus = () => {
       await (api.chat as any).cancelDataset(fileId)
       wsDatasets.value.delete(fileId)
       wsDatasets.value = new Map(wsDatasets.value)
-      // Remove from attachedFiles regardless of status or sent flag
-      attachedFiles.value = attachedFiles.value.filter(f => f.file_id !== fileId)
-      // Stop polling if this was a connection:N dataset
-      const cid = extractConnectionId(fileId)
-      if (cid) stopPolling(cid)
     } catch {
       // Silently fail
     }

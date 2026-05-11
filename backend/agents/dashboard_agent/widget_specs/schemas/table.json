@@ -1,7 +1,6 @@
 {
   "widget_type": "table",
   "config": {
-    "title": { "type": "string", "required": false, "description": "Table title displayed above the table (use this instead of a separate Text widget for the table heading)" },
     "columns": {
       "type": "array",
       "required": true,

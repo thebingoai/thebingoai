@@ -46,7 +46,6 @@ export interface TableColumn {
 }
 
 export interface TableWidgetConfig {
-  title?: string
   columns: TableColumn[]
   rows: Record<string, any>[]
   pagination?: boolean
@@ -75,7 +74,6 @@ export interface FilterControl {
   options?: string[]                 // static fallback options
   optionsSource?: FilterOptionsSource // dynamic SQL-based options
   dateRangeSource?: FilterOptionsSource // dynamic SQL to fetch min/max dates for date_range controls
-  dateRangeDefault?: 'full' | '7d' | '30d' | '90d' | 'ytd'
 }
 
 export interface FilterWidgetConfig {
@@ -172,24 +170,15 @@ export interface DashboardRefreshRun {
   widget_errors?: Record<string, string> | null
 }
 
-// Lightweight representation for the dashboard table list view
+// Lightweight representation for the dashboard card list view
 export interface DashboardListItem {
   id: number
   title: string
   description?: string
   createdAt?: string
-  updatedAt?: string
   widgetCount: number
   widgetTypes: WidgetType[]
   widgets: { type: WidgetType; position: GridPosition; chartType?: ChartType }[]
-  // Schedule
-  scheduleActive?: boolean
-  scheduleType?: 'preset' | 'cron' | null
-  scheduleValue?: string | null
-  cronExpression?: string | null
-  // Thread provenance (from data_context)
-  sourceTitle?: string | null
-  sourceThreadId?: string | null
 }
 
 // Default grid sizes per widget type
@@ -204,15 +193,11 @@ export const WIDGET_DEFAULTS: Record<WidgetType, GridPosition> = {
 // Derive a DashboardListItem from a full Dashboard
 export function toDashboardListItem(dashboard: Dashboard): DashboardListItem {
   const types = [...new Set(dashboard.widgets.map(w => w.widget.type))]
-  const ctx = dashboard.data_context as any
-  const sourceTitle = ctx?.source_title ?? ctx?.source_name ?? ctx?.source_task ?? null
-  const sourceThreadId = ctx?.source_thread_id ?? null
   return {
     id: dashboard.id,
     title: dashboard.title,
     description: dashboard.description,
     createdAt: dashboard.createdAt,
-    updatedAt: dashboard.updatedAt,
     widgetCount: dashboard.widgets.length,
     widgetTypes: types,
     widgets: dashboard.widgets.map(w => ({
@@ -220,11 +205,5 @@ export function toDashboardListItem(dashboard: Dashboard): DashboardListItem {
       position: w.position,
       chartType: w.widget.type === 'chart' ? (w.widget.config as ChartWidgetConfig).type : undefined,
     })),
-    scheduleActive: dashboard.schedule_active,
-    scheduleType: dashboard.schedule_type,
-    scheduleValue: dashboard.schedule_value,
-    cronExpression: dashboard.cron_expression,
-    sourceTitle,
-    sourceThreadId,
   }
 }

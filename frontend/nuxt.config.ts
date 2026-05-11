@@ -35,9 +35,8 @@ export default defineNuxtConfig({
 
   googleFonts: {
     families: {
-      'Manrope': [300, 400, 500, 600, 700],
-      'JetBrains Mono': [400, 500, 600],
-      'Fraunces': [400, 500, 600]
+      'DM Sans': [200, 300, 400, 500, 600, 700],
+      'JetBrains Mono': [400, 500, 600]
     },
     display: 'swap',
     download: true
