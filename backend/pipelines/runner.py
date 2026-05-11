@@ -150,16 +150,26 @@ def run_pipeline(
                         rows_written += getattr(job, "file_size", 0) or 0  # approximate
                         bytes_written += getattr(job, "file_size", 0) or 0
 
-                # Persist dlt incremental state
+                # Persist dlt incremental state. Isolate this in its own
+                # try/except + rollback so a serialization gap (e.g. an
+                # unexpected non-JSON type in dlt's state dict) cannot strand
+                # the session and prevent the terminal run-status commit below.
                 from backend.pipelines.dlt_state import set_state as _set_state
                 raw_state = dlt_pipeline.state or {}
-                _set_state(
-                    pipeline_id,
-                    raw_state,
-                    db,
-                    owner_scope_kind=pipeline.owner_scope_kind,
-                    owner_scope_id=pipeline.owner_scope_id,
-                )
+                try:
+                    _set_state(
+                        pipeline_id,
+                        raw_state,
+                        db,
+                        owner_scope_kind=pipeline.owner_scope_kind,
+                        owner_scope_id=pipeline.owner_scope_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Pipeline %s run %s: failed to persist dlt state; continuing with run-status update",
+                        pipeline_id, run_id,
+                    )
+                    db.rollback()
 
         except Exception as exc:
             error_message = str(exc)[:2000]

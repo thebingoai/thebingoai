@@ -19,7 +19,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-DBT_PROJECTS_ROOT = os.environ.get("DBT_PROJECTS_ROOT", "/var/lib/bingo/dbt_projects")
+DBT_PROJECTS_ROOT = os.environ.get("DBT_PROJECTS_ROOT", "/app/data/dbt_projects")
 
 
 def _project_dir(scope_id: str) -> str:
