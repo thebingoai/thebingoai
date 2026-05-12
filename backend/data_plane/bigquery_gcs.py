@@ -237,9 +237,12 @@ class BigQueryGCSPlane:
         result = sql
         for t in sorted(tables, key=len, reverse=True):  # longest first
             bq_name = self._bq_table_name(scope, t)
+            # Backtick the fully-qualified id: scope/dataset can contain hyphens
+            # (UUID-based org ids, customer dataset names), which BQ requires
+            # to be quoted in SQL identifiers.
             result = re.sub(
                 rf"\b{re.escape(t)}\b",
-                f"{prefix}{bq_name}",
+                f"`{prefix}{bq_name}`",
                 result,
             )
         return result
