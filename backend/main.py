@@ -18,6 +18,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
     # Startup
     logger.info("Starting BINGO Backend...")
+
+    # Fail fast in production if the data-plane lockdown is half-configured.
+    from backend.services.data_plane_service import check_internal_gcp_config
+    check_internal_gcp_config()
+
     try:
         ensure_collection(settings.qdrant_documents_collection, settings.qdrant_vector_size)
         ensure_collection(settings.qdrant_memories_collection, settings.qdrant_vector_size)

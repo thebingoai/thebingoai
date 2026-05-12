@@ -136,3 +136,34 @@ def _internal_gcp_plane():
         bq_dataset=settings.internal_bq_dataset,
         service_account_json=sa_json,
     )
+
+
+def check_internal_gcp_config() -> None:
+    """Boot-time precondition for DISABLE_LOCAL_DATA_PLANE.
+
+    Called from `backend.main.lifespan` before any pipeline can run. Raises
+    RuntimeError when the lockdown is on but the internal-GCP env is incomplete
+    or the SA JSON file is unreadable. No-op when the lockdown is off.
+    """
+    import os
+    from backend.config import settings
+
+    if not getattr(settings, "disable_local_data_plane", False):
+        return
+
+    for field, env_name in (
+        ("internal_gcp_project", "INTERNAL_GCP_PROJECT"),
+        ("internal_gcs_bucket", "INTERNAL_GCS_BUCKET"),
+        ("internal_bq_dataset", "INTERNAL_BQ_DATASET"),
+    ):
+        if not getattr(settings, field, None):
+            raise RuntimeError(
+                f"DISABLE_LOCAL_DATA_PLANE=true but {env_name} is empty"
+            )
+
+    sa_path = getattr(settings, "internal_gcp_sa_json_path", None)
+    if not sa_path or not os.path.isfile(sa_path):
+        raise RuntimeError(
+            "DISABLE_LOCAL_DATA_PLANE=true but INTERNAL_GCP_SA_JSON_PATH "
+            f"({sa_path!r}) is not a readable file"
+        )
