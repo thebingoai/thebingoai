@@ -87,7 +87,16 @@ async def get_current_user(
 
 
 def _create_user(db: Session, sso_user) -> User:
-    """Create a new local User record for a first-time SSO login."""
+    """Create a new local User record for a first-time SSO login.
+
+    Two governance modes:
+      - `per_user_org_signup=False` (default / community): join the shared
+        DEFAULT_ORG_ID + DEFAULT_TEAM_ID — legacy single-org behaviour.
+      - `per_user_org_signup=True` (enterprise lockdown profile): create a
+        brand-new Org named after the user's email, put them in a fresh
+        per-Org team, mark trial state, and fire `emit_org_created` so
+        listeners (e.g. the bingo-admin auto-provisioner) can react.
+    """
     try:
         user = User(
             email=sso_user.email,
@@ -98,17 +107,52 @@ def _create_user(db: Session, sso_user) -> User:
         db.add(user)
         db.flush()  # Get the ID without committing
 
+        org_to_emit = None  # set only when we created a new Org
+
         if settings.enable_governance:
-            user.org_id = DEFAULT_ORG_ID
-            membership = TeamMembership(
-                user_id=user.id,
-                team_id=DEFAULT_TEAM_ID,
-                role=MemberRole.MEMBER,
-            )
-            db.add(membership)
+            if settings.per_user_org_signup:
+                # 1 user = 1 Org. Trial state lives on the Organization row.
+                import datetime as _dt
+                import os as _os
+                import uuid as _uuid
+                from backend.models.organization import Organization
+                from backend.models.team import Team
+
+                trial_days = int(_os.environ.get("TRIAL_PERIOD_DAYS", "14"))
+                org = Organization(
+                    id=str(_uuid.uuid4()),
+                    name=sso_user.email,
+                    plan_state="trial",
+                    trial_expires_at=_dt.datetime.utcnow() + _dt.timedelta(days=trial_days),
+                )
+                team = Team(id=str(_uuid.uuid4()), org_id=org.id, name="default")
+                db.add(org)
+                db.add(team)
+                db.flush()  # need org.id + team.id below
+
+                user.org_id = org.id
+                db.add(TeamMembership(
+                    user_id=user.id,
+                    team_id=team.id,
+                    role=MemberRole.MEMBER,
+                ))
+                org_to_emit = org
+            else:
+                user.org_id = DEFAULT_ORG_ID
+                db.add(TeamMembership(
+                    user_id=user.id,
+                    team_id=DEFAULT_TEAM_ID,
+                    role=MemberRole.MEMBER,
+                ))
 
         db.commit()
         db.refresh(user)
+
+        # Fire AFTER commit so listeners (which open their own SessionLocal)
+        # see a persisted Org row.
+        if org_to_emit is not None:
+            from backend.governance.contract import emit_org_created
+            emit_org_created(org=org_to_emit, creator_user=user)
 
         # Seed sample connections for new user
         try:

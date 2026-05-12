@@ -18,3 +18,11 @@ class DataPlaneModel(Base, TimestampMixin):
     credentials_encrypted = Column(String, nullable=True)  # Fernet-encrypted secret JSON
     is_default = Column(Boolean, nullable=False, default=False)
     created_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    # Python-side enum: {customer, bingo}. Bingo-managed rows are
+    # auto-provisioned in INTERNAL_GCP_PROJECT and cannot be edited/deleted.
+    managed_by = Column(
+        String(16),
+        nullable=False,
+        server_default="customer",
+        default="customer",
+    )

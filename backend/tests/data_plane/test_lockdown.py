@@ -1,20 +1,27 @@
-"""Tests for the DISABLE_LOCAL_DATA_PLANE lockdown path in data_plane_service."""
+"""Tests for the DISABLE_LOCAL_DATA_PLANE lockdown path in data_plane_service.
+
+Shape A: there is no env-driven singleton fallback. When the resolver finds
+no row and lockdown is on, it raises ``NoPlaneProvisionedError``. When
+lockdown is off, the historical dev-convenience ``LocalFilesystemDataPlane``
+is returned. A ``local_filesystem`` row under lockdown raises
+``LocalPlaneUnderLockdownError`` instead of being silently rerouted.
+"""
 import json
-import logging
 import uuid
 
 import pytest
 
-from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
+from backend.data_plane.errors import (
+    LocalPlaneUnderLockdownError,
+    NoPlaneProvisionedError,
+)
 from backend.data_plane.local_filesystem import LocalFilesystemDataPlane
 from backend.data_plane.scope import OwnerScope
 from backend.models.data_plane import DataPlaneModel
 from backend.models.organization import Organization
 from backend.models.user import User
-from backend.services import data_plane_service
 from backend.services.data_plane_service import (
-    _internal_gcp_plane,
-    _read_internal_sa,
+    check_internal_gcp_config,
     get_default_plane,
 )
 
@@ -62,50 +69,19 @@ def lockdown_settings(monkeypatch, sa_json_file):
     from backend.config import settings
     monkeypatch.setattr(settings, "disable_local_data_plane", True)
     monkeypatch.setattr(settings, "internal_gcp_project", "bingo-internal-test")
-    monkeypatch.setattr(settings, "internal_gcs_bucket", "bingo-internal-test-bucket")
-    monkeypatch.setattr(settings, "internal_bq_dataset", "bingo_internal_test")
     monkeypatch.setattr(settings, "internal_gcp_sa_json_path", str(sa_json_file))
     return settings
 
 
-# ── _read_internal_sa ─────────────────────────────────────────────────────
+# ── No-row behaviour ──────────────────────────────────────────────────────
 
 
-def test_read_internal_sa_returns_file_contents(sa_json_file):
-    contents = _read_internal_sa(str(sa_json_file))
-    assert "bingo-internal-test" in contents
-    assert json.loads(contents)["type"] == "service_account"
-
-
-def test_read_internal_sa_missing_file_raises(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        _read_internal_sa(str(tmp_path / "nope.json"))
-
-
-# ── _internal_gcp_plane ────────────────────────────────────────────────────
-
-
-def test_internal_gcp_plane_built_from_settings(lockdown_settings):
-    plane = _internal_gcp_plane()
-
-    assert isinstance(plane, BigQueryGCSPlane)
-    assert plane._project == "bingo-internal-test"
-    assert plane._bucket_name == "bingo-internal-test-bucket"
-    assert plane._dataset == "bingo_internal_test"
-    assert json.loads(plane._sa_json)["client_email"].endswith(
-        "iam.gserviceaccount.com"
-    )
-
-
-# ── _default_fallback via get_default_plane ───────────────────────────────
-
-
-def test_no_rows_with_lockdown_returns_internal_plane(db_session, org_user, lockdown_settings):
-    """When DISABLE_LOCAL_DATA_PLANE=true and no rows exist, fall back to internal GCP."""
-    plane = get_default_plane(OwnerScope("user", org_user.id), db_session)
-
-    assert isinstance(plane, BigQueryGCSPlane)
-    assert plane._project == "bingo-internal-test"
+def test_no_rows_under_lockdown_raises(db_session, org_user, lockdown_settings):
+    """Lockdown on + no rows → NoPlaneProvisionedError with the requested scope."""
+    with pytest.raises(NoPlaneProvisionedError) as exc:
+        get_default_plane(OwnerScope("user", org_user.id), db_session)
+    assert exc.value.scope.kind == "user"
+    assert exc.value.scope.id == org_user.id
 
 
 def test_no_rows_without_lockdown_returns_local_plane(db_session, org_user, monkeypatch):
@@ -114,18 +90,14 @@ def test_no_rows_without_lockdown_returns_local_plane(db_session, org_user, monk
     monkeypatch.setattr(settings, "disable_local_data_plane", False)
 
     plane = get_default_plane(OwnerScope("user", org_user.id), db_session)
-
     assert isinstance(plane, LocalFilesystemDataPlane)
 
 
-# ── _instantiate refusal ──────────────────────────────────────────────────
+# ── _instantiate strictness ───────────────────────────────────────────────
 
 
-def test_local_filesystem_row_refused_under_lockdown(
-    db_session, org, lockdown_settings, caplog,
-):
-    """An is_default local_filesystem row at org scope is refused; resolution
-    falls through to the internal plane and a warning identifies the row."""
+def test_local_filesystem_row_refused_under_lockdown(db_session, org, lockdown_settings):
+    """An is_default local_filesystem row at org scope raises under lockdown."""
     row = DataPlaneModel(
         id=str(uuid.uuid4()),
         owner_scope_kind="org",
@@ -137,10 +109,44 @@ def test_local_filesystem_row_refused_under_lockdown(
     db_session.add(row)
     db_session.commit()
 
-    with caplog.at_level(logging.WARNING, logger="backend.services.data_plane_service"):
-        plane = get_default_plane(OwnerScope("org", org.id), db_session)
+    with pytest.raises(LocalPlaneUnderLockdownError) as exc:
+        get_default_plane(OwnerScope("org", org.id), db_session)
+    assert exc.value.row_id == row.id
 
-    assert isinstance(plane, BigQueryGCSPlane)
-    assert plane._project == "bingo-internal-test"
-    assert any(row.id in rec.message for rec in caplog.records), \
-        "Warning must name the refused row.id for operator audit"
+
+# ── check_internal_gcp_config ─────────────────────────────────────────────
+
+
+def test_check_internal_gcp_config_noop_when_lockdown_off(monkeypatch):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "disable_local_data_plane", False)
+    check_internal_gcp_config()  # no raise
+
+
+def test_check_internal_gcp_config_raises_when_project_missing(monkeypatch, sa_json_file):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "disable_local_data_plane", True)
+    monkeypatch.setattr(settings, "internal_gcp_project", None)
+    monkeypatch.setattr(settings, "internal_gcp_sa_json_path", str(sa_json_file))
+    with pytest.raises(RuntimeError, match="INTERNAL_GCP_PROJECT"):
+        check_internal_gcp_config()
+
+
+def test_check_internal_gcp_config_raises_when_sa_path_missing(monkeypatch, tmp_path):
+    from backend.config import settings
+    monkeypatch.setattr(settings, "disable_local_data_plane", True)
+    monkeypatch.setattr(settings, "internal_gcp_project", "x")
+    monkeypatch.setattr(settings, "internal_gcp_sa_json_path", str(tmp_path / "nope.json"))
+    with pytest.raises(RuntimeError, match="INTERNAL_GCP_SA_JSON_PATH"):
+        check_internal_gcp_config()
+
+
+def test_check_internal_gcp_config_drops_bucket_dataset_preconditions(monkeypatch, sa_json_file):
+    """Shape A: bucket/dataset live on data_planes rows, not env. Config check must not require them."""
+    from backend.config import settings
+    monkeypatch.setattr(settings, "disable_local_data_plane", True)
+    monkeypatch.setattr(settings, "internal_gcp_project", "x")
+    monkeypatch.setattr(settings, "internal_gcp_sa_json_path", str(sa_json_file))
+    monkeypatch.setattr(settings, "internal_gcs_bucket", None)
+    monkeypatch.setattr(settings, "internal_bq_dataset", None)
+    check_internal_gcp_config()  # no raise
