@@ -95,3 +95,24 @@ def test_internal_gcp_plane_built_from_settings(lockdown_settings):
     assert json.loads(plane._sa_json)["client_email"].endswith(
         "iam.gserviceaccount.com"
     )
+
+
+# ── _default_fallback via get_default_plane ───────────────────────────────
+
+
+def test_no_rows_with_lockdown_returns_internal_plane(db_session, org_user, lockdown_settings):
+    """When DISABLE_LOCAL_DATA_PLANE=true and no rows exist, fall back to internal GCP."""
+    plane = get_default_plane(OwnerScope("user", org_user.id), db_session)
+
+    assert isinstance(plane, BigQueryGCSPlane)
+    assert plane._project == "bingo-internal-test"
+
+
+def test_no_rows_without_lockdown_returns_local_plane(db_session, org_user, monkeypatch):
+    """Dev default: no rows + lockdown=false → LocalFilesystemDataPlane (regression guard)."""
+    from backend.config import settings
+    monkeypatch.setattr(settings, "disable_local_data_plane", False)
+
+    plane = get_default_plane(OwnerScope("user", org_user.id), db_session)
+
+    assert isinstance(plane, LocalFilesystemDataPlane)

@@ -44,7 +44,7 @@ def get_default_plane(scope: OwnerScope, db=None):
         row = by_key.get((s.kind, s.id))
         if row is not None:
             return _instantiate(row)
-    return _local_fallback()
+    return _default_fallback()
 
 
 def _scope_chain(scope: OwnerScope, db) -> list[OwnerScope]:
@@ -70,8 +70,15 @@ def get_plane_for_connection(connection):
     return plane, scope
 
 
-def _local_fallback():
+def _default_fallback():
+    """Return the per-scope plane when no `data_planes` row matches.
+
+    In dev (`DISABLE_LOCAL_DATA_PLANE=false`) this is LocalFilesystemDataPlane.
+    In prod with the lockdown on, this is the Bingo-managed internal GCP plane.
+    """
     from backend.config import settings
+    if getattr(settings, "disable_local_data_plane", False):
+        return _internal_gcp_plane()
     from backend.data_plane.local_filesystem import LocalFilesystemDataPlane
     root = getattr(settings, "data_plane_local_root", "/data/data_plane")
     return LocalFilesystemDataPlane(root_path=root)
