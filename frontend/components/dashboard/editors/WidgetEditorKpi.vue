@@ -133,17 +133,25 @@
         <label class="text-xs text-gray-600">Type</label>
         <div class="flex rounded border border-gray-200 overflow-hidden">
           <button
-            v-for="opt in comparisonTypeOptions"
+            v-for="opt in availableComparisonTypes"
             :key="opt.value"
             type="button"
-            :disabled="!editMode"
-            class="flex-1 py-1.5 text-[11px] font-medium transition-colors border-r border-gray-200 last:border-r-0 disabled:opacity-40 disabled:cursor-not-allowed"
-            :class="localComparisonType === opt.value
-              ? 'bg-indigo-600 text-white'
-              : 'bg-white text-gray-500 hover:bg-gray-50'"
-            @click="editMode && setComparisonType(opt.value)"
+            :disabled="!editMode || opt.disabled"
+            :title="opt.disabled ? opt.reason : undefined"
+            class="flex-1 py-1.5 text-[11px] font-medium transition-colors border-r border-gray-200 last:border-r-0 disabled:cursor-not-allowed"
+            :class="[
+              localComparisonType === opt.value && !opt.disabled
+                ? 'bg-indigo-600 text-white'
+                : opt.disabled
+                  ? 'bg-gray-50 text-gray-300'
+                  : 'bg-white text-gray-500 hover:bg-gray-50',
+            ]"
+            @click="editMode && !opt.disabled && setComparisonType(opt.value)"
           >{{ opt.label }}</button>
         </div>
+        <p v-if="availableComparisonTypes.some(o => o.disabled)" class="text-[10px] text-gray-400">
+          Greyed options need a different query shape. Hover for details.
+        </p>
       </div>
 
       <!-- Period options -->
@@ -447,13 +455,29 @@ function setPrimaryRole(r: 'dimension' | 'metric') {
 
 const DATE_BASED_PERIODS = new Set(['vs yesterday', 'vs last week', 'vs last month', 'vs last quarter', 'vs last year'])
 
-// Comparison type
-const comparisonTypeOptions = [
-  { value: 'none' as const, label: 'None' },
-  { value: 'period' as const, label: 'Period' },
-  { value: 'value' as const, label: 'Value' },
-  { value: 'metric' as const, label: 'Metric' },
-]
+const DATE_COL_RE = /date|time|day|month|year|week|created|updated|period|timestamp|_ts|_at$/i
+
+// Smart-detect which comparison types are usable given current query shape
+const availableComparisonTypes = computed(() => {
+  const hasPeriod = !props.dataSource
+    || isAutoTrend.value
+    || ((props.sourceRows?.length ?? 0) >= 2 && (props.sourceColumns ?? []).some(c => DATE_COL_RE.test(c)))
+
+  const hasMetric = !!props.dataSource && (props.sourceColumns?.length ?? 0) >= 2
+
+  return [
+    { value: 'none' as const, label: 'None', disabled: false, reason: '' },
+    { value: 'period' as const, label: 'Period', disabled: !hasPeriod, reason: 'Needs a date column + multiple rows in your query' },
+    { value: 'value' as const, label: 'Value', disabled: false, reason: '' },
+    { value: 'metric' as const, label: 'Metric', disabled: !hasMetric, reason: props.dataSource ? 'Needs ≥ 2 columns in your query' : 'Needs a data source' },
+  ]
+})
+
+// Auto-reset if current type becomes incompatible with query shape
+watch(availableComparisonTypes, (opts) => {
+  const opt = opts.find(o => o.value === localComparisonType.value)
+  if (opt?.disabled) localComparisonType.value = 'none'
+})
 
 // Back-compat: existing `trend` field maps to comparison.type = 'period'
 function resolveComparisonType(): 'none' | 'period' | 'value' | 'metric' {
