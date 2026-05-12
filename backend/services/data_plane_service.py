@@ -85,9 +85,18 @@ def _default_fallback():
 
 
 def _instantiate(row):
+    from backend.config import settings
     from backend.security.encryption import decrypt_password
 
     if row.type == "local_filesystem":
+        if getattr(settings, "disable_local_data_plane", False):
+            logger.warning(
+                "Refusing to instantiate local_filesystem data_plane row %s "
+                "(DISABLE_LOCAL_DATA_PLANE=true). Falling back to internal GCP. "
+                "Migrate or delete this row to silence this warning.",
+                row.id,
+            )
+            return _internal_gcp_plane()
         from backend.data_plane.local_filesystem import LocalFilesystemDataPlane
         root = row.config.get("root_path", "/data/data_plane")
         return LocalFilesystemDataPlane(root_path=root)

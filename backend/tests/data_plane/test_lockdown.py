@@ -116,3 +116,31 @@ def test_no_rows_without_lockdown_returns_local_plane(db_session, org_user, monk
     plane = get_default_plane(OwnerScope("user", org_user.id), db_session)
 
     assert isinstance(plane, LocalFilesystemDataPlane)
+
+
+# ── _instantiate refusal ──────────────────────────────────────────────────
+
+
+def test_local_filesystem_row_refused_under_lockdown(
+    db_session, org, lockdown_settings, caplog,
+):
+    """An is_default local_filesystem row at org scope is refused; resolution
+    falls through to the internal plane and a warning identifies the row."""
+    row = DataPlaneModel(
+        id=str(uuid.uuid4()),
+        owner_scope_kind="org",
+        owner_scope_id=org.id,
+        type="local_filesystem",
+        config={"root_path": "/tmp/should-not-be-used"},
+        is_default=True,
+    )
+    db_session.add(row)
+    db_session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="backend.services.data_plane_service"):
+        plane = get_default_plane(OwnerScope("org", org.id), db_session)
+
+    assert isinstance(plane, BigQueryGCSPlane)
+    assert plane._project == "bingo-internal-test"
+    assert any(row.id in rec.message for rec in caplog.records), \
+        "Warning must name the refused row.id for operator audit"
