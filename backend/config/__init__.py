@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     # DataPlane (Phase 1)
     data_plane_local_root: str = "/data/data_plane"
 
+    # DataPlane lockdown (Phase 1+): when true, _default_fallback() returns
+    # the internal BigQueryGCSPlane and any local_filesystem rows are refused.
+    disable_local_data_plane: bool = False
+
+    # Internal Bingo-managed GCP (only required when disable_local_data_plane=True)
+    internal_gcp_project: Optional[str] = None
+    internal_gcs_bucket: Optional[str] = None
+    internal_bq_dataset: Optional[str] = None
+    internal_gcp_sa_json_path: Optional[str] = None
+
     # Server settings
     cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
     app_version: str = "0.1.0"
