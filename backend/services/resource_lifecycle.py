@@ -13,34 +13,32 @@ logger = logging.getLogger(__name__)
 
 
 def delete_pipeline(pipeline_id: str, db) -> None:
-    """Delete a pipeline and its DataPlane target table.
+    """Delete a pipeline row + its run history. DataPlane data is preserved.
 
     Steps:
     1. Load pipeline row — raise 404 if not found.
-    2. Drop DataPlane target table for the pipeline's scope.
-    3. Delete pipeline row (cascade deletes pipeline_runs + dlt_pipeline_states).
-    4. Publish lineage:invalidate.
+    2. Delete pipeline row (cascade deletes pipeline_runs + dlt_pipeline_states).
+    3. Publish lineage:invalidate.
+
+    Bingo's no-delete policy: the target table on the DataPlane (BQ external
+    table + GCS parquet files / Local parquet files) is left in place. Operators
+    can drop the table + GCS prefix in their GCP project (or rm the local dir)
+    if they want to reclaim storage.
     """
     import json
     from backend.models.pipeline import Pipeline
     from backend.data_plane.scope import OwnerScope
-    from backend.services.data_plane_service import get_default_plane
 
     pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
     if pipeline is None:
         raise LookupError(f"Pipeline {pipeline_id!r} not found")
 
     scope = OwnerScope(pipeline.owner_scope_kind, pipeline.owner_scope_id)
-    plane = get_default_plane(scope, db)
-
-    # Drop DataPlane table — best effort (may not exist yet)
-    try:
-        if plane.table_exists(scope, pipeline.target_table):
-            plane.drop_table(scope, pipeline.target_table)
-            logger.info("delete_pipeline: dropped DataPlane table %s for pipeline %s",
-                        pipeline.target_table, pipeline_id)
-    except Exception as exc:
-        logger.warning("delete_pipeline: failed to drop DataPlane table for pipeline %s: %s", pipeline_id, exc)
+    logger.info(
+        "delete_pipeline %s: removing metadata only; DataPlane data for table %r "
+        "in scope %s preserved (Bingo no-delete policy).",
+        pipeline_id, pipeline.target_table, scope.as_path(),
+    )
 
     db.delete(pipeline)
     db.flush()
@@ -61,33 +59,32 @@ def delete_pipeline(pipeline_id: str, db) -> None:
 
 
 def delete_dbt_model(model_id: str, db) -> None:
-    """Delete a dbt model and its DataPlane materialized table.
+    """Delete a dbt model row + scope-level dbt_runs. Materialized data preserved.
 
     Steps:
     1. Load model row — raise 404 if not found.
-    2. Drop DataPlane target table for the model's scope (model.name IS the table name).
-    3. Manually delete dbt_runs (no FK cascade — runs are scope-level), then delete model row.
+    2. Manually delete dbt_runs (no FK cascade — runs are scope-level).
+    3. Delete model row.
     4. Publish lineage:invalidate.
+
+    Bingo's no-delete policy: the materialized output (BQ table or Local
+    parquet) is left in place. Operators clean up GCP-side / filesystem-side
+    if they want to reclaim storage.
     """
     import json
     from backend.models.transforms import DbtModel
     from backend.data_plane.scope import OwnerScope
-    from backend.services.data_plane_service import get_default_plane
 
     model = db.query(DbtModel).filter(DbtModel.id == model_id).first()
     if model is None:
         raise LookupError(f"DbtModel {model_id!r} not found")
 
     scope = OwnerScope(model.owner_scope_kind, model.owner_scope_id)
-    plane = get_default_plane(scope, db)
-
-    # Drop DataPlane table — best effort
-    try:
-        if plane.table_exists(scope, model.name):
-            plane.drop_table(scope, model.name)
-            logger.info("delete_dbt_model: dropped DataPlane table %s for model %s", model.name, model_id)
-    except Exception as exc:
-        logger.warning("delete_dbt_model: failed to drop DataPlane table for model %s: %s", model_id, exc)
+    logger.info(
+        "delete_dbt_model %s: removing metadata only; materialized table %r in scope %s "
+        "preserved (Bingo no-delete policy).",
+        model_id, model.name, scope.as_path(),
+    )
 
     # Manually delete dbt_runs (no FK cascade — runs are scope-level)
     from backend.models.transforms import DbtRun

@@ -130,8 +130,18 @@ class BigQueryGCSPlane:
         table_ref = bigquery.Table(full_table_id, schema=bq_schema)
         table_ref.external_data_configuration = external_config
 
-        self._bq().delete_table(full_table_id, not_found_ok=True)
-        self._bq().create_table(table_ref)
+        # Update-or-create. We previously delete+create'd to refresh the
+        # external config but that requires `bigquery.tables.delete`, which we
+        # do not want Bingo to call against customer data. `update_table` only
+        # needs `bigquery.tables.update`.
+        from google.cloud.exceptions import NotFound
+        try:
+            self._bq().update_table(
+                table_ref,
+                fields=["schema", "external_data_configuration"],
+            )
+        except NotFound:
+            self._bq().create_table(table_ref)
         logger.debug("Registered BQ external table %s", full_table_id)
 
     def query(
@@ -166,14 +176,18 @@ class BigQueryGCSPlane:
         return tables
 
     def drop_table(self, scope: OwnerScope, table: str) -> None:
-        full_table_id = f"{self._project}.{self._dataset}.{self._bq_table_name(scope, table)}"
-        self._bq().delete_table(full_table_id, not_found_ok=True)
-        # Best-effort GCS cleanup (prefix-delete)
-        prefix = f"data_plane/{scope.as_path()}/{table}/"
-        bucket = self._gcs().bucket(self._bucket_name)
-        blobs = list(bucket.list_blobs(prefix=prefix))
-        if blobs:
-            bucket.delete_blobs(blobs)
+        # Intentional no-op: Bingo's no-delete policy means the cloud plane
+        # never destroys customer data. Pipeline / dbt-model delete cascades
+        # remove the Bingo metadata row but leave the BQ table + GCS parquet
+        # files in place; operators clean those up GCP-side if desired.
+        full_table_id = (
+            f"{self._project}.{self._dataset}.{self._bq_table_name(scope, table)}"
+        )
+        logger.info(
+            "BigQueryGCSPlane.drop_table no-op for %s (Bingo never deletes customer data; "
+            "remove the table + GCS prefix in your GCP project to reclaim storage).",
+            full_table_id,
+        )
 
     def table_exists(self, scope: OwnerScope, table: str) -> bool:
         from google.cloud.exceptions import NotFound
