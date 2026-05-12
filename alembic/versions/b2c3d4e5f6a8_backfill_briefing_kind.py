@@ -1,12 +1,12 @@
 """Backfill kind='briefing' for existing dashboard-analysis HeartbeatJob rows
 
-Revision ID: b2c3d4e5f6a7
+Revision ID: b2c3d4e5f6a8
 Revises: e472adcb3901
 Create Date: 2026-05-08 11:00:00.000000
 """
 from alembic import op
 
-revision = "b2c3d4e5f6a7"
+revision = "b2c3d4e5f6a8"
 down_revision = "e472adcb3901"
 branch_labels = None
 depends_on = None
