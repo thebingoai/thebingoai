@@ -96,3 +96,27 @@ def _instantiate(row):
         )
 
     raise ValueError(f"Unknown data_plane type: {row.type!r}")
+
+
+def _read_internal_sa(path: str) -> str:
+    """Read the internal-GCP service-account JSON from disk.
+
+    Path-based read keeps the SA off env (env vars leak to subprocess logs);
+    secret is mounted as a file by infra.
+    """
+    with open(path) as f:
+        return f.read()
+
+
+def _internal_gcp_plane():
+    """Construct the Bingo-managed internal BigQueryGCSPlane from env."""
+    from backend.config import settings
+    from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
+
+    sa_json = _read_internal_sa(settings.internal_gcp_sa_json_path)
+    return BigQueryGCSPlane(
+        gcp_project=settings.internal_gcp_project,
+        gcs_bucket=settings.internal_gcs_bucket,
+        bq_dataset=settings.internal_bq_dataset,
+        service_account_json=sa_json,
+    )
