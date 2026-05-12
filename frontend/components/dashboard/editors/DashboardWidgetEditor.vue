@@ -30,7 +30,7 @@
         Configure
       </button>
       <button
-        v-if="props.widget.widget.type === 'table'"
+        v-if="props.widget.widget.type === 'table' || props.widget.widget.type === 'kpi'"
         class="px-3 py-2 text-sm font-medium border-b-2 transition-colors"
         :class="activeTab === 'style'
           ? 'border-indigo-500 text-indigo-600'
@@ -78,12 +78,26 @@
         </div>
       </div>
 
-      <!-- Style tab (table only) -->
+      <!-- Style tab (table) -->
       <div
         v-else-if="activeTab === 'style' && props.widget.widget.type === 'table'"
         class="h-full overflow-hidden"
       >
         <WidgetEditorTableStyle
+          :key="props.widget.id"
+          :model-value="currentConfig"
+          :edit-mode="editMode"
+          class="h-full"
+          @update:model-value="onConfigUpdate"
+        />
+      </div>
+
+      <!-- Style tab (kpi) -->
+      <div
+        v-else-if="activeTab === 'style' && props.widget.widget.type === 'kpi'"
+        class="h-full overflow-hidden"
+      >
+        <WidgetEditorKpiStyle
           :key="props.widget.id"
           :model-value="currentConfig"
           :edit-mode="editMode"
@@ -210,6 +224,7 @@
 <script lang="ts">
 import { defineAsyncComponent } from 'vue'
 import WidgetEditorTableStyle from './WidgetEditorTableStyle.vue'
+import WidgetEditorKpiStyle from './WidgetEditorKpiStyle.vue'
 
 // Defined at module level so they're singletons, not re-created on each setup call
 const editorComponents: Record<string, ReturnType<typeof defineAsyncComponent>> = {
@@ -379,7 +394,14 @@ function onMappingUpdate(patch: Record<string, any>) {
         { columns: sourceColumns.value, rows: previewRows.value },
         newMapping,
       )
-      store.updateWidgetConfig(props.widget.id, { type: 'kpi', config })
+      // Preserve user-configured style/label/comparison fields by merging
+      // existing config under the freshly transformed value/sparkline/trend.
+      const current = props.widget.widget
+      const existingConfig = current.type === 'kpi' ? (current.config as Record<string, any>) : {}
+      store.updateWidgetConfig(props.widget.id, {
+        type: 'kpi',
+        config: { ...existingConfig, ...config } as any,
+      })
     })
   }
 }
