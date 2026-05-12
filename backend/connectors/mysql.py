@@ -3,6 +3,17 @@ from pymysql.cursors import DictCursor
 from backend.connectors.base import BaseConnector
 
 
+class _LowercaseDictCursor(DictCursor):
+    """DictCursor that lowercases column names so the base connector's
+    case-sensitive lookups (e.g. row['schema_name']) work against MySQL
+    information_schema (which returns names like SCHEMA_NAME)."""
+
+    def _conv_row(self, row):
+        if row is None:
+            return None
+        return self.dict_type(zip([f.lower() for f in self._fields], row))
+
+
 class MySQLConnector(BaseConnector):
     """
     MySQL database connector.
@@ -26,7 +37,7 @@ class MySQLConnector(BaseConnector):
     def _get_cursor(self, conn, dict_mode: bool = False):
         """Get cursor (dict cursor for schema queries, tuple cursor for execute_query)."""
         if dict_mode:
-            return conn.cursor(DictCursor)
+            return conn.cursor(_LowercaseDictCursor)
         return conn.cursor()
 
     def _get_connect_kwargs(self) -> dict:
@@ -84,3 +95,12 @@ class MySQLConnector(BaseConnector):
 
     # Note: _foreign_key_query() uses default from BaseConnector
     # (MySQL information_schema has referenced_table_name/referenced_column_name)
+
+
+def dlt_source_for(connection, extraction_config: dict | None = None):
+    from backend.connectors.sql_dlt import sql_dlt_source
+    return sql_dlt_source("mysql+pymysql", connection, extraction_config)
+
+
+def fingerprint(connection) -> str:
+    return f"mysql:{connection.host}:{connection.port}/{connection.database}"

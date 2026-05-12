@@ -1,7 +1,16 @@
 from typing import Any, Type
 from backend.connectors.base import BaseConnector
-from backend.connectors.postgres import PostgresConnector
-from backend.connectors.mysql import MySQLConnector
+from backend.connectors.postgres import (
+    PostgresConnector,
+    dlt_source_for as _postgres_dlt_source_for,
+    fingerprint as _postgres_fingerprint,
+)
+from backend.connectors.mysql import (
+    MySQLConnector,
+    dlt_source_for as _mysql_dlt_source_for,
+    fingerprint as _mysql_fingerprint,
+)
+from backend.connectors.sql_dlt import SqlExtractionConfig
 from backend.connectors.sqlite import SqliteFileConnector
 from backend.connectors.data_plane import DataPlaneConnector
 from backend.models.database_connection import DatabaseType, DatabaseConnection
@@ -119,7 +128,9 @@ register_connector(ConnectorRegistration(
     connector_class=PostgresConnector,
     card_meta_items=["ssl", "table_count", "schema_date"],
     default_scope_hint="org",
-    fingerprint=lambda c: f"postgres:{c.host}:{c.port}/{c.database}",
+    fingerprint=_postgres_fingerprint,
+    dlt_source_for=_postgres_dlt_source_for,
+    extraction_config_model=SqlExtractionConfig,
 ))
 
 register_connector(ConnectorRegistration(
@@ -131,7 +142,9 @@ register_connector(ConnectorRegistration(
     connector_class=MySQLConnector,
     card_meta_items=["ssl", "table_count", "schema_date"],
     default_scope_hint="org",
-    fingerprint=lambda c: f"mysql:{c.host}:{c.port}/{c.database}",
+    fingerprint=_mysql_fingerprint,
+    dlt_source_for=_mysql_dlt_source_for,
+    extraction_config_model=SqlExtractionConfig,
 ))
 
 

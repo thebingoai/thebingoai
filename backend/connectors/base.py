@@ -310,8 +310,15 @@ class BaseConnector(ABC):
             ORDER BY schema_name
         """)
 
-        all_schemas = [row['schema_name'] if isinstance(row, dict) else row[0]
-                       for row in cursor.fetchall()]
+        def _first_value(row):
+            if isinstance(row, dict):
+                for key in ("schema_name", "SCHEMA_NAME"):
+                    if key in row:
+                        return row[key]
+                return next(iter(row.values()))
+            return row[0]
+
+        all_schemas = [_first_value(row) for row in cursor.fetchall()]
 
         # Filter out system schemas
         schemas = [s for s in all_schemas if s not in self._system_schemas()]

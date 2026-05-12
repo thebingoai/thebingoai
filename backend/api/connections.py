@@ -144,7 +144,12 @@ async def create_connection(
     password = data.pop('password')
     ssl_ca_cert = data.pop('ssl_ca_cert', None)
 
-    connection = DatabaseConnection(user_id=current_user.id, **data)
+    connection = DatabaseConnection(
+        user_id=current_user.id,
+        owner_scope_kind="user",
+        owner_scope_id=current_user.id,
+        **data,
+    )
     connection.password = password
     connection.ssl_ca_cert = ssl_ca_cert
 

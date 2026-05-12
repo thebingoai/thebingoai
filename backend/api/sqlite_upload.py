@@ -148,6 +148,8 @@ async def upload_sqlite(
 
         connection = DatabaseConnection(
             user_id=current_user.id,
+            owner_scope_kind="user",
+            owner_scope_id=current_user.id,
             name=connection_name,
             db_type="sqlite",
             host="internal",

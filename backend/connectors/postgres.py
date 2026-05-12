@@ -106,3 +106,12 @@ class PostgresConnector(BaseConnector):
                   WHERE constraint_type = 'FOREIGN KEY'
               )
         """, (schema, table))
+
+
+def dlt_source_for(connection, extraction_config: dict | None = None):
+    from backend.connectors.sql_dlt import sql_dlt_source
+    return sql_dlt_source("postgresql+psycopg2", connection, extraction_config)
+
+
+def fingerprint(connection) -> str:
+    return f"postgres:{connection.host}:{connection.port}/{connection.database}"

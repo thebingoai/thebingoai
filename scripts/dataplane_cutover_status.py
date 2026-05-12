@@ -68,10 +68,12 @@ def main():
 
 def _check_new_path(dash) -> bool:
     try:
+        from backend.data_plane.scope import OwnerScope
         from backend.services.dashboard_cache import _get_org_for_user
+        from backend.services.data_plane_service import get_default_plane
+
         org_id = _get_org_for_user(dash.user_id)
         scope = OwnerScope("org", org_id) if org_id else OwnerScope("user", dash.user_id)
-        from backend.services.data_plane_service import get_default_plane
         plane = get_default_plane(scope)
         tables = plane.list_tables(scope)
         return any(t.startswith(f"_dash_{dash.id}__") for t in tables)

@@ -14,7 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_default_plane(scope: OwnerScope, db=None):
-    """Return the default DataPlane for *scope*, or a LocalFilesystemDataPlane if none configured."""
+    """Return the default DataPlane for *scope*, walking the scope chain.
+
+    Resolution order: starts at *scope*, then walks to its parent (user→org,
+    team→org). First ``is_default`` row at any scope wins. Falls back to a
+    ``LocalFilesystemDataPlane`` if no row is found at any level.
+    """
+    from sqlalchemy import tuple_
     from backend.models.data_plane import DataPlaneModel
 
     if db is None:
@@ -22,20 +28,39 @@ def get_default_plane(scope: OwnerScope, db=None):
         with SessionLocal() as _db:
             return get_default_plane(scope, _db)
 
-    row = (
+    chain = _scope_chain(scope, db)
+    rows = (
         db.query(DataPlaneModel)
+        .filter(DataPlaneModel.is_default == True)
         .filter(
-            DataPlaneModel.owner_scope_kind == scope.kind,
-            DataPlaneModel.owner_scope_id == scope.id,
-            DataPlaneModel.is_default == True,
+            tuple_(DataPlaneModel.owner_scope_kind, DataPlaneModel.owner_scope_id).in_(
+                [(s.kind, s.id) for s in chain]
+            )
         )
-        .first()
+        .all()
     )
+    by_key = {(r.owner_scope_kind, r.owner_scope_id): r for r in rows}
+    for s in chain:
+        row = by_key.get((s.kind, s.id))
+        if row is not None:
+            return _instantiate(row)
+    return _local_fallback()
 
-    if row is None:
-        return _local_fallback()
 
-    return _instantiate(row)
+def _scope_chain(scope: OwnerScope, db) -> list[OwnerScope]:
+    """Return *scope* followed by ancestor scopes (user→org, team→org)."""
+    chain: list[OwnerScope] = [scope]
+    if scope.kind == "user":
+        from backend.models.user import User
+        u = db.query(User).filter(User.id == scope.id).first()
+        if u and u.org_id:
+            chain.append(OwnerScope("org", u.org_id))
+    elif scope.kind == "team":
+        from backend.models.team import Team
+        t = db.query(Team).filter(Team.id == scope.id).first()
+        if t and t.org_id:
+            chain.append(OwnerScope("org", t.org_id))
+    return chain
 
 
 def get_plane_for_connection(connection):
