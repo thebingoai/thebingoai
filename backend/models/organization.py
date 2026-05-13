@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, String, text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from backend.database.base import Base, TimestampMixin
 import uuid
@@ -24,3 +24,15 @@ class Organization(Base, TimestampMixin):
         default="trial",
     )
     trial_expires_at = Column(DateTime(timezone=True), nullable=True)
+    credit_balance = Column(
+        Integer,
+        nullable=False,
+        server_default="5000",
+        default=5000,
+    )
+    is_archived = Column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        default=False,
+    )
