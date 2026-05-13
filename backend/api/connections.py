@@ -474,6 +474,29 @@ async def delete_connection(
 
     _governance_require_mutate_connection(current_user, connection)
 
+    # Block delete when pipelines still reference this connection (FK is NOT NULL)
+    from backend.models.pipeline import Pipeline
+    blocking = db.query(Pipeline.id, Pipeline.name).filter(
+        Pipeline.source_connection_id == connection.id
+    ).all()
+    if blocking:
+        pipeline_list = [{"id": p.id, "name": p.name} for p in blocking]
+        names_preview = ", ".join(p["name"] for p in pipeline_list[:3])
+        if len(pipeline_list) > 3:
+            names_preview += f", +{len(pipeline_list) - 3} more"
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "connection_in_use",
+                "message": (
+                    f"This connection is used by {len(pipeline_list)} pipeline"
+                    f"{'s' if len(pipeline_list) != 1 else ''} ({names_preview}). "
+                    "Delete the pipeline(s) first, then retry."
+                ),
+                "pipelines": pipeline_list,
+            },
+        )
+
     # Invalidate dashboard caches that use this connection
     _invalidate_dashboard_caches_for_connection(connection.id, current_user.id, db)
 

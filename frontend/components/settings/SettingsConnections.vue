@@ -1793,7 +1793,11 @@ async function confirmDelete() {
     showFormSheet.value = false
     await fetchConnections()
   } catch (err: any) {
-    const errorMessage = err?.data?.detail || err?.message || 'Failed to delete connection'
+    const detail = err?.data?.detail
+    const errorMessage =
+      (detail && typeof detail === 'object' ? detail.message : detail) ||
+      err?.message ||
+      'Failed to delete connection'
     toast.error(errorMessage)
   } finally {
     deleting.value = false
