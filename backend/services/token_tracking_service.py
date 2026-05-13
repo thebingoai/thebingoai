@@ -1,14 +1,20 @@
 """Token usage tracking service."""
 
+import logging
+import os
+from datetime import datetime, timedelta, date
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from backend.models.token_usage import TokenUsage, OperationType
-from datetime import datetime, timedelta, date
-from typing import Any, Dict, List, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 credit_logger = logging.getLogger("credit")
+
+
+def _default_user_daily_credits() -> int:
+    return int(os.environ.get("DEFAULT_USER_DAILY_CREDITS", "180"))
 
 # Token pricing (per 1M tokens) - updated 2026
 TOKEN_PRICING = {
@@ -232,8 +238,6 @@ class CreditContextManager:
     Supports both async (FastAPI handlers) and sync (Celery tasks) protocols.
     """
 
-    DEFAULT_DAILY_LIMIT = 180
-
     def __init__(
         self,
         db: Session,
@@ -278,16 +282,17 @@ class CreditContextManager:
             {"uid": self.user_id},
         ).fetchone()
         if row is None:
+            default_limit = _default_user_daily_credits()
             self.db.execute(
                 text(
                     "INSERT INTO user_credit_balances (user_id, daily_limit, created_at) "
                     "VALUES (:uid, :limit, :now)"
                 ),
-                {"uid": self.user_id, "limit": self.DEFAULT_DAILY_LIMIT, "now": datetime.utcnow()},
+                {"uid": self.user_id, "limit": default_limit, "now": datetime.utcnow()},
             )
             self.db.commit()
-            credit_logger.info("[credit] user %s: no balance row found — created with daily_limit=%d", self.user_id, self.DEFAULT_DAILY_LIMIT)
-            return self.DEFAULT_DAILY_LIMIT
+            credit_logger.info("[credit] user %s: no balance row found — created with daily_limit=%d", self.user_id, default_limit)
+            return default_limit
         return int(row[0])
 
     def _today_usage(self) -> int:

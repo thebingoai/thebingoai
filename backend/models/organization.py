@@ -1,7 +1,9 @@
+import os
+import uuid
+
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from backend.database.base import Base, TimestampMixin
-import uuid
 
 
 class Organization(Base, TimestampMixin):
@@ -28,7 +30,7 @@ class Organization(Base, TimestampMixin):
         Integer,
         nullable=False,
         server_default="5000",
-        default=5000,
+        default=lambda: int(os.environ.get("DEFAULT_ORG_CREDITS", "5000")),
     )
     is_archived = Column(
         Boolean,
