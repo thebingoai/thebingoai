@@ -12,7 +12,7 @@
     <button
       v-else
       @click="router.push('/chat')"
-      class="absolute top-0 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+      class="absolute top-4 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
       aria-label="Close settings"
     >
       <X class="h-5 w-5" />
