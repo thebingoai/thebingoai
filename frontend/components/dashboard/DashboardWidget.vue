@@ -112,11 +112,12 @@
       v-if="!editMode && (widget.sources?.length || lastRefreshedAt)"
       class="widget-footer"
     >
-      <span v-if="widget.sources?.length" class="provenance">
-        ↗ from <a>{{ widget.sources[0] }}</a>
+      <span v-if="widget.sources?.length" class="provenance" :title="`from ${widget.sources[0]}`">
+        <span class="provenance-prefix">↗ from</span>
+        <a class="provenance-link">{{ widget.sources[0] }}</a>
       </span>
       <span v-else class="provenance-empty" />
-      <span v-if="lastRefreshedAt" class="age">{{ formatRelativeTime(lastRefreshedAt) }}</span>
+      <span v-if="lastRefreshedAt" class="age" :title="lastRefreshedAt">{{ formatRelativeTime(lastRefreshedAt) }}</span>
     </div>
 
     <!-- Loading skeleton -->
@@ -225,10 +226,13 @@ function formatRelativeTime(isoString: string): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 18px 12px;
+  gap: 8px;
+  padding: 4px 14px 10px;
   flex-shrink: 0;
   border-top: 1px solid var(--line);
   margin-top: auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .icon-btn {
@@ -254,18 +258,31 @@ function formatRelativeTime(isoString: string): string {
   display: flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.provenance a {
+.provenance-prefix {
+  flex-shrink: 0;
+}
+.provenance-link {
   color: var(--ember);
   font-weight: 500;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
-.provenance a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.provenance-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 .age {
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--ink-3);
   opacity: 0.55;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 </style>
