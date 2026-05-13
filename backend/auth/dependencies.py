@@ -89,13 +89,16 @@ async def get_current_user(
 def _create_user(db: Session, sso_user) -> User:
     """Create a new local User record for a first-time SSO login.
 
-    Two governance modes:
-      - `per_user_org_signup=False` (default / community): join the shared
-        DEFAULT_ORG_ID + DEFAULT_TEAM_ID — legacy single-org behaviour.
+    Three governance modes (checked in priority order):
+      - Pending invite for this email → auto-join the inviting org, skip the
+        per-user-org-signup path entirely. Used by Phase 2 of multi-user-org
+        so invitees never get a stray fresh org.
       - `per_user_org_signup=True` (enterprise lockdown profile): create a
         brand-new Org named after the user's email, put them in a fresh
         per-Org team, mark trial state, and fire `emit_org_created` so
         listeners (e.g. the bingo-admin auto-provisioner) can react.
+      - `per_user_org_signup=False` (default / community): join the shared
+        DEFAULT_ORG_ID + DEFAULT_TEAM_ID — legacy single-org behaviour.
     """
     try:
         user = User(
@@ -108,8 +111,57 @@ def _create_user(db: Session, sso_user) -> User:
         db.flush()  # Get the ID without committing
 
         org_to_emit = None  # set only when we created a new Org
+        invite_consumed = False  # set when we auto-joined via a pending invite
 
         if settings.enable_governance:
+            # Phase 2 (multi-user-org): if there's a pending invite for this
+            # email, auto-join the inviter's org instead of creating a new one.
+            try:
+                from bingo_org_governance.invites import (
+                    _consume_invite_for_user,
+                    lookup_pending_invite_for_email,
+                )
+                from bingo_org_governance.audit import write_event
+            except ImportError:
+                # Governance plugin not installed (community without overlay).
+                pending_invite = None
+            else:
+                pending_invite = lookup_pending_invite_for_email(db, sso_user.email)
+
+            if pending_invite is not None:
+                from backend.models.team import Team
+
+                user.org_id = pending_invite.org_id
+                first_team = (
+                    db.query(Team)
+                    .filter(Team.org_id == pending_invite.org_id)
+                    .order_by(Team.id)
+                    .first()
+                )
+                if first_team is not None:
+                    db.add(TeamMembership(
+                        user_id=user.id,
+                        team_id=first_team.id,
+                        role=MemberRole.MEMBER,
+                    ))
+                _consume_invite_for_user(db, invite=pending_invite, user=user)
+                write_event(
+                    db,
+                    org_id=pending_invite.org_id,
+                    actor_user_id=user.id,
+                    event_type="invite.auto_accept",
+                    resource_type="org_invite",
+                    resource_id=pending_invite.id,
+                    details={"email": user.email, "role": pending_invite.role},
+                )
+                invite_consumed = True
+                logger.info(
+                    "SSO signup auto-joined org %s via invite %s (email=%s, role=%s)",
+                    pending_invite.org_id, pending_invite.id,
+                    user.email, pending_invite.role,
+                )
+
+        if settings.enable_governance and not invite_consumed:
             if settings.per_user_org_signup:
                 # 1 user = 1 Org. Trial state lives on the Organization row.
                 import datetime as _dt
