@@ -132,6 +132,11 @@ def enabled(org_id: str, flag: str, default: bool = False) -> bool:
     return default
 
 
+def read_flags(org_id: str) -> dict[str, Any]:
+    """Return the full flag map for this Org (cache-through). Empty dict if org missing."""
+    return dict(_get_org_flags(org_id))
+
+
 def set_flag(org_id: str, flag: str, value: Any) -> None:
     """Persist a flag value to Postgres and invalidate the Redis cache entry."""
     from backend.database.session import SessionLocal

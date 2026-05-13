@@ -42,6 +42,9 @@ async def get_current_user_info(
 
     response = UserResponse.model_validate(current_user)
     response.role = role
+    if current_user.org_id:
+        from backend.config.feature_flags import read_flags
+        response.org_feature_flags = read_flags(str(current_user.org_id))
     return response
 
 

@@ -8,6 +8,7 @@ export interface User {
   auth_provider: string
   created_at: string
   role?: 'admin' | 'user' | null
+  org_feature_flags?: Record<string, unknown>
 }
 
 export interface AuthConfig {

@@ -50,7 +50,11 @@ async def create_org(
     if existing:
         raise HTTPException(status_code=409, detail="Organization name already taken")
 
-    org = Organization(id=str(uuid.uuid4()), name=payload.name)
+    org = Organization(
+        id=str(uuid.uuid4()),
+        name=payload.name,
+        feature_flags={"governance_v1": True, "governance_v2": True},
+    )
     db.add(org)
     db.commit()
     db.refresh(org)

@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 
 class UserBase(BaseModel):
@@ -15,6 +15,7 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
     role: Optional[str] = None  # "admin" | "user" | None (when plugin not loaded)
+    org_feature_flags: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         from_attributes = True

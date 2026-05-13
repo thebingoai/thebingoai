@@ -124,6 +124,7 @@ def _create_user(db: Session, sso_user) -> User:
                     name=sso_user.email,
                     plan_state="trial",
                     trial_expires_at=_dt.datetime.utcnow() + _dt.timedelta(days=trial_days),
+                    feature_flags={"governance_v1": True, "governance_v2": True},
                 )
                 team = Team(id=str(_uuid.uuid4()), org_id=org.id, name="default")
                 db.add(org)
