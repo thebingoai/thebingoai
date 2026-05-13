@@ -279,3 +279,20 @@ async def trigger_pipeline_run(
         pipeline.id, current_user.id, task.id,
     )
     return {"run_id": task.id, "status": "queued"}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/pipelines/{pipeline_id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/{pipeline_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_pipeline_endpoint(
+    pipeline_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a pipeline. Metadata + runs removed; materialized output left in place."""
+    _get_pipeline_for_user(pipeline_id, current_user.id, db)
+    from backend.services.resource_lifecycle import delete_pipeline
+    delete_pipeline(pipeline_id, db)
+    db.commit()
