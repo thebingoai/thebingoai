@@ -69,23 +69,60 @@ def _invalidate_dashboard_caches_for_connection(
     return count
 
 
-def _find_connection(db: Session, key, user_id: str):
+def _find_connection(db: Session, key, current_user):
     """Look up a connection by either its UUID or its numeric id.
 
     Accepts str (FastAPI path params) or int (internal callers / tests).
-    Returns None if no matching connection is owned by this user.
+    Returns the connection if visible to ``current_user`` under the Phase 3
+    collaborative-workspace rules:
+
+      - Same-org members see every connection in their org.
+      - Users without an ``org_id`` (legacy / community) fall back to the
+        previous owner-only behaviour.
+
+    Mutating routes still need to call ``governance.require(...)`` separately
+    to enforce per-org-admin / owner mutate semantics.
     """
     key_str = str(key)
     q = db.query(DatabaseConnection)
     if key_str.isdigit():
-        return q.filter(
-            DatabaseConnection.user_id == user_id,
-            DatabaseConnection.id == int(key_str),
-        ).first()
-    return q.filter(
-        DatabaseConnection.user_id == user_id,
-        DatabaseConnection.uuid == key_str,
-    ).first()
+        q = q.filter(DatabaseConnection.id == int(key_str))
+    else:
+        q = q.filter(DatabaseConnection.uuid == key_str)
+
+    org_id = getattr(current_user, "org_id", None)
+    if org_id is not None:
+        # Visible if: row already carries org_id, OR row's owner currently
+        # belongs to this org (covers pre-Phase-3 rows that never recorded
+        # org_id directly).
+        from sqlalchemy import or_
+        q = q.outerjoin(User, DatabaseConnection.user_id == User.id).filter(
+            or_(
+                DatabaseConnection.org_id == org_id,
+                User.org_id == org_id,
+            )
+        )
+    else:
+        q = q.filter(DatabaseConnection.user_id == current_user.id)
+    return q.first()
+
+
+def _governance_require_mutate_connection(current_user, connection) -> None:
+    """Phase 3 inline guard for PATCH/PUT/DELETE on a connection.
+
+    The collaborative-workspace policy lets any org-mate see a connection,
+    but only the owner, a per-org admin, or a bingo_admin may mutate it.
+    """
+    from backend.governance.contract import require as governance_require
+    governance_require(
+        user=current_user,
+        action="update",
+        resource={
+            "type": "connection",
+            "org_id": str(connection.org_id) if connection.org_id else None,
+            "owner_user_id": str(connection.user_id) if connection.user_id else None,
+        },
+    )
 
 
 router = APIRouter(prefix="/connections", tags=["connections"])
@@ -146,6 +183,7 @@ async def create_connection(
 
     connection = DatabaseConnection(
         user_id=current_user.id,
+        org_id=current_user.org_id,
         owner_scope_kind="user",
         owner_scope_id=current_user.id,
         **data,
@@ -243,14 +281,24 @@ async def list_connections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all database connections for current user.
+    """List database connections visible to the current user.
 
-    By default, ephemeral datasets (created via chat uploads) are hidden.
-    Pass include_ephemeral=true to include them.
+    Phase 3 collaborative workspace: returns every connection in the caller's
+    org. Users without an `org_id` (legacy / community standalone) still see
+    only their own. Ephemeral datasets (chat uploads) are hidden unless
+    explicitly requested.
     """
-    query = db.query(DatabaseConnection).filter(
-        DatabaseConnection.user_id == current_user.id
-    )
+    query = db.query(DatabaseConnection)
+    if current_user.org_id is not None:
+        from sqlalchemy import or_
+        query = query.outerjoin(User, DatabaseConnection.user_id == User.id).filter(
+            or_(
+                DatabaseConnection.org_id == current_user.org_id,
+                User.org_id == current_user.org_id,
+            )
+        )
+    else:
+        query = query.filter(DatabaseConnection.user_id == current_user.id)
     if not include_ephemeral:
         query = query.filter(DatabaseConnection.is_ephemeral == False)  # noqa: E712
 
@@ -376,7 +424,7 @@ async def get_connection(
     db: Session = Depends(get_db)
 ):
     """Get a specific database connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -392,10 +440,12 @@ async def update_connection(
     db: Session = Depends(get_db)
 ):
     """Update a database connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    _governance_require_mutate_connection(current_user, connection)
 
     # Update fields
     for field, value in request.model_dump(exclude_unset=True).items():
@@ -417,10 +467,12 @@ async def delete_connection(
     db: Session = Depends(get_db)
 ):
     """Delete a database connection and its cached schema."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    _governance_require_mutate_connection(current_user, connection)
 
     # Invalidate dashboard caches that use this connection
     _invalidate_dashboard_caches_for_connection(connection.id, current_user.id, db)
@@ -455,7 +507,7 @@ async def test_connection(
     db: Session = Depends(get_db)
 ):
     """Test a database connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -494,7 +546,7 @@ async def test_write_access(
     db: Session = Depends(get_db)
 ):
     """Test write access (roles/bigquery.dataEditor) for a saved connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -531,10 +583,12 @@ async def refresh_connection_schema(
     Re-discovers full schema and regenerates JSON file.
     Useful when database structure changes.
     """
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    _governance_require_mutate_connection(current_user, connection)
 
     reg = get_connector_registration(connection.db_type)
     if reg and reg.skip_schema_refresh:
@@ -612,7 +666,7 @@ async def get_connection_schema(
     Returns the full schema including schemas, tables, columns, and relationships.
     Returns 404 if schema has not been generated yet.
     """
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -638,7 +692,7 @@ async def get_profiling_status(
     db: Session = Depends(get_db),
 ):
     """Get profiling status for a connection (used for polling during profiling)."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -659,10 +713,12 @@ async def reprofile_connection(
     db: Session = Depends(get_db),
 ):
     """Manually trigger re-profiling for a connection."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    _governance_require_mutate_connection(current_user, connection)
 
     if connection.profiling_status == "in_progress":
         raise HTTPException(status_code=400, detail="Profiling is already in progress")
@@ -687,7 +743,7 @@ async def get_connection_context(
     db: Session = Depends(get_db),
 ):
     """Get the data context for a connection (used by the dashboard agent)."""
-    connection = _find_connection(db, connection_id, current_user.id)
+    connection = _find_connection(db, connection_id, current_user)
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
