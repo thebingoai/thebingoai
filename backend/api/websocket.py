@@ -540,7 +540,22 @@ async def _handle_chat_send(
             await _credit_mgr.__aenter__()
         except Exception as _credit_setup_err:
             if _InsufficientCreditsError and isinstance(_credit_setup_err, _InsufficientCreditsError):
-                await send({"type": "chat.error", "request_id": request_id, "thread_id": conversation.thread_id, "content": "Daily credits used up. Resets at midnight.", "error_code": "insufficient_credits"})
+                # Phase 4 of multi-user-org: distinguish per-user daily cap
+                # exhaustion from org pool exhaustion so the UI can render
+                # the right copy.
+                cap = getattr(_credit_setup_err, "reason", "user_daily")
+                if cap == "org_pool":
+                    msg = "Organization credit pool exhausted. Contact your bingo admin."
+                else:
+                    msg = "Daily credits used up. Resets at midnight."
+                await send({
+                    "type": "chat.error",
+                    "request_id": request_id,
+                    "thread_id": conversation.thread_id,
+                    "content": msg,
+                    "error_code": "insufficient_credits",
+                    "cap": cap,
+                })
                 return
             logger.warning("Credit context setup failed: %s", _credit_setup_err)
             _credit_mgr = None

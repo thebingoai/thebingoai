@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from backend.models.token_usage import TokenUsage, OperationType
 from datetime import datetime, timedelta, date
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -207,8 +207,17 @@ class TokenTrackingService:
 
 
 class InsufficientCreditsError(Exception):
-    """Raised when a user has exhausted their daily credit limit."""
-    pass
+    """Raised when a user has exhausted their daily credit limit.
+
+    The optional ``reason`` attribute distinguishes which cap fired
+    (``"user_daily"`` — default — vs ``"org_pool"``). API layers surface
+    that key as ``cap`` in the 402 envelope so the frontend can render the
+    right copy.
+    """
+
+    def __init__(self, message: str = "", *, reason: str = "user_daily") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class CreditContextManager:
@@ -242,6 +251,10 @@ class CreditContextManager:
         self.block_on_insufficient = block_on_insufficient
         self._voided = False
         self._void_reason: str = ""
+        # Phase 4 of multi-user-org: resolve the user's org once at setup so
+        # _check / _record can debit the org pool alongside the daily counter.
+        from backend.services.org_credit_pool import lookup_user_org_id
+        self.org_id: Optional[str] = lookup_user_org_id(db, user_id)
 
     def void(self, reason: str = "unresolved") -> None:
         """Skip credit recording on exit.
@@ -302,11 +315,57 @@ class CreditContextManager:
             )
             if self.block_on_insufficient:
                 raise InsufficientCreditsError(
-                    f"Daily credit limit of {daily_limit} reached."
+                    f"Daily credit limit of {daily_limit} reached.",
+                    reason="user_daily",
                 )
+
+        # Phase 4 of multi-user-org: refuse the turn early when the org's
+        # credit pool is already empty. The atomic decrement in _record()
+        # still guards against TOCTOU races; this check just provides a
+        # fast pre-flight so we don't insert a credit_usage row we'd have
+        # to roll back.
+        if self.org_id is not None:
+            from backend.services.org_credit_pool import check_org_pool
+            balance = check_org_pool(self.db, self.org_id)
+            if balance is not None and balance <= 0:
+                credit_logger.warning(
+                    "[credit] org %s: pool exhausted (balance=%d), block=%s",
+                    self.org_id, balance, self.block_on_insufficient,
+                )
+                if self.block_on_insufficient:
+                    raise InsufficientCreditsError(
+                        "Organization credit pool exhausted.",
+                        reason="org_pool",
+                    )
 
     def _record(self):
         today = date.today()
+        # Phase 4 of multi-user-org: decrement the org pool inside the same
+        # transaction as the credit_usage insert. If the atomic update can't
+        # match (race with another worker, balance just hit zero), abort the
+        # whole record path so we don't double-bill the user-side counter.
+        if self.org_id is not None:
+            from backend.services.org_credit_pool import try_decrement_org_pool
+            new_balance = try_decrement_org_pool(self.db, self.org_id, amount=1)
+            if new_balance is None:
+                # try_decrement_org_pool returns None when the column is
+                # missing (community pre-Phase-0) OR when the row had < 1
+                # credit. Differentiate by re-reading: a missing column
+                # also returns None from check_org_pool, but a column-present
+                # exhaustion returns 0.
+                from backend.services.org_credit_pool import check_org_pool
+                balance_after = check_org_pool(self.db, self.org_id)
+                if balance_after is not None:
+                    credit_logger.warning(
+                        "[credit] org %s: pool decrement lost race (balance=%d)",
+                        self.org_id, balance_after,
+                    )
+                    self.db.rollback()
+                    raise InsufficientCreditsError(
+                        "Organization credit pool exhausted.",
+                        reason="org_pool",
+                    )
+
         self.db.execute(
             text(
                 "INSERT INTO credit_usage "
