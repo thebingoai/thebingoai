@@ -37,7 +37,7 @@
             {{ section.group }}
           </div>
           <button
-            @click="currentSection = section.id"
+            @click="selectSection(section.id)"
             :class="[
               isMobile
                 ? 'whitespace-nowrap px-3 py-1.5 text-xs rounded-full'
@@ -158,6 +158,14 @@ watch([() => route.query.tab, sections], ([tab, secs]) => {
     currentSection.value = id
   }
 }, { immediate: true })
+
+function selectSection(id: string) {
+  currentSection.value = id
+  const next = { ...route.query }
+  if (id === 'agent') delete next.tab
+  else next.tab = id
+  router.replace({ query: next })
+}
 
 const currentSectionName = computed(() => {
   return sections.value.find(s => s.id === currentSection.value)?.name || ''
