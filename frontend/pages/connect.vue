@@ -128,12 +128,12 @@
 
 <script setup lang="ts">
 import connectorPostgres from '~/assets/icons/connector/postgres.svg?raw'
-import connectorMysqlCard from '~/assets/icons/connector/mysql_card.svg?raw'
+import connectorMysqlWhite from '~/assets/icons/connector/mysql_white.svg?raw'
 import connectorDataset from '~/assets/icons/connector/dataset.svg?raw'
 import connectorFacebookAds from '~/assets/icons/connector/facebook_ads.svg?raw'
 import connectorSqlite from '~/assets/icons/connector/sqlite.svg?raw'
 import connectorBigquery from '~/assets/icons/connector/bigquery.svg?raw'
-import connectorNotionCard from '~/assets/icons/connector/notion_card.svg?raw'
+import connectorNotionWhite from '~/assets/icons/connector/notion_white.svg?raw'
 
 interface ConnectorType {
   id: string
@@ -157,12 +157,12 @@ interface DatabaseConnection {
 
 const connectorIcons: Record<string, string> = {
   postgres:     connectorPostgres,
-  mysql:        connectorMysqlCard,
+  mysql:        `<div class="h-10 w-10 shrink-0 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-700 flex items-center justify-center shadow-sm ring-1 ring-cyan-400/30">${connectorMysqlWhite}</div>`,
   dataset:      connectorDataset,
   facebook_ads: connectorFacebookAds,
   sqlite:       connectorSqlite,
   bigquery:     connectorBigquery,
-  notion:       connectorNotionCard,
+  notion:       `<div class="h-10 w-10 shrink-0 rounded-xl bg-gradient-to-br from-neutral-700 to-neutral-900 flex items-center justify-center shadow-sm ring-1 ring-neutral-400/20">${connectorNotionWhite}</div>`,
 }
 
 const api = useApi()
