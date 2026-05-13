@@ -128,3 +128,4 @@ dmypy.json
 
 plan/
 node_modules/
+/backend/llm
