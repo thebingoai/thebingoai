@@ -45,6 +45,29 @@ async def get_current_user_info(
     if current_user.org_id:
         from backend.config.feature_flags import read_flags
         response.org_feature_flags = read_flags(str(current_user.org_id))
+        # Phase 6 of multi-user-org: surface the caller's per-org role so the
+        # frontend can gate the Members + Org Credits settings tabs without a
+        # second round-trip. Order matters — `admin` outranks `member`/legacy.
+        try:
+            from bingo_org_governance.models import UserOrgRole
+            rows = (
+                db.query(UserOrgRole.role)
+                .filter(
+                    UserOrgRole.user_id == current_user.id,
+                    UserOrgRole.org_id == str(current_user.org_id),
+                )
+                .all()
+            )
+            held = {r[0] for r in rows}
+            if "admin" in held or "data_admin" in held:
+                response.org_role = "admin"
+            elif "member" in held:
+                response.org_role = "member"
+            elif held:
+                # Edge: only team_admin / unknown legacy roles → expose as-is.
+                response.org_role = next(iter(held))
+        except ImportError:
+            pass  # governance plugin absent
     return response
 
 

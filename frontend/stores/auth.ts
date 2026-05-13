@@ -8,6 +8,9 @@ export interface User {
   auth_provider: string
   created_at: string
   role?: 'admin' | 'user' | null
+  // Phase 6 of multi-user-org: per-org role used to gate the Members and
+  // Org Credits settings tabs in the bingo-admin plugin.
+  org_role?: 'admin' | 'member' | string | null
   org_feature_flags?: Record<string, unknown>
 }
 
