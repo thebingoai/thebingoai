@@ -20,7 +20,11 @@ from backend.models.user import User
 
 router = APIRouter(prefix="/agent-profile", tags=["agent-profile"])
 
-_STRUCTURED_IDENTITY = {"display_name", "pronouns", "tagline", "default_model", "temperature", "max_output_tokens"}
+_STRUCTURED_IDENTITY = {
+    "display_name", "pronouns", "tagline", "default_model",
+    "temperature", "max_output_tokens",
+    "tone", "style_traits", "format_traits",
+}
 _STRUCTURED_CONTEXT  = {"user_profile", "user_narrative", "vocabulary", "sensitivities"}
 
 # Fields a user can edit — the union of structured Identity, structured User Context,
@@ -30,8 +34,11 @@ _EDITABLE_FIELDS = (
     # Identity
     "display_name", "pronouns", "tagline", "avatar_url",
     "default_model", "temperature", "max_output_tokens",
+    "tone", "style_traits", "format_traits",
     # Free-text sections + rendered columns
     "soul", "identity", "user_context", "guardrails",
+    # Soul attachments
+    "style_references",
     # User context structured
     "user_profile", "user_narrative", "vocabulary", "sensitivities",
 )
@@ -40,18 +47,22 @@ _EDITABLE_FIELDS = (
 # -- Pydantic schemas ---------------------------------------------------------
 
 class AgentProfilePatch(BaseModel):
-    display_name:      Optional[str]         = None
-    pronouns:          Optional[str]         = None
-    tagline:           Optional[str]         = None
-    avatar_url:        Optional[str]         = None
-    default_model:     Optional[str]         = None
-    temperature:       Optional[float]       = None
-    max_output_tokens: Optional[int]         = None
-    soul:              Optional[str]         = None
-    user_profile:      Optional[Dict[str, Any]]       = None
-    user_narrative:    Optional[str]         = None
-    vocabulary:        Optional[List[Dict[str, str]]] = None
-    sensitivities:     Optional[List[str]]   = None
+    display_name:      Optional[str]                   = None
+    pronouns:          Optional[str]                   = None
+    tagline:           Optional[str]                   = None
+    avatar_url:        Optional[str]                   = None
+    default_model:     Optional[str]                   = None
+    temperature:       Optional[float]                 = None
+    max_output_tokens: Optional[int]                   = None
+    tone:              Optional[float]                 = None
+    style_traits:      Optional[List[str]]             = None
+    format_traits:     Optional[List[str]]             = None
+    soul:              Optional[str]                   = None
+    style_references:  Optional[List[Dict[str, str]]]  = None
+    user_profile:      Optional[Dict[str, Any]]        = None
+    user_narrative:    Optional[str]                   = None
+    vocabulary:        Optional[List[Dict[str, str]]]  = None
+    sensitivities:     Optional[List[str]]             = None
 
 
 class AgentProfileResponse(BaseModel):
@@ -62,7 +73,11 @@ class AgentProfileResponse(BaseModel):
     default_model:     Optional[str]
     temperature:       Optional[float]
     max_output_tokens: Optional[int]
+    tone:              Optional[float]
+    style_traits:      Optional[List[str]]
+    format_traits:     Optional[List[str]]
     soul:              Optional[str]
+    style_references:  Optional[List[Dict[str, str]]]
     user_profile:      Optional[Dict[str, Any]]
     user_narrative:    Optional[str]
     vocabulary:        Optional[List[Dict[str, str]]]
@@ -70,6 +85,7 @@ class AgentProfileResponse(BaseModel):
     version:           int
     published_version: Optional[int]
     published_at:      Optional[str]
+    published_soul:    Optional[str]
     published_avatar_url:  Optional[str]
     published_display_name: Optional[str]
 
@@ -94,7 +110,7 @@ def _get_or_seed_profile(db: Session, user_id: str):
 
 
 def _to_response(profile) -> AgentProfileResponse:
-    snap = profile.published_snapshot or {}
+    snapshot = profile.published_snapshot or {}
     return AgentProfileResponse(
         display_name=profile.display_name,
         pronouns=profile.pronouns,
@@ -103,7 +119,11 @@ def _to_response(profile) -> AgentProfileResponse:
         default_model=profile.default_model,
         temperature=profile.temperature,
         max_output_tokens=profile.max_output_tokens,
+        tone=profile.tone,
+        style_traits=profile.style_traits or [],
+        format_traits=profile.format_traits or [],
         soul=profile.soul,
+        style_references=profile.style_references or [],
         user_profile=profile.user_profile or {},
         user_narrative=profile.user_narrative,
         vocabulary=profile.vocabulary or [],
@@ -111,8 +131,9 @@ def _to_response(profile) -> AgentProfileResponse:
         version=profile.version or 1,
         published_version=profile.published_version,
         published_at=str(profile.published_at) if profile.published_at else None,
-        published_avatar_url=snap.get("avatar_url"),
-        published_display_name=snap.get("display_name"),
+        published_soul=snapshot.get('soul'),
+        published_avatar_url=snapshot.get("avatar_url"),
+        published_display_name=snapshot.get("display_name"),
     )
 
 
@@ -259,3 +280,54 @@ async def upload_avatar(
     db.commit()
 
     return {"avatar_url": data_url}
+
+
+# -- Soul revision endpoint ---------------------------------------------------
+
+class SoulReviseRequest(BaseModel):
+    soul: str
+    instruction: Optional[str] = None  # reserved for future use
+
+
+class SoulReviseResponse(BaseModel):
+    revised: str
+    model: str
+
+
+@router.post("/soul/revise", response_model=SoulReviseResponse)
+async def revise_soul(
+    body: SoulReviseRequest,
+    user: User = Depends(get_current_user),
+):
+    """Ask the LLM to suggest a tightened revision of the soul prompt. Pure suggestion — does not write to DB."""
+    from backend.config import settings
+    from backend.llm.factory import get_provider
+
+    if not body.soul.strip():
+        raise HTTPException(status_code=400, detail="Soul text is required.")
+
+    try:
+        provider = get_provider(settings.default_llm_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an editor who tightens system prompts. "
+                "Return ONLY the revised markdown, no preamble, no commentary, no surrounding fences. "
+                "Preserve intent and concrete instructions; remove redundancy, hedging, and filler. "
+                "Keep length similar or shorter."
+            ),
+        },
+        {"role": "user", "content": body.soul},
+    ]
+
+    revised_text = await provider.chat(
+        messages=messages,
+        temperature=0.3,
+        max_tokens=2000,
+    )
+
+    return SoulReviseResponse(revised=revised_text.strip(), model=provider.get_default_model())

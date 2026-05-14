@@ -68,6 +68,7 @@
           <AgentSoulSection
             :profile="agentProfile.profile.value"
             :saving="agentProfile.saving.value"
+            :revise-soul="agentProfile.reviseSoul"
             class="mb-6"
             @update="agentProfile.updateField"
           />

@@ -30,8 +30,26 @@ def render_identity_text(profile: "AgentProfile") -> str:
         parts.append(f'Your tagline: "{profile.tagline}".')
 
     header = " ".join(parts)
+
+    voice_lines: list[str] = []
+    if profile.tone is not None:
+        if profile.tone < 0.34:
+            voice_lines.append("Tone: low — calm, restrained, minimal flourish.")
+        elif profile.tone < 0.67:
+            voice_lines.append("Tone: medium — measured, professional.")
+        else:
+            voice_lines.append("Tone: high — direct, energetic, opinionated.")
+    if profile.style_traits:
+        voice_lines.append("Style traits: " + ", ".join(profile.style_traits) + ".")
+    if profile.format_traits:
+        voice_lines.append("Default formatting: " + ", ".join(profile.format_traits) + ".")
+
+    voice_block = ""
+    if voice_lines:
+        voice_block = "\n\n## Voice\n" + "\n".join(f"- {l}" for l in voice_lines)
+
     base = _get_default_section("identity")
-    return f"{header}\n\n{base}".strip()
+    return f"{header}{voice_block}\n\n{base}".strip()
 
 
 def render_user_context_text(profile: "AgentProfile") -> str:

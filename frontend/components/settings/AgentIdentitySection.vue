@@ -26,12 +26,8 @@
     <div class="flex items-center gap-4 pb-5 mb-5 border-b border-[var(--line)]">
       <div class="w-13 h-13 rounded-[var(--r-md)] bg-transparent flex items-center justify-center text-white font-bold text-xl font-serif italic flex-shrink-0 overflow-hidden"
            style="width:52px;height:52px;">
-        <img src="/logo/BINGO Logo Design_FA_Icon.png"
-             class="w-full h-full object-contain p-1.5 dark:hidden"
-             alt="Bingo" />
-        <img src="/logo/BINGO Logo Design_FA_Icon_W.png"
-             class="w-full h-full object-contain p-1.5 hidden dark:block"
-             alt="Bingo" />
+        <img v-if="localData.avatar_url" :src="localData.avatar_url" class="w-full h-full object-cover" alt="Avatar" />
+        <img v-else src="/logo/BINGO Logo Design_FA_Icon_W.png" class="w-full h-full object-contain p-1.5" alt="Bingo" />
       </div>
       <div class="flex-1">
         <p class="text-sm font-semibold text-[var(--ink-0)]">{{ localData.display_name || 'Bingo' }}</p>
@@ -84,7 +80,7 @@
     </div>
 
     <!-- Temperature + Max tokens -->
-    <div class="grid grid-cols-2 gap-5">
+    <div class="grid grid-cols-2 gap-5 mb-5">
       <div>
         <label class="block text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)] mb-1.5">Temperature</label>
         <div class="flex items-center gap-3 mt-1.5">
@@ -108,11 +104,81 @@
       </div>
     </div>
 
+    <!-- Tone slider -->
+    <div class="mb-5">
+      <label class="block text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)] mb-1.5">Tone</label>
+      <div class="flex items-center gap-3 mt-1.5">
+        <span class="text-[9px] text-[var(--ink-3)] w-6">low</span>
+        <input type="range" min="0" max="1" step="0.05"
+               :value="localData.tone ?? 0.5"
+               @input="onToneInput"
+               class="flex-1 accent-[var(--ember)] h-1 cursor-pointer" />
+        <span class="text-[9px] text-[var(--ink-3)] w-6 text-right">high</span>
+        <span class="text-[13px] font-semibold text-[var(--ink-1)] font-mono w-8 text-right">
+          {{ (localData.tone ?? 0.5).toFixed(2) }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Style + Format traits -->
+    <div class="grid grid-cols-2 gap-5">
+      <!-- Style traits -->
+      <div>
+        <label class="block text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)] mb-2">Style</label>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="(trait, idx) in localData.style_traits" :key="trait"
+                class="inline-flex items-center gap-1 text-[10px] bg-[var(--ember-wash)] border border-[color-mix(in_oklch,var(--ember)_25%,var(--line))] text-[var(--ember)] px-2 py-0.5 rounded-full">
+            {{ trait }}
+            <button @click="removeStyleTrait(idx)" class="text-[var(--ember)] hover:opacity-60 leading-none">✕</button>
+          </span>
+          <template v-if="addingStyleTrait">
+            <input ref="styleTraitInputRef"
+                   v-model="newStyleTrait"
+                   @keydown.enter.prevent="commitStyleTrait"
+                   @keydown.esc="cancelStyleTrait"
+                   @blur="commitStyleTrait"
+                   maxlength="32"
+                   placeholder="trait…"
+                   class="text-[10px] w-20 px-2 py-0.5 border border-[var(--ember)] rounded-full outline-none bg-[var(--paper-0)] text-[var(--ink-0)]" />
+          </template>
+          <button v-else @click="startAddStyleTrait"
+                  class="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-[var(--line-2)] text-[var(--ink-2)] hover:text-[var(--ember)] hover:border-[var(--ember)] transition-colors">
+            + add trait
+          </button>
+        </div>
+      </div>
+      <!-- Format traits -->
+      <div>
+        <label class="block text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)] mb-2">Format</label>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="(trait, idx) in localData.format_traits" :key="trait"
+                class="inline-flex items-center gap-1 text-[10px] bg-[var(--paper-2)] border border-[var(--line)] text-[var(--ink-1)] px-2 py-0.5 rounded-full">
+            {{ trait }}
+            <button @click="removeFormatTrait(idx)" class="text-[var(--ink-2)] hover:opacity-60 leading-none">✕</button>
+          </span>
+          <template v-if="addingFormatTrait">
+            <input ref="formatTraitInputRef"
+                   v-model="newFormatTrait"
+                   @keydown.enter.prevent="commitFormatTrait"
+                   @keydown.esc="cancelFormatTrait"
+                   @blur="commitFormatTrait"
+                   maxlength="32"
+                   placeholder="trait…"
+                   class="text-[10px] w-20 px-2 py-0.5 border border-[var(--line)] rounded-full outline-none bg-[var(--paper-0)] text-[var(--ink-0)]" />
+          </template>
+          <button v-else @click="startAddFormatTrait"
+                  class="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-[var(--line-2)] text-[var(--ink-2)] hover:text-[var(--ember)] hover:border-[var(--ember)] transition-colors">
+            + add trait
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, watch } from 'vue'
+import { reactive, ref, computed, watch, nextTick } from 'vue'
 import type { AgentProfileData, ModelsResponse } from '~/composables/useAgentProfile'
 
 const props = defineProps<{
@@ -132,6 +198,9 @@ const localData = reactive({
   default_model:     props.profile.default_model     ?? 'claude-sonnet-4-6',
   temperature:       props.profile.temperature       ?? 0.4,
   max_output_tokens: props.profile.max_output_tokens ?? 4096,
+  tone:              props.profile.tone              ?? null as number | null,
+  style_traits:      [...(props.profile.style_traits  ?? [])] as string[],
+  format_traits:     [...(props.profile.format_traits ?? [])] as string[],
 })
 
 // Whole-profile replacement (e.g. reset to published snapshot) — sync everything
@@ -143,6 +212,9 @@ watch(() => props.profile, (next) => {
   localData.default_model     = next.default_model     ?? ''
   localData.temperature       = next.temperature       ?? 0.4
   localData.max_output_tokens = next.max_output_tokens ?? 4096
+  localData.tone              = next.tone              ?? null
+  localData.style_traits      = [...(next.style_traits  ?? [])]
+  localData.format_traits     = [...(next.format_traits ?? [])]
 })
 
 const availableProviders = computed(() =>
@@ -166,7 +238,80 @@ function onIdentityChange() {
     default_model:     localData.default_model,
     temperature:       localData.temperature,
     max_output_tokens: localData.max_output_tokens,
+    tone:              localData.tone,
+    style_traits:      [...localData.style_traits],
+    format_traits:     [...localData.format_traits],
   })
 }
 
+function onToneInput(event: Event) {
+  localData.tone = parseFloat((event.target as HTMLInputElement).value)
+  onIdentityChange()
+}
+
+// Style traits
+const addingStyleTrait  = ref(false)
+const newStyleTrait     = ref('')
+const styleTraitInputRef = ref<HTMLInputElement | null>(null)
+
+function startAddStyleTrait() {
+  addingStyleTrait.value = true
+  newStyleTrait.value = ''
+  nextTick(() => styleTraitInputRef.value?.focus())
+}
+function commitStyleTrait() {
+  const t = newStyleTrait.value.trim()
+  if (t && !localData.style_traits.includes(t)) {
+    localData.style_traits.push(t)
+    onIdentityChange()
+  }
+  addingStyleTrait.value = false
+  newStyleTrait.value = ''
+}
+function cancelStyleTrait() {
+  addingStyleTrait.value = false
+  newStyleTrait.value = ''
+}
+function removeStyleTrait(idx: number) {
+  localData.style_traits.splice(idx, 1)
+  onIdentityChange()
+}
+
+// Format traits
+const addingFormatTrait  = ref(false)
+const newFormatTrait     = ref('')
+const formatTraitInputRef = ref<HTMLInputElement | null>(null)
+
+function startAddFormatTrait() {
+  addingFormatTrait.value = true
+  newFormatTrait.value = ''
+  nextTick(() => formatTraitInputRef.value?.focus())
+}
+function commitFormatTrait() {
+  const t = newFormatTrait.value.trim()
+  if (t && !localData.format_traits.includes(t)) {
+    localData.format_traits.push(t)
+    onIdentityChange()
+  }
+  addingFormatTrait.value = false
+  newFormatTrait.value = ''
+}
+function cancelFormatTrait() {
+  addingFormatTrait.value = false
+  newFormatTrait.value = ''
+}
+function removeFormatTrait(idx: number) {
+  localData.format_traits.splice(idx, 1)
+  onIdentityChange()
+}
+
+function onAvatarFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (file) emit('avatar-file', file)
+}
+
+function resetAvatar() {
+  localData.avatar_url = null
+  emit('update', 'identity', { avatar_url: null })
+}
 </script>

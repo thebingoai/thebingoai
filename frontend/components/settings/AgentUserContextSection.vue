@@ -15,7 +15,7 @@
         </div>
       </div>
       <span class="text-[10px] font-semibold text-[var(--ink-2)] bg-[var(--paper-2)] border border-[var(--line)] px-2.5 py-1 rounded-full whitespace-nowrap">
-        {{ charCount }} chars
+        {{ fieldsCount }} fields · {{ tokensCount }} tokens
       </span>
     </div>
 
@@ -32,14 +32,27 @@
     </div>
 
     <!-- Narrative -->
-    <p class="text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)] mb-2 mt-6">
-      About {{ localProfile.address_as || 'You' }} · Narrative
-    </p>
+    <div class="flex items-center gap-2 mt-6 mb-2">
+      <span class="flex-1 text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)]">
+        About {{ localProfile.address_as || 'You' }} · Narrative
+      </span>
+      <button @click="stubToast('Edit narrative coming soon')"
+              class="text-[10px] text-[var(--ember)] hover:opacity-80 transition-opacity">
+        ✦ Edit narrative
+      </button>
+      <button @click="stubToast('Suggest sharper coming soon')"
+              class="text-[10px] text-[var(--ember)] hover:opacity-80 transition-opacity">
+        ✦ Suggest sharper
+      </button>
+    </div>
     <textarea v-model="localNarrative" @input="onContextChange" rows="4"
               class="w-full border border-[var(--line)] rounded-[var(--r-sm)] px-3 py-2.5 text-xs text-[var(--ink-1)] bg-[var(--paper-0)] outline-none focus:border-[var(--ember)] resize-none transition-colors mb-2" />
-    <div v-if="props.profile.published_at" class="flex justify-end mb-6">
-      <span class="text-[10px] text-[var(--ink-3)]">edited recently</span>
+    <!-- Stub toast -->
+    <div v-if="stubMessage"
+         class="text-[10px] text-[var(--ink-2)] bg-[var(--paper-2)] border border-[var(--line)] rounded-[var(--r-sm)] px-3 py-1.5 mb-4 inline-block">
+      {{ stubMessage }}
     </div>
+    <div v-else class="mb-6" />
 
     <!-- Vocabulary -->
     <div class="flex items-center justify-between mb-2 mt-1">
@@ -50,23 +63,31 @@
         + Add term
       </button>
     </div>
-    <div class="border border-[var(--line)] rounded-[var(--r-sm)] overflow-hidden mb-6">
+    <div class="border border-[var(--line)] rounded-[var(--r-sm)] overflow-hidden mb-6 divide-y divide-[var(--paper-3)]">
+      <!-- Column headers -->
+      <div class="grid grid-cols-[140px_1fr_28px] items-center bg-[var(--paper-1)] px-3 py-1.5">
+        <span class="text-[9px] font-bold uppercase tracking-[.08em] text-[var(--ink-3)]">Term</span>
+        <span class="text-[9px] font-bold uppercase tracking-[.08em] text-[var(--ink-3)]">Definition</span>
+        <span></span>
+      </div>
+      <!-- Rows -->
       <div v-for="(item, idx) in localVocab" :key="idx"
-           class="flex items-center px-3 py-2 gap-3 border-b border-[var(--paper-3)] last:border-0">
+           class="grid grid-cols-[140px_1fr_28px] items-center px-3 py-2 hover:bg-[var(--paper-1)] transition-colors">
         <input v-model="item.term" @input="onContextChange" placeholder="term"
-               class="w-28 text-[11px] font-semibold text-[var(--ember)] font-mono bg-transparent border-none outline-none" />
-        <input v-model="item.definition" @input="onContextChange" placeholder="definition"
-               class="flex-1 text-[11px] text-[var(--ink-1)] bg-transparent border-none outline-none" />
-        <button @click="removeVocabTerm(idx)" class="text-[11px] text-[var(--line-2)] hover:text-[var(--ink-2)]">✕</button>
+               class="text-[12px] font-mono font-semibold text-[var(--ember)] bg-transparent border-none outline-none truncate" />
+        <input v-model="item.definition" @input="onContextChange" placeholder="definition…"
+               class="text-[12px] text-[var(--ink-1)] bg-transparent border-none outline-none" />
+        <button @click="removeVocabTerm(idx)"
+                class="text-[11px] text-[var(--line-2)] hover:text-[var(--ink-2)] justify-self-center">✕</button>
       </div>
       <div v-if="localVocab.length === 0" class="px-3 py-3 text-[11px] text-[var(--ink-3)] italic">
         No terms yet. Click "+ Add term" to define vocabulary.
       </div>
     </div>
 
-    <!-- Don't-do list -->
+    <!-- Don't say it -->
     <p class="text-[9.5px] font-bold tracking-[.08em] uppercase text-[var(--ink-3)] mb-2">
-      Sensitivities · Don't-do List
+      Don't say it
     </p>
     <div class="flex flex-wrap gap-2">
       <div v-for="(item, idx) in localSensitivities" :key="idx"
@@ -118,6 +139,14 @@
 import { reactive, ref, computed, nextTick, watch } from 'vue'
 import type { AgentProfileData, VocabItem } from '~/composables/useAgentProfile'
 
+let _stubTimer: ReturnType<typeof setTimeout> | null = null
+const stubMessage = ref<string | null>(null)
+function stubToast(msg: string) {
+  stubMessage.value = msg
+  if (_stubTimer) clearTimeout(_stubTimer)
+  _stubTimer = setTimeout(() => { stubMessage.value = null }, 2000)
+}
+
 const props = defineProps<{
   profile: AgentProfileData
 }>()
@@ -154,8 +183,16 @@ watch(() => props.profile, (next) => {
 const charCount = computed(() => {
   const parts = [JSON.stringify(localProfile), localNarrative.value,
                  JSON.stringify(localVocab), JSON.stringify(localSensitivities)]
-  return parts.join('').length.toLocaleString()
+  return parts.join('').length
 })
+
+const fieldsCount = computed(() => {
+  const profileFilled = Object.values(localProfile).filter(v => v && String(v).trim()).length
+  const hasNarrative  = localNarrative.value.trim() ? 1 : 0
+  return profileFilled + hasNarrative + localVocab.length + localSensitivities.length
+})
+
+const tokensCount = computed(() => Math.ceil(charCount.value / 4).toLocaleString())
 
 function onContextChange() {
   emit('update', 'user-context', {

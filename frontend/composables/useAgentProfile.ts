@@ -16,6 +16,12 @@ export interface VocabItem {
   definition: string
 }
 
+export interface StyleRef {
+  type: 'doc' | 'link'
+  title: string
+  pointer: string
+}
+
 export interface AgentProfileData {
   display_name: string
   pronouns: string
@@ -24,7 +30,11 @@ export interface AgentProfileData {
   default_model: string
   temperature: number
   max_output_tokens: number
+  tone: number | null
+  style_traits: string[]
+  format_traits: string[]
   soul: string
+  style_references: StyleRef[]
   user_profile: UserProfileFields
   user_narrative: string
   vocabulary: VocabItem[]
@@ -32,6 +42,7 @@ export interface AgentProfileData {
   version: number
   published_version: number | null
   published_at: string | null
+  published_soul: string | null
   published_avatar_url: string | null
   published_display_name: string | null
 }
@@ -177,6 +188,19 @@ export function useAgentProfile() {
     }
   }
 
+  async function reviseSoul(currentSoul: string): Promise<string | null> {
+    try {
+      const r = await fetchWithRefresh<{ revised: string }>('/api/agent-profile/soul/revise', {
+        method: 'POST',
+        body: { soul: currentSoul },
+      })
+      return r.revised
+    } catch (e: any) {
+      saveError.value = e?.data?.detail ?? e.message
+      return null
+    }
+  }
+
   async function factoryReset() {
     // Cancel any pending debounced save and drop in-flight PATCH responses.
     if (_saveTimer) {
@@ -188,6 +212,22 @@ export function useAgentProfile() {
 
     resetting.value = true
     saveError.value = null
+    try {
+      const reverted = await fetchWithRefresh<AgentProfileData>('/api/agent-profile/factory-reset', {
+        method: 'POST',
+      })
+      profile.value = reverted
+      changedSections.value = new Set()
+    } catch (e: any) {
+      saveError.value = e?.data?.detail ?? e.message
+    } finally {
+      resetting.value = false
+    }
+  }
+
+  async function uploadAvatar(file: File) {
+    const form = new FormData()
+    form.append('file', file)
     try {
       const reverted = await fetchWithRefresh<AgentProfileData>('/api/agent-profile/factory-reset', {
         method: 'POST',
@@ -226,6 +266,6 @@ export function useAgentProfile() {
   return {
     profile, models, loading, saving, publishing, resetting, saveError,
     isDraft, changedCount, changedSections, versionLabel, lastPublishedLabel,
-    fetchProfile, fetchModels, updateField, publish, resetDraft, factoryReset,
+    fetchProfile, fetchModels, updateField, publish, resetDraft, factoryReset, uploadAvatar, reviseSoul,
   }
 }

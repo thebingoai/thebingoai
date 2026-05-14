@@ -49,12 +49,16 @@ class AgentProfile(Base, TimestampMixin):
     default_model     = Column(String(100), nullable=True)
     temperature       = Column(Float,       nullable=True)
     max_output_tokens = Column(Integer,     nullable=True)
+    tone              = Column(Float,       nullable=True)   # 0.0–1.0 voice tone slider
+    style_traits      = Column(JSON,        nullable=True)   # ["editorial", "concise", ...]
+    format_traits     = Column(JSON,        nullable=True)   # ["bullets", "tables", ...]
 
     # ── User context structured fields ──────────────────────────────
     user_profile   = Column(JSON, nullable=True)   # {address_as, pronouns, role, team, timezone, working_hours}
     user_narrative = Column(Text,  nullable=True)
     vocabulary     = Column(JSON, nullable=True)   # [{term, definition}]
     sensitivities  = Column(JSON, nullable=True)   # ["Don't cite raw counts <5", ...]
+    style_references = Column(JSON, nullable=True) # [{type, title, pointer}] attached to soul
 
     # ── Draft/publish workflow ───────────────────────────────────────
     published_at       = Column(DateTime, nullable=True)
