@@ -2,7 +2,7 @@
   <div class="border-t border-gray-100 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800/60 px-4 py-4 space-y-4">
     <!-- Preset grid -->
     <div>
-      <p class="text-xs font-medium text-gray-500 dark:text-neutral-400 mb-2">Frequency</p>
+      <p class="eyebrow mb-2">Frequency</p>
       <div class="flex flex-wrap gap-1.5">
         <button
           v-for="preset in PRESETS"
@@ -29,9 +29,28 @@
       </div>
     </div>
 
-    <!-- Time picker for daily/weekly/weekdays -->
+    <!-- Day-of-week toggle bank (weekly preset + custom cron mode) -->
+    <div v-if="showDayPicker">
+      <p class="eyebrow mb-2">Days</p>
+      <div class="flex gap-1">
+        <button
+          v-for="day in DAYS"
+          :key="day.value"
+          type="button"
+          @click="toggleDay(day.value)"
+          class="h-8 w-8 rounded-full text-xs font-medium transition-colors border"
+          :class="selectedDays.has(day.value)
+            ? 'bg-blue-600 border-blue-600 text-white'
+            : 'border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 text-gray-600 dark:text-neutral-300 hover:border-blue-300 hover:text-blue-600'"
+        >
+          {{ day.label }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Time picker for daily / weekly / weekdays / custom-with-time -->
     <div v-if="showTimePicker">
-      <p class="text-xs font-medium text-gray-500 dark:text-neutral-400 mb-2">Time ({{ browserTz }})</p>
+      <p class="eyebrow mb-2">Time (UTC)</p>
       <div class="flex items-center gap-2">
         <select
           v-model="hour"
@@ -53,9 +72,9 @@
       </div>
     </div>
 
-    <!-- Custom cron input -->
+    <!-- Custom cron input (no day bank) -->
     <div v-if="selectedPreset === null">
-      <p class="text-xs font-medium text-gray-500 dark:text-neutral-400 mb-2">Cron expression</p>
+      <p class="eyebrow mb-2">Cron expression</p>
       <input
         v-model="cronInput"
         type="text"
@@ -89,9 +108,19 @@ const PRESETS = [
   { label: 'Weekdays', value: 'weekdays' },
 ]
 
+const DAYS = [
+  { label: 'S', value: 0 },
+  { label: 'M', value: 1 },
+  { label: 'T', value: 2 },
+  { label: 'W', value: 3 },
+  { label: 'T', value: 4 },
+  { label: 'F', value: 5 },
+  { label: 'S', value: 6 },
+]
+
 const CRON_PATTERNS: Record<string, RegExp> = {
   daily: /^(\d+) (\d+) \* \* \*$/,
-  weekly: /^(\d+) (\d+) \* \* 1$/,
+  weekly: /^(\d+) (\d+) \* \* (\d+)$/,
   weekdays: /^(\d+) (\d+) \* \* 1-5$/,
 }
 
@@ -110,23 +139,24 @@ const selectedPreset = ref<string | null>(null)
 const cronInput = ref('')
 const hour = ref(9)
 const minute = ref(0)
-const browserTz = (() => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  } catch {
-    return 'UTC'
-  }
-})()
+const selectedDays = ref<Set<number>>(new Set([1]))
 
 const showTimePicker = computed(() =>
   selectedPreset.value !== null && TIME_BASED_PRESETS.includes(selectedPreset.value)
 )
 
+const showDayPicker = computed(() =>
+  selectedPreset.value === 'weekly'
+)
+
 onMounted(() => {
   if (props.scheduleType === 'preset') {
     selectedPreset.value = props.scheduleValue
+    if (props.scheduleValue === 'weekdays') {
+      selectedDays.value = new Set([1, 2, 3, 4, 5])
+    }
   } else {
-    // Try to detect if the cron matches a time-based pattern
+    // Try to detect if the cron matches a known pattern
     let matched = false
     for (const [presetKey, pattern] of Object.entries(CRON_PATTERNS)) {
       const m = props.scheduleValue.match(pattern)
@@ -134,6 +164,11 @@ onMounted(() => {
         selectedPreset.value = presetKey
         minute.value = parseInt(m[1])
         hour.value = parseInt(m[2])
+        if (presetKey === 'weekly') {
+          selectedDays.value = new Set([parseInt(m[3])])
+        } else if (presetKey === 'weekdays') {
+          selectedDays.value = new Set([1, 2, 3, 4, 5])
+        }
         matched = true
         break
       }
@@ -147,6 +182,21 @@ onMounted(() => {
 
 function selectPreset(value: string | null) {
   selectedPreset.value = value
+  if (value === 'weekdays') {
+    selectedDays.value = new Set([1, 2, 3, 4, 5])
+  } else if (value === 'weekly' && selectedDays.value.size === 0) {
+    selectedDays.value = new Set([1])
+  }
+}
+
+function toggleDay(dayNum: number) {
+  const next = new Set(selectedDays.value)
+  if (next.has(dayNum)) {
+    if (next.size > 1) next.delete(dayNum) // keep at least 1 day
+  } else {
+    next.add(dayNum)
+  }
+  selectedDays.value = next
 }
 
 function handleSave() {
@@ -157,12 +207,14 @@ function handleSave() {
   }
 
   if (TIME_BASED_PRESETS.includes(selectedPreset.value)) {
-    const cronMap: Record<string, string> = {
-      daily: `${minute.value} ${hour.value} * * *`,
-      weekly: `${minute.value} ${hour.value} * * 1`,
-      weekdays: `${minute.value} ${hour.value} * * 1-5`,
+    if (selectedPreset.value === 'daily') {
+      emit('save', 'cron', `${minute.value} ${hour.value} * * *`)
+    } else if (selectedPreset.value === 'weekdays') {
+      emit('save', 'cron', `${minute.value} ${hour.value} * * 1-5`)
+    } else if (selectedPreset.value === 'weekly') {
+      const days = [...selectedDays.value].sort().join(',')
+      emit('save', 'cron', `${minute.value} ${hour.value} * * ${days}`)
     }
-    emit('save', 'cron', cronMap[selectedPreset.value], browserTz)
   } else {
     emit('save', 'preset', selectedPreset.value, browserTz)
   }

@@ -1,8 +1,37 @@
 <template>
-  <div>
-  <div class="p-4 md:p-6">
-    <div class="mb-6">
-      <h2 class="text-2xl font-medium text-gray-900 dark:text-neutral-100">Connections</h2>
+  <div class="flex flex-col h-full overflow-hidden">
+
+    <!-- Page header -->
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Data Sources</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-neutral-100 mb-1">Connections</h1>
+    </div>
+
+    <!-- Scrolling body -->
+    <div class="flex-1 overflow-y-auto">
+    <div class="px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-3">
+
+    <!-- Row 2: search (left) + Refresh all + Add (right) -->
+    <div class="mt-2 mb-6 flex flex-wrap items-center gap-3">
+      <div class="relative flex-1 min-w-0">
+        <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-neutral-500 pointer-events-none" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Search connections…"
+          class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+        />
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0 ml-auto">
+        <UiButton variant="outline" size="sm" :loading="refreshingAll" @click="refreshAllConnections">
+          <RefreshCw class="h-3.5 w-3.5" />
+          Refresh all
+        </UiButton>
+        <UiButton size="sm" @click="openCreateDialog">
+          <Plus class="h-3.5 w-3.5" />
+          Add
+        </UiButton>
+      </div>
     </div>
 
     <!-- Loading State -->
@@ -62,15 +91,6 @@
                 </button>
               </div>
             </div>
-            <!-- Share button (visible when ShareButton component is registered by the
-                 governance plugin; auto-importable across the Nuxt layer). -->
-            <ShareButton
-              v-if="connection.uuid"
-              resource-type="connection"
-              :resource-id="connection.uuid"
-              class="mt-0.5 shrink-0"
-              @click.stop
-            />
             <!-- Spinner while sync or profile is running -->
             <Loader2
               v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
@@ -132,117 +152,336 @@
         </div>
       </UiCard>
 
-      <!-- Grouped dataset connections (shared schema_fingerprint) -->
-      <UiCard
-        v-for="group in datasetGroups"
-        :key="group.fingerprint"
-        :class="`relative overflow-hidden px-4 py-5 w-56 max-md:w-full hover:shadow-lg transition-shadow${!expandedGroups[group.fingerprint] ? ' h-56' : ''}`"
-      >
-        <div class="absolute top-0 left-0 right-0 h-[3px] bg-green-500" />
-        <div class="flex flex-col h-full">
-          <button
-            class="flex items-start gap-2.5 w-full text-left cursor-pointer"
-            @click="toggleGroup(group.fingerprint)"
+      <!-- WAREHOUSES · DATABASES -->
+      <div>
+        <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-3">Warehouses · Databases</p>
+        <div class="flex flex-wrap gap-4">
+          <UiCard
+            v-for="connection in warehouseConnections"
+            :key="connection.id"
+            class="overflow-hidden h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow flex flex-col"
+            @click="openEditDialog(connection)"
           >
-            <div class="h-8 w-8 shrink-0" v-html="connectorIcons['dataset']" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
-              <div class="flex items-center gap-1 mt-0.5">
-                <span class="text-[11px] text-gray-400 dark:text-neutral-500">v{{ getConnectorType('dataset')?.version }}</span>
-                <button
-                  @click.stop="openChangelog('dataset')"
-                  class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-600 inline-flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:border-gray-400 dark:hover:border-neutral-400"
-                >
-                  <Info class="h-2 w-2" />
-                </button>
+            <div :class="[CARD_BAND[connection.db_type] ?? 'bg-gray-100 dark:bg-neutral-400/60', 'h-[3px] w-full flex-shrink-0']" />
+            <div class="flex flex-col flex-1 min-h-0 px-4 pt-3 pb-4">
+              <div class="flex items-start gap-2.5">
+                <ConnectorAvatar :db-type="connection.db_type" :icon-html="connectorIcons[connection.db_type]" size="sm" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
+                  <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
+                    <span class="text-[11px] text-gray-400 dark:text-neutral-300">v{{ getConnectorType(connection.db_type)?.version }}</span>
+                    <button
+                      @click.stop="openChangelog(connection.db_type)"
+                      class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-500 inline-flex items-center justify-center text-gray-400 dark:text-neutral-300 hover:text-gray-600 dark:hover:text-neutral-100 hover:border-gray-400 dark:hover:border-neutral-300"
+                    >
+                      <Info class="h-2 w-2" />
+                    </button>
+                  </div>
+                </div>
+                <Loader2
+                  v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
+                  class="h-4 w-4 text-yellow-500 animate-spin shrink-0 mt-1"
+                />
+              </div>
+              <div v-if="connection.db_type === 'bigquery' && connection.host" class="flex items-center gap-1 mt-1">
+                <Database class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
+                <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">{{ connection.host }}</span>
+              </div>
+              <div v-else-if="connection.database" class="flex items-center gap-1 mt-1">
+                <Database class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
+                <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">{{ connection.database }}</span>
+              </div>
+              <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
+                <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
+                <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">{{ connection.source_filename }}</span>
+              </div>
+              <div class="mt-auto border-t border-gray-100 dark:border-neutral-600 pt-2.5 flex items-center gap-3 flex-wrap">
+                <span
+                  class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  :class="getProfilingTextClass(connection)"
+                  :title="getProfilingTitle(connection)"
+                >{{ getProfilingLabel(connection) }}</span>
+                <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
+                  <div v-if="item === 'ssl' && connection.ssl_enabled" class="flex flex-col items-center gap-1" title="SSL Enabled">
+                    <Lock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">SSL</span>
+                  </div>
+                  <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} tables`">
+                    <Table2 class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} tables</span>
+                  </div>
+                  <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} datasets`">
+                    <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} datasets</span>
+                  </div>
+                  <div v-if="item === 'schema_date' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Schema refreshed ${formatRelativeDate(connection.schema_generated_at)}`">
+                    <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+                  </div>
+                  <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1" title="Lookback window">
+                    <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ parseLookbackDays(connection) }}d lookback</span>
+                  </div>
+                  <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Last synced ${formatRelativeDate(connection.schema_generated_at)}`">
+                    <RefreshCw class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+                  </div>
+                </template>
               </div>
             </div>
-            <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 dark:text-neutral-500 shrink-0 mt-1" />
-          </button>
-          <p class="text-[13px] text-gray-500 dark:text-neutral-400 mt-2.5">{{ group.connections.length }} datasets</p>
-          <!-- Expanded: list individual datasets -->
-          <div v-if="expandedGroups[group.fingerprint]" class="mt-3 space-y-2 border-t border-gray-100 dark:border-neutral-700 pt-3">
-            <div
-              v-for="conn in group.connections"
-              :key="conn.id"
-              class="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer"
-              @click="openEditDialog(conn)"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-medium text-gray-700 dark:text-neutral-200 truncate">{{ conn.name }}</p>
-                <p v-if="conn.source_filename" class="text-xs text-gray-400 dark:text-neutral-500 truncate">{{ conn.source_filename }}</p>
-              </div>
-              <button
-                @click.stop="openDeleteDialog(conn)"
-                class="text-gray-400 hover:text-red-500 shrink-0"
-              >
-                <Trash2 class="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-          <div v-else class="mt-auto flex flex-col gap-0.5">
-            <p class="text-xs text-gray-400 dark:text-neutral-500">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
-          </div>
-        </div>
-      </UiCard>
+          </UiCard>
 
-      <!-- Add Connection card -->
-      <button
-        @click="openCreateDialog"
-        class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 dark:border-neutral-600 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 dark:hover:border-neutral-500 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-      >
-        <component :is="Plus" class="h-6 w-6 text-gray-400 dark:text-neutral-500" />
-        <span class="text-sm text-gray-500 dark:text-neutral-400">Add Connection</span>
-      </button>
+          <!-- Add Connection card -->
+          <button
+            @click="openCreateDialog"
+            class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-300 dark:border-neutral-500 rounded-lg h-56 w-56 max-md:w-full hover:border-gray-400 dark:hover:border-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+          >
+            <Plus class="h-6 w-6 text-gray-400 dark:text-neutral-300" />
+            <span class="text-sm text-gray-500 dark:text-neutral-300">Add connection</span>
+            <span class="text-xs text-gray-400 dark:text-neutral-400">
+              {{ connectorTypes.slice(0, 3).map(t => t.display_name).join(' · ') }}
+              <template v-if="connectorTypes.length > 3"> · {{ connectorTypes.length - 3 }} more</template>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- FILES & UPLOADS -->
+      <div v-if="fileUngroupedConnections.length > 0 || filteredDatasetGroups.length > 0">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest">Files & Uploads</p>
+          <span class="text-xs text-gray-400 dark:text-neutral-500">Grouped by schema</span>
+        </div>
+        <div class="flex flex-wrap gap-4">
+          <!-- Ungrouped file connections (sqlite, facebook_ads, standalone datasets) -->
+          <UiCard
+            v-for="connection in fileUngroupedConnections"
+            :key="connection.id"
+            class="overflow-hidden h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow flex flex-col"
+            @click="openEditDialog(connection)"
+          >
+            <div :class="[CARD_BAND[connection.db_type] ?? 'bg-gray-100 dark:bg-neutral-400/60', 'h-[3px] w-full flex-shrink-0']" />
+            <div class="flex flex-col flex-1 min-h-0 px-4 pt-3 pb-4">
+              <div class="flex items-start gap-2.5">
+                <ConnectorAvatar :db-type="connection.db_type" :icon-html="connectorIcons[connection.db_type]" size="sm" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
+                  <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
+                    <span class="text-[11px] text-gray-400 dark:text-neutral-300">v{{ getConnectorType(connection.db_type)?.version }}</span>
+                    <button
+                      @click.stop="openChangelog(connection.db_type)"
+                      class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-500 inline-flex items-center justify-center text-gray-400 dark:text-neutral-300 hover:text-gray-600 dark:hover:text-neutral-100 hover:border-gray-400 dark:hover:border-neutral-300"
+                    >
+                      <Info class="h-2 w-2" />
+                    </button>
+                  </div>
+                </div>
+                <Loader2
+                  v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
+                  class="h-4 w-4 text-yellow-500 animate-spin shrink-0 mt-1"
+                />
+              </div>
+              <div v-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
+                <User class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
+                <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">Account: {{ connection.name }}</span>
+              </div>
+              <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
+                <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
+                <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">{{ connection.source_filename }}</span>
+              </div>
+              <div class="mt-auto border-t border-gray-100 dark:border-neutral-600 pt-2.5 flex items-center gap-3 flex-wrap">
+                <span
+                  class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  :class="getProfilingTextClass(connection)"
+                  :title="getProfilingTitle(connection)"
+                >{{ getProfilingLabel(connection) }}</span>
+                <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
+                  <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1">
+                    <Table2 class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} tables</span>
+                  </div>
+                  <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1">
+                    <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} datasets</span>
+                  </div>
+                  <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1">
+                    <RefreshCw class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
+                  </div>
+                  <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1">
+                    <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
+                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ parseLookbackDays(connection) }}d lookback</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </UiCard>
+
+          <!-- Grouped dataset connections (shared schema_fingerprint) -->
+          <UiCard
+            v-for="group in filteredDatasetGroups"
+            :key="group.fingerprint"
+            class="overflow-hidden w-56 max-md:w-full hover:shadow-lg transition-shadow flex flex-col"
+            :class="!expandedGroups[group.fingerprint] ? 'h-56' : ''"
+          >
+            <div :class="[CARD_BAND['dataset'], 'h-[3px] w-full flex-shrink-0']" />
+            <div :class="['flex flex-col px-4 pt-3 pb-4',
+                          !expandedGroups[group.fingerprint] ? 'flex-1 min-h-0' : '']">
+              <button
+                class="flex items-start gap-2.5 w-full text-left cursor-pointer"
+                @click="toggleGroup(group.fingerprint)"
+              >
+                <ConnectorAvatar db-type="dataset" :icon-html="connectorIcons['dataset']" size="sm" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType('dataset')?.display_name || 'Dataset' }}</p>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <span class="text-[11px] text-gray-400 dark:text-neutral-300">v{{ getConnectorType('dataset')?.version }}</span>
+                    <button
+                      @click.stop="openChangelog('dataset')"
+                      class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-500 inline-flex items-center justify-center text-gray-400 dark:text-neutral-300 hover:text-gray-600 dark:hover:text-neutral-100 hover:border-gray-400 dark:hover:border-neutral-300"
+                    >
+                      <Info class="h-2 w-2" />
+                    </button>
+                  </div>
+                </div>
+                <component :is="expandedGroups[group.fingerprint] ? ChevronDown : ChevronRight" class="h-4 w-4 text-gray-400 dark:text-neutral-300 shrink-0 mt-1" />
+              </button>
+              <p class="text-[13px] text-gray-500 dark:text-neutral-300 mt-2.5">{{ group.connections.length }} datasets</p>
+              <div v-if="expandedGroups[group.fingerprint]" class="mt-3 space-y-2 border-t border-gray-100 dark:border-neutral-600 pt-3">
+                <div
+                  v-for="conn in group.connections"
+                  :key="conn.id"
+                  class="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer"
+                  @click="openEditDialog(conn)"
+                >
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs font-medium text-gray-700 dark:text-neutral-200 truncate">{{ conn.name }}</p>
+                    <p v-if="conn.source_filename" class="text-xs text-gray-400 dark:text-neutral-300 truncate">{{ conn.source_filename }}</p>
+                  </div>
+                  <button @click.stop="openDeleteDialog(conn)" class="text-gray-400 hover:text-red-500 shrink-0">
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div v-else class="mt-auto flex flex-col gap-0.5">
+                <p class="text-xs text-gray-400 dark:text-neutral-300">{{ group.connections.map(c => c.source_filename || c.name).join(', ') }}</p>
+              </div>
+            </div>
+          </UiCard>
+        </div>
+      </div>
     </div>
 
-    <!-- Type Picker Bottom Sheet -->
-    <UiBottomSheet
+    <!-- Type Picker Dialog -->
+    <UiDialog
       :open="showTypePicker"
       @update:open="handleTypePickerClose"
-      :title="typePickerTitle"
-      fullHeight
+      :closable="false"
+      size="full"
+      panel-class="max-w-7xl h-[90vh] flex flex-col"
+      body-class="flex-1 min-h-0 overflow-y-auto"
     >
-      <div class="flex flex-wrap gap-4">
-        <button
-          v-for="type in connectorTypes"
-          :key="type.id"
-          @click="selectConnectorType(type.id)"
-          class="flex flex-col items-center justify-center gap-2 rounded-lg border border-gray-200 p-4 h-56 w-56 max-md:w-full overflow-hidden hover:shadow-md transition-shadow cursor-pointer dark:border-neutral-700 dark:bg-neutral-800/50 dark:hover:bg-neutral-700/50"
-        >
-          <div v-if="connectorIcons[type.id]" class="h-10 w-10" v-html="connectorIcons[type.id]" />
-          <component v-else :is="Database" class="h-10 w-10 text-gray-400" />
-          <div class="text-center">
-            <h3 class="text-xs font-normal text-gray-900 dark:text-neutral-100">{{ type.display_name }}</h3>
-            <p class="text-xs text-gray-600 dark:text-neutral-400 line-clamp-2">{{ type.description }}</p>
+      <template #header>
+        <div class="flex items-center justify-between w-full gap-4">
+          <span class="text-xs font-semibold text-gray-400 uppercase tracking-widest shrink-0">Connection · Step 1/3</span>
+          <div class="relative flex-1 max-w-sm">
+            <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <input
+              v-model="typeSearchQuery"
+              type="text"
+              :placeholder="`Search ${connectorTypes.length} connectors…`"
+              class="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
           </div>
-        </button>
-      </div>
-    </UiBottomSheet>
+          <button
+            @click="handleTypePickerClose(false)"
+            class="text-sm text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200 shrink-0"
+          >Cancel</button>
+        </div>
+      </template>
 
-    <!-- Connection Form Bottom Sheet -->
-    <UiBottomSheet
+      <div class="px-6 py-8 max-w-7xl mx-auto w-full">
+        <h2 class="text-3xl font-medium text-gray-900 dark:text-neutral-100 mb-8">
+          What are we
+          <em class="text-violet-500 not-italic">connecting to?</em>
+        </h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <button
+            v-for="type in filteredTypes"
+            :key="type.id"
+            @click="selectedTypeId = type.id"
+            class="relative flex items-start gap-3 p-4 rounded-xl border text-left transition-all cursor-pointer"
+            :class="selectedTypeId === type.id
+              ? 'ring-2 ring-violet-500 border-transparent'
+              : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600'"
+          >
+            <ConnectorAvatar :db-type="type.id" :icon-html="connectorIcons[type.id]" size="sm" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-gray-900 dark:text-neutral-100">{{ type.display_name }}</span>
+                <span class="text-xs text-gray-400 dark:text-neutral-500">v{{ type.version }}</span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">{{ type.description }}</p>
+            </div>
+            <span
+              v-if="selectedTypeId === type.id"
+              class="absolute top-3 right-3 text-[10px] bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded font-medium"
+            >SELECTED</span>
+          </button>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="w-full flex items-center justify-between">
+          <span class="text-xs text-gray-400 dark:text-neutral-500">Pressing Continue uses the selected type. You can still cancel or switch types from the next step.</span>
+          <div class="flex items-center gap-3">
+            <UiButton variant="outline" size="sm" @click="handleTypePickerClose(false)">Cancel</UiButton>
+            <UiButton
+              size="sm"
+              :disabled="!selectedTypeId"
+              @click="selectConnectorType(selectedTypeId!)"
+            >
+              Continue{{ selectedConnectorType ? ` · ${selectedConnectorType.display_name}` : '' }}
+            </UiButton>
+          </div>
+        </div>
+      </template>
+    </UiDialog>
+
+    <!-- Connection Form Dialog -->
+    <UiDialog
       :open="showFormSheet"
       @update:open="handleFormSheetClose"
       :closable="false"
-      panelClass="h-[calc(80vh-6rem)]"
+      size="full"
+      panel-class="max-w-7xl h-[90vh] flex flex-col"
+      body-class="flex-1 min-h-0 overflow-hidden"
     >
       <template #header>
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between w-full gap-2">
-          <div class="flex items-center gap-3">
-            <button
-              v-if="!editingConnection"
-              @click="goBackToTypePicker"
-              class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-700"
-            >
-              <ArrowLeft class="h-5 w-5" />
-            </button>
-            <span class="text-lg font-normal text-gray-900 dark:text-neutral-100">{{ getFormTitle() }}</span>
-            <div v-if="testSuccess" class="flex items-center justify-center w-6 h-6 rounded-full bg-green-500">
-              <Check class="h-3.5 w-3.5 text-white" />
+        <div class="flex items-center justify-between w-full gap-4">
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <button
+                v-if="!editingConnection"
+                @click="goBackToTypePicker"
+                class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-700 shrink-0"
+              >
+                <ArrowLeft class="h-5 w-5" />
+              </button>
+              <span class="text-lg font-medium text-gray-900 dark:text-neutral-100 truncate">
+                {{ editingConnection ? `Edit · ${editingConnection.name}` : getFormTitle() }}
+              </span>
             </div>
+            <p v-if="editingConnection" class="text-xs text-gray-400 dark:text-neutral-500 mt-0.5 ml-0">
+              #{{ editingConnection.id }} · last edited {{ formatRelativeDate(editingConnection.updated_at) }}
+            </p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <div v-if="testSuccess" class="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+              <Check class="h-4 w-4" />
+              <span>Test passed</span>
+            </div>
             <UiButton
               variant="outline"
               size="sm"
@@ -250,9 +489,7 @@
             >
               Cancel
             </UiButton>
-            <!-- Edit-mode lifecycle buttons: connector-agnostic, capability-gated.
-                 These act on a saved connection id and don't depend on community form state,
-                 so they render even when a plugin form owns the left column. -->
+            <!-- Edit-mode lifecycle buttons: connector-agnostic, capability-gated. -->
             <UiButton
               v-if="editingConnection && showRefresh"
               variant="outline"
@@ -290,7 +527,6 @@
 
             <!-- Form-state-dependent buttons: only when community owns the form body. -->
             <template v-if="!hasPluginForm">
-              <!-- Create-mode Test Connection for built-in types (needs form state). -->
               <UiButton
                 v-if="!editingConnection && !isFileUploadConnection && !testSuccess"
                 variant="outline"
@@ -315,9 +551,10 @@
         </div>
       </template>
 
-      <div class="flex flex-col md:flex-row">
+      <div class="flex flex-col md:flex-row h-full min-h-0">
         <!-- 40% form -->
-        <div class="w-full md:w-2/5 md:pr-6 pb-4 md:pb-0">
+        <div class="w-full md:w-2/5 md:pr-6 pb-4 md:pb-0 overflow-y-auto px-6 py-6">
+          <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-4">Connection</p>
 
           <!-- Plugin-provided create form (when registered for this db_type) -->
           <template v-if="!editingConnection && pluginCreateForm">
@@ -325,6 +562,7 @@
               :is="pluginCreateForm"
               @saved="onPluginFormSaved"
               @close="showFormSheet = false"
+              @preview="csvPreviewColumns = $event"
             />
           </template>
 
@@ -426,17 +664,12 @@
               </div>
             </div>
 
-            <div class="border-t border-gray-200 dark:border-neutral-700 pt-4 mt-6 hidden md:block">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                  <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
-                </div>
-                <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                  <Trash2 class="h-3.5 w-3.5" />
-                  Delete
-                </UiButton>
-              </div>
+            <div class="mt-8 pt-4 border-t border-red-100 dark:border-red-900/30">
+              <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+              <p class="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">Breaks saved skills and scheduled jobs. Cannot be undone.</p>
+              <UiButton variant="danger" size="sm" class="mt-3" @click="openDeleteDialog(editingConnection!)">
+                <Trash2 class="h-3.5 w-3.5" /> Delete
+              </UiButton>
             </div>
           </template>
 
@@ -504,7 +737,7 @@
                   type="button"
                   @click="form.ssl_enabled = !form.ssl_enabled"
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                  :class="form.ssl_enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-neutral-600'"
+                  :class="form.ssl_enabled ? 'bg-violet-600' : 'bg-gray-200 dark:bg-neutral-600'"
                 >
                   <span
                     class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -535,118 +768,108 @@
             </div>
           </form>
 
-          <div v-if="editingConnection" class="border-t border-gray-200 pt-4 mt-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
-                <p class="text-xs text-gray-500 dark:text-neutral-400">This action cannot be undone.</p>
-              </div>
-              <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-                <Trash2 class="h-3.5 w-3.5" />
-                Delete
-              </UiButton>
-            </div>
+          <div v-if="editingConnection" class="mt-8 pt-4 border-t border-red-100 dark:border-red-900/30">
+            <p class="text-sm font-medium text-gray-900 dark:text-neutral-100">Delete this connection</p>
+            <p class="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">Breaks saved skills and scheduled jobs. Cannot be undone.</p>
+            <UiButton variant="danger" size="sm" class="mt-3" @click="openDeleteDialog(editingConnection!)">
+              <Trash2 class="h-3.5 w-3.5" /> Delete
+            </UiButton>
           </div>
           </template><!-- end v-else standard form -->
         </div>
 
         <!-- 60% right-column panel — renders plugin editPanel when registered, otherwise community default. -->
-        <div v-if="showRightColumn" class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 flex flex-col gap-3 overflow-hidden">
-          <!-- Plugin-provided edit panel (when registered for this db_type). -->
-          <template v-if="pluginEditPanel && editingConnection">
+        <div v-if="showRightColumn" class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 px-6 py-6 flex flex-col gap-3 overflow-y-auto">
+          <!-- Plugin-provided panel: during edit, OR during CSV create (pluginEditPanel = CsvUploadPreviewPanel). -->
+          <template v-if="pluginEditPanel && (editingConnection || isDatasetConnection)">
             <component
               :is="pluginEditPanel"
-              :connection="editingConnection"
+              v-bind="isDatasetConnection && !editingConnection
+                ? { connection: undefined, columns: csvPreviewColumns }
+                : { connection: editingConnection ?? undefined }"
               @saved="onPluginFormSaved"
             />
           </template>
-          <template v-else>
-          <!-- No editingConnection yet -->
-          <div v-if="!editingConnection" class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400">
-            <Database class="h-4 w-4" />
-            <span v-if="isFileUploadConnection">Upload the file to explore its schema.</span>
-            <span v-else>Save the connection to explore its schema.</span>
-          </div>
-
-          <!-- editing connection: schema panel for all non-BigQuery, or BigQuery with file drop -->
-          <template v-else>
-            <!-- Community default: schema tree. Plugin connectors (notion/bigquery) override via editPanel. -->
+          <template v-else-if="editingConnection">
+            <div class="flex items-center justify-between mb-3 shrink-0">
+              <span class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest">
+                Schema<template v-if="schema"> · {{ schema.table_names?.length ?? 0 }} tables · {{ Object.keys(schema.schemas ?? {}).length }} schemas</template>
+              </span>
+              <span v-if="schema" class="text-xs text-gray-400 dark:text-neutral-500">
+                Last refresh: {{ formatRelativeDate(schema.generated_at) }}
+              </span>
+            </div>
             <ConnectionSchemaTree
               :schema="schema"
               :loading="schemaLoading"
               :error="schemaError"
             />
-          </template><!-- end editing connection block -->
-          </template><!-- end community default right column -->
-        </div>
-
-        <!-- Mobile-only delete section (appears after schema) -->
-        <div v-if="isFileUploadConnection && editingConnection" class="border-t border-gray-200 pt-4 mt-2 md:hidden">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-gray-900">Delete this dataset</p>
-              <p class="text-xs text-gray-500">This action cannot be undone.</p>
+          </template>
+          <template v-else>
+            <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-neutral-400">
+              <Database class="h-4 w-4" />
+              <span>Save the connection to explore its schema.</span>
             </div>
-            <UiButton variant="danger" size="sm" @click="openDeleteDialog(editingConnection!)">
-              <Trash2 class="h-3.5 w-3.5" />
-              Delete
-            </UiButton>
-          </div>
+          </template>
         </div>
       </div>
-    </UiBottomSheet>
+
+      <template #footer>
+        <div
+          v-if="testSuccess"
+          class="border-t border-gray-100 dark:border-neutral-700 px-6 py-2 text-xs text-gray-500 dark:text-neutral-400 flex items-center gap-2"
+        >
+          <span class="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+          <span class="text-green-600 dark:text-green-400 font-medium">Handshake OK</span>
+          <span>· {{ testMessage }}</span>
+        </div>
+      </template>
+    </UiDialog>
 
     <!-- Delete Confirmation Dialog -->
     <UiDialog
-      :open="showDeleteDialog"
-      @update:open="(v: boolean) => { if (!v) closeDeleteDialog() }"
-      title="Delete Connection"
+      v-model:open="showDeleteDialog"
       size="sm"
+      :closable="false"
     >
-      <template v-if="cascadePipelines.length === 0">
-        <p class="text-sm text-gray-600">
-          Are you sure you want to delete <strong>{{ deletingConnection?.name }}</strong>?
-          This action cannot be undone.
-        </p>
-      </template>
-      <template v-else>
-        <div class="space-y-3">
-          <p class="text-sm text-gray-700 dark:text-neutral-200">
-            <strong>{{ deletingConnection?.name }}</strong> is used by
-            {{ cascadePipelines.length }} pipeline{{ cascadePipelines.length === 1 ? '' : 's' }}.
-            Deleting the connection will also delete:
-          </p>
-          <ul class="max-h-48 overflow-y-auto rounded-md border border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-700">
-            <li
-              v-for="p in cascadePipelines"
-              :key="p.id"
-              class="px-3 py-2 text-sm text-gray-800 dark:text-neutral-100 truncate"
-              :title="p.name"
-            >
-              {{ p.name }}
-            </li>
-          </ul>
-          <p class="text-xs text-red-600 dark:text-red-400">
-            Pipeline run history will be removed. Materialized tables on the data warehouse are preserved.
-          </p>
+      <template #header>
+        <div class="flex items-center gap-3">
+          <div class="h-9 w-9 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+            <Trash2 class="h-4 w-4 text-red-600 dark:text-red-400" />
+          </div>
+          <span class="text-lg font-medium text-gray-900 dark:text-neutral-100">
+            Delete <em class="text-violet-500 not-italic">{{ deletingConnection?.name }}</em>?
+          </span>
         </div>
       </template>
 
+      <p class="text-sm text-gray-600 dark:text-neutral-400 mb-4">
+        This removes the
+        {{ getConnectorType(deletingConnection?.db_type ?? '')?.display_name ?? 'connection' }},
+        its profiled schema, and will break any skills or jobs that reference it.
+      </p>
+
+      <label class="block text-sm text-gray-700 dark:text-neutral-300 mb-1.5">
+        Type <code class="text-violet-600 dark:text-violet-400 font-mono">{{ deletingConnection?.name }}</code> to confirm
+      </label>
+      <input
+        v-model="deleteConfirmInput"
+        type="text"
+        :placeholder="deletingConnection?.name"
+        class="w-full border border-gray-300 dark:border-neutral-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-neutral-800 text-gray-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+      />
+
       <template #footer>
-        <UiButton
-          variant="outline"
-          @click="closeDeleteDialog"
-        >
+        <UiButton variant="outline" @click="showDeleteDialog = false">
           Cancel
         </UiButton>
         <UiButton
           variant="danger"
+          :disabled="deleteConfirmInput !== deletingConnection?.name"
           :loading="deleting"
           @click="confirmDelete"
         >
-          {{ cascadePipelines.length > 0
-            ? `Delete connection + ${cascadePipelines.length} pipeline${cascadePipelines.length === 1 ? '' : 's'}`
-            : 'Delete' }}
+          <Trash2 class="h-3.5 w-3.5" /> Delete connection
         </UiButton>
       </template>
     </UiDialog>
@@ -700,6 +923,7 @@
       </div>
       <pre v-else class="text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">{{ changelogContent }}</pre>
     </UiBottomSheet>
+  </div>
   </div>
 
   <!-- Connection notifications -->
@@ -791,6 +1015,20 @@ const connectorIcons: Record<string, string> = {
   notion:       connectorNotion,
 }
 
+// Card top band colors keyed by connector type
+const CARD_BAND: Record<string, string> = {
+  postgres:     'bg-blue-100 dark:bg-blue-500/70',
+  mysql:        'bg-cyan-100 dark:bg-cyan-500/70',
+  bigquery:     'bg-blue-100 dark:bg-blue-500/70',
+  snowflake:    'bg-sky-100 dark:bg-sky-400/70',
+  redshift:     'bg-red-100 dark:bg-red-500/70',
+  clickhouse:   'bg-yellow-100 dark:bg-yellow-400/70',
+  sqlite:       'bg-sky-100 dark:bg-sky-400/70',
+  dataset:      'bg-gray-100 dark:bg-neutral-400/60',
+  facebook_ads: 'bg-blue-100 dark:bg-blue-500/70',
+  notion:       'bg-gray-100 dark:bg-neutral-400/60',
+}
+
 // State
 const connections = ref<DatabaseConnection[]>([])
 const connectorTypes = ref<ConnectorType[]>([])
@@ -828,11 +1066,20 @@ const cascadePipelines = ref<{ id: string; name: string }[]>([])
 const refreshingId = ref<number | null>(null)
 const testing = ref(false)
 const testSuccess = ref(false)
+const testMessage = ref('')
+
+// List search & type picker selection
+const searchQuery = ref('')
+const selectedTypeId = ref<string | null>(null)
+const typeSearchQuery = ref('')
+const deleteConfirmInput = ref('')
+const refreshingAll = ref(false)
 
 // Schema state
 const schema = ref<DatabaseSchema | null>(null)
 const schemaLoading = ref(false)
 const schemaError = ref<string | null>(null)
+const csvPreviewColumns = ref<Array<{ name: string; type: string }>>([])
 
 // GA4 Unnesting state
 interface GA4DatasetConfig {
@@ -950,6 +1197,44 @@ const groupedIds = computed(() => {
 const ungroupedConnections = computed(() => {
   return connections.value.filter(c => !groupedIds.value.has(c.id))
 })
+
+const FILE_TYPES = new Set(['dataset', 'facebook_ads', 'sqlite'])
+
+const warehouseConnections = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  return ungroupedConnections.value.filter(c =>
+    !FILE_TYPES.has(c.db_type) &&
+    (!q || c.name.toLowerCase().includes(q) || (c.host ?? '').toLowerCase().includes(q))
+  )
+})
+
+const fileUngroupedConnections = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  return ungroupedConnections.value.filter(c =>
+    FILE_TYPES.has(c.db_type) &&
+    (!q || c.name.toLowerCase().includes(q) || (c.host ?? '').toLowerCase().includes(q))
+  )
+})
+
+const filteredDatasetGroups = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  if (!q) return datasetGroups.value
+  return datasetGroups.value
+    .map(g => ({ ...g, connections: g.connections.filter(c => c.name.toLowerCase().includes(q)) }))
+    .filter(g => g.connections.length > 0)
+})
+
+const filteredTypes = computed(() => {
+  const q = typeSearchQuery.value.toLowerCase()
+  if (!q) return connectorTypes.value
+  return connectorTypes.value.filter(t =>
+    t.display_name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+  )
+})
+
+const selectedConnectorType = computed(() =>
+  connectorTypes.value.find(t => t.id === selectedTypeId.value) ?? null
+)
 
 function toggleGroup(fingerprint: string) {
   expandedGroups.value[fingerprint] = !expandedGroups.value[fingerprint]
@@ -1179,10 +1464,6 @@ function formatFbConnectedAt(sourceFilename: string): string {
 }
 
 // Computed
-const typePickerTitle = computed(() => {
-  return 'Choose a Database'
-})
-
 // Fetch data on mount
 onMounted(async () => {
   await Promise.all([fetchConnections(), fetchConnectorTypes()])
@@ -1523,6 +1804,8 @@ function openCreateDialog() {
   bigquerySaInfo.value = null
   bigqueryPermissionCheck.value = { read: null, write: null }
   bigqueryPermissionError.value = { read: null, write: null }
+  selectedTypeId.value = null
+  typeSearchQuery.value = ''
   showTypePicker.value = true
 }
 
@@ -1764,6 +2047,7 @@ async function handleTestConnection() {
 
     if (response.success) {
       testSuccess.value = true
+      testMessage.value = response.message || 'Connection test successful'
       connectionSuccessMessage.value = response.message || 'Connection test successful'
       setTimeout(() => { connectionSuccessMessage.value = '' }, 4000)
     } else {
@@ -1808,13 +2092,19 @@ async function refreshSchema(connection: DatabaseConnection) {
 
 function openDeleteDialog(connection: DatabaseConnection) {
   deletingConnection.value = connection
-  cascadePipelines.value = []
+  deleteConfirmInput.value = ''
   showDeleteDialog.value = true
 }
 
-function closeDeleteDialog() {
-  showDeleteDialog.value = false
-  cascadePipelines.value = []
+async function refreshAllConnections() {
+  const targets = warehouseConnections.value.filter(c => !FILE_TYPES.has(c.db_type))
+  refreshingAll.value = true
+  try {
+    await Promise.all(targets.map(c => api.connections.refreshSchema(String(c.id)).catch(() => {})))
+    await fetchConnections()
+  } finally {
+    refreshingAll.value = false
+  }
 }
 
 async function confirmDelete() {

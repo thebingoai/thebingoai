@@ -1,10 +1,14 @@
 <template>
   <div class="p-6 space-y-6">
-    <div class="space-y-2">
-      <h2 class="text-2xl font-medium text-gray-900 dark:text-white">API Keys</h2>
-      <p class="text-sm text-gray-500 dark:text-neutral-400">
+    <div>
+      <div class="pr-12">
+        <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · API Keys</p>
+        <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white">API Keys</h2>
+      </div>
+      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-2">
         Provider keys are read from the server's <code class="text-xs px-1 py-0.5 rounded bg-gray-100 dark:bg-neutral-800">.env</code> file. Contact your administrator to add or change keys.
       </p>
+      <div class="mt-4 border-b border-gray-200 dark:border-neutral-700"></div>
     </div>
 
     <div class="rounded-xl border border-gray-200 dark:border-neutral-700 divide-y divide-gray-100 dark:divide-neutral-700">

@@ -1,6 +1,6 @@
 <template>
   <div class="p-6 space-y-8">
-    <h2 class="text-2xl font-medium text-gray-900 dark:text-white">Credits & API Keys</h2>
+    <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white">Credits & API Keys</h2>
 
     <!-- Two-column row: Credit Meter + API Key Management -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
@@ -22,7 +22,10 @@
               :style="{ width: `${usedPercent}%` }"
             />
           </div>
-          <p class="text-xs text-gray-400 dark:text-neutral-500">{{ dailyLimit }} credits will be reset at midnight.</p>
+          <p class="text-xs text-gray-400 dark:text-neutral-500">
+            {{ Math.round(usedToday) }} used today · resets at 00:00 UTC
+            <span v-if="resetCountdown"> · {{ resetCountdown }}</span>
+          </p>
         </div>
 
         <!-- Daily Consumption Chart -->
@@ -50,14 +53,23 @@
             :key="key.provider"
             class="flex items-center justify-between rounded-lg border border-gray-100 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-700/50 px-4 py-3"
           >
-            <div>
-              <p class="text-sm font-medium text-gray-700 dark:text-neutral-200 capitalize">{{ key.provider }}</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 mb-0.5">
+                <p class="text-sm font-medium text-gray-700 dark:text-neutral-200 capitalize">{{ key.provider }}</p>
+                <span
+                  v-if="(key as any).is_active"
+                  class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                >in use</span>
+              </div>
               <p class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ key.masked_key }}</p>
               <p v-if="key.api_base_url" class="text-xs text-gray-400 dark:text-neutral-500">{{ key.api_base_url }}</p>
+              <p v-if="(key as any).last_used_at" class="text-xs text-gray-400 dark:text-neutral-500">
+                Last used {{ formatDate((key as any).last_used_at) }}
+              </p>
             </div>
             <button
               @click="handleDeleteKey(key.provider)"
-              class="text-xs text-red-500 hover:text-red-700 transition-colors"
+              class="text-xs text-red-500 hover:text-red-700 transition-colors ml-4 shrink-0"
             >
               Remove
             </button>
@@ -130,6 +142,8 @@
         <thead>
           <tr class="text-left text-xs text-gray-400 dark:text-neutral-500 border-b border-gray-100 dark:border-neutral-700">
             <th class="pb-2 font-normal">Title</th>
+            <th v-if="hasModelField" class="pb-2 font-normal">Model</th>
+            <th v-if="hasTokensField" class="pb-2 font-normal text-right">Tokens</th>
             <th class="pb-2 font-normal text-right">Credits</th>
             <th class="pb-2 font-normal text-right">Date</th>
           </tr>
@@ -137,6 +151,8 @@
         <tbody class="divide-y divide-gray-50 dark:divide-neutral-700/50">
           <tr v-for="item in historyItems" :key="item.id" class="py-2">
             <td class="py-2 text-gray-700 dark:text-neutral-300 truncate max-w-xs">{{ item.title }}</td>
+            <td v-if="hasModelField" class="py-2 text-xs text-gray-500 dark:text-neutral-400 font-mono">{{ (item as any).model }}</td>
+            <td v-if="hasTokensField" class="py-2 text-right tabular-nums text-xs text-gray-500 dark:text-neutral-400">{{ (item as any).tokens }}</td>
             <td class="py-2 text-right tabular-nums text-gray-600 dark:text-neutral-300">{{ item.credits_used }}</td>
             <td class="py-2 text-right text-gray-400 dark:text-neutral-500 whitespace-nowrap">{{ formatDate(item.created_at) }}</td>
           </tr>
@@ -167,13 +183,26 @@
 </template>
 
 <script setup lang="ts">
+import { differenceInMinutes } from 'date-fns'
 import { parseUtcDate } from '~/utils/format'
 const {
-  dailyLimit, usedToday, remaining, usedPercent,
+  dailyLimit, usedToday, remaining, usedPercent, resetsAt,
   historyItems, historyTotal, historyPage, historyTotalPages, historyLoading, nextPage, prevPage,
   dailyTotals, dailyTotalsLoading,
   apiKeys, saveApiKey, deleteApiKey,
 } = useCreditSettings()
+
+const resetCountdown = computed(() => {
+  if (!resetsAt.value) return null
+  const mins = differenceInMinutes(new Date(resetsAt.value), new Date())
+  if (mins <= 0) return null
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return h > 0 ? `in ${h}h ${m}m` : `in ${m}m`
+})
+
+const hasModelField = computed(() => historyItems.value.some(i => (i as any).model != null))
+const hasTokensField = computed(() => historyItems.value.some(i => (i as any).tokens != null))
 
 // ----- Consumption chart -----
 const chartCanvas = ref<HTMLCanvasElement | null>(null)

@@ -32,6 +32,7 @@ export const useCreditSettings = () => {
   const dailyLimit = ref<number>(180)
   const usedToday = ref<number>(0)
   const remaining = ref<number>(180)
+  const resetsAt = ref<string | null>(null)
   const balanceLoading = ref(false)
 
   const usedPercent = computed(() =>
@@ -45,6 +46,7 @@ export const useCreditSettings = () => {
       dailyLimit.value = data.daily_limit
       usedToday.value = data.used_today
       remaining.value = data.remaining
+      resetsAt.value = data.resets_at ?? null
     } finally {
       balanceLoading.value = false
     }
@@ -139,7 +141,7 @@ export const useCreditSettings = () => {
 
   return {
     // Balance
-    dailyLimit, usedToday, remaining, usedPercent, balanceLoading, fetchBalance,
+    dailyLimit, usedToday, remaining, usedPercent, resetsAt, balanceLoading, fetchBalance,
     // History
     historyItems, historyTotal, historyPage, historyPerPage, historyTotalPages,
     historyLoading, fetchHistory, nextPage, prevPage,

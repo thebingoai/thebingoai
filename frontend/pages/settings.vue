@@ -1,8 +1,18 @@
 <template>
-  <div class="flex h-full pt-2 relative" :class="isMobile ? 'flex-col' : ''">
-    <!-- Close Button (mobile: fixed, aligned with hamburger; desktop: absolute top-right) -->
+  <div class="flex h-full relative" :class="isMobile ? 'flex-col' : ''">
+    <!-- Desktop close button -->
     <button
-      v-if="isMobile"
+      v-if="!isMobile"
+      @click="router.push('/chat')"
+      class="absolute top-10 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-neutral-700 transition-colors z-10"
+      aria-label="Close settings"
+    >
+      <X class="h-5 w-5" />
+    </button>
+
+    <!-- Mobile close button -->
+    <button
+      v-else
       @click="router.push('/chat')"
       class="fixed right-3 top-1.5 z-30 rounded-lg p-2 pt-4 mr-1 transition-colors hover:bg-gray-100"
       aria-label="Close settings"
@@ -18,11 +28,11 @@
       <X class="h-5 w-5" />
     </button>
 
-    <!-- Settings Navigation -->
+    <!-- Settings Navigation Panel -->
     <div
       :class="isMobile
         ? 'flex items-center gap-2 overflow-x-auto px-4 pb-3 border-b border-gray-200 dark:border-neutral-700 shrink-0'
-        : 'w-56 border-r border-gray-200 dark:border-neutral-700 p-4 flex flex-col justify-between'"
+        : 'w-56 border-r border-gray-200 dark:border-neutral-700 flex flex-col justify-between flex-shrink-0'"
     >
       <nav :class="isMobile ? 'flex gap-1' : 'space-y-1'">
         <template v-for="(section, index) in sections" :key="section.id">
@@ -50,9 +60,10 @@
         </template>
       </nav>
 
-      <div v-if="!isMobile" class="pt-4 border-t border-gray-200 dark:border-neutral-700 text-xs text-gray-400 dark:text-gray-300 space-y-1">
-        <p>{{ appInfo?.edition || 'Community' }} Edition</p>
-        <p>v{{ appInfo?.version || '1.0.0' }}</p>
+      <div v-if="!isMobile" class="px-4 py-3 border-t border-gray-200 dark:border-neutral-700 flex-shrink-0">
+        <p class="text-[11px] text-gray-400 dark:text-neutral-500">
+          {{ appInfo?.edition || 'Community' }} Edition · v{{ appInfo?.version || '1.0.0' }}
+        </p>
       </div>
     </div>
 
@@ -72,7 +83,7 @@
         :is="activePluginTab.component"
       />
       <div v-else class="p-6">
-        <h2 class="text-2xl font-medium text-gray-900 mb-4">{{ currentSectionName }}</h2>
+        <h2 class="settings-h1 text-3xl text-gray-900 mb-4">{{ currentSectionName }}</h2>
         <p class="text-gray-500">This section is under construction.</p>
       </div>
     </div>
@@ -80,17 +91,28 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
+import { X, Database, Sparkles, Clock, Brain, Key, User, MessageSquare, Shield, Settings } from 'lucide-vue-next'
 
 const router = useRouter()
 const { isMobile } = useIsMobile()
 const { config: featureConfig } = useFeatureConfig()
 const settingsTabs = useSettingsTabs()
-
+const { currentSection } = useSettingsState()
 const { data: appInfo } = useLazyFetch('/api/info')
 
+const SECTION_ICONS: Record<string, any> = {
+  connections: Database,
+  skills: Sparkles,
+  jobs: Clock,
+  memory: Brain,
+  credits: Key,
+  profile: User,
+  channels: MessageSquare,
+  admin: Shield,
+}
+
 const pluginTabs = computed(() =>
-  settingsTabs.list().filter(tab => !tab.condition || tab.condition())
+  settingsTabs.list().filter((tab: any) => !tab.condition || tab.condition())
 )
 
 interface Section {
@@ -141,6 +163,7 @@ const sections = computed<Section[]>(() => {
   })
 })
 
+// Sync initial section from URL query param
 const route = useRoute()
 const currentSection = ref('agent')
 
@@ -172,7 +195,7 @@ const currentSectionName = computed(() => {
 })
 
 const activePluginTab = computed(() =>
-  pluginTabs.value.find(tab => tab.id === currentSection.value),
+  pluginTabs.value.find((tab: any) => tab.id === currentSection.value),
 )
 
 definePageMeta({

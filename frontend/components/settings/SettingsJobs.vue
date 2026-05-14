@@ -1,9 +1,14 @@
 <template>
-  <div class="p-6">
-    <!-- Header -->
-    <div class="mb-4">
-      <h2 class="text-2xl font-medium text-gray-900 dark:text-white select-none">Jobs</h2>
+  <div class="flex flex-col h-full overflow-hidden">
+
+    <!-- Page header -->
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Jobs</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-white select-none mb-1">Jobs</h1>
     </div>
+
+    <!-- Scrolling body -->
+    <div class="flex-1 overflow-y-auto px-7 py-6">
 
     <!-- Tab bar -->
     <div class="flex items-center justify-between mb-6 border-b border-gray-200">
@@ -62,11 +67,11 @@
             :title="job.is_active ? 'Deactivate job' : 'Activate job'"
             @click="handleToggle(job)"
             class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-            :class="job.is_active ? 'bg-blue-600' : 'bg-gray-200'"
+            :class="job.is_active ? 'bg-violet-600' : 'bg-gray-200'"
           >
             <span
               class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-              :class="job.is_active ? 'translate-x-4' : 'translate-x-0.5'"
+              :class="job.is_active ? 'translate-x-5' : 'translate-x-0.5'"
             />
           </button>
 
@@ -103,14 +108,17 @@
 
           <!-- Actions -->
           <div class="flex items-center gap-1 shrink-0">
+            <span v-if="jobRunCount(job) !== null" class="text-xs text-gray-400 px-1.5">
+              Runs · {{ jobRunCount(job) }}
+            </span>
             <button
               v-if="job.kind !== 'briefing'"
               type="button"
-              title="Edit name & prompt"
-              @click="openEditDialog(job)"
-              class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              title="Run now"
+              @click="handleTrigger(job)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
             >
-              <component :is="Pencil" class="h-4 w-4" />
+              <component :is="Play" class="h-4 w-4" />
             </button>
             <button
               type="button"
@@ -122,11 +130,11 @@
             </button>
             <button
               type="button"
-              title="Trigger now"
-              @click="handleTrigger(job)"
-              class="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+              title="Edit name"
+              @click="openEditDialog(job)"
+              class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
             >
-              <component :is="Play" class="h-4 w-4" />
+              <component :is="Pencil" class="h-4 w-4" />
             </button>
             <button
               type="button"
@@ -139,15 +147,39 @@
           </div>
         </div>
 
-        <!-- Inline schedule editor -->
-        <ScheduleEditor
+        <!-- Expanded: two-column layout -->
+        <div
           v-if="expandedJobId === job.id"
-          :schedule-type="job.schedule_type"
-          :schedule-value="job.schedule_value"
-          :saving="savingJobSchedule"
-          @save="(type, value, tz) => handleJobScheduleSave(job, type, value, tz)"
-          @cancel="expandedJobId = null"
-        />
+          class="border-t border-gray-100 dark:border-neutral-700 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 dark:divide-neutral-700"
+        >
+          <!-- Left: SCHEDULE · VISUAL -->
+          <div>
+            <p class="eyebrow px-4 pt-4 pb-2">Schedule · Visual</p>
+            <ScheduleEditor
+              :schedule-type="job.schedule_type"
+              :schedule-value="job.schedule_value"
+              :saving="savingJobSchedule"
+              @save="(type, value) => handleJobScheduleSave(job, type, value)"
+              @cancel="expandedJobId = null"
+            />
+          </div>
+
+          <!-- Right: PROMPT THE AGENT RUNS -->
+          <div class="p-4 flex flex-col gap-3">
+            <p class="eyebrow">Prompt the agent runs</p>
+            <textarea
+              v-model="editingJobPrompt"
+              rows="7"
+              placeholder="What should the AI do when this job runs?"
+              class="w-full rounded-lg border border-gray-300 dark:border-neutral-600 dark:bg-neutral-700 dark:text-white px-3 py-2 text-sm leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none flex-1"
+            />
+            <div class="flex gap-2">
+              <UiButton size="sm" :loading="savingJobPrompt" @click="handleJobPromptSave(job)">
+                Save prompt
+              </UiButton>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     </div>
@@ -336,11 +368,11 @@
               :title="dashboard.schedule_active ? 'Deactivate pipeline' : 'Activate pipeline'"
               @click="handleDashboardToggle(dashboard)"
               class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-              :class="dashboard.schedule_active ? 'bg-violet-500' : 'bg-gray-200'"
+              :class="dashboard.schedule_active ? 'bg-violet-600' : 'bg-gray-200'"
             >
               <span
                 class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                :class="dashboard.schedule_active ? 'translate-x-4' : 'translate-x-0.5'"
+                :class="dashboard.schedule_active ? 'translate-x-5' : 'translate-x-0.5'"
               />
             </button>
 
@@ -494,6 +526,7 @@
         <UiButton variant="outline" @click="showDashboardRunHistoryDialog = false">Close</UiButton>
       </template>
     </UiDialog>
+    </div>
   </div>
 </template>
 
@@ -547,6 +580,8 @@ const deleting = ref(false)
 // ── Inline expansion ───────────────────────────────────────────────────────
 const expandedJobId = ref<string | null>(null)
 const savingJobSchedule = ref(false)
+const savingJobPrompt = ref(false)
+const editingJobPrompt = ref('')
 const expandedDashboardId = ref<number | null>(null)
 const savingDashboardSchedule = ref(false)
 
@@ -744,7 +779,33 @@ async function confirmDelete() {
 
 // ── Inline expansion helpers ───────────────────────────────────────────────
 function toggleJobExpand(jobId: string) {
-  expandedJobId.value = expandedJobId.value === jobId ? null : jobId
+  if (expandedJobId.value === jobId) {
+    expandedJobId.value = null
+    return
+  }
+  expandedJobId.value = jobId
+  const job = jobs.value.find(j => j.id === jobId)
+  editingJobPrompt.value = job?.prompt ?? ''
+}
+
+function jobRunCount(job: HeartbeatJob): number | null {
+  return (job as any).run_count ?? null
+}
+
+async function handleJobPromptSave(job: HeartbeatJob) {
+  try {
+    savingJobPrompt.value = true
+    const updated = await api.heartbeatJobs.update(job.id, {
+      prompt: editingJobPrompt.value,
+    }) as HeartbeatJob
+    const idx = jobs.value.findIndex(j => j.id === job.id)
+    if (idx !== -1) jobs.value[idx] = updated
+    toast.success('Prompt updated')
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to update prompt')
+  } finally {
+    savingJobPrompt.value = false
+  }
 }
 
 function toggleDashboardExpand(dashboardId: number) {

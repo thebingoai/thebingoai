@@ -2,16 +2,20 @@
   <div class="p-6 space-y-8">
     <!-- Page header -->
     <div>
-      <h2 class="text-2xl font-medium text-gray-900 dark:text-white">Memory</h2>
-      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Control what the AI remembers about you across conversations.</p>
+      <div class="pr-12">
+        <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Memory</p>
+        <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white">Memory</h2>
+      </div>
+      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Bingo automatically learns from your conversations. Each chat adds to what it remembers — and you stay in control of what sticks.</p>
+      <div class="mt-4 border-b border-gray-200 dark:border-neutral-700"></div>
     </div>
 
-    <!-- Section 1: Daily Conversation Memory -->
+    <!-- Section 1: Auto conversation memory -->
     <UiCard class="p-5">
       <div class="flex items-start justify-between gap-4">
         <div class="space-y-1">
-          <p class="text-sm font-medium text-gray-900 dark:text-white">Daily Conversation Memory</p>
-          <p class="text-sm text-gray-500 dark:text-neutral-400">Automatically summarizes your daily conversations for future context.</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">Auto conversation memory</p>
+          <p class="text-sm text-gray-500 dark:text-neutral-400">Bingo summarizes your daily chats so future ones build on past context.</p>
         </div>
         <button
           type="button"
@@ -41,7 +45,7 @@
       <!-- Activity heatmap -->
       <div class="mt-4 pt-4 border-t border-gray-100 dark:border-neutral-700">
         <div class="flex items-center justify-between mb-3">
-          <p class="text-xs font-medium text-gray-700 dark:text-neutral-300">Conversation Activity</p>
+          <p class="eyebrow">Activity</p>
           <p v-if="!heatmapLoading && heatmapTotalConversations > 0" class="text-xs text-gray-400 dark:text-neutral-500">
             {{ heatmapTotalConversations }} conversations · {{ heatmapTotalDays }} days recorded
           </p>
@@ -54,15 +58,16 @@
     <div>
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h3 class="text-base font-medium text-gray-900 dark:text-white">Custom Memories</h3>
-          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-0.5">Facts and preferences the AI should always know about you.</p>
+          <h3 class="text-base font-medium text-gray-900 dark:text-white">Custom memories</h3>
+          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-0.5">Persistent traits Bingo should always know about you.</p>
         </div>
         <UiButton
           size="sm"
+          variant="outline"
           @click="openAddDialog"
           :disabled="entries.length >= 50"
         >
-          Add Memory
+          + Add memory
         </UiButton>
       </div>
 
