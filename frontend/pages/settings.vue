@@ -4,20 +4,28 @@
     <button
       v-if="!isMobile"
       @click="router.push('/chat')"
-      class="absolute top-10 right-6 p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 transition-colors z-10"
+      class="absolute top-10 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-neutral-700 transition-colors z-10"
       aria-label="Close settings"
     >
-      <X class="h-4 w-4" />
+      <X class="h-5 w-5" />
     </button>
 
     <!-- Mobile close button -->
     <button
       v-else
       @click="router.push('/chat')"
-      class="fixed right-3 top-1.5 z-30 rounded-lg p-1.5 pt-4 mr-1 text-gray-400 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 transition-colors hover:bg-gray-100 hover:text-gray-700"
+      class="fixed right-3 top-1.5 z-30 rounded-lg p-2 pt-4 mr-1 transition-colors hover:bg-gray-100"
       aria-label="Close settings"
     >
-      <X class="h-4 w-4" />
+      <X class="h-5 w-5 text-gray-500" />
+    </button>
+    <button
+      v-else
+      @click="router.push('/chat')"
+      class="absolute top-4 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+      aria-label="Close settings"
+    >
+      <X class="h-5 w-5" />
     </button>
 
     <!-- Settings Navigation Panel -->
@@ -60,7 +68,7 @@
     </div>
 
     <!-- Settings Content -->
-    <div class="flex-1 overflow-y-auto text-gray-900 dark:text-neutral-100">
+    <div class="flex-1 overflow-y-auto">
       <SettingsAgent       v-if="currentSection === 'agent'" />
       <SettingsConnections v-else-if="currentSection === 'connections'" />
       <SettingsSkills v-else-if="currentSection === 'skills'" />
@@ -83,13 +91,25 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
+import { X, Database, Sparkles, Clock, Brain, Key, User, MessageSquare, Shield, Settings } from 'lucide-vue-next'
 
 const router = useRouter()
 const { isMobile } = useIsMobile()
 const { config: featureConfig } = useFeatureConfig()
 const settingsTabs = useSettingsTabs()
-const { data: appInfo } = useLazyFetch<{ edition?: string; version?: string }>('/api/info')
+const { currentSection } = useSettingsState()
+const { data: appInfo } = useLazyFetch('/api/info')
+
+const SECTION_ICONS: Record<string, any> = {
+  connections: Database,
+  skills: Sparkles,
+  jobs: Clock,
+  memory: Brain,
+  credits: Key,
+  profile: User,
+  channels: MessageSquare,
+  admin: Shield,
+}
 
 const pluginTabs = computed(() =>
   settingsTabs.list().filter((tab: any) => !tab.condition || tab.condition())

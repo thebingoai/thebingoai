@@ -1,15 +1,15 @@
 <template>
-  <div class="flex flex-col h-full overflow-hidden">
+  <div class="p-6 space-y-8">
     <!-- Page header -->
-    <div class="px-7 pt-[18px] pb-4 border-b border-[var(--line)] flex-shrink-0">
+    <div>
       <div class="pr-12">
         <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Memory</p>
-        <h1 class="settings-h1 text-3xl text-gray-900 dark:text-white">Memory</h1>
-        <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Bingo automatically learns from your conversations. Each chat adds to what it remembers — and you stay in control of what sticks.</p>
+        <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white">Memory</h2>
       </div>
+      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Bingo automatically learns from your conversations. Each chat adds to what it remembers — and you stay in control of what sticks.</p>
+      <div class="mt-4 border-b border-gray-200 dark:border-neutral-700"></div>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-6 space-y-8">
     <!-- Section 1: Auto conversation memory -->
     <UiCard class="p-5">
       <div class="flex items-start justify-between gap-4">
@@ -23,7 +23,7 @@
           :disabled="savingSettings"
           @click="toggleMemoryEnabled"
           class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
-          :class="memoryEnabled ? 'bg-purple-600' : 'bg-gray-200'"
+          :class="memoryEnabled ? 'bg-blue-600' : 'bg-gray-200'"
         >
           <span
             class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -99,11 +99,11 @@
             :title="entry.is_active ? 'Deactivate' : 'Activate'"
             @click="toggleEntry(entry)"
             class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-            :class="entry.is_active ? 'bg-purple-600' : 'bg-gray-200'"
+            :class="entry.is_active ? 'bg-blue-600' : 'bg-gray-200'"
           >
             <span
               class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-              :class="entry.is_active ? 'translate-x-5' : 'translate-x-0.5'"
+              :class="entry.is_active ? 'translate-x-4' : 'translate-x-0.5'"
             />
           </button>
 
@@ -208,7 +208,6 @@
         <UiButton variant="danger" :loading="deletingAll" @click="confirmDeleteAll">Delete All</UiButton>
       </template>
     </UiDialog>
-    </div>
   </div>
 </template>
 
