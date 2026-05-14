@@ -19,14 +19,6 @@
     >
       <X class="h-5 w-5 text-gray-500" />
     </button>
-    <button
-      v-else
-      @click="router.push('/chat')"
-      class="absolute top-4 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-      aria-label="Close settings"
-    >
-      <X class="h-5 w-5" />
-    </button>
 
     <!-- Settings Navigation Panel -->
     <div
@@ -91,45 +83,13 @@
 </template>
 
 <script setup lang="ts">
-import { X, Database, Sparkles, Clock, Brain, Key, User, MessageSquare, Shield, Settings } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 
 const router = useRouter()
 const { isMobile } = useIsMobile()
 const { config: featureConfig } = useFeatureConfig()
 const settingsTabs = useSettingsTabs()
-const { currentSection } = useSettingsState()
-const { data: appInfo } = useLazyFetch('/api/info')
-const api = useApi() as any
-const channels = useChannels()
-
-const counts = ref<Record<string, number | undefined>>({})
-
-async function loadCounts() {
-  const results = await Promise.allSettled([
-    (api.connections.list() as Promise<any[]>).then((r: any[]) => ({ key: 'connections', val: r.length })),
-    (api.skills.list() as Promise<any[]>).then((r: any[]) => ({ key: 'skills', val: r.length })),
-    (api.heartbeatJobs.list() as Promise<any[]>).then((r: any[]) => ({ key: 'jobs', val: r.length })),
-    (api.memory.listEntries() as Promise<{ entries: any[] }>).then((r: { entries: any[] }) => ({ key: 'memory', val: r.entries.length })),
-  ])
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      counts.value[result.value.key] = result.value.val
-    }
-  }
-}
-
-onMounted(loadCounts)
-
-const SECTION_ICONS: Record<string, any> = {
-  connections: Database,
-  skills: Sparkles,
-  jobs: Clock,
-  memory: Brain,
-  credits: Key,
-  profile: User,
-  channels: MessageSquare,
-  admin: Shield,
-}
+const { data: appInfo } = useLazyFetch<{ edition?: string; version?: string }>('/api/info')
 
 const pluginTabs = computed(() =>
   settingsTabs.list().filter((tab: any) => !tab.condition || tab.condition())
