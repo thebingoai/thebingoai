@@ -78,6 +78,12 @@
 
     <!-- Assistant message: left-aligned plain text -->
     <div v-else class="pr-4 md:pr-32">
+      <div class="flex gap-2.5 items-start">
+        <div class="w-7 h-7 rounded-[var(--r-md)] bg-transparent flex items-center justify-center flex-shrink-0 overflow-hidden mt-0.5">
+          <img v-if="agentAvatarUrl" :src="agentAvatarUrl" class="w-full h-full object-cover" alt="Agent" />
+          <img v-else src="/logo/BINGO Logo Design_FA_Icon_W.png" class="w-full h-full object-contain p-1" :alt="agentName || 'Bingo'" />
+        </div>
+        <div class="flex-1 min-w-0">
       <!-- Heartbeat source label -->
       <div v-if="message.source === 'heartbeat'" class="mb-1.5 flex items-center gap-1.5">
         <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">
@@ -191,6 +197,8 @@
           {{ actionType === 'dashboard' ? 'Revise' : 'No thanks' }}
         </UiButton>
       </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -207,6 +215,8 @@ const props = defineProps<{
   actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | 'user_question' | null
   followingUserContent?: string
   isLast?: boolean
+  agentAvatarUrl?: string | null
+  agentName?: string
 }>()
 
 const emit = defineEmits<{

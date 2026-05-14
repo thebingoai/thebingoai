@@ -512,9 +512,10 @@ async def _handle_chat_send(
             attachments=attachments if attachments else None,
         )
 
-        # Resolve LLM provider from environment config
-        from backend.llm.factory import get_provider
-        user_provider = get_provider(settings.default_llm_provider)
+        # Resolve provider + LLM call settings from the published agent profile
+        # (draft edits stay confined to settings until publish).
+        from backend.agents.profile_llm import resolve_published_llm
+        user_provider, profile_temperature, profile_max_tokens = resolve_published_llm(ctx.profile)
 
         # Set Redis streaming flag (TTL 5 min safety net)
         streaming_key = f"streaming:{conversation.thread_id}"
@@ -582,6 +583,8 @@ async def _handle_chat_send(
             profile=ctx.profile,
             llm_provider=user_provider,
             mentions=mentions or None,
+            temperature=profile_temperature,
+            max_tokens=profile_max_tokens,
         ):
             # Map SSE event type → WS event type
             event_type = event.get("type", "")

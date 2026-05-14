@@ -128,20 +128,30 @@ class OpenAIProvider(BaseLLMProvider):
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
-    def get_langchain_llm(self, model: Optional[str] = None) -> ChatOpenAI:
+    def get_langchain_llm(
+        self,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> ChatOpenAI:
         """
         Get LangChain-compatible ChatOpenAI instance.
 
         Args:
             model: Optional per-call override (e.g. judge model). Falls back
                 to self.model, then settings.openai_default_model.
+            temperature: Optional sampling temperature. None → 0 (existing default).
+            max_tokens: Optional max output tokens. None → provider's own default.
 
         Returns:
             ChatOpenAI instance configured for this provider
         """
         resolved = model or self.model or self.get_default_model()
-        return ChatOpenAI(
-            model=resolved,
-            api_key=self.api_key,
-            temperature=0
-        )
+        kwargs: dict = {
+            "model": resolved,
+            "api_key": self.api_key,
+            "temperature": temperature if temperature is not None else 0,
+        }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        return ChatOpenAI(**kwargs)

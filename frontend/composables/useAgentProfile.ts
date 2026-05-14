@@ -32,6 +32,8 @@ export interface AgentProfileData {
   version: number
   published_version: number | null
   published_at: string | null
+  published_avatar_url: string | null
+  published_display_name: string | null
 }
 
 export interface ProviderModels {
@@ -138,11 +140,8 @@ export function useAgentProfile() {
     publishing.value = true
     saveError.value = null
     try {
-      await fetchWithRefresh('/api/agent-profile/publish', { method: 'POST' })
-      if (profile.value) {
-        profile.value.published_version = profile.value.version
-        profile.value.published_at = new Date().toISOString()
-      }
+      const updated = await fetchWithRefresh<AgentProfileData>('/api/agent-profile/publish', { method: 'POST' })
+      profile.value = updated
       changedSections.value = new Set()
     } catch (e: any) {
       saveError.value = e?.data?.detail ?? e.message
@@ -167,6 +166,30 @@ export function useAgentProfile() {
     saveError.value = null
     try {
       const reverted = await fetchWithRefresh<AgentProfileData>('/api/agent-profile/reset', {
+        method: 'POST',
+      })
+      profile.value = reverted
+      changedSections.value = new Set()
+    } catch (e: any) {
+      saveError.value = e?.data?.detail ?? e.message
+    } finally {
+      resetting.value = false
+    }
+  }
+
+  async function factoryReset() {
+    // Cancel any pending debounced save and drop in-flight PATCH responses.
+    if (_saveTimer) {
+      clearTimeout(_saveTimer)
+      _saveTimer = null
+    }
+    _pendingFields = {}
+    _opToken += 1
+
+    resetting.value = true
+    saveError.value = null
+    try {
+      const reverted = await fetchWithRefresh<AgentProfileData>('/api/agent-profile/factory-reset', {
         method: 'POST',
       })
       profile.value = reverted
@@ -220,6 +243,6 @@ export function useAgentProfile() {
   return {
     profile, models, loading, saving, publishing, resetting, saveError,
     isDraft, changedCount, changedSections, versionLabel, lastPublishedLabel,
-    fetchProfile, fetchModels, updateField, publish, resetDraft, uploadAvatar,
+    fetchProfile, fetchModels, updateField, publish, resetDraft, factoryReset, uploadAvatar,
   }
 }

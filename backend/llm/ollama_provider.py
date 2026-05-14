@@ -157,20 +157,31 @@ class OllamaProvider(BaseLLMProvider):
                     except json.JSONDecodeError:
                         continue
 
-    def get_langchain_llm(self, model: Optional[str] = None) -> ChatOllama:
+    def get_langchain_llm(
+        self,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> ChatOllama:
         """
         Get LangChain-compatible ChatOllama instance.
 
         Args:
             model: Optional per-call override (e.g. judge model). Falls back
                 to self.model, then the configured ollama default.
+            temperature: Optional sampling temperature. None → 0 (existing default).
+            max_tokens: Optional max output tokens, mapped to Ollama's num_predict.
+                None preserves Ollama's own default.
 
         Returns:
             ChatOllama instance configured for this provider
         """
         resolved = model or self.model or self.get_default_model()
-        return ChatOllama(
-            model=resolved,
-            base_url=self.base_url,
-            temperature=0
-        )
+        kwargs: dict = {
+            "model": resolved,
+            "base_url": self.base_url,
+            "temperature": temperature if temperature is not None else 0,
+        }
+        if max_tokens is not None:
+            kwargs["num_predict"] = max_tokens
+        return ChatOllama(**kwargs)

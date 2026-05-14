@@ -71,13 +71,20 @@ class BaseLLMProvider(ABC):
         pass
 
     @abstractmethod
-    def get_langchain_llm(self, model: Optional[str] = None):
+    def get_langchain_llm(
+        self,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ):
         """
         Get LangChain-compatible LLM instance for use with LangGraph agents.
 
         Args:
             model: Optional per-call model override. When provided, supersedes
                 the provider's configured default (e.g. for a cheap judge model).
+            temperature: Optional sampling temperature. None preserves provider default.
+            max_tokens: Optional max output tokens. None preserves provider default.
 
         Returns:
             LangChain ChatModel instance (ChatOpenAI, ChatAnthropic, ChatOllama)

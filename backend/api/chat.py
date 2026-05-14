@@ -76,8 +76,10 @@ async def chat(
             history = history[i + 1:]
             break
 
-    # Resolve user's preferred LLM provider
-    user_provider = get_provider(settings.default_llm_provider)
+    # Resolve provider + LLM call settings from the published agent profile
+    # (draft edits stay confined to settings until publish).
+    from backend.agents.profile_llm import resolve_published_llm
+    user_provider, profile_temperature, profile_max_tokens = resolve_published_llm(ctx.profile)
 
     # Run orchestrator
     from backend.database.session import SessionLocal
@@ -95,6 +97,8 @@ async def chat(
         profile=ctx.profile,
         llm_provider=user_provider,
         mentions=request.mentions or None,
+        temperature=profile_temperature,
+        max_tokens=profile_max_tokens,
     )
 
     # Save assistant message

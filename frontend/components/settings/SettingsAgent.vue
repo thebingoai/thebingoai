@@ -22,7 +22,8 @@
         :scroll-container="docScrollRef"
         @publish="agentProfile.publish()"
         @reset="onReset"
-        @history="showHistory = true"
+        @factory-reset="onFactoryReset"
+        @navigate="onRailNavigate"
       />
 
       <!-- Scrollable document -->
@@ -81,24 +82,6 @@
       </div><!-- /doc-scroll -->
     </div><!-- /body -->
 
-    <!-- History drawer (stub for v1) -->
-    <div v-if="showHistory"
-         class="fixed inset-0 bg-black/30 z-50 flex items-end justify-center"
-         @click.self="showHistory = false">
-      <div class="bg-[var(--paper-0)] rounded-t-[var(--r-lg)] p-6 w-full max-w-lg">
-        <h3 class="font-semibold text-[var(--ink-0)] mb-2">Publish History</h3>
-        <p class="text-sm text-[var(--ink-2)]">
-          {{ agentProfile.profile.value?.published_at
-            ? `Last published: ${new Date(agentProfile.profile.value.published_at).toLocaleString()}`
-            : 'No publish history yet.' }}
-        </p>
-        <button @click="showHistory = false"
-                class="mt-4 text-sm font-medium text-[var(--ember)] hover:opacity-80">
-          Close
-        </button>
-      </div>
-    </div>
-
     <!-- Reset draft confirmation -->
     <div v-if="showResetConfirm"
          class="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
@@ -123,6 +106,30 @@
       </div>
     </div>
 
+    <!-- Factory reset confirmation -->
+    <div v-if="showFactoryResetConfirm"
+         class="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
+         @click.self="showFactoryResetConfirm = false"
+         @keydown.esc="showFactoryResetConfirm = false">
+      <div class="bg-[var(--paper-0)] border border-[var(--line)] rounded-[var(--r-lg)] p-6 w-full max-w-md shadow-xl">
+        <h3 class="font-serif italic text-lg font-bold text-[var(--ember)] mb-1">Revert to Bingo default?</h3>
+        <p class="text-[12px] text-[var(--ink-2)] leading-relaxed mb-4">
+          This wipes every Identity, Soul, and User-context customization — including avatar, name, model overrides, and any saved profile facts — and immediately republishes the defaults so new chats reflect the reset. This can't be undone.
+        </p>
+        <div class="flex justify-end gap-2">
+          <button @click="showFactoryResetConfirm = false"
+                  class="text-[11px] font-medium border border-[var(--line)] text-[var(--ink-1)] px-3 py-1.5 rounded-[var(--r-sm)] bg-[var(--paper-0)] hover:bg-[var(--paper-2)] transition-colors">
+            Keep my customizations
+          </button>
+          <button @click="confirmFactoryReset"
+                  :disabled="agentProfile.resetting.value"
+                  class="text-[11px] font-semibold text-white bg-[var(--ember)] px-3 py-1.5 rounded-[var(--r-sm)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity">
+            {{ agentProfile.resetting.value ? 'Reverting…' : 'Revert to default' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -130,11 +137,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAgentProfile } from '~/composables/useAgentProfile'
 
-const agentProfile     = useAgentProfile()
-const docScrollRef     = ref<HTMLElement | null>(null)
-const activeSection    = ref('identity')
-const showHistory      = ref(false)
-const showResetConfirm = ref(false)
+const agentProfile          = useAgentProfile()
+const docScrollRef          = ref<HTMLElement | null>(null)
+const activeSection         = ref('identity')
+const showResetConfirm      = ref(false)
+const showFactoryResetConfirm = ref(false)
 
 const agentName = computed(() =>
   agentProfile.profile.value?.display_name || 'Bingo'
@@ -155,15 +162,43 @@ async function confirmReset() {
   showResetConfirm.value = false
 }
 
+function onFactoryReset() {
+  showFactoryResetConfirm.value = true
+}
+
+async function confirmFactoryReset() {
+  await agentProfile.factoryReset()
+  showFactoryResetConfirm.value = false
+}
+
 const sectionIds = ['identity', 'soul', 'user-context']
 
+// While the rail's programmatic smooth-scroll is animating, ignore scroll-spy
+// — otherwise the highlight flickers across every section it passes through.
+let suppressScrollSpyUntil = 0
+
+function onRailNavigate(id: string) {
+  activeSection.value = id
+  suppressScrollSpyUntil = Date.now() + 700
+}
+
 function onScroll() {
-  if (!docScrollRef.value) return
-  const scrollTop = docScrollRef.value.scrollTop + 80
+  if (Date.now() < suppressScrollSpyUntil) return
+  const container = docScrollRef.value
+  if (!container) return
+  const scrollTop = container.scrollTop
+  const maxScroll = container.scrollHeight - container.clientHeight
+  // When pinned at the bottom, the last section is what's visible — its
+  // offsetTop is below maxScroll so the standard check would miss it.
+  if (maxScroll > 0 && scrollTop >= maxScroll - 2) {
+    activeSection.value = sectionIds[sectionIds.length - 1]
+    return
+  }
+  const offset = scrollTop + 80
   let current = sectionIds[0]
   for (const id of sectionIds) {
     const el = document.getElementById(id)
-    if (el && el.offsetTop <= scrollTop) current = id
+    if (el && el.offsetTop <= offset) current = id
   }
   activeSection.value = current
 }

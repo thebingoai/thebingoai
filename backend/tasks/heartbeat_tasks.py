@@ -214,6 +214,8 @@ async def _run_orchestrator_for_job(job: HeartbeatJob, user: User) -> str:
     finally:
         db.close()
 
+    from backend.agents.profile_llm import resolve_published_llm
+    user_provider, profile_temperature, profile_max_tokens = resolve_published_llm(ctx.profile)
     db_factory = SessionLocal
     result = await run_orchestrator(
         user_question=job.prompt,
@@ -226,6 +228,10 @@ async def _run_orchestrator_for_job(job: HeartbeatJob, user: User) -> str:
         user_memories_context=ctx.user_memories_context,
         soul_prompt=ctx.soul_prompt,
         skill_suggestions=ctx.skill_suggestions,
+        profile=ctx.profile,
+        llm_provider=user_provider,
+        temperature=profile_temperature,
+        max_tokens=profile_max_tokens,
     )
 
     return result.get("message", "")

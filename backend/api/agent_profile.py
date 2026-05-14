@@ -70,6 +70,8 @@ class AgentProfileResponse(BaseModel):
     version:           int
     published_version: Optional[int]
     published_at:      Optional[str]
+    published_avatar_url:  Optional[str]
+    published_display_name: Optional[str]
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -92,6 +94,7 @@ def _get_or_seed_profile(db: Session, user_id: str):
 
 
 def _to_response(profile) -> AgentProfileResponse:
+    snap = profile.published_snapshot or {}
     return AgentProfileResponse(
         display_name=profile.display_name,
         pronouns=profile.pronouns,
@@ -108,6 +111,8 @@ def _to_response(profile) -> AgentProfileResponse:
         version=profile.version or 1,
         published_version=profile.published_version,
         published_at=str(profile.published_at) if profile.published_at else None,
+        published_avatar_url=snap.get("avatar_url"),
+        published_display_name=snap.get("display_name"),
     )
 
 
@@ -151,7 +156,7 @@ async def patch_agent_profile(
     return _to_response(profile)
 
 
-@router.post("/publish")
+@router.post("/publish", response_model=AgentProfileResponse)
 async def publish_agent_profile(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -163,7 +168,7 @@ async def publish_agent_profile(
     profile.published_at      = datetime.datetime.utcnow()
 
     db.commit()
-    return {"success": True, "published_version": profile.published_version}
+    return _to_response(profile)
 
 
 @router.post("/reset", response_model=AgentProfileResponse)
@@ -185,6 +190,48 @@ async def reset_agent_profile(
             setattr(profile, field, profile.published_snapshot[field])
 
     profile.version = profile.published_version
+
+    db.commit()
+    return _to_response(profile)
+
+
+@router.post("/factory-reset", response_model=AgentProfileResponse)
+async def factory_reset_agent_profile(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Wipe every editable field back to the Bingo default and immediately
+    publish the result, so chat behavior reverts in a single step."""
+    from backend.agents.profile_defaults import get_default_section
+
+    profile = _get_or_seed_profile(db, user.id)
+
+    # Clear structured Identity + Identity-text-overlay
+    profile.display_name      = None
+    profile.pronouns          = None
+    profile.tagline           = None
+    profile.avatar_url        = None
+    profile.default_model     = None
+    profile.temperature       = None
+    profile.max_output_tokens = None
+
+    # Clear structured User Context
+    profile.user_profile   = None
+    profile.user_narrative = None
+    profile.vocabulary     = None
+    profile.sensitivities  = None
+
+    # Restore rendered text sections from agent defaults
+    profile.identity     = get_default_section("orchestrator", "identity") or ""
+    profile.soul         = get_default_section("orchestrator", "soul")
+    profile.user_context = get_default_section("orchestrator", "user_context")
+    profile.guardrails   = get_default_section("orchestrator", "guardrails")
+
+    # Publish the wiped state so chat reflects it immediately
+    profile.version            = (profile.version or 1) + 1
+    profile.published_snapshot = {f: getattr(profile, f) for f in _EDITABLE_FIELDS}
+    profile.published_version  = profile.version
+    profile.published_at       = datetime.datetime.utcnow()
 
     db.commit()
     return _to_response(profile)

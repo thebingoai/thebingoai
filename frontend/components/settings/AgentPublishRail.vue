@@ -15,13 +15,13 @@
         :class="activeSection === section.id
           ? 'bg-[var(--ember-wash)]'
           : 'hover:bg-[var(--ember-wash)]'"
-        @click.prevent="scrollTo(section.id)"
+        @click.prevent="onNavigate(section.id)"
       >
         <div
-          class="w-7 h-7 rounded-[var(--r-sm)] flex items-center justify-center text-sm flex-shrink-0 transition-colors"
+          class="w-7 h-7 rounded-[var(--r-sm)] flex items-center justify-center text-sm flex-shrink-0 transition-[background-color,color] border"
           :class="activeSection === section.id
-            ? 'bg-[var(--ember-wash)] text-[var(--ember)] border border-[color-mix(in_oklch,var(--ember)_25%,var(--line))]'
-            : 'bg-[var(--paper-2)] text-[var(--ink-2)]'"
+            ? 'bg-[var(--ember-wash)] text-[var(--ember)] border-[color-mix(in_oklch,var(--ember)_25%,var(--line))]'
+            : 'bg-[var(--paper-2)] text-[var(--ink-2)] border-transparent'"
         >
           {{ section.icon }}
         </div>
@@ -45,21 +45,13 @@
         Edits save as a <strong class="text-[var(--ink-2)] font-semibold">{{ versionLabel }} draft</strong>.
         Publish to make Bingo follow them in new threads.
       </p>
-      <div class="flex gap-2">
-        <button
-          class="flex-1 py-1.5 text-[11px] font-semibold rounded-[var(--r-sm)] border border-[var(--line-2)] bg-[var(--paper-0)] text-[var(--ink-1)] hover:bg-[var(--paper-2)] transition-colors"
-          @click="$emit('history')"
-        >
-          ⏱ History
-        </button>
-        <button
-          class="flex-[2] py-1.5 text-[11px] font-bold rounded-[var(--r-sm)] bg-[var(--ember)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-          :disabled="publishing"
-          @click="$emit('publish')"
-        >
-          {{ publishing ? 'Publishing…' : '✓ Publish' }}
-        </button>
-      </div>
+      <button
+        class="w-full py-1.5 text-[11px] font-bold rounded-[var(--r-sm)] bg-[var(--ember)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+        :disabled="publishing"
+        @click="$emit('publish')"
+      >
+        {{ publishing ? 'Publishing…' : '✓ Publish' }}
+      </button>
       <button
         v-if="canReset"
         class="w-full mt-2 py-1.5 text-[11px] font-medium rounded-[var(--r-sm)] border border-[var(--line-2)] bg-[var(--paper-0)] text-[var(--ink-2)] hover:text-[var(--ink-0)] hover:bg-[var(--paper-2)] transition-colors disabled:opacity-50"
@@ -67,6 +59,13 @@
         @click="$emit('reset')"
       >
         {{ resetting ? 'Reverting…' : '↺ Reset draft' }}
+      </button>
+      <button
+        class="w-full mt-2 py-1.5 text-[11px] font-medium rounded-[var(--r-sm)] border border-[var(--line-2)] bg-[var(--paper-0)] text-[var(--ink-3)] hover:text-[var(--ink-0)] hover:bg-[var(--paper-2)] transition-colors disabled:opacity-50"
+        :disabled="resetting"
+        @click="$emit('factory-reset')"
+      >
+        ⟲ Revert to Bingo default
       </button>
     </div>
   </div>
@@ -84,8 +83,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'publish'): void
-  (e: 'history'): void
   (e: 'reset'): void
+  (e: 'factory-reset'): void
+  (e: 'navigate', id: string): void
 }>()
 
 const sections = [
@@ -94,7 +94,8 @@ const sections = [
   { id: 'user-context', icon: '❋', label: 'User context', subtitle: 'Who Bingo is talking to' },
 ]
 
-function scrollTo(id: string) {
+function onNavigate(id: string) {
+  emit('navigate', id)
   const container = props.scrollContainer
   const target = document.getElementById(id)
   if (!container || !target) return

@@ -45,7 +45,7 @@ class AgentProfile(Base, TimestampMixin):
     display_name      = Column(String(100), nullable=True)
     pronouns          = Column(String(50),  nullable=True)
     tagline           = Column(String(200), nullable=True)
-    avatar_url        = Column(String(500), nullable=True)
+    avatar_url        = Column(Text,        nullable=True)
     default_model     = Column(String(100), nullable=True)
     temperature       = Column(Float,       nullable=True)
     max_output_tokens = Column(Integer,     nullable=True)

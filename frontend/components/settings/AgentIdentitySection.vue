@@ -24,10 +24,10 @@
 
     <!-- Avatar row -->
     <div class="flex items-center gap-4 pb-5 mb-5 border-b border-[var(--line)]">
-      <div class="w-13 h-13 rounded-[var(--r-md)] bg-[var(--ink-0)] flex items-center justify-center text-white font-bold text-xl font-serif italic flex-shrink-0 overflow-hidden"
+      <div class="w-13 h-13 rounded-[var(--r-md)] bg-transparent flex items-center justify-center text-white font-bold text-xl font-serif italic flex-shrink-0 overflow-hidden"
            style="width:52px;height:52px;">
         <img v-if="localData.avatar_url" :src="localData.avatar_url" class="w-full h-full object-cover" alt="Avatar" />
-        <span v-else>{{ avatarInitial }}</span>
+        <img v-else src="/logo/BINGO Logo Design_FA_Icon_W.png" class="w-full h-full object-contain p-1.5" alt="Bingo" />
       </div>
       <div class="flex-1">
         <p class="text-sm font-semibold text-[var(--ink-0)]">{{ localData.display_name || 'Bingo' }}</p>
@@ -159,10 +159,6 @@ watch(() => props.profile, (next) => {
   localData.temperature       = next.temperature       ?? 0.4
   localData.max_output_tokens = next.max_output_tokens ?? 4096
 })
-
-const avatarInitial = computed(() =>
-  (localData.display_name?.[0] ?? 'B').toUpperCase()
-)
 
 const availableProviders = computed(() =>
   (props.models?.providers ?? []).filter(p => p.available && p.models.length > 0)

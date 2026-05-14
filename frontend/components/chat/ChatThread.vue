@@ -84,6 +84,8 @@
               :action-type="getActionType(message)"
               :following-user-content="getFollowingUserContent(index)"
               :is-last="index === chatStore.messages.length - 1"
+              :agent-avatar-url="agentProfile.profile.value?.published_avatar_url ?? null"
+              :agent-name="agentProfile.profile.value?.published_display_name ?? 'Bingo'"
               @send-action="(text: string, source?: string) => emit('send-action', text, source as any)"
             />
           </template>
@@ -98,6 +100,7 @@ import { onBeforeUnmount } from 'vue'
 import { Activity, Info } from 'lucide-vue-next'
 import { formatDateLabel, isSameDay, parseUtcDate } from '~/utils/format'
 import type { Message } from '~/stores/chat'
+import { useAgentProfile } from '~/composables/useAgentProfile'
 
 const emit = defineEmits<{
   'send-action': [text: string, source?: Message['source']]
@@ -108,11 +111,13 @@ const chat = useChat()
 const router = useRouter()
 const { config: featureConfig } = useFeatureConfig()
 const api = useApi()
+const agentProfile = useAgentProfile()
 
 const isTelegramEnabled = computed(() => featureConfig.value?.telegram_enabled === true)
 const telegramConnected = ref(false)
 
 onMounted(async () => {
+  agentProfile.fetchProfile()
   if (isTelegramEnabled.value && chatStore.currentConversation?.type === 'permanent') {
     try {
       const status = await api.connections.list()

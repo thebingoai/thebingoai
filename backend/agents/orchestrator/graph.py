@@ -303,11 +303,14 @@ def _create_orchestrator_agent(
     tools: list,
     prompt: str,
     llm_provider: Optional[BaseLLMProvider],
+    *,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
 ):
     """Build the LangGraph ReactAgent with the shared loop-detector config."""
     provider = llm_provider or get_provider(settings.default_llm_provider)
     return create_react_agent(
-        model=provider.get_langchain_llm(),
+        model=provider.get_langchain_llm(temperature=temperature, max_tokens=max_tokens),
         tools=tools,
         prompt=prompt,
         pre_model_hook=make_loop_detector(max_repeats=2, max_same_tool=5, max_total_calls=20),
@@ -961,6 +964,8 @@ async def run_orchestrator(
     profile: object = None,
     llm_provider: Optional[BaseLLMProvider] = None,
     mentions: Optional[list] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Run orchestrator agent (non-streaming).
@@ -990,7 +995,10 @@ async def run_orchestrator(
         db_session_factory, "run_orchestrator",
         mentions=mentions,
     )
-    orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
+    orchestrator = _create_orchestrator_agent(
+        tools, prompt, llm_provider,
+        temperature=temperature, max_tokens=max_tokens,
+    )
 
     try:
         from backend.agents.callbacks import get_callbacks
@@ -1062,6 +1070,8 @@ async def stream_orchestrator(
     profile: object = None,
     llm_provider: Optional[BaseLLMProvider] = None,
     mentions: Optional[list] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
 ):
     """
     Stream orchestrator responses using SSE event format.
@@ -1095,7 +1105,10 @@ async def stream_orchestrator(
             db_session_factory, "stream_orchestrator",
             mentions=mentions,
         )
-        orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
+        orchestrator = _create_orchestrator_agent(
+            tools, prompt, llm_provider,
+            temperature=temperature, max_tokens=max_tokens,
+        )
         messages = _build_messages(user_question, history, file_contents)
 
         from backend.agents.callbacks import get_callbacks

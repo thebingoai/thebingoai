@@ -89,6 +89,8 @@ async def run(briefing_id: int) -> None:
             widget_catalog=widget_catalog,
         )
 
+        from backend.agents.profile_llm import resolve_published_llm
+        user_provider, profile_temperature, profile_max_tokens = resolve_published_llm(ctx.profile)
         await run_orchestrator(
             user_question=prompt,
             context=ctx.agent_context,
@@ -101,6 +103,9 @@ async def run(briefing_id: int) -> None:
             soul_prompt=ctx.soul_prompt,
             skill_suggestions=ctx.skill_suggestions,
             profile=ctx.profile,
+            llm_provider=user_provider,
+            temperature=profile_temperature,
+            max_tokens=profile_max_tokens,
         )
 
         # Refresh the row — emit_briefing should have set status='ready'
