@@ -330,8 +330,4 @@ async def revise_soul(
         max_tokens=2000,
     )
 
-<<<<<<< HEAD
     return SoulReviseResponse(revised=revised_text.strip(), model=provider.get_default_model())
-=======
-    return SoulReviseResponse(revised=revised_text.strip(), model=provider.get_default_model())
->>>>>>> f8e77ad (feat: add voice traits, style refs, and AI soul revision)
