@@ -44,7 +44,7 @@
 
   /* Typography */
   --font-display: 'Fraunces', 'Cambria', Georgia, serif;
-  --font-sans:    'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans:    'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono:    'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 
   /* Radius */

@@ -12,6 +12,12 @@ export default {
   ],
   theme: {
     extend: {
+      colors: {
+        primary: {
+          DEFAULT: '#6E489D',
+          soft: '#DAC7E1',
+        },
+      },
       fontFamily: {
         sans: ['DM Sans', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],

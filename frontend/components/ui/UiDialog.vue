@@ -25,7 +25,7 @@
             leave-to="opacity-0 scale-95"
           >
             <DialogPanel :class="panelClasses">
-              <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 dark:border-neutral-700 px-6 py-4">
+              <div v-if="title || $slots.header" class="flex items-center justify-between gap-6 border-b border-gray-200 dark:border-neutral-700 px-6 py-4">
                 <DialogTitle v-if="title" class="text-lg font-normal text-gray-900 dark:text-neutral-100">
                   {{ title }}
                 </DialogTitle>
@@ -39,7 +39,7 @@
                 </button>
               </div>
 
-              <div class="px-6 py-4">
+              <div :class="bodyClass ?? 'px-6 py-4'">
                 <slot />
               </div>
 
@@ -64,6 +64,8 @@ interface Props {
   title?: string
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   closable?: boolean
+  panelClass?: string
+  bodyClass?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -86,7 +88,8 @@ const sizeClasses = {
 const panelClasses = computed(() =>
   cn(
     'w-full transform overflow-hidden rounded-lg bg-white dark:bg-neutral-800 text-left align-middle shadow-xl',
-    sizeClasses[props.size]
+    sizeClasses[props.size],
+    props.panelClass
   )
 )
 </script>
