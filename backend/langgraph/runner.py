@@ -100,7 +100,8 @@ async def run_rag_query(
     thread_id: Optional[str] = None,
     stream: bool = False,
     temperature: float = None,
-    top_k: int = None
+    top_k: int = None,
+    user_id: Optional[str] = None,
 ) -> Union[dict, AsyncGenerator[dict, None]]:
     """
     Run a RAG query through the LangGraph workflow.
@@ -112,6 +113,7 @@ async def run_rag_query(
         model: Optional model override
         thread_id: Optional conversation thread ID
         stream: Whether to stream response
+        user_id: Optional user ID for callback tracing
 
     Returns:
         If stream=False: dict with answer, sources, thread_id
@@ -125,9 +127,9 @@ async def run_rag_query(
         logger.info(f"Using existing thread: {thread_id}")
 
     if stream:
-        return _run_streaming(question, namespace, provider, model, thread_id, temperature, top_k)
+        return _run_streaming(question, namespace, provider, model, thread_id, temperature, top_k, user_id=user_id)
     else:
-        return await _run_sync(question, namespace, provider, model, thread_id, temperature, top_k)
+        return await _run_sync(question, namespace, provider, model, thread_id, temperature, top_k, user_id=user_id)
 
 
 async def _run_sync(
@@ -137,7 +139,8 @@ async def _run_sync(
     model: Optional[str],
     thread_id: str,
     temperature: float = None,
-    top_k: int = None
+    top_k: int = None,
+    user_id: Optional[str] = None,
 ) -> dict:
     """
     Run RAG query synchronously (non-streaming).
@@ -148,18 +151,30 @@ async def _run_sync(
         provider: LLM provider name
         model: Optional model override
         thread_id: Conversation thread ID
+        user_id: Optional user ID for callback tracing
 
     Returns:
         Dict with answer, sources, thread_id, has_context
     """
     logger.debug(f"Running sync RAG query for thread {thread_id}")
 
+    from backend.agents.callbacks import get_callbacks
+
     initial_state = _build_initial_state(
         question, namespace, provider, model, thread_id, temperature, top_k
     )
 
     try:
-        result = await _graph.ainvoke(initial_state)
+        result = await _graph.ainvoke(
+            initial_state,
+            config={
+                "callbacks": get_callbacks(
+                    agent_type="rag_agent",
+                    session_id=thread_id,
+                    user_id=user_id,
+                ),
+            },
+        )
 
         return {
             "answer": result.get("answer", ""),
@@ -180,7 +195,8 @@ async def _run_streaming(
     model: Optional[str],
     thread_id: str,
     temperature: float = None,
-    top_k: int = None
+    top_k: int = None,
+    user_id: Optional[str] = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Run RAG query with streaming response.
@@ -193,11 +209,14 @@ async def _run_streaming(
         provider: LLM provider name
         model: Optional model override
         thread_id: Conversation thread ID
+        user_id: Optional user ID for callback tracing
 
     Yields:
         Dicts with 'type' key ('sources', 'thread_id', 'token', 'done', 'error')
     """
     logger.debug(f"Running streaming RAG query for thread {thread_id}")
+
+    from backend.agents.callbacks import get_callbacks
 
     initial_state = _build_initial_state(
         question, namespace, provider, model, thread_id, temperature, top_k
@@ -205,7 +224,16 @@ async def _run_streaming(
 
     try:
         # Run graph to retrieve context and generate messages
-        result = await _graph.ainvoke(initial_state)
+        result = await _graph.ainvoke(
+            initial_state,
+            config={
+                "callbacks": get_callbacks(
+                    agent_type="rag_agent",
+                    session_id=thread_id,
+                    user_id=user_id,
+                ),
+            },
+        )
 
         # Yield sources first
         yield {

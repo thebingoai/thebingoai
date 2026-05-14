@@ -65,6 +65,9 @@ async def run_inline_react(
     llm_provider=None,
     pre_model_hook=None,
     recursion_limit: Optional[int] = None,
+    agent_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> List[Any]:
     """Inline path: create a stateless ReAct agent and invoke it once.
 
@@ -74,6 +77,7 @@ async def run_inline_react(
 
     from backend.config import settings
     from backend.llm.factory import get_provider
+    from backend.agents.callbacks import get_callbacks
 
     provider = llm_provider or get_provider(settings.default_llm_provider)
     kwargs = {
@@ -87,6 +91,13 @@ async def run_inline_react(
     agent = create_react_agent(**kwargs)
     result = await agent.ainvoke(
         {"messages": [HumanMessage(content=message)]},
-        config={"recursion_limit": recursion_limit or settings.agent_recursion_limit},
+        config={
+            "recursion_limit": recursion_limit or settings.agent_recursion_limit,
+            "callbacks": get_callbacks(
+                agent_type=agent_type,
+                session_id=session_id,
+                user_id=user_id,
+            ),
+        },
     )
     return result.get("messages", [])

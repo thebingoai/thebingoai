@@ -118,9 +118,19 @@ class AgentRuntime:
         messages.append(HumanMessage(content=full_message))
 
         try:
+            from backend.agents.callbacks import get_callbacks
+
+            callbacks = get_callbacks(
+                agent_type=self.agent_type,
+                session_id=self.session_id,
+                user_id=self.user_id,
+            )
             result = await agent.ainvoke(
                 {"messages": messages},
-                config={"recursion_limit": settings.agent_recursion_limit},
+                config={
+                    "recursion_limit": settings.agent_recursion_limit,
+                    "callbacks": callbacks,
+                },
             )
 
             final_answer = extract_final_answer(result.get("messages", []))

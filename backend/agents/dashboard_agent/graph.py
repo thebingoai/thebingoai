@@ -88,6 +88,9 @@ async def invoke_dashboard_agent(
             system_prompt=_resolve_dashboard_agent_prompt(context, db_session_factory, target_connection_id),
             message=request,
             pre_model_hook=make_loop_detector(max_repeats=2, max_same_tool=15, max_total_calls=40),
+            agent_type="dashboard_agent",
+            user_id=getattr(context, "user_id", None),
+            session_id=getattr(context, "session_id", None),
         )
 
         dashboard_id, steps = _extract_results(messages)

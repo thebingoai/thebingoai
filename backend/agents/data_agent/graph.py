@@ -72,6 +72,9 @@ async def invoke_data_agent(
             message=question,
             llm_provider=llm_provider,
             pre_model_hook=make_loop_detector(max_repeats=2, max_total_calls=25),
+            agent_type="data_agent",
+            user_id=getattr(context, "user_id", None),
+            session_id=getattr(context, "session_id", None),
         )
 
         sql_queries = []

@@ -40,6 +40,9 @@ async def invoke_monitor_agent(
             tools=tools,
             system_prompt=MONITOR_AGENT_SYSTEM_PROMPT,
             message=prompt,
+            agent_type="monitor_agent",
+            user_id=getattr(context, "user_id", None),
+            session_id=getattr(context, "session_id", None),
         )
         return {
             "success": True,

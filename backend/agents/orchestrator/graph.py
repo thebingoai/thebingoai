@@ -361,6 +361,7 @@ async def _run_judge_retry(
     initial_verdict: JudgeVerdict,
     orchestrator,
     base_messages: list,
+    callbacks: Optional[list] = None,
 ) -> Tuple[str, bool, Dict[str, Any]]:
     """Execute Layer-4 one-shot retry after the judge rejected the initial answer.
 
@@ -383,7 +384,10 @@ async def _run_judge_retry(
         ]
         retry_result = await orchestrator.ainvoke(
             {"messages": retry_messages},
-            config={"recursion_limit": settings.agent_recursion_limit},
+            config={
+                "recursion_limit": settings.agent_recursion_limit,
+                "callbacks": callbacks or [],
+            },
         )
         retry_answer = _extract_final_answer(retry_result.get("messages", []))
         if retry_answer:
@@ -989,10 +993,20 @@ async def run_orchestrator(
     orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
 
     try:
+        from backend.agents.callbacks import get_callbacks
+
+        callbacks = get_callbacks(
+            agent_type="orchestrator",
+            session_id=context.thread_id,
+            user_id=context.user_id,
+        )
         messages = _build_messages(user_question, history, file_contents)
         result = await orchestrator.ainvoke(
             {"messages": messages},
-            config={"recursion_limit": settings.agent_recursion_limit},
+            config={
+                "recursion_limit": settings.agent_recursion_limit,
+                "callbacks": callbacks,
+            },
         )
         final_answer = _extract_final_answer(result.get("messages", []))
         if final_answer:
@@ -1007,6 +1021,7 @@ async def run_orchestrator(
                 logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
                 final_answer, retry_succeeded, judge_metadata = await _run_judge_retry(
                     user_question, final_answer, verdict, orchestrator, messages,
+                    callbacks=callbacks,
                 )
                 highlighted_text = (judge_metadata or {}).get("retry_highlighted_response")
             else:
@@ -1083,6 +1098,14 @@ async def stream_orchestrator(
         orchestrator = _create_orchestrator_agent(tools, prompt, llm_provider)
         messages = _build_messages(user_question, history, file_contents)
 
+        from backend.agents.callbacks import get_callbacks
+
+        callbacks = get_callbacks(
+            agent_type="orchestrator",
+            session_id=context.thread_id,
+            user_id=context.user_id,
+        )
+
         collected_steps = []
         step_number = 0
         step_start_times: Dict[str, float] = {}
@@ -1091,7 +1114,10 @@ async def stream_orchestrator(
 
         async for event in orchestrator.astream_events(
             {"messages": messages},
-            config={"recursion_limit": settings.agent_recursion_limit},
+            config={
+                "recursion_limit": settings.agent_recursion_limit,
+                "callbacks": callbacks,
+            },
             version="v2"
         ):
             kind = event.get("event")
@@ -1224,6 +1250,7 @@ async def stream_orchestrator(
                 logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
                 final_answer_text, retry_succeeded, judge_metadata = await _run_judge_retry(
                     user_question, final_answer_text, verdict, orchestrator, messages,
+                    callbacks=callbacks,
                 )
                 highlighted_text = (judge_metadata or {}).get("retry_highlighted_response")
                 yield {"type": "judge_status", "content": {"state": "refined"}}
