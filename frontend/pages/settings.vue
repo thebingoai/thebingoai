@@ -99,6 +99,26 @@ const { config: featureConfig } = useFeatureConfig()
 const settingsTabs = useSettingsTabs()
 const { currentSection } = useSettingsState()
 const { data: appInfo } = useLazyFetch('/api/info')
+const api = useApi() as any
+const channels = useChannels()
+
+const counts = ref<Record<string, number | undefined>>({})
+
+async function loadCounts() {
+  const results = await Promise.allSettled([
+    (api.connections.list() as Promise<any[]>).then((r: any[]) => ({ key: 'connections', val: r.length })),
+    (api.skills.list() as Promise<any[]>).then((r: any[]) => ({ key: 'skills', val: r.length })),
+    (api.heartbeatJobs.list() as Promise<any[]>).then((r: any[]) => ({ key: 'jobs', val: r.length })),
+    (api.memory.listEntries() as Promise<{ entries: any[] }>).then((r: { entries: any[] }) => ({ key: 'memory', val: r.entries.length })),
+  ])
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      counts.value[result.value.key] = result.value.val
+    }
+  }
+}
+
+onMounted(loadCounts)
 
 const SECTION_ICONS: Record<string, any> = {
   connections: Database,
