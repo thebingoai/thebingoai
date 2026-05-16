@@ -32,16 +32,22 @@ async def get_current_user_info(
     """Get current authenticated user. Includes role if bingo-admin plugin is loaded."""
     from backend.plugins.loader import get_loaded_plugins
     role = None
+    is_subscriber = False
     if "bingo-admin" in get_loaded_plugins():
         try:
             from bingo_admin.models import UserRole
             role_row = db.query(UserRole).filter_by(user_id=current_user.id).first()
-            role = role_row.role if role_row else "user"
+            if role_row:
+                role = role_row.role
+                is_subscriber = bool(role_row.is_subscriber)
+            else:
+                role = "user"
         except Exception:
             pass  # plugin not fully initialized — return None role
 
     response = UserResponse.model_validate(current_user)
     response.role = role
+    response.is_subscriber = is_subscriber
     if current_user.org_id:
         from backend.config.feature_flags import read_flags
         response.org_feature_flags = read_flags(str(current_user.org_id))

@@ -14,7 +14,8 @@ class UserResponse(UserBase):
     auth_provider: str = "sso"
     created_at: datetime
     updated_at: datetime
-    role: Optional[str] = None  # "admin" | "user" | None (when plugin not loaded)
+    role: Optional[str] = None  # "bingo_admin" | "user" | None (when plugin not loaded)
+    is_subscriber: bool = False
     # Phase 6 of multi-user-org: per-org role assignment for the caller in
     # their current org. "admin" > "member"; None when no assignment / no org.
     # Frontend uses this to gate the Members + Org Credits settings tabs.

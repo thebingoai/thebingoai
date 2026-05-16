@@ -7,7 +7,8 @@ export interface User {
   sso_id: string | null
   auth_provider: string
   created_at: string
-  role?: 'admin' | 'user' | null
+  role?: 'bingo_admin' | 'admin' | 'user' | null
+  is_subscriber?: boolean
   // Phase 6 of multi-user-org: per-org role used to gate the Members and
   // Org Credits settings tabs in the bingo-admin plugin.
   org_role?: 'admin' | 'member' | string | null

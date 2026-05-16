@@ -20,6 +20,22 @@
         </div>
 
         <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-neutral-700">
+          <label class="text-sm font-extralight text-gray-700 dark:text-neutral-400">Subscription</label>
+          <span
+            v-if="authStore.user?.is_subscriber"
+            class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+          >
+            Subscriber
+          </span>
+          <span
+            v-else
+            class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-neutral-800 dark:text-neutral-300"
+          >
+            Free trial
+          </span>
+        </div>
+
+        <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-neutral-700">
           <label class="text-sm font-extralight text-gray-700 dark:text-neutral-400">Dark Mode</label>
           <button
             type="button"
