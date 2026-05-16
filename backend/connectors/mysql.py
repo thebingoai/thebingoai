@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import pymysql
 from pymysql.cursors import DictCursor
 from backend.connectors.base import BaseConnector
@@ -18,13 +20,14 @@ class MySQLConnector(BaseConnector):
     """
     MySQL database connector.
 
-    Implements ~35 lines by leveraging BaseConnector template methods.
     Uses default FK query from BaseConnector (MySQL information_schema supports it).
     """
 
-    # ============================================================
-    # Abstract Primitives (required by BaseConnector)
-    # ============================================================
+    _db_type_name: ClassVar[str] = "MySQL"
+    _quote_char: ClassVar[str] = "`"
+    _system_schemas: ClassVar[frozenset[str]] = frozenset(
+        {"information_schema", "mysql", "performance_schema", "sys"}
+    )
 
     def _create_connection(self, **kwargs):
         """Create PyMySQL connection."""
@@ -58,43 +61,9 @@ class MySQLConnector(BaseConnector):
             kwargs['ssl_disabled'] = False
         return kwargs
 
-    def _quote_identifier(self, name: str) -> str:
-        """Quote identifier with backticks for MySQL."""
-        # Escape embedded backticks by doubling them
-        escaped = name.replace('`', '``')
-        return f'`{escaped}`'
-
-    @classmethod
-    def _db_type_name(cls) -> str:
-        """Return database type name."""
-        return "MySQL"
-
-    @classmethod
-    def _default_port(cls) -> int:
-        return 3306
-
-    @classmethod
-    def _description(cls) -> str:
-        return "Popular open-source database"
-
-    @classmethod
-    def _badge_variant(cls) -> str:
-        return "warning"
-
-    # ============================================================
-    # Overridable Hooks (customize for MySQL)
-    # ============================================================
-
     def _default_schema(self) -> str:
         """MySQL default schema is the connected database."""
         return self.database
-
-    def _system_schemas(self) -> set:
-        """MySQL system schemas to exclude."""
-        return {"information_schema", "mysql", "performance_schema", "sys"}
-
-    # Note: _foreign_key_query() uses default from BaseConnector
-    # (MySQL information_schema has referenced_table_name/referenced_column_name)
 
 
 def dlt_source_for(connection, extraction_config: dict | None = None):

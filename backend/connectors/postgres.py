@@ -1,19 +1,18 @@
+from typing import ClassVar
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from backend.connectors.base import BaseConnector
 
 
 class PostgresConnector(BaseConnector):
-    """
-    PostgreSQL database connector.
+    """PostgreSQL database connector."""
 
-    Implements ~45 lines by leveraging BaseConnector template methods.
-    Only provides database-specific primitives and hooks.
-    """
-
-    # ============================================================
-    # Abstract Primitives (required by BaseConnector)
-    # ============================================================
+    _db_type_name: ClassVar[str] = "PostgreSQL"
+    _quote_char: ClassVar[str] = '"'
+    _system_schemas: ClassVar[frozenset[str]] = frozenset(
+        {"information_schema", "pg_catalog", "pg_toast"}
+    )
 
     def _create_connection(self, **kwargs):
         """Create psycopg2 connection."""
@@ -46,41 +45,6 @@ class PostgresConnector(BaseConnector):
             else:
                 kwargs['sslmode'] = 'require'
         return kwargs
-
-    def _quote_identifier(self, name: str) -> str:
-        """Quote identifier with double quotes for PostgreSQL."""
-        # Escape embedded double quotes by doubling them
-        escaped = name.replace('"', '""')
-        return f'"{escaped}"'
-
-    @classmethod
-    def _db_type_name(cls) -> str:
-        """Return database type name."""
-        return "PostgreSQL"
-
-    @classmethod
-    def _default_port(cls) -> int:
-        return 5432
-
-    @classmethod
-    def _description(cls) -> str:
-        return "Open-source relational database"
-
-    @classmethod
-    def _badge_variant(cls) -> str:
-        return "info"
-
-    # ============================================================
-    # Overridable Hooks (customize for PostgreSQL)
-    # ============================================================
-
-    def _default_schema(self) -> str:
-        """PostgreSQL default schema."""
-        return "public"
-
-    def _system_schemas(self) -> set:
-        """PostgreSQL system schemas to exclude."""
-        return {"information_schema", "pg_catalog", "pg_toast"}
 
     def _foreign_key_query(self, schema: str, table: str) -> tuple:
         """

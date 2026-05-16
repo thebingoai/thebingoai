@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, ClassVar, Optional
 from dataclasses import dataclass
 import time
 
@@ -31,14 +31,22 @@ class BaseConnector(ABC):
 
     **To add a new database connector:**
     1. Extend BaseConnector
-    2. Implement 6 abstract methods (_create_connection, _is_connection_alive,
-       _get_cursor, _get_connect_kwargs, _quote_identifier, _db_type_name)
-    3. Optionally override 4 hooks (_default_schema, _system_schemas,
-       _param_marker, _foreign_key_query)
-    4. Register in factory.py
+    2. Set class attributes `_db_type_name` and `_quote_char`
+    3. Implement 4 abstract methods (_create_connection, _is_connection_alive,
+       _get_cursor, _get_connect_kwargs)
+    4. Optionally override `_default_schema`, `_system_schemas` (ClassVar set),
+       `_param_marker`, `_foreign_key_query`
+    5. Register in factory.py via ConnectorRegistration (which holds display-only
+       metadata: display_name, description, default_port, badge_variant).
 
     See PostgresConnector and MySQLConnector for examples.
     """
+
+    # Subclasses must set these; used by templated methods below.
+    _db_type_name: ClassVar[str]
+    _quote_char: ClassVar[str]
+    # Schemas to exclude from get_schemas(). Subclasses may override.
+    _system_schemas: ClassVar[frozenset[str]] = frozenset({"information_schema"})
 
     def __init__(self, host: str, port: int, database: str, username: str, password: str,
                  ssl_enabled: bool = False, ssl_ca_cert: Optional[str] = None):
@@ -115,62 +123,15 @@ class BaseConnector(ABC):
         """
         pass
 
-    @abstractmethod
     def _quote_identifier(self, name: str) -> str:
         """
-        Quote a table/column identifier for safe SQL construction.
+        Quote a table/column identifier using the subclass-defined `_quote_char`.
 
-        Args:
-            name: Identifier to quote
-
-        Returns:
-            Quoted identifier (e.g., "name" for PostgreSQL, `name` for MySQL)
+        Escapes embedded quote characters by doubling them.
         """
-        pass
-
-    @classmethod
-    @abstractmethod
-    def _db_type_name(cls) -> str:
-        """
-        Human-readable database type name for error messages.
-
-        Returns:
-            Database type (e.g., "PostgreSQL", "MySQL")
-        """
-        pass
-
-    @classmethod
-    @abstractmethod
-    def _default_port(cls) -> int:
-        """
-        Default port number for this database type.
-
-        Returns:
-            Default port (e.g., 5432 for PostgreSQL, 3306 for MySQL)
-        """
-        pass
-
-    @classmethod
-    @abstractmethod
-    def _description(cls) -> str:
-        """
-        Short human-readable description for UI display.
-
-        Returns:
-            Description string (e.g., "Open-source relational database")
-        """
-        pass
-
-    @classmethod
-    @abstractmethod
-    def _badge_variant(cls) -> str:
-        """
-        Badge variant for UI display.
-
-        Returns:
-            Variant string (e.g., "info", "warning")
-        """
-        pass
+        q = type(self)._quote_char
+        escaped = name.replace(q, q * 2)
+        return f"{q}{escaped}{q}"
 
     # ============================================================
     # Overridable Hooks (have sensible defaults)
@@ -184,15 +145,6 @@ class BaseConnector(ABC):
             Schema name (default: "public")
         """
         return "public"
-
-    def _system_schemas(self) -> set:
-        """
-        Set of system schemas to exclude from schema lists.
-
-        Returns:
-            Set of schema names to filter out (default: {"information_schema"})
-        """
-        return {"information_schema"}
 
     def _param_marker(self) -> str:
         """
@@ -278,7 +230,7 @@ class BaseConnector(ABC):
 
             return True
         except Exception as e:
-            raise ConnectionError(f"Failed to connect to {self._db_type_name()}: {str(e)}")
+            raise ConnectionError(f"Failed to connect to {self._db_type_name}: {str(e)}")
         finally:
             self._cleanup_temp_files()
 
@@ -321,7 +273,7 @@ class BaseConnector(ABC):
         all_schemas = [_first_value(row) for row in cursor.fetchall()]
 
         # Filter out system schemas
-        schemas = [s for s in all_schemas if s not in self._system_schemas()]
+        schemas = [s for s in all_schemas if s not in self._system_schemas]
 
         cursor.close()
         return schemas
