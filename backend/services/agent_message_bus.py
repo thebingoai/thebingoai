@@ -16,15 +16,11 @@ from typing import List, Optional
 
 import redis
 
-from backend.config import settings
+from backend.services._agent_mesh import assert_session_owned, get_redis
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 120  # seconds
-
-
-def _get_redis() -> redis.Redis:
-    return redis.from_url(settings.agent_mesh_redis_url, decode_responses=True)
 
 
 class AgentMessageBus:
@@ -36,7 +32,7 @@ class AgentMessageBus:
         redis_client: Optional[redis.Redis] = None,
     ):
         self.db = db_session
-        self.redis = redis_client or _get_redis()
+        self.redis = redis_client or get_redis()
 
     def send(
         self,
@@ -212,11 +208,7 @@ class AgentMessageBus:
         Raises:
             PermissionError: If session doesn't belong to user
         """
-        # Validate ownership
-        if not self.redis.sismember(f"agent:user_sessions:{user_id}", session_id):
-            raise PermissionError(
-                f"Session {session_id} is not owned by user {user_id}"
-            )
+        assert_session_owned(self.redis, user_id, session_id)
 
         messages = []
         inbox_key = f"agent:inbox:{session_id}"
@@ -337,9 +329,5 @@ class AgentMessageBus:
         self, user_id: str, *session_ids: str
     ) -> None:
         """Raise PermissionError if any session is not owned by user."""
-        user_sessions_key = f"agent:user_sessions:{user_id}"
         for sid in session_ids:
-            if not self.redis.sismember(user_sessions_key, sid):
-                raise PermissionError(
-                    f"Session {sid} is not owned by user {user_id}"
-                )
+            assert_session_owned(self.redis, user_id, sid)

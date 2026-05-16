@@ -12,23 +12,19 @@ from typing import Optional
 
 import redis
 
-from backend.config import settings
 from backend.models.agent_session import SessionStatus
+from backend.services._agent_mesh import assert_session_owned, get_redis
 
 logger = logging.getLogger(__name__)
 
 SESSION_TTL_SECONDS = 300  # 5 minutes without heartbeat = expired
 
 
-def _get_redis() -> redis.Redis:
-    return redis.from_url(settings.agent_mesh_redis_url, decode_responses=True)
-
-
 class AgentRegistry:
     """Register, deregister, and heartbeat agent sessions in Redis."""
 
     def __init__(self, redis_client: Optional[redis.Redis] = None):
-        self.redis = redis_client or _get_redis()
+        self.redis = redis_client or get_redis()
 
     def register_session(
         self,
@@ -140,7 +136,4 @@ class AgentRegistry:
 
     def _validate_ownership(self, user_id: str, session_id: str) -> None:
         """Raise PermissionError if session is not owned by user."""
-        if not self.redis.sismember(f"agent:user_sessions:{user_id}", session_id):
-            raise PermissionError(
-                f"Session {session_id} is not owned by user {user_id}"
-            )
+        assert_session_owned(self.redis, user_id, session_id)

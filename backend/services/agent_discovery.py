@@ -10,22 +10,18 @@ from typing import List, Optional
 
 import redis
 
-from backend.config import settings
 from backend.models.agent_session import SessionStatus
+from backend.services._agent_mesh import assert_session_owned, get_redis
 from backend.services.agent_registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
-
-
-def _get_redis() -> redis.Redis:
-    return redis.from_url(settings.agent_mesh_redis_url, decode_responses=True)
 
 
 class AgentDiscovery:
     """Discover active agent sessions for a specific user."""
 
     def __init__(self, redis_client: Optional[redis.Redis] = None):
-        self.redis = redis_client or _get_redis()
+        self.redis = redis_client or get_redis()
         self._registry = AgentRegistry(redis_client=self.redis)
 
     def list_sessions(
@@ -62,10 +58,7 @@ class AgentDiscovery:
             PermissionError: If session is not owned by user
             ValueError: If session not found
         """
-        if not self.redis.sismember(f"agent:user_sessions:{user_id}", session_id):
-            raise PermissionError(
-                f"Session {session_id} is not owned by user {user_id}"
-            )
+        assert_session_owned(self.redis, user_id, session_id)
 
         data = self._registry.get_session(session_id)
         if not data:
