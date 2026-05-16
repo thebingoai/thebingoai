@@ -73,7 +73,7 @@ class AgentMessageBus:
 
         # 1. Write to PostgreSQL (durable history)
         if self.db:
-            from backend.models.agent_message import AgentMessage
+            from backend.models.agent_message import AgentMessage, MessageStatus
 
             db_msg = AgentMessage(
                 id=msg_id,
@@ -83,7 +83,7 @@ class AgentMessageBus:
                 message_type=message_type,
                 content=content,
                 correlation_id=correlation_id,
-                status="pending",
+                status=MessageStatus.PENDING.value,
                 created_at=now,
             )
             self.db.add(db_msg)
@@ -228,14 +228,14 @@ class AgentMessageBus:
 
         # Update status in Postgres if we have a DB session
         if self.db and messages:
-            from backend.models.agent_message import AgentMessage
+            from backend.models.agent_message import AgentMessage, MessageStatus
 
             msg_ids = [m["id"] for m in messages if "id" in m]
             if msg_ids:
                 self.db.query(AgentMessage).filter(
                     AgentMessage.id.in_(msg_ids),
                     AgentMessage.user_id == user_id,
-                ).update({"status": "delivered"}, synchronize_session=False)
+                ).update({"status": MessageStatus.DELIVERED.value}, synchronize_session=False)
                 self.db.commit()
 
         return messages

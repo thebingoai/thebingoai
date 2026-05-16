@@ -1,10 +1,19 @@
 import uuid as _uuid
+from enum import Enum
 
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from backend.database.base import Base, TimestampMixin
 from backend.security.encryption import encrypt_password, decrypt_password
+
+
+class ProfilingStatus(str, Enum):
+    """Lifecycle of column/table profiling for a DatabaseConnection."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    READY = "ready"
+    FAILED = "failed"
 
 
 class DatabaseType:
@@ -54,7 +63,7 @@ class DatabaseConnection(Base, TimestampMixin):
     table_count = Column(Integer, nullable=True)
 
     # Profiling & data context
-    profiling_status = Column(String, default="pending", nullable=False)  # pending|in_progress|ready|failed
+    profiling_status = Column(String, default=ProfilingStatus.PENDING.value, nullable=False)
     profiling_progress = Column(String, nullable=True)           # e.g. "3/12 tables"
     profiling_error = Column(Text, nullable=True)
     profiling_started_at = Column(DateTime, nullable=True)

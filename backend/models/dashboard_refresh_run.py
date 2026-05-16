@@ -1,9 +1,17 @@
 """DashboardRefreshRun — tracks each scheduled (or manual) dashboard refresh execution."""
 
+from enum import Enum
 from uuid import uuid4
 from sqlalchemy import Column, String, Integer, Text, JSON, ForeignKey, DateTime, Index
 from sqlalchemy.orm import relationship
 from backend.database.base import Base
+
+
+class DashboardRefreshStatus(str, Enum):
+    """Lifecycle of a dashboard refresh run."""
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class DashboardRefreshRun(Base):
@@ -11,7 +19,7 @@ class DashboardRefreshRun(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     dashboard_id = Column(Integer, ForeignKey("dashboards.id", ondelete="CASCADE"), nullable=False)
-    status = Column(String(20), default="running", nullable=False)  # running | completed | failed
+    status = Column(String(20), default=DashboardRefreshStatus.RUNNING.value, nullable=False)
     started_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
     duration_ms = Column(Integer, nullable=True)

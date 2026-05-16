@@ -13,6 +13,7 @@ from typing import Optional
 import redis
 
 from backend.config import settings
+from backend.models.agent_session import SessionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class AgentRegistry:
             "session_id": session_id,
             "user_id": user_id,
             "agent_type": agent_type,
-            "status": "active",
+            "status": SessionStatus.ACTIVE.value,
             "capabilities": json.dumps(capabilities or {}),
             "metadata": json.dumps(metadata or {}),
             "last_heartbeat": now,
@@ -83,7 +84,7 @@ class AgentRegistry:
 
         pipe = self.redis.pipeline()
         pipe.hset(key, "last_heartbeat", datetime.utcnow().isoformat())
-        pipe.hset(key, "status", "active")
+        pipe.hset(key, "status", SessionStatus.ACTIVE.value)
         pipe.expire(key, SESSION_TTL_SECONDS)
         pipe.execute()
         return True
@@ -130,8 +131,8 @@ class AgentRegistry:
                 except (ValueError, TypeError):
                     continue
                 if datetime.utcnow() - last_hb_dt > timedelta(seconds=SESSION_TTL_SECONDS):
-                    if data.get("status") != "terminated":
-                        self.redis.hset(key, "status", "degraded")
+                    if data.get("status") != SessionStatus.TERMINATED.value:
+                        self.redis.hset(key, "status", SessionStatus.DEGRADED.value)
                         stale_count += 1
             if cursor == 0:
                 break

@@ -12,7 +12,7 @@ from backend.auth.dependencies import get_current_user
 from backend.config import settings
 from backend.connectors.sqlite import SqliteFileConnector, _sqlite_to_pg_type
 from backend.database.session import get_db
-from backend.models.database_connection import DatabaseConnection
+from backend.models.database_connection import DatabaseConnection, ProfilingStatus
 from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.models.user import User
@@ -211,7 +211,7 @@ async def upload_sqlite(
         if connection.schema_json_path:
             try:
                 from backend.tasks.profiling_tasks import profile_connection
-                connection.profiling_status = "pending"
+                connection.profiling_status = ProfilingStatus.PENDING.value
                 db.commit()
                 profile_connection.delay(connection.id)
             except Exception as e:

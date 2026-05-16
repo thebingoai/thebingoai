@@ -23,7 +23,7 @@ def profile_connection(self, connection_id: int):
     On failure, sets status to ``failed`` and retries up to ``max_retries``
     times with exponential back-off.
     """
-    from backend.models.database_connection import DatabaseConnection
+    from backend.models.database_connection import DatabaseConnection, ProfilingStatus
     from backend.connectors.factory import get_connector_for_connection, get_connector_registration
     from backend.services.schema_discovery import load_schema_file
     from backend.services.table_profiler import profile_table
@@ -39,7 +39,7 @@ def profile_connection(self, connection_id: int):
             return
 
         # Mark in-progress
-        connection.profiling_status = "in_progress"
+        connection.profiling_status = ProfilingStatus.IN_PROGRESS.value
         connection.profiling_error = None
         connection.profiling_started_at = datetime.now(timezone.utc)
         db.commit()
@@ -48,7 +48,7 @@ def profile_connection(self, connection_id: int):
         try:
             schema_json = load_schema_file(connection_id)
         except FileNotFoundError:
-            connection.profiling_status = "failed"
+            connection.profiling_status = ProfilingStatus.FAILED.value
             connection.profiling_error = "Schema file not found. Please refresh the connection schema first."
             db.commit()
             return
@@ -56,7 +56,7 @@ def profile_connection(self, connection_id: int):
         # Determine connector metadata
         reg = get_connector_registration(connection.db_type)
         if reg and reg.skip_profiling:
-            connection.profiling_status = "ready"
+            connection.profiling_status = ProfilingStatus.READY.value
             connection.profiling_progress = "skipped"
             db.commit()
             logger.info("profile_connection %d: skipped (connector opted out)", connection_id)
@@ -115,7 +115,7 @@ def profile_connection(self, connection_id: int):
         context_path = save_context_file(connection_id, context)
 
         # Mark ready
-        connection.profiling_status = "ready"
+        connection.profiling_status = ProfilingStatus.READY.value
         connection.profiling_progress = f"{total}/{total} tables"
         connection.profiling_completed_at = datetime.now(timezone.utc)
         connection.data_context_path = context_path
@@ -130,7 +130,7 @@ def profile_connection(self, connection_id: int):
                 DatabaseConnection.id == connection_id,
             ).first()
             if connection:
-                connection.profiling_status = "failed"
+                connection.profiling_status = ProfilingStatus.FAILED.value
                 connection.profiling_error = str(e)
                 db.commit()
         except Exception:
@@ -373,14 +373,14 @@ def backfill_profile_all_connections():
     Called on app startup to migrate existing connections after the feature is
     deployed.
     """
-    from backend.models.database_connection import DatabaseConnection
+    from backend.models.database_connection import DatabaseConnection, ProfilingStatus
 
     db = SessionLocal()
     try:
         pending = (
             db.query(DatabaseConnection)
             .filter(
-                DatabaseConnection.profiling_status == "pending",
+                DatabaseConnection.profiling_status == ProfilingStatus.PENDING.value,
                 DatabaseConnection.schema_json_path.isnot(None),
             )
             .all()

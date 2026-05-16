@@ -11,6 +11,7 @@ from typing import List, Optional
 import redis
 
 from backend.config import settings
+from backend.models.agent_session import SessionStatus
 from backend.services.agent_registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ class AgentDiscovery:
             data = self._registry.get_session(sid)
             if not data:
                 continue
-            if data.get("status") == "terminated":
+            if data.get("status") == SessionStatus.TERMINATED.value:
                 continue
             if filter_type and data.get("agent_type") != filter_type:
                 continue
@@ -83,6 +84,6 @@ class AgentDiscovery:
         sessions = self.list_sessions(user_id, filter_type=agent_type)
         if sessions:
             # Prefer active over idle
-            active = [s for s in sessions if s.get("status") == "active"]
+            active = [s for s in sessions if s.get("status") == SessionStatus.ACTIVE.value]
             return active[0] if active else sessions[0]
         return None

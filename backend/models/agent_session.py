@@ -1,8 +1,21 @@
+from enum import Enum
 from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from backend.database.base import Base, TimestampMixin
 from datetime import datetime
 import uuid
+
+
+class SessionStatus(str, Enum):
+    """Lifecycle state of an agent mesh session.
+
+    ``DEGRADED`` is set by the Redis registry when a session misses its
+    heartbeat TTL but has not been explicitly terminated.
+    """
+    ACTIVE = "active"
+    IDLE = "idle"
+    TERMINATED = "terminated"
+    DEGRADED = "degraded"
 
 
 class AgentSession(Base, TimestampMixin):
@@ -16,7 +29,7 @@ class AgentSession(Base, TimestampMixin):
     agent_definition_id = Column(
         String, ForeignKey("custom_agents.id", ondelete="SET NULL"), nullable=True
     )
-    status = Column(String(20), nullable=False, default="active")  # active/idle/terminated
+    status = Column(String(20), nullable=False, default=SessionStatus.ACTIVE.value)
     capabilities = Column(JSON, nullable=True)
     metadata_ = Column("metadata", JSON, nullable=True)
     last_heartbeat = Column(DateTime, nullable=True, default=datetime.utcnow)

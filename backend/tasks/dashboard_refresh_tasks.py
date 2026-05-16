@@ -7,7 +7,7 @@ from datetime import datetime
 from celery import shared_task
 from backend.database.session import SessionLocal
 from backend.models.dashboard import Dashboard
-from backend.models.dashboard_refresh_run import DashboardRefreshRun
+from backend.models.dashboard_refresh_run import DashboardRefreshRun, DashboardRefreshStatus
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def execute_dashboard_refresh(dashboard_id: int):
         # Create a run record
         run = DashboardRefreshRun(
             dashboard_id=dashboard_id,
-            status="running",
+            status=DashboardRefreshStatus.RUNNING.value,
             started_at=started_at,
         )
         db.add(run)
@@ -93,7 +93,7 @@ def execute_dashboard_refresh(dashboard_id: int):
         completed_at = datetime.utcnow()
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-        run.status = "completed"
+        run.status = DashboardRefreshStatus.COMPLETED.value
         run.completed_at = completed_at
         run.duration_ms = duration_ms
         run.widgets_total = result.widgets_total
@@ -113,7 +113,7 @@ def execute_dashboard_refresh(dashboard_id: int):
         if run is not None:
             try:
                 completed_at = datetime.utcnow()
-                run.status = "failed"
+                run.status = DashboardRefreshStatus.FAILED.value
                 run.error = str(e)
                 run.completed_at = completed_at
                 run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)

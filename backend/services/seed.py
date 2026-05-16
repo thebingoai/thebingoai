@@ -7,7 +7,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from backend.models.database_connection import DatabaseConnection
+from backend.models.database_connection import DatabaseConnection, ProfilingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def seed_sample_connections(user_id: str, db: Session) -> None:
         try:
             from backend.tasks.profiling_tasks import profile_connection
 
-            connection.profiling_status = "pending"
+            connection.profiling_status = ProfilingStatus.PENDING.value
             db.commit()
             profile_connection.delay(connection.id)
         except Exception:

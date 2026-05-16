@@ -4,7 +4,7 @@ from typing import List
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
-from backend.models.database_connection import DatabaseConnection
+from backend.models.database_connection import DatabaseConnection, ProfilingStatus
 from backend.models.team_membership import TeamMembership
 from backend.models.team_connection_policy import TeamConnectionPolicy
 from backend.schemas.connection import (
@@ -263,7 +263,7 @@ async def create_connection(
                 db.refresh(connection)
 
             from backend.tasks.profiling_tasks import profile_connection
-            connection.profiling_status = "pending"
+            connection.profiling_status = ProfilingStatus.PENDING.value
             db.commit()
             profile_connection.delay(connection.id)
 
@@ -658,7 +658,7 @@ async def refresh_connection_schema(
 
             # Re-trigger profiling since schema changed
             from backend.tasks.profiling_tasks import profile_connection
-            connection.profiling_status = "pending"
+            connection.profiling_status = ProfilingStatus.PENDING.value
             db.commit()
             profile_connection.delay(connection.id)
 
@@ -750,7 +750,7 @@ async def reprofile_connection(
         raise HTTPException(status_code=400, detail="Schema has not been discovered yet. Refresh the schema first.")
 
     from backend.tasks.profiling_tasks import profile_connection
-    connection.profiling_status = "pending"
+    connection.profiling_status = ProfilingStatus.PENDING.value
     connection.profiling_error = None
     connection.profiling_progress = None
     db.commit()

@@ -1,6 +1,14 @@
+from enum import Enum
 from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Index
 from backend.database.base import Base
 import uuid
+
+
+class HeartbeatRunStatus(str, Enum):
+    """Lifecycle of a heartbeat job run."""
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class HeartbeatJobRun(Base):
@@ -8,7 +16,7 @@ class HeartbeatJobRun(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     job_id = Column(String, ForeignKey("heartbeat_jobs.id", ondelete="CASCADE"), nullable=False)
-    status = Column(String(20), nullable=False, default="running")  # running/completed/failed
+    status = Column(String(20), nullable=False, default=HeartbeatRunStatus.RUNNING.value)
     started_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
     prompt = Column(Text, nullable=True)  # snapshot of prompt at run time

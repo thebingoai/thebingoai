@@ -7,7 +7,7 @@ from datetime import datetime
 from celery import shared_task
 from backend.database.session import SessionLocal
 from backend.models.heartbeat_job import HeartbeatJob
-from backend.models.heartbeat_job_run import HeartbeatJobRun
+from backend.models.heartbeat_job_run import HeartbeatJobRun, HeartbeatRunStatus
 from backend.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def execute_heartbeat_job(job_id: str):
         # Create a run record
         run = HeartbeatJobRun(
             job_id=job_id,
-            status="running",
+            status=HeartbeatRunStatus.RUNNING.value,
             started_at=started_at,
             prompt=job.prompt,
         )
@@ -119,7 +119,7 @@ def execute_heartbeat_job(job_id: str):
         completed_at = datetime.utcnow()
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-        run.status = "completed"
+        run.status = HeartbeatRunStatus.COMPLETED.value
         run.response = response
         run.completed_at = completed_at
         run.duration_ms = duration_ms
@@ -135,7 +135,7 @@ def execute_heartbeat_job(job_id: str):
         if run is not None:
             try:
                 completed_at = datetime.utcnow()
-                run.status = "failed"
+                run.status = HeartbeatRunStatus.FAILED.value
                 run.error = str(e)
                 run.completed_at = completed_at
                 run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -255,7 +255,7 @@ def execute_agent_heartbeat_job(job_id: str):
 
         run = HeartbeatJobRun(
             job_id=job_id,
-            status="running",
+            status=HeartbeatRunStatus.RUNNING.value,
             started_at=started_at,
             prompt=job.prompt,
         )
@@ -294,7 +294,7 @@ def execute_agent_heartbeat_job(job_id: str):
         completed_at = datetime.utcnow()
         duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-        run.status = "completed"
+        run.status = HeartbeatRunStatus.COMPLETED.value
         run.response = response
         run.completed_at = completed_at
         run.duration_ms = duration_ms
@@ -307,7 +307,7 @@ def execute_agent_heartbeat_job(job_id: str):
         if run is not None:
             try:
                 completed_at = datetime.utcnow()
-                run.status = "failed"
+                run.status = HeartbeatRunStatus.FAILED.value
                 run.error = str(e)
                 run.completed_at = completed_at
                 run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)
