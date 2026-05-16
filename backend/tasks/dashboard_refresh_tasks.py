@@ -8,6 +8,7 @@ from celery import shared_task
 from backend.database.session import SessionLocal
 from backend.models.dashboard import Dashboard
 from backend.models.dashboard_refresh_run import DashboardRefreshRun, DashboardRefreshStatus
+from backend.tasks._helpers import record_run_failure
 
 logger = logging.getLogger(__name__)
 
@@ -87,38 +88,33 @@ def execute_dashboard_refresh(dashboard_id: int):
 
         logger.info(f"Executing dashboard refresh {dashboard_id} (run {run.id})")
 
-        # Delegate to SQLite cache materialization
-        result = materialize_dashboard(dashboard_id)
+        with record_run_failure(
+            db,
+            run,
+            DashboardRefreshStatus.FAILED.value,
+            started_at,
+            logger=logger,
+            task_label=f"Dashboard {dashboard_id} refresh",
+        ):
+            # Delegate to SQLite cache materialization
+            result = materialize_dashboard(dashboard_id)
 
-        completed_at = datetime.utcnow()
-        duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+            completed_at = datetime.utcnow()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
 
-        run.status = DashboardRefreshStatus.COMPLETED.value
-        run.completed_at = completed_at
-        run.duration_ms = duration_ms
-        run.widgets_total = result.widgets_total
-        run.widgets_succeeded = result.widgets_succeeded
-        run.widgets_failed = result.widgets_failed
-        run.widget_errors = result.widget_errors if result.widget_errors else None
+            run.status = DashboardRefreshStatus.COMPLETED.value
+            run.completed_at = completed_at
+            run.duration_ms = duration_ms
+            run.widgets_total = result.widgets_total
+            run.widgets_succeeded = result.widgets_succeeded
+            run.widgets_failed = result.widgets_failed
+            run.widget_errors = result.widget_errors if result.widget_errors else None
 
-        db.commit()
+            db.commit()
 
-        logger.info(
-            f"Dashboard {dashboard_id} refresh complete in {duration_ms}ms: "
-            f"{result.widgets_succeeded}/{result.widgets_total} widgets succeeded"
-        )
-
-    except Exception as e:
-        logger.error(f"Dashboard {dashboard_id} refresh failed: {e}")
-        if run is not None:
-            try:
-                completed_at = datetime.utcnow()
-                run.status = DashboardRefreshStatus.FAILED.value
-                run.error = str(e)
-                run.completed_at = completed_at
-                run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-                db.commit()
-            except Exception:
-                db.rollback()
+            logger.info(
+                f"Dashboard {dashboard_id} refresh complete in {duration_ms}ms: "
+                f"{result.widgets_succeeded}/{result.widgets_total} widgets succeeded"
+            )
     finally:
         db.close()

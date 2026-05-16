@@ -9,6 +9,7 @@ from backend.database.session import SessionLocal
 from backend.models.heartbeat_job import HeartbeatJob
 from backend.models.heartbeat_job_run import HeartbeatJobRun, HeartbeatRunStatus
 from backend.models.user import User
+from backend.tasks._helpers import record_run_failure
 
 logger = logging.getLogger(__name__)
 
@@ -91,57 +92,52 @@ def execute_heartbeat_job(job_id: str):
 
         logger.info(f"Executing heartbeat job {job_id} (run {run.id})")
 
-        # --- Credit tracking (bingo-credits plugin) ---
-        _credit_mgr = None
-        try:
-            from backend.plugins.loader import get_loaded_plugins
-            if "bingo-admin" in get_loaded_plugins():
-                from bingo_admin.credit_context import CreditContextManager
-            else:
-                from backend.services.token_tracking_service import CreditContextManager
-                _credit_mgr = CreditContextManager(
-                    db=db,
-                    user_id=job.user_id,
-                    title=f"Heartbeat: {job.prompt[:60]}",
-                    provider_name=None,
-                    conversation_id=None,
-                    block_on_insufficient=False,
-                )
-        except Exception as _credit_err:
-            logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
+        with record_run_failure(
+            db,
+            run,
+            HeartbeatRunStatus.FAILED.value,
+            started_at,
+            logger=logger,
+            task_label=f"Heartbeat job {job_id}",
+        ):
+            # --- Credit tracking (bingo-credits plugin) ---
             _credit_mgr = None
-
-        # Sync context manager propagates ContextVar into asyncio.run()
-        from contextlib import nullcontext
-        with (_credit_mgr if _credit_mgr is not None else nullcontext()):
-            response = asyncio.run(_run_orchestrator_for_job(job, user))
-
-        completed_at = datetime.utcnow()
-        duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-        run.status = HeartbeatRunStatus.COMPLETED.value
-        run.response = response
-        run.completed_at = completed_at
-        run.duration_ms = duration_ms
-        db.commit()
-
-        logger.info(f"Heartbeat job {job_id} run {run.id} completed in {duration_ms}ms")
-
-        # Deliver result to user's permanent conversation
-        _deliver_heartbeat_result(db, job=job, run_id=run.id, user_id=job.user_id, response=response)
-
-    except Exception as e:
-        logger.error(f"Heartbeat job {job_id} failed: {e}")
-        if run is not None:
             try:
-                completed_at = datetime.utcnow()
-                run.status = HeartbeatRunStatus.FAILED.value
-                run.error = str(e)
-                run.completed_at = completed_at
-                run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-                db.commit()
-            except Exception:
-                db.rollback()
+                from backend.plugins.loader import get_loaded_plugins
+                if "bingo-admin" in get_loaded_plugins():
+                    from bingo_admin.credit_context import CreditContextManager
+                else:
+                    from backend.services.token_tracking_service import CreditContextManager
+                    _credit_mgr = CreditContextManager(
+                        db=db,
+                        user_id=job.user_id,
+                        title=f"Heartbeat: {job.prompt[:60]}",
+                        provider_name=None,
+                        conversation_id=None,
+                        block_on_insufficient=False,
+                    )
+            except Exception as _credit_err:
+                logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
+                _credit_mgr = None
+
+            # Sync context manager propagates ContextVar into asyncio.run()
+            from contextlib import nullcontext
+            with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+                response = asyncio.run(_run_orchestrator_for_job(job, user))
+
+            completed_at = datetime.utcnow()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+            run.status = HeartbeatRunStatus.COMPLETED.value
+            run.response = response
+            run.completed_at = completed_at
+            run.duration_ms = duration_ms
+            db.commit()
+
+            logger.info(f"Heartbeat job {job_id} run {run.id} completed in {duration_ms}ms")
+
+            # Deliver result to user's permanent conversation
+            _deliver_heartbeat_result(db, job=job, run_id=run.id, user_id=job.user_id, response=response)
     finally:
         db.close()
 
@@ -265,55 +261,50 @@ def execute_agent_heartbeat_job(job_id: str):
 
         logger.info(f"Executing agent heartbeat job {job_id} (type={job.agent_type}, run={run.id})")
 
-        # --- Credit tracking (bingo-credits plugin) ---
-        _credit_mgr = None
-        try:
-            from backend.plugins.loader import get_loaded_plugins
-            if "bingo-admin" in get_loaded_plugins():
-                from bingo_admin.credit_context import CreditContextManager
-            else:
-                from backend.services.token_tracking_service import CreditContextManager
-                _credit_mgr = CreditContextManager(
-                    db=db,
-                    user_id=job.user_id,
-                    title=f"Heartbeat: {job.prompt[:60]}",
-                    provider_name=None,
-                    conversation_id=None,
-                    block_on_insufficient=False,
-                )
-        except Exception as _credit_err:
-            logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
+        with record_run_failure(
+            db,
+            run,
+            HeartbeatRunStatus.FAILED.value,
+            started_at,
+            logger=logger,
+            task_label=f"Agent heartbeat job {job_id}",
+        ):
+            # --- Credit tracking (bingo-credits plugin) ---
             _credit_mgr = None
-
-        from contextlib import nullcontext
-        with (_credit_mgr if _credit_mgr is not None else nullcontext()):
-            response = asyncio.run(
-                _run_agent_for_job(job, user)
-            )
-
-        completed_at = datetime.utcnow()
-        duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-
-        run.status = HeartbeatRunStatus.COMPLETED.value
-        run.response = response
-        run.completed_at = completed_at
-        run.duration_ms = duration_ms
-        db.commit()
-
-        _deliver_heartbeat_result(db, job=job, run_id=run.id, user_id=job.user_id, response=response)
-
-    except Exception as e:
-        logger.error(f"Agent heartbeat job {job_id} failed: {e}")
-        if run is not None:
             try:
-                completed_at = datetime.utcnow()
-                run.status = HeartbeatRunStatus.FAILED.value
-                run.error = str(e)
-                run.completed_at = completed_at
-                run.duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-                db.commit()
-            except Exception:
-                db.rollback()
+                from backend.plugins.loader import get_loaded_plugins
+                if "bingo-admin" in get_loaded_plugins():
+                    from bingo_admin.credit_context import CreditContextManager
+                else:
+                    from backend.services.token_tracking_service import CreditContextManager
+                    _credit_mgr = CreditContextManager(
+                        db=db,
+                        user_id=job.user_id,
+                        title=f"Heartbeat: {job.prompt[:60]}",
+                        provider_name=None,
+                        conversation_id=None,
+                        block_on_insufficient=False,
+                    )
+            except Exception as _credit_err:
+                logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
+                _credit_mgr = None
+
+            from contextlib import nullcontext
+            with (_credit_mgr if _credit_mgr is not None else nullcontext()):
+                response = asyncio.run(
+                    _run_agent_for_job(job, user)
+                )
+
+            completed_at = datetime.utcnow()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+            run.status = HeartbeatRunStatus.COMPLETED.value
+            run.response = response
+            run.completed_at = completed_at
+            run.duration_ms = duration_ms
+            db.commit()
+
+            _deliver_heartbeat_result(db, job=job, run_id=run.id, user_id=job.user_id, response=response)
     finally:
         db.close()
 
