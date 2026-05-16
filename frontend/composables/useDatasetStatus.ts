@@ -1,6 +1,7 @@
 import { useChatStore } from '~/stores/chat'
 import type { AgentStep } from '~/stores/chat'
 import { attachedFiles } from '~/composables/useChatFileUpload'
+import { POLL_INTERVAL_MS } from './_chatConstants'
 
 export interface DatasetStatus {
   name: string
@@ -21,8 +22,6 @@ const CSV_MIME_TYPES = new Set([
   'text/csv',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ])
-
-const POLL_INTERVAL_MS = 3000
 
 /** Extract ISO timestamp from an agent step (live streaming uses epoch ms, historical uses ISO string). */
 function stepTimestamp(step: AgentStep): string | null {

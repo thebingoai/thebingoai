@@ -1,6 +1,7 @@
 import { useChatStore } from '~/stores/chat'
 import type { Message, AgentStep } from '~/stores/chat'
 import { useChatFileUpload } from './useChatFileUpload'
+import { MAX_QUERY_RESULT_ROWS } from './_chatConstants'
 
 export const useChatStreaming = () => {
   const chatStore = useChatStore()
@@ -299,7 +300,7 @@ export const useChatStreaming = () => {
         const rawRows: any[][] = payload.rows || []
 
         // Transform [columns] + [[row]] into [{col: val}] for ChatMessageBubble
-        const results = rawRows.slice(0, 50).map((row: any[]) => {
+        const results = rawRows.slice(0, MAX_QUERY_RESULT_ROWS).map((row: any[]) => {
           const obj: Record<string, any> = {}
           columns.forEach((col, i) => { obj[col] = row[i] ?? null })
           return obj

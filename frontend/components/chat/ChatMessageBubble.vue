@@ -200,6 +200,7 @@ import type { Message } from '~/stores/chat'
 import type { SkillSuggestion } from '~/types/skillSuggestion'
 import { useDashboardStore } from '~/stores/dashboard'
 import { parseUtcDate, formatDate } from '~/utils/format'
+import { IMAGE_MIME_TYPES } from '~/composables/_chatConstants'
 
 const props = defineProps<{
   message: Message
@@ -329,8 +330,6 @@ const createdDashboardId = computed<number | null>(() => {
 const viewDashboard = async () => {
   await navigateTo(createdDashboardId.value ? `/dashboard?id=${createdDashboardId.value}` : '/dashboard')
 }
-
-const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 
 const isImageType = (mimeType: string) => IMAGE_MIME_TYPES.has(mimeType)
 

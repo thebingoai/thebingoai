@@ -100,6 +100,7 @@
 </template>
 
 <script setup lang="ts">
+import { IMAGE_MIME_TYPES } from '~/composables/_chatConstants'
 import { Image as ImageIcon, FileText, FileSpreadsheet, File, AlertCircle, X } from 'lucide-vue-next'
 import type { UploadingFile } from '~/composables/useChatFileUpload'
 
@@ -117,9 +118,7 @@ const emit = defineEmits<{
   remove: [index: number]
 }>()
 
-const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
-
-const isImage = computed(() => IMAGE_TYPES.has(props.file.file.type))
+const isImage = computed(() => IMAGE_MIME_TYPES.has(props.file.file.type))
 
 const fileIcon = computed(() => {
   const type = props.file.file.type

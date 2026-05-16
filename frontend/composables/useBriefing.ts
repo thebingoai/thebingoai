@@ -4,6 +4,8 @@
  * Stops when status becomes 'ready' or 'failed'.
  */
 
+import { POLL_INTERVAL_MS } from './_chatConstants'
+
 export interface BriefingKpi {
   label: string
   value: string
@@ -38,8 +40,6 @@ export interface BriefingResponse {
   date_range_to: string | null
   created_at: string
 }
-
-const POLL_INTERVAL_MS = 3000
 
 export function useBriefing(briefingId: number | Ref<number>) {
   const api = useApi()

@@ -1,5 +1,6 @@
 import { useChatStore } from '~/stores/chat'
 import type { Message, AgentStep } from '~/stores/chat'
+import { IMAGE_MIME_TYPES, STREAMING_SAFETY_TIMEOUT_MS } from './_chatConstants'
 
 /** Extract the best query result from persisted agent steps. */
 function _extractQueryData(steps: AgentStep[]): { sql?: string; results: Record<string, any>[] } | null {
@@ -83,11 +84,11 @@ export const useChatConversations = () => {
           }
         })
 
-        // Safety timeout — matches Redis TTL (5 min)
+        // Safety timeout — matches Redis TTL for streaming state.
         const safetyTimeout = setTimeout(() => {
           unsubComplete()
           chatStore.isStreaming = false
-        }, 5 * 60 * 1000)
+        }, STREAMING_SAFETY_TIMEOUT_MS)
       })
 
       ws.send({ type: 'stream.check', thread_id: threadId })
@@ -152,12 +153,11 @@ export const useChatConversations = () => {
       chatStore.setMessages(messages)
 
       // Resolve presigned URLs for image attachments
-      const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
       const imageRequests: Array<{ msgId: string; idx: number; fileId: string; storageKey?: string }> = []
       for (const msg of messages) {
         if (!msg.attachments) continue
         msg.attachments.forEach((att, idx) => {
-          if (IMAGE_TYPES.has(att.type) && att.file_id && att.storage_key) {
+          if (IMAGE_MIME_TYPES.has(att.type) && att.file_id && att.storage_key) {
             imageRequests.push({ msgId: msg.id, idx, fileId: att.file_id, storageKey: att.storage_key })
           }
         })
