@@ -32,7 +32,7 @@
       <div class="mt-3 pt-3 border-t border-gray-100 dark:border-neutral-700">
         <a
           :href="`mailto:${mailtoAddress}?subject=${encodeURIComponent(mailtoSubject)}`"
-          class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+          class="inline-flex items-center justify-center gap-1.5 w-full text-xs font-medium px-3 py-2 rounded-lg transition-colors"
           :class="status === 'available'
             ? 'bg-gray-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-gray-700 dark:hover:bg-neutral-200'
             : 'border border-gray-200 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800'"
