@@ -144,10 +144,10 @@ const sections = computed<Section[]>(() => {
 const route = useRoute()
 const currentSection = ref('agent')
 
-// Legacy deep links: users/members/invitations were merged into the People page.
+// Legacy deep links: users/invitations were merged into the People page.
+// `members` is a distinct per-org admin tab (bingo-admin Phase 6) and must not redirect.
 const LEGACY_TAB_REDIRECTS: Record<string, string> = {
   users: 'people',
-  members: 'people',
   invitations: 'people',
 }
 
