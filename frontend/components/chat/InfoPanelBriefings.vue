@@ -1,10 +1,10 @@
 <template>
   <div>
-    <div v-if="loading" class="text-[13px] text-[var(--ink-2)] py-4 text-center">
+    <div v-if="!loaded && loading" class="text-[13px] text-[var(--ink-2)] py-4 text-center">
       Loading briefings…
     </div>
 
-    <div v-else-if="error" class="text-[13px] text-red-500 py-4 text-center">
+    <div v-else-if="error && !briefings.length" class="text-[13px] text-red-500 py-4 text-center">
       {{ error }}
     </div>
 
@@ -81,26 +81,14 @@
 <script setup lang="ts">
 import { Newspaper } from 'lucide-vue-next'
 
-const { fetchWithRefresh } = useApi()
-const briefings = ref<any[]>([])
-const loading = ref(true)
-const error = ref('')
-
-async function load() {
-  try {
-    loading.value = true
-    briefings.value = await fetchWithRefresh('/api/briefings?limit=50', { method: 'GET' })
-    error.value = ''
-  } catch (e: any) {
-    error.value = e?.message || 'Failed to load briefings'
-  } finally {
-    loading.value = false
-  }
-}
-
+const { briefings, loading, loaded, error, ensure, refresh } = useBriefingsList()
 const { id: activeId, open: openBriefing } = useActiveBriefing()
 
-onMounted(load)
+// Serve cached data on remount; revalidate in background if already loaded
+onMounted(() => {
+  ensure()
+  if (loaded.value) refresh()
+})
 
 const groups = computed(() => {
   if (!briefings.value.length) return []

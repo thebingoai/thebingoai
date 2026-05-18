@@ -11,6 +11,7 @@ import { Sparkles } from 'lucide-vue-next'
 const props = defineProps<{ dashboardId: number }>()
 const busy = ref(false)
 const { fetchWithRefresh } = useApi()
+const { refresh: refreshBriefingsList } = useBriefingsList()
 
 async function onClick() {
   busy.value = true
@@ -19,6 +20,7 @@ async function onClick() {
       `/api/dashboards/${props.dashboardId}/brief`,
       { method: 'POST' },
     )
+    refreshBriefingsList()
     navigateTo(`/chat?briefing=${resp.briefing_id}`)
   } finally {
     busy.value = false

@@ -74,6 +74,14 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ job.name || 'Unnamed job' }}</p>
+              <span
+                class="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                :class="job.kind === 'briefing'
+                  ? 'bg-violet-100 text-violet-700'
+                  : 'bg-gray-100 text-gray-600'"
+              >
+                {{ job.kind === 'briefing' ? 'Briefing' : 'Job' }}
+              </span>
               <button
                 type="button"
                 :title="expandedJobId === job.id ? 'Close schedule editor' : 'Edit schedule'"
@@ -96,6 +104,7 @@
           <!-- Actions -->
           <div class="flex items-center gap-1 shrink-0">
             <button
+              v-if="job.kind !== 'briefing'"
               type="button"
               title="Edit name & prompt"
               @click="openEditDialog(job)"

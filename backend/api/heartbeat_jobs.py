@@ -40,6 +40,7 @@ def _to_response(job: HeartbeatJob) -> HeartbeatJobResponse:
         schedule_value=job.schedule_value,
         cron_expression=job.cron_expression,
         is_active=job.is_active,
+        kind=job.kind,
         next_run_at=job.next_run_at,
         last_run_at=job.last_run_at,
         created_at=job.created_at,

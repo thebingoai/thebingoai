@@ -70,6 +70,7 @@ class HeartbeatJobResponse(BaseModel):
     schedule_value: str
     cron_expression: str
     is_active: bool
+    kind: str
     next_run_at: Optional[datetime]
     last_run_at: Optional[datetime]
     created_at: datetime

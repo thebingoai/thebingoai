@@ -9,13 +9,14 @@ vi.mock('lucide-vue-next', () => ({ Sparkles: { render: () => null, setup: () =>
 const mockFetch = vi.fn()
 vi.stubGlobal('useApi', () => ({ fetchWithRefresh: mockFetch }))
 
-const mockOpen = vi.fn()
-vi.stubGlobal('window', { ...window, open: mockOpen })
+const mockNavigate = vi.fn()
+vi.stubGlobal('navigateTo', mockNavigate)
+
+const mockRefreshBriefings = vi.fn()
+vi.stubGlobal('useBriefingsList', () => ({ refresh: mockRefreshBriefings }))
 
 import BriefMeButton from '~/components/dashboard/BriefMeButton.vue'
 
-// Helper: call onClick by reaching into the component instance.
-// trigger('click') is broken on this Node environment (SupportedEventInterface).
 async function clickButton() {
   const btn = document.querySelector('button')
   if (btn) btn.click()
@@ -24,7 +25,8 @@ async function clickButton() {
 describe('BriefMeButton', () => {
   beforeEach(() => {
     mockFetch.mockReset()
-    mockOpen.mockReset()
+    mockNavigate.mockReset()
+    mockRefreshBriefings.mockReset()
   })
 
   it('renders "Brief me" label when idle', () => {
@@ -34,7 +36,7 @@ describe('BriefMeButton', () => {
     document.body.innerHTML = ''
   })
 
-  it('POSTs and opens reading view in new tab on click', async () => {
+  it('POSTs, refreshes the briefings list, then navigates', async () => {
     mockFetch.mockResolvedValue({ briefing_id: 7, status: 'generating' })
     mount(BriefMeButton, { props: { dashboardId: 1 }, attachTo: document.body })
 
@@ -42,7 +44,27 @@ describe('BriefMeButton', () => {
     await new Promise(r => setTimeout(r, 10))
 
     expect(mockFetch).toHaveBeenCalledWith('/api/dashboards/1/brief', { method: 'POST' })
-    expect(mockOpen).toHaveBeenCalledWith('/briefings/7', '_blank')
+    expect(mockRefreshBriefings).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/chat?briefing=7')
+    document.body.innerHTML = ''
+  })
+
+  it('does not refresh or navigate when POST fails', async () => {
+    const onRejection = vi.fn()
+    process.on('unhandledRejection', onRejection)
+
+    mockFetch.mockRejectedValue(new Error('Network down'))
+    mount(BriefMeButton, { props: { dashboardId: 1 }, attachTo: document.body })
+
+    await clickButton()
+    await new Promise(r => setTimeout(r, 50))
+
+    process.off('unhandledRejection', onRejection)
+
+    expect(mockRefreshBriefings).not.toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
+    const btn = document.querySelector('button')! as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
     document.body.innerHTML = ''
   })
 
@@ -63,27 +85,6 @@ describe('BriefMeButton', () => {
     document.body.innerHTML = ''
   })
 
-  it('resets busy state on API error', async () => {
-    // The component's onClick is async but doesn't await the fetch call —
-    // the rejection is unhandled. Suppress via rejectionHandled.
-    const onRejection = vi.fn()
-    process.on('unhandledRejection', onRejection)
-
-    mockFetch.mockRejectedValue(new Error('Network down'))
-    mount(BriefMeButton, { props: { dashboardId: 1 }, attachTo: document.body })
-
-    await clickButton()
-    // Give the microtask queue time to flush the rejection
-    await new Promise(r => setTimeout(r, 50))
-
-    process.off('unhandledRejection', onRejection)
-
-    const btn = document.querySelector('button')! as HTMLButtonElement
-    expect(btn.disabled).toBe(false)
-    expect(mockOpen).not.toHaveBeenCalled()
-    document.body.innerHTML = ''
-  })
-
   it('uses the correct dashboardId prop', async () => {
     mockFetch.mockResolvedValue({ briefing_id: 99, status: 'generating' })
     mount(BriefMeButton, { props: { dashboardId: 42 }, attachTo: document.body })
@@ -92,7 +93,8 @@ describe('BriefMeButton', () => {
     await new Promise(r => setTimeout(r, 10))
 
     expect(mockFetch).toHaveBeenCalledWith('/api/dashboards/42/brief', { method: 'POST' })
-    expect(mockOpen).toHaveBeenCalledWith('/briefings/99', '_blank')
+    expect(mockRefreshBriefings).toHaveBeenCalled()
+    expect(mockNavigate).toHaveBeenCalledWith('/chat?briefing=99')
     document.body.innerHTML = ''
   })
 })

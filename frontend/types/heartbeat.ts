@@ -6,6 +6,7 @@ export interface HeartbeatJob {
   schedule_value: string
   cron_expression: string
   is_active: boolean
+  kind: 'chat' | 'briefing'
   next_run_at: string | null
   last_run_at: string | null
   created_at: string
