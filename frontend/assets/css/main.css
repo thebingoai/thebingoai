@@ -81,24 +81,40 @@
   /* Default — alias of the existing violet/cream palette. No-op overrides. */
 }
 .theme-cool {
+  --paper-0: oklch(0.997 0.004 255);
   --paper-1: oklch(0.98 0.012 255);
   --paper-2: oklch(0.96 0.018 255);
+  --paper-3: oklch(0.93 0.025 255);
+  --line:    oklch(0.90 0.018 255);
+  --line-2:  oklch(0.87 0.022 255);
   --ember:      var(--brand-peri);
   --ember-soft: oklch(0.86 0.06 265);
   --ember-wash: oklch(0.965 0.022 265);
 }
 .theme-ink {
+  --paper-0: #f9f6f3;
   --paper-1: #f1edea;
   --paper-2: #e7e1dc;
+  --paper-3: #ddd5cc;
+  --line:    #e6ddd6;
+  --line-2:  #d8cec4;
   --ember:      #2C2969;
   --ember-soft: #c8c4dc;
   --ember-wash: oklch(0.94 0.025 285);
 }
 
 .dark.theme-cool {
+  --paper-0: oklch(0.18 0.02 255);
+  --paper-1: oklch(0.22 0.025 255);
+  --paper-2: oklch(0.26 0.03 255);
+  --paper-3: oklch(0.32 0.035 255);
   --ember-wash: color-mix(in oklch, var(--brand-peri) 14%, #18181b);
 }
 .dark.theme-ink {
+  --paper-0: #1c1a19;
+  --paper-1: #232120;
+  --paper-2: #2b2826;
+  --paper-3: #3a3633;
   --ember-wash: color-mix(in oklch, #2C2969 18%, #18181b);
 }
 
