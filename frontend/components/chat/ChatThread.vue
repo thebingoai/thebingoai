@@ -84,7 +84,6 @@
               :action-type="getActionType(message)"
               :following-user-content="getFollowingUserContent(index)"
               :is-last="index === chatStore.messages.length - 1"
-              :agent-avatar-url="agentProfile.profile.value?.published_avatar_url ?? null"
               :agent-name="agentProfile.profile.value?.published_display_name ?? 'Bingo'"
               @send-action="(text: string, source?: string) => emit('send-action', text, source as any)"
             />

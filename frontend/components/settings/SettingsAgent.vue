@@ -64,7 +64,6 @@
             :models="agentProfile.models.value"
             class="mb-6"
             @update="agentProfile.updateField"
-            @avatar-file="agentProfile.uploadAvatar"
           />
           <AgentSoulSection
             :profile="agentProfile.profile.value"

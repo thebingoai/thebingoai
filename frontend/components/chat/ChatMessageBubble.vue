@@ -79,9 +79,14 @@
     <!-- Assistant message: left-aligned plain text -->
     <div v-else class="pr-4 md:pr-32">
       <div class="flex gap-2.5 items-start">
-        <div class="w-7 h-7 rounded-[var(--r-md)] bg-transparent flex items-center justify-center flex-shrink-0 overflow-hidden mt-0.5">
-          <img v-if="agentAvatarUrl" :src="agentAvatarUrl" class="w-full h-full object-cover" alt="Agent" />
-          <img v-else src="/logo/BINGO Logo Design_FA_Icon_W.png" class="w-full h-full object-contain p-1" :alt="agentName || 'Bingo'" />
+        <div class="w-7 h-7 rounded-[var(--r-md)] bg-transparent flex items-center justify-center flex-shrink-0 overflow-hidden mt-0.5"
+             :class="{ 'avatar-spin': isLoading }">
+          <img src="/logo/BINGO Logo Design_FA_Icon.png"
+               class="w-full h-full object-contain p-1 dark:hidden"
+               :alt="agentName || 'Bingo'" />
+          <img src="/logo/BINGO Logo Design_FA_Icon_W.png"
+               class="w-full h-full object-contain p-1 hidden dark:block"
+               :alt="agentName || 'Bingo'" />
         </div>
         <div class="flex-1 min-w-0">
       <!-- Heartbeat source label -->
@@ -94,15 +99,8 @@
         </span>
       </div>
 
-      <!-- Typing indicator when assistant message is empty during streaming -->
-      <div v-if="!message.content && chatStore.isStreaming && props.isLast" class="typing-indicator">
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-      </div>
-
       <!-- Assistant message with markdown -->
-      <UiMarkdownRenderer v-else :content="message.content" />
+      <UiMarkdownRenderer :content="message.content" />
 
       <!-- Briefing card -->
       <div v-if="message.briefing_id" class="mt-3">
@@ -216,7 +214,6 @@ const props = defineProps<{
   actionType?: 'soul' | 'dashboard' | 'dashboard_question' | 'dashboard_created' | 'user_question' | null
   followingUserContent?: string
   isLast?: boolean
-  agentAvatarUrl?: string | null
   agentName?: string
 }>()
 
@@ -229,6 +226,10 @@ const dashboardStore = useDashboardStore()
 const authStore = useAuthStore()
 const api = useApi()
 const { resolvedMentions } = useMentions()
+
+const isLoading = computed(() =>
+  !props.message.content && chatStore.isStreaming && props.isLast
+)
 
 // ── User message display helpers ─────────────────────────────
 const senderName = computed(() => {
@@ -392,41 +393,12 @@ const userQuestion = computed(() => {
 </script>
 
 <style scoped>
-.typing-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 8px 0;
+.avatar-spin {
+  animation: avatar-spin 2s linear infinite;
 }
 
-.typing-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #9ca3af;
-  animation: typing-bounce 1.4s infinite ease-in-out;
-}
-
-.typing-dot:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.typing-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing-bounce {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.7;
-  }
-  30% {
-    transform: translateY(-10px);
-    opacity: 1;
-  }
+@keyframes avatar-spin {
+  to { transform: rotate(360deg); }
 }
 
 .suggestion-list-leave-active {

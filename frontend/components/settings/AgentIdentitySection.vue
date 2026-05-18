@@ -26,23 +26,16 @@
     <div class="flex items-center gap-4 pb-5 mb-5 border-b border-[var(--line)]">
       <div class="w-13 h-13 rounded-[var(--r-md)] bg-transparent flex items-center justify-center text-white font-bold text-xl font-serif italic flex-shrink-0 overflow-hidden"
            style="width:52px;height:52px;">
-        <img v-if="localData.avatar_url" :src="localData.avatar_url" class="w-full h-full object-cover" alt="Avatar" />
-        <img v-else src="/logo/BINGO Logo Design_FA_Icon_W.png" class="w-full h-full object-contain p-1.5" alt="Bingo" />
+        <img src="/logo/BINGO Logo Design_FA_Icon.png"
+             class="w-full h-full object-contain p-1.5 dark:hidden"
+             alt="Bingo" />
+        <img src="/logo/BINGO Logo Design_FA_Icon_W.png"
+             class="w-full h-full object-contain p-1.5 hidden dark:block"
+             alt="Bingo" />
       </div>
       <div class="flex-1">
         <p class="text-sm font-semibold text-[var(--ink-0)]">{{ localData.display_name || 'Bingo' }}</p>
-        <p class="text-[10px] text-[var(--ink-3)] mt-0.5">Avatar shown in chat, digests, dashboards</p>
-      </div>
-      <div class="flex gap-2">
-        <label class="text-[11px] font-medium border border-[var(--line-2)] text-[var(--ink-1)] px-3 py-1.5 rounded-[var(--r-sm)] cursor-pointer bg-[var(--paper-0)] hover:bg-[var(--paper-2)] transition-colors">
-          Replace avatar
-          <input type="file" accept="image/*" class="hidden" @change="onAvatarFile" />
-        </label>
-        <button v-if="localData.avatar_url"
-                class="text-[11px] text-[var(--ink-2)] px-3 py-1.5 rounded-[var(--r-sm)] hover:bg-[var(--paper-2)] transition-colors"
-                @click="resetAvatar">
-          Restore default
-        </button>
+        <p class="text-[10px] text-[var(--ink-3)] mt-0.5">Avatar follows theme (light / dark)</p>
       </div>
     </div>
 
@@ -130,22 +123,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update', section: string, fields: Partial<AgentProfileData>): void
-  (e: 'avatar-file', file: File): void
 }>()
 
 const localData = reactive({
   display_name:      props.profile.display_name      ?? '',
   pronouns:          props.profile.pronouns          ?? '',
   tagline:           props.profile.tagline           ?? '',
-  avatar_url:        props.profile.avatar_url        ?? null,
   default_model:     props.profile.default_model     ?? 'claude-sonnet-4-6',
   temperature:       props.profile.temperature       ?? 0.4,
   max_output_tokens: props.profile.max_output_tokens ?? 4096,
-})
-
-// Server-pushed avatar mutations (upload) need to flow into localData
-watch(() => props.profile.avatar_url, (next) => {
-  localData.avatar_url = next ?? null
 })
 
 // Whole-profile replacement (e.g. reset to published snapshot) — sync everything
@@ -154,7 +140,6 @@ watch(() => props.profile, (next) => {
   localData.display_name      = next.display_name      ?? ''
   localData.pronouns          = next.pronouns          ?? ''
   localData.tagline           = next.tagline           ?? ''
-  localData.avatar_url        = next.avatar_url        ?? null
   localData.default_model     = next.default_model     ?? ''
   localData.temperature       = next.temperature       ?? 0.4
   localData.max_output_tokens = next.max_output_tokens ?? 4096
@@ -184,13 +169,4 @@ function onIdentityChange() {
   })
 }
 
-function onAvatarFile(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) emit('avatar-file', file)
-}
-
-function resetAvatar() {
-  localData.avatar_url = null
-  emit('update', 'identity', { avatar_url: null })
-}
 </script>

@@ -201,23 +201,6 @@ export function useAgentProfile() {
     }
   }
 
-  async function uploadAvatar(file: File) {
-    const form = new FormData()
-    form.append('file', file)
-    try {
-      const result = await fetchWithRefresh<{ avatar_url: string }>('/api/agent-profile/avatar', {
-        method: 'POST',
-        body: form,
-      })
-      if (profile.value) {
-        profile.value.avatar_url = result.avatar_url
-        changedSections.value = new Set([...changedSections.value, 'identity'])
-      }
-    } catch (e: any) {
-      saveError.value = e?.data?.detail ?? e.message
-    }
-  }
-
   const isDraft = computed(() =>
     profile.value !== null &&
     (profile.value.published_version === null ||
@@ -243,6 +226,6 @@ export function useAgentProfile() {
   return {
     profile, models, loading, saving, publishing, resetting, saveError,
     isDraft, changedCount, changedSections, versionLabel, lastPublishedLabel,
-    fetchProfile, fetchModels, updateField, publish, resetDraft, factoryReset, uploadAvatar,
+    fetchProfile, fetchModels, updateField, publish, resetDraft, factoryReset,
   }
 }
