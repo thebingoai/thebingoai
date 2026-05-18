@@ -134,9 +134,30 @@ export const useCreditSettings = () => {
     await fetchApiKeys()
   }
 
+  // ----- Export CSV -----
+  async function exportHistoryCsv() {
+    const blob = await $fetch<Blob>('/api/credits/history.csv', { responseType: 'blob' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'usage-history.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ----- Init -----
   onMounted(async () => {
-    await Promise.all([fetchBalance(), fetchHistory(), fetchDailyTotals(), fetchApiKeys()])
+    const today = new Date()
+    const start = new Date(today)
+    start.setDate(today.getDate() - 13)
+    const startDateIso = start.toISOString().slice(0, 10)
+    const endDateIso = today.toISOString().slice(0, 10)
+    await Promise.all([
+      fetchBalance(),
+      fetchHistory(),
+      fetchDailyTotals(startDateIso, endDateIso),
+      fetchApiKeys(),
+    ])
   })
 
   return {
@@ -149,5 +170,7 @@ export const useCreditSettings = () => {
     dailyTotals, dailyTotalsLoading, fetchDailyTotals,
     // API keys
     apiKeys, keysLoading, saveApiKey, deleteApiKey, fetchApiKeys,
+    // Export
+    exportHistoryCsv,
   }
 }
