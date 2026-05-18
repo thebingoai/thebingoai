@@ -203,8 +203,8 @@
         title="Open sidebar"
       >
         <!-- Logo visible by default, swap to expand icon on hover -->
-        <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
-        <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Icon.png" alt="Bingo" style="height: 24px; width: auto;" class="block dark:hidden group-hover:hidden" />
+        <img src="/logo/BINGO Logo Design_FA_Icon_W.png" alt="Bingo" style="height: 24px; width: auto;" class="hidden dark:block group-hover:hidden" />
         <PanelLeftOpen class="h-4 w-4 text-[var(--ink-2)] hidden group-hover:block" />
       </div>
 
