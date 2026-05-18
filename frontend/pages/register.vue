@@ -14,7 +14,7 @@
     <AuthBrandingPanel :step="1" step-context="Sign Up" />
 
     <!-- Right panel: auth form -->
-    <div class="flex-1 flex flex-col items-center justify-center bg-white dark:bg-neutral-900 px-8 py-12">
+    <div class="flex-1 flex flex-col items-center justify-center bg-white dark:bg-neutral-900 px-10 py-12">
       <div class="w-full max-w-md">
         <h2 class="font-display text-5xl font-bold text-neutral-900 dark:text-neutral-50 mb-8">Welcome you.</h2>
 
