@@ -1,31 +1,22 @@
 <template>
   <div class="flex h-full relative" :class="isMobile ? 'flex-col' : ''">
-    <!-- Desktop close button -->
     <button
       v-if="!isMobile"
       @click="router.push('/chat')"
-      class="absolute top-10 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-neutral-700 transition-colors z-10"
+      class="absolute top-10 right-6 p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 transition-colors z-10"
       aria-label="Close settings"
     >
-      <X class="h-5 w-5" />
+      <X class="h-4 w-4" />
     </button>
 
     <!-- Mobile close button -->
     <button
       v-else
       @click="router.push('/chat')"
-      class="fixed right-3 top-1.5 z-30 rounded-lg p-2 pt-4 mr-1 transition-colors hover:bg-gray-100"
+      class="fixed right-3 top-1.5 z-30 rounded-lg p-1.5 pt-4 mr-1 text-gray-400 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 transition-colors hover:bg-gray-100 hover:text-gray-700"
       aria-label="Close settings"
     >
-      <X class="h-5 w-5 text-gray-500" />
-    </button>
-    <button
-      v-else
-      @click="router.push('/chat')"
-      class="absolute top-4 right-6 p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-      aria-label="Close settings"
-    >
-      <X class="h-5 w-5" />
+      <X class="h-4 w-4" />
     </button>
 
     <!-- Settings Navigation Panel -->
@@ -98,7 +89,7 @@ const { isMobile } = useIsMobile()
 const { config: featureConfig } = useFeatureConfig()
 const settingsTabs = useSettingsTabs()
 const { currentSection } = useSettingsState()
-const { data: appInfo } = useLazyFetch('/api/info')
+const { data: appInfo } = useLazyFetch<{ edition?: string; version?: string }>('/api/info')
 const api = useApi() as any
 const channels = useChannels()
 
@@ -185,7 +176,6 @@ const sections = computed<Section[]>(() => {
 
 // Sync initial section from URL query param
 const route = useRoute()
-const currentSection = ref('agent')
 
 // Legacy deep links: users/members/invitations were merged into the People page.
 const LEGACY_TAB_REDIRECTS: Record<string, string> = {
