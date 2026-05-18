@@ -1,11 +1,70 @@
 from langchain_core.tools import tool
 from backend.agents.context import AgentContext
 from backend.agents.dashboard_agent import invoke_dashboard_agent
+from backend.agents.orchestrator.dashboard_widget_verifier import verify_dashboard_widgets
 from typing import List, Optional, Callable
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+MAX_VERIFY_RETRIES = 1
+
+
+def _load_dashboard_widgets(db_session_factory: Callable, dashboard_id, user_id) -> list[dict]:
+    from backend.models.dashboard import Dashboard
+
+    db = db_session_factory()
+    try:
+        d = db.query(Dashboard).filter(
+            Dashboard.id == dashboard_id,
+            Dashboard.user_id == user_id,
+        ).first()
+        return list(d.widgets or []) if d else []
+    finally:
+        db.close()
+
+
+async def _verify_and_retry(
+    result: dict,
+    context: AgentContext,
+    db_session_factory: Callable,
+    target_connection_id: int | None,
+    retries_left: int = MAX_VERIFY_RETRIES,
+) -> dict:
+    """Run dashboard_widget_verifier; on violations, ask dashboard_agent to repair."""
+    dashboard_id = (result or {}).get("dashboard_id")
+    if not dashboard_id:
+        return result
+    widgets = _load_dashboard_widgets(db_session_factory, dashboard_id, context.user_id)
+    violations = verify_dashboard_widgets(widgets)
+    if not violations:
+        return result
+    logger.warning(
+        "Dashboard %s post-verify violations: %s",
+        dashboard_id,
+        "; ".join(violations),
+    )
+    if retries_left <= 0:
+        result["violations"] = violations
+        result["warning"] = (
+            "Dashboard saved with structural issues — see violations. "
+            "Ask me to fix it and I will retry."
+        )
+        return result
+    fix_request = (
+        f"FIX EXISTING DASHBOARD (id={dashboard_id}) — validation failed:\n"
+        + "\n".join(f"- {v}" for v in violations)
+        + "\nUse update_dashboard to repair. Do NOT create a new dashboard."
+    )
+    retry_result = await invoke_dashboard_agent(
+        fix_request, context, db_session_factory, target_connection_id=target_connection_id,
+    )
+    if not (retry_result or {}).get("dashboard_id"):
+        retry_result["dashboard_id"] = dashboard_id
+    return await _verify_and_retry(
+        retry_result, context, db_session_factory, target_connection_id, retries_left - 1,
+    )
 
 
 
@@ -52,6 +111,9 @@ async def _do_create_dashboard(
                     timeout=120,
                 )
                 if response:
+                    response = await _verify_and_retry(
+                        response, context, db_session_factory, target_connection_id, retries_left=0,
+                    )
                     return json.dumps(response)
                 return json.dumps({"success": False, "message": "Dashboard agent did not respond in time"})
             finally:
@@ -76,6 +138,7 @@ async def _do_create_dashboard(
             _db.close()
 
     result = await invoke_dashboard_agent(request, context, db_session_factory, target_connection_id=target_connection_id)
+    result = await _verify_and_retry(result, context, db_session_factory, target_connection_id)
     return json.dumps(result)
 
 
@@ -143,6 +206,7 @@ async def _do_update_dashboard(
     )
 
     result = await invoke_dashboard_agent(enriched_request, context, db_session_factory, target_connection_id=target_connection_id)
+    result = await _verify_and_retry(result, context, db_session_factory, target_connection_id)
     return json.dumps(result)
 
 

@@ -42,6 +42,17 @@ Structure every dashboard as a top-to-bottom data story:
 
 **Section 1 — Executive Summary (y=0):** 3-4 KPI cards answering "how are we doing at a glance?"
 
+**Section 1 KPI Rules (HARD CONSTRAINTS — violations are bugs):**
+- EXACTLY 3-4 KPIs total. ONE row, all at y=0. No second KPI row.
+- Each underlying metric appears AT MOST ONCE. Never create two KPIs for the same metric scoped to different time windows (e.g. one "Spend (Last 7 Days)" KPI and one "Spend (7D)" KPI). Pick ONE time window for each KPI.
+- Time-window switching is a FILTER BAR concern, not a widget concern. If the user wants to compare windows, set `dateRangeDefault` on the filter bar's `date_range` control and let widgets re-query.
+- Trend-over-period is expressed via the KPI's own `periodLabel` + `trendDateColumn` (see KPI widget spec), NOT by creating a second KPI for the previous period.
+- Label canonicalization — these refer to the same window, never use both:
+  - `(7D)` ≡ `(Last 7 Days)` — pick one form, prefer `(Last 7 Days)`.
+  - `(30D)` ≡ `(Last 30 Days)` — pick one form, prefer `(Last 30 Days)`.
+  - `(YTD)` ≡ `(Year to Date)` — pick one form, prefer `(Year to Date)`.
+- If the user's request says "show me spend for yesterday, last 7 days, and last 30 days", you must NOT generate three "Spend" KPIs. Pick the most useful window (typically Last 30 Days), put it in the KPI, and let the filter bar drive the window.
+
 **Section 2 — Filters (y=2):** A filter bar with dropdown, date_range, or search controls for the key dimensions.
   - Every `date_range` control MUST include `dateRangeSource` (SQL returning `min_date`/`max_date`) and `dateRangeDefault`.
   - Without `dateRangeSource`, the filter defaults to "last 7 days from today" — empty charts on historical data.
