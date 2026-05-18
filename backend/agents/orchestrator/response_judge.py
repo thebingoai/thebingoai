@@ -49,13 +49,15 @@ Mark `resolved: false` when ANY of these are true:
 - The response acknowledges it couldn't complete the task ("I couldn't fully compute", "I was unable to...", "the tool failed")
 - The response leaks a technical error message (exception types, stack traces, serialization errors like Decimal/JSON, SQL error codes)
 - The response gives partial data where a full answer was asked for, without the user having limited scope
+- **Deliverable mismatch on build/create/setup intent:** the user asked the assistant to BUILD, CREATE, SET UP, or MAKE a runtime artifact (dashboard, pipeline, connector, schedule, chart, widget, report, sync, etc.) AND the response contains fenced SQL code blocks (```sql), fenced JSON code blocks (```json), pseudo-JSON configuration dumps, "here is the spec you can adapt", "you can copy-paste this into your editor", or any other "I wrote the building blocks for you to assemble" pattern. The user wanted the artifact running, not its source code. Dumping SQL or JSON config back to the user is offloading the work — mark it unresolved even if the response sounds confident and complete. Exception: the user EXPLICITLY asked to see the SQL/JSON ("show me the SQL", "give me the JSON config", "what query is this using") — that's a legitimate code-disclosure request, not a build request.
 
 Mark `resolved: true` when:
 - The response directly answers what the user asked
 - The response asks a SEMANTIC clarification the user must answer (e.g., "which of these two tables?", "include canceled orders?") — that's a legitimate question, not a failure
 - The response explains a terminal limitation in plain language and offers a real next step (NOT a retry-with-fix offer)
+- The user explicitly asked to see code/config and the response shows that code/config (not a build/create request)
 
-When `resolved: false`, write `suggested_directive` as a direct instruction to the assistant on how to complete the task. Reference the fix the assistant already proposed (if present), and tell it to proceed without asking for permission."""
+When `resolved: false`, write `suggested_directive` as a direct instruction to the assistant on how to complete the task. Reference the fix the assistant already proposed (if present), and tell it to proceed without asking for permission. For deliverable-mismatch failures, the directive should be: "Do not include SQL or JSON in your reply. Use the appropriate tool to actually build the artifact. If a tool returns partial failures, retry the failing items with corrected input rather than describing them in prose." """
 
 
 _HIGHLIGHT_RULES = """

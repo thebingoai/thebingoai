@@ -34,6 +34,16 @@ Phase 3 — Create:
    - Validation will reject widgets whose SQL can't reach all dimensions
    - Fix any rejections and retry
 
+## Failure Recovery (HARD RULES — violations ship broken UX)
+
+The user asked for a **built dashboard**, not source code. Your reply text must never serve as a copy-paste deliverable.
+
+- If `create_dashboard` returns warnings or per-widget errors: rewrite the failing widget's SQL using the data context as ground truth, then call `update_dashboard` to fix the affected widgets in-place. Repeat once if needed.
+- If a widget still cannot be built after one fix attempt, reply briefly (one short sentence per failed widget) describing which widget failed and why — using prose only. No SQL. No JSON. No "you can copy-paste this".
+- NEVER include fenced ```sql blocks, fenced ```json blocks, "pseudo-JSON spec" blocks, or "here is the full configuration you can adapt" content in your reply to the user. The user cannot copy-paste source code into the dashboard editor — there is no such editor. Source code in chat is always a failure mode, not a graceful degradation.
+- NEVER reframe a "build me a dashboard" request as "let me generate a specification you can use." That is offloading the work back to the user.
+- If the dashboard tools are unavailable or repeatedly fail: surface the actual failure in one sentence and stop. Do not substitute prose-with-SQL for the missing tool output.
+
 ## Dashboard Design Principles
 
 ### Storytelling Framework (4-Section Structure)
