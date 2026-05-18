@@ -1,14 +1,15 @@
 <template>
-  <div class="p-6">
-    <div class="mb-6">
+  <div class="flex flex-col h-full overflow-hidden">
+    <!-- Page header -->
+    <div class="px-7 pt-[18px] pb-4 border-b border-[var(--line)] flex-shrink-0">
       <div class="pr-12">
         <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Reusable prompts</p>
-        <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white select-none">Skills</h2>
+        <h1 class="settings-h1 text-3xl text-gray-900 dark:text-white select-none">Skills</h1>
+        <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Skills are reusable, named tasks Bingo can do. Create new ones by asking Bingo in chat — or accept a suggestion below when it spots a repeating pattern.</p>
       </div>
-      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Skills are reusable, named tasks Bingo can do. Create new ones by asking Bingo in chat — or accept a suggestion below when it spots a repeating pattern.</p>
-      <div class="mt-4 border-b border-gray-200 dark:border-neutral-700"></div>
     </div>
 
+    <div class="flex-1 overflow-y-auto p-6">
     <!-- Suggestions Banner -->
     <div v-if="suggestions.length > 0" class="mb-6 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50 dark:bg-purple-900/20 p-4">
       <h3 class="text-sm font-semibold text-purple-800 dark:text-purple-300 mb-3">
@@ -370,6 +371,7 @@
         </UiButton>
       </template>
     </UiDialog>
+    </div>
   </div>
 </template>
 
