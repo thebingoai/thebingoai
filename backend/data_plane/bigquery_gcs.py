@@ -131,6 +131,7 @@ class BigQueryGCSPlane:
         table: str,
         data: pa.Table | Iterator[pa.RecordBatch],
         mode: str = "overwrite",
+        unique_key: tuple[str, ...] | None = None,
     ) -> None:
         dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         gcs_path = self._gcs_object_path(scope, table, dt)
@@ -140,6 +141,8 @@ class BigQueryGCSPlane:
         else:
             batches = list(data)
             arrow_table = pa.Table.from_batches(batches) if batches else pa.table({})
+
+        arrow_table = _downcast_ns_timestamps(arrow_table)
 
         buf = io.BytesIO()
         pq.write_table(arrow_table, buf)
@@ -152,17 +155,57 @@ class BigQueryGCSPlane:
 
         logger.debug("Wrote GCS parquet %s → gs://%s/%s", table, self._bucket_name, gcs_path)
 
-        # Register the BQ external table. For mode='overwrite' (snapshot
-        # semantics — full pipelines) point at the latest single `dt=`
-        # partition so prior snapshots aren't unioned. For mode='append'
-        # (true-delta pipelines) point at the `dt=*` glob with Hive
-        # partitioning so `dt` is queryable. Old partitions remain on GCS
-        # for audit/replay regardless of mode.
-        if mode == "overwrite":
+        # Register the BQ surface. Cases:
+        # 1a. `unique_key` declared + org-scoped + `native_merge_data_plane`
+        #     flag on → native partitioned + clustered BQ table, populated via
+        #     MERGE-on-ingest. Dedup once per pipeline run; widgets read a
+        #     native table with stats + pruning, no per-query ROW_NUMBER.
+        # 1b. `unique_key` declared, flag off (or non-org scope) → legacy
+        #     bronze external (union of all `dt=*`) + silver dedup view.
+        # 2.  `mode='overwrite'` with no key → single latest `dt=` partition
+        #     (snapshot pin; history capped at the source's lookback window).
+        # 3.  `mode='append'` → `dt=*/*` glob, no dedup, Hive `dt` queryable.
+        # Old partitions remain on GCS for audit/replay regardless.
+        # BigQuery external tables accept exactly one wildcard per source URI.
+        # `*` matches across `/` boundaries, so a single trailing `*` after the
+        # table prefix reads every Parquet across every `dt=` partition.
+        table_prefix = f"data_plane/{scope.as_path()}/{table}/"
+        if unique_key:
+            if self._native_merge_enabled(scope):
+                self._merge_into_native(
+                    scope, table, arrow_table.schema, unique_key, dt,
+                )
+            else:
+                bronze_uri = f"gs://{self._bucket_name}/{table_prefix}*"
+                bronze_prefix = f"gs://{self._bucket_name}/{table_prefix}"
+                self._register_bronze_and_view(
+                    scope, table, bronze_uri, bronze_prefix,
+                    arrow_table.schema, unique_key,
+                )
+        elif mode == "overwrite":
             uri = f"gs://{self._bucket_name}/{self._gcs_prefix(scope, table, dt)}/*"
+            self.register_table(scope, table, uri, arrow_table.schema)
         else:
-            uri = f"gs://{self._bucket_name}/{self._gcs_prefix(scope, table, '*')}/*"
-        self.register_table(scope, table, uri, arrow_table.schema)
+            uri = f"gs://{self._bucket_name}/{table_prefix}*"
+            self.register_table(scope, table, uri, arrow_table.schema)
+
+    def _native_merge_enabled(self, scope: OwnerScope) -> bool:
+        """Org-scoped feature gate for the MERGE-into-native path.
+
+        Returns False for user/team scopes (no org_id to resolve flag against)
+        and on any flag-lookup error (fail-closed to legacy bronze+view).
+        """
+        if scope.kind != "org":
+            return False
+        try:
+            from backend.config.feature_flags import enabled
+            return enabled(scope.id, "native_merge_data_plane")
+        except Exception:
+            logger.warning(
+                "native_merge_data_plane flag lookup failed for %s; "
+                "falling back to legacy bronze+view path", scope, exc_info=True,
+            )
+            return False
 
     def register_table(
         self,
@@ -238,6 +281,222 @@ class BigQueryGCSPlane:
             execution_time_ms=execution_time_ms,
         )
 
+    def _register_bronze_and_view(
+        self,
+        scope: OwnerScope,
+        table: str,
+        bronze_uri: str,
+        bronze_prefix: str,
+        schema: pa.Schema,
+        unique_key: tuple[str, ...],
+    ) -> None:
+        """Register bronze external table over the `dt=*` glob and a silver
+        view that returns the latest snapshot per `unique_key`.
+
+        The user-facing fully-qualified name (`<scope-prefix>__<table>`)
+        becomes the view; the audit-layer external table is suffixed
+        `_bronze`. BQ doesn't permit a table and view to share a name —
+        if a prior plain external table exists at the user-facing name
+        (from before this feature), drop it first. That's metadata-only;
+        no Parquet on GCS is touched.
+        """
+        from google.cloud import bigquery
+        from google.cloud.exceptions import NotFound
+
+        base = self._bq_table_name(scope, table)
+        bronze_name = f"{base}_bronze"
+        view_id = f"{self._project}.{self._dataset}.{base}"
+        bronze_id = f"{self._project}.{self._dataset}.{bronze_name}"
+
+        # 1. If a plain external table sits at the user-facing name, drop it
+        # so a view can replace it. Idempotent — NotFound is the steady state.
+        try:
+            existing = self._bq().get_table(view_id)
+            if existing.table_type != "VIEW":
+                self._bq().delete_table(view_id)
+                logger.info("Dropped plain external table %s to make room for dedup view", view_id)
+        except NotFound:
+            pass
+
+        # 2. Register bronze external table at the dt=*/* glob. Hive AUTO so
+        # `dt` is a queryable partition column (the view filters on it).
+        # When `schema=` is supplied explicitly, BQ requires the Hive partition
+        # column to be declared alongside the data columns — otherwise view
+        # validation rejects references to `dt` at CREATE time with
+        # `Unrecognized name: dt`, even though Hive AUTO would surface it at
+        # query time.
+        bq_schema = _arrow_schema_to_bq(schema)
+        bq_schema.append(bigquery.SchemaField("dt", "DATE"))
+        external_config = bigquery.ExternalConfig("PARQUET")
+        external_config.source_uris = [bronze_uri]
+        external_config.hive_partitioning = bigquery.HivePartitioningOptions()
+        external_config.hive_partitioning.mode = "AUTO"
+        external_config.hive_partitioning.source_uri_prefix = bronze_prefix.rstrip("/")
+
+        bronze_table = bigquery.Table(bronze_id, schema=bq_schema)
+        bronze_table.external_data_configuration = external_config
+        try:
+            self._bq().update_table(
+                bronze_table,
+                fields=["schema", "external_data_configuration"],
+            )
+        except NotFound:
+            self._bq().create_table(bronze_table)
+        logger.debug("Registered bronze external table %s", bronze_id)
+
+        # 3. Create-or-replace the silver dedup view. ROW_NUMBER picks the
+        # latest `dt=` partition per natural key. The view excludes the
+        # internal `dt` and `_rn` columns so widget SQL sees only payload.
+        keys = ", ".join(f"`{k}`" for k in unique_key)
+        view_sql = (
+            f"SELECT * EXCEPT(dt, _rn) FROM ("
+            f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {keys} ORDER BY dt DESC) AS _rn "
+            f"FROM `{bronze_id}`"
+            f") WHERE _rn = 1"
+        )
+        view_table = bigquery.Table(view_id)
+        view_table.view_query = view_sql
+        try:
+            self._bq().update_table(view_table, fields=["view_query"])
+        except NotFound:
+            self._bq().create_table(view_table)
+        logger.info(
+            "Registered dedup view %s over %s (unique_key=%s)",
+            view_id, bronze_id, unique_key,
+        )
+
+    def _merge_into_native(
+        self,
+        scope: OwnerScope,
+        table: str,
+        schema: pa.Schema,
+        unique_key: tuple[str, ...],
+        dt: str,
+    ) -> None:
+        """Upsert latest `dt=` snapshot into a native partitioned BQ table via MERGE.
+
+        Replaces the bronze-external + silver-view pattern with a single native
+        table: ingest-time dedup, partition + cluster pruning at query time,
+        no per-widget ROW_NUMBER sort. The native table is the user-facing
+        surface (`<scope_prefix>__<table>`); a transient staging external
+        table (`<…>_stage`) sits over the freshest `dt=` Parquet only.
+
+        Steps:
+          1. Drop any prior view/external at the user-facing name (legacy
+             cleanup, mirrors `_register_bronze_and_view`).
+          2. `CREATE TABLE IF NOT EXISTS` native, partitioned by a date column
+             (when one of {date_start, date, event_date, day} is `date32/64`)
+             or ingestion-time DAY, clustered by `unique_key ∩ schema`.
+          3. Register staging external table at `dt={dt}/*` (single partition).
+          4. `MERGE` stage into native on `unique_key`.
+        """
+        from google.cloud import bigquery
+        from google.cloud.exceptions import NotFound
+
+        base = self._bq_table_name(scope, table)
+        native_id = f"{self._project}.{self._dataset}.{base}"
+        stage_id = f"{self._project}.{self._dataset}.{base}_stage"
+
+        # 1. Drop any prior view or plain external table at the user-facing name
+        # so the native table can take its place. Idempotent — NotFound is the
+        # steady state. delete_table is metadata-only; Parquet on GCS untouched.
+        try:
+            existing = self._bq().get_table(native_id)
+            if existing.table_type != "TABLE":
+                self._bq().delete_table(native_id)
+                logger.info(
+                    "Dropped legacy %s %s to install native MERGE table",
+                    existing.table_type, native_id,
+                )
+        except NotFound:
+            pass
+
+        bq_schema = _arrow_schema_to_bq(schema)
+        partition_field = self._resolve_partition_field(schema)
+        cluster_fields = self._resolve_cluster_fields(schema, unique_key)
+
+        # 2. Create native table (idempotent). Partition + cluster lock in on
+        # first create; subsequent runs are no-ops.
+        native_table = bigquery.Table(native_id, schema=bq_schema)
+        native_table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field=partition_field,
+        )
+        if cluster_fields:
+            native_table.clustering_fields = list(cluster_fields)
+        self._bq().create_table(native_table, exists_ok=True)
+
+        # 3. (Re)register staging external table over the freshest `dt=` only.
+        # No Hive partitioning — stage URI is anchored to a single dt directory.
+        stage_uri = (
+            f"gs://{self._bucket_name}/{self._gcs_prefix(scope, table, dt)}/*"
+        )
+        ext_cfg = bigquery.ExternalConfig("PARQUET")
+        ext_cfg.source_uris = [stage_uri]
+        stage_table = bigquery.Table(stage_id, schema=bq_schema)
+        stage_table.external_data_configuration = ext_cfg
+        try:
+            self._bq().update_table(
+                stage_table,
+                fields=["schema", "external_data_configuration"],
+            )
+        except NotFound:
+            self._bq().create_table(stage_table)
+
+        # 4. MERGE. Skip key columns in the UPDATE SET (they're equal by the
+        # ON clause); if every column is part of the key, omit WHEN MATCHED
+        # entirely (BQ accepts MERGE with only WHEN NOT MATCHED).
+        all_cols = [f.name for f in schema]
+        key_set = set(unique_key)
+        non_key_cols = [c for c in all_cols if c not in key_set]
+
+        on_clause = " AND ".join(f"T.`{k}` = S.`{k}`" for k in unique_key)
+        insert_cols = ", ".join(f"`{c}`" for c in all_cols)
+        insert_vals = ", ".join(f"S.`{c}`" for c in all_cols)
+        when_matched_clause = ""
+        if non_key_cols:
+            update_set = ", ".join(f"T.`{c}` = S.`{c}`" for c in non_key_cols)
+            when_matched_clause = f"WHEN MATCHED THEN UPDATE SET {update_set}\n"
+
+        merge_sql = (
+            f"MERGE INTO `{native_id}` AS T\n"
+            f"USING `{stage_id}` AS S\n"
+            f"ON {on_clause}\n"
+            f"{when_matched_clause}"
+            f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
+        )
+        self._bq().query(merge_sql).result()
+        logger.info(
+            "MERGE'd %s into native table %s (unique_key=%s, partition=%s, cluster=%s)",
+            stage_id, native_id, unique_key,
+            partition_field or "_PARTITIONTIME", cluster_fields,
+        )
+
+    @staticmethod
+    def _resolve_partition_field(schema: pa.Schema) -> str | None:
+        """Pick the first date-typed column whose name matches a convention.
+
+        Returns the column name for `PARTITION BY DATE(<field>)`, or None to
+        fall back to ingestion-time partitioning.
+        """
+        candidates = ("date_start", "date", "event_date", "day")
+        date_types = {pa.date32(), pa.date64()}
+        for name in candidates:
+            if name not in schema.names:
+                continue
+            if schema.field(name).type in date_types:
+                return name
+        return None
+
+    @staticmethod
+    def _resolve_cluster_fields(
+        schema: pa.Schema,
+        unique_key: tuple[str, ...],
+    ) -> list[str]:
+        """Cluster on the unique_key columns that actually exist in schema (max 4)."""
+        available = set(schema.names)
+        return [k for k in unique_key if k in available][:4]
+
     def list_tables(self, scope: OwnerScope, namespace: str | None = None) -> list[str]:
         prefix = self._scope_bq_prefix(scope)
         tables = []
@@ -245,6 +504,11 @@ class BigQueryGCSPlane:
             if t.table_id.startswith(prefix):
                 # Strip the scope prefix to return bare table names
                 bare = t.table_id[len(prefix):]
+                # Hide internal audit/staging tables — callers see only the
+                # user-facing name (view in legacy mode, native table in
+                # native-merge mode).
+                if bare.endswith("_bronze") or bare.endswith("_stage"):
+                    continue
                 tables.append(bare)
         return tables
 
@@ -325,12 +589,16 @@ class BigQueryGCSPlane:
             # Already-backticked occurrences (LLM emits these now that the
             # dashboard agent prompt locks SQL to BigQuery dialect).
             result = re.sub(rf"`{re.escape(t)}`", target, result)
-            # Bare occurrences only. The lookbehind/ahead avoids wrapping a
-            # table name that already sits inside a backticked FQN like
-            # `proj.ds.scope__insights_daily` (which would otherwise produce
+            # Bare or schema-qualified occurrences. The lookbehind/ahead avoids
+            # wrapping a table name that already sits inside a backticked FQN
+            # like `proj.ds.scope__insights_daily` (which would otherwise produce
             # `` `proj.ds.scope__`...`insights_daily` `` ` → empty identifier).
+            # `main.` and `public.` prefixes are swallowed because the dashboard
+            # agent's sources hint surfaces them from SQLite/Postgres-origin
+            # connection contexts; leaving them in front of the rewritten FQN
+            # would make BigQuery parse `main` / `public` as the project name.
             result = re.sub(
-                rf"(?<![`\w]){re.escape(t)}(?![`\w])",
+                rf"(?<![`\w])(?:main\.|public\.)?{re.escape(t)}(?![`\w])",
                 target,
                 result,
             )
@@ -347,18 +615,48 @@ class BigQueryGCSPlane:
 # Arrow ↔ BigQuery schema conversion helpers
 # ---------------------------------------------------------------------------
 
+def _downcast_ns_timestamps(table: pa.Table) -> pa.Table:
+    """BigQuery TIMESTAMP is microsecond precision; reject ns Parquet files.
+
+    Cast any `timestamp[ns]` (or `timestamp[ns, tz]`) columns down to
+    `timestamp[us]` (preserving tz) before write. Pandas defaults to
+    `datetime64[ns]` so this triggers for almost every dataframe-sourced
+    upload.
+    """
+    new_fields = []
+    changed = False
+    for f in table.schema:
+        if pa.types.is_timestamp(f.type) and f.type.unit == "ns":
+            new_fields.append(pa.field(f.name, pa.timestamp("us", tz=f.type.tz), nullable=f.nullable))
+            changed = True
+        else:
+            new_fields.append(f)
+    if not changed:
+        return table
+    return table.cast(pa.schema(new_fields))
+
+
 def _arrow_schema_to_bq(schema: pa.Schema) -> list:
     from google.cloud.bigquery import SchemaField
-    _type_map = {
-        pa.int8(): "INT64", pa.int16(): "INT64", pa.int32(): "INT64", pa.int64(): "INT64",
-        pa.float32(): "FLOAT64", pa.float64(): "FLOAT64",
-        pa.bool_(): "BOOL",
-        pa.string(): "STRING", pa.large_string(): "STRING",
-        pa.date32(): "DATE", pa.date64(): "DATE",
-    }
     fields = []
     for field in schema:
-        bq_type = _type_map.get(field.type, "STRING")
+        t = field.type
+        if pa.types.is_integer(t):
+            bq_type = "INT64"
+        elif pa.types.is_floating(t):
+            bq_type = "FLOAT64"
+        elif pa.types.is_boolean(t):
+            bq_type = "BOOL"
+        elif pa.types.is_timestamp(t):
+            bq_type = "TIMESTAMP"
+        elif pa.types.is_date(t):
+            bq_type = "DATE"
+        elif pa.types.is_binary(t) or pa.types.is_large_binary(t):
+            bq_type = "BYTES"
+        elif pa.types.is_string(t) or pa.types.is_large_string(t):
+            bq_type = "STRING"
+        else:
+            bq_type = "STRING"
         mode = "NULLABLE" if field.nullable else "REQUIRED"
         fields.append(SchemaField(field.name, bq_type, mode=mode))
     return fields
