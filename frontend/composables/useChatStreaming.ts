@@ -151,6 +151,34 @@ export const useChatStreaming = () => {
         resolve()
       }
 
+      onEvent('chat.thread_created', (data) => {
+        const threadId: string = data.thread_id
+        if (!threadId) return
+        if (!chatStore.currentThreadId) {
+          chatStore.setCurrentThread(threadId)
+        }
+        if (chatStore.pendingNewConversationId && chatStore.pendingNewConversationId !== threadId) {
+          const pendingTitle = chatStore.conversations.find((c: any) => c.id === chatStore.pendingNewConversationId)?.title || 'New Task'
+          chatStore.replacePendingConversation({
+            id: threadId,
+            title: pendingTitle,
+            type: 'task' as const,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            message_count: 1,
+          })
+        } else if (!chatStore.conversations.find((c: any) => c.id === threadId)) {
+          chatStore.addConversation({
+            id: threadId,
+            title: 'New Task',
+            type: 'task' as const,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            message_count: 1,
+          })
+        }
+      })
+
       onEvent('chat.token', (data) => {
         if (data.replace) {
           accumulatedContent = data.content || ''

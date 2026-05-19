@@ -33,7 +33,7 @@
              (going to/from New Task), preventing the previous double-animation. -->
         <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
           <Transition :name="chatStore.currentThreadId ? 'page-fade-slide' : ''" mode="out-in">
-            <ChatThread v-if="chatStore.currentThreadId" :key="chatStore.currentThreadId" @send-action="handleAction" />
+            <ChatThread :key="chatStore.currentThreadId || chatStore.pendingNewConversationId || 'pending'" @send-action="handleAction" />
           </Transition>
         </div>
         <ChatInputBar @send="handleSend" @reset="handleReset" />
@@ -136,7 +136,7 @@ const sendingFromNewTask = ref(false)
 const enterFromSend = ref(false)
 const showNewTaskScreen = computed(() =>
   chatStore.conversationsLoaded &&
-  !chatStore.currentThreadId &&
+  (!chatStore.currentThreadId || sendingFromNewTask.value) &&
   !isTransitioning.value
 )
 watch(() => chatStore.currentThreadId, (id) => {
@@ -162,14 +162,15 @@ const handleSend = () => {
         updated_at: new Date().toISOString(),
         message_count: 1,
       })
-      // Trigger in-place element animation; swap view after 0.5s (matches composer slide)
+      // Trigger in-place element animation; swap view after 0.65s
+      // (composer slide is 0.5s ease-in — extra 150ms lets it settle before swap)
       sendingFromNewTask.value = true
       setTimeout(() => {
         enterFromSend.value = true   // suppress horizontal slide-in on chat view
         isTransitioning.value = true
         setTimeout(() => { sendingFromNewTask.value = false }, 30)
         setTimeout(() => { enterFromSend.value = false }, 280)  // after 0.25s fade-in
-      }, 500)
+      }, 650)
     }
     chat.sendMessage(chatStore.inputText, fileIds)
     clearFiles()

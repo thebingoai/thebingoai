@@ -474,6 +474,13 @@ async def _handle_chat_send(
             return
         active_thread_id = conversation.thread_id
 
+        if is_new_conversation:
+            await send({
+                "type": "chat.thread_created",
+                "request_id": request_id,
+                "thread_id": conversation.thread_id,
+            })
+
         # Build orchestrator context
         ctx = await build_orchestrator_context(
             db=db,
