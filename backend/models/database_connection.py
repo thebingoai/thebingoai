@@ -2,6 +2,7 @@ import uuid as _uuid
 from enum import Enum
 
 from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, DateTime, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from backend.database.base import Base, TimestampMixin
@@ -68,7 +69,7 @@ class DatabaseConnection(Base, TimestampMixin):
     profiling_error = Column(Text, nullable=True)
     profiling_started_at = Column(DateTime, nullable=True)
     profiling_completed_at = Column(DateTime, nullable=True)
-    data_context_path = Column(String, nullable=True)            # path to context JSON file
+    data_context = Column(JSONB, nullable=True)                  # built by profile_connection; consumed by dashboard_agent
 
     # Plugin-specific fields (e.g., dataset connector sets these)
     source_filename = Column(String, nullable=True)

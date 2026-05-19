@@ -1,24 +1,20 @@
 """Connection Context — builds, saves, and loads per-connection data contexts.
 
 A data context is a structured description of a connection's tables, columns
-(with inferred roles), and relationships.  It is built once during profiling
+(with inferred roles), and relationships. It is built once during profiling
 and consumed by the dashboard agent to assemble dashboard-level contexts.
+Persisted on `database_connections.data_context` (JSONB) — one row per connection.
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from backend.config import settings
 from backend.services.table_profiler import NUMERIC_TYPES, DATE_TYPES
 
 logger = logging.getLogger(__name__)
-
-CONTEXTS_DIR = os.path.join(os.path.dirname(settings.schemas_dir), "contexts")
 
 # ---------------------------------------------------------------------------
 # Role inference
@@ -212,33 +208,41 @@ def build_connection_context(
 # Persistence
 # ---------------------------------------------------------------------------
 
-def save_context_file(connection_id: int, context: Dict[str, Any]) -> str:
-    """Save connection context to JSON file. Returns the file path."""
-    os.makedirs(CONTEXTS_DIR, exist_ok=True)
-    file_path = os.path.join(CONTEXTS_DIR, f"{connection_id}_context.json")
-    with open(file_path, "w") as f:
-        json.dump(context, f, indent=2)
-    logger.info("Connection context saved to %s", file_path)
-    return file_path
+def save_connection_context(db, connection_id: int, context: Dict[str, Any]) -> None:
+    """Persist connection context to `database_connections.data_context`.
 
-
-def load_context_file(connection_id: int) -> Dict[str, Any]:
-    """Load connection context from JSON file.
-
-    Raises FileNotFoundError if the context has not been built yet.
+    Caller is responsible for committing the session.
     """
-    file_path = os.path.join(CONTEXTS_DIR, f"{connection_id}_context.json")
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Context file not found: {file_path}")
-    with open(file_path, "r") as f:
-        return json.load(f)
+    from backend.models.database_connection import DatabaseConnection
+
+    db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id
+    ).update({"data_context": context}, synchronize_session=False)
+    logger.info("Connection context saved for connection %d", connection_id)
 
 
-def delete_context_file(connection_id: int) -> bool:
-    """Delete connection context file. Returns True if deleted."""
-    file_path = os.path.join(CONTEXTS_DIR, f"{connection_id}_context.json")
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        logger.info("Deleted context file: %s", file_path)
-        return True
-    return False
+def load_connection_context(db, connection_id: int) -> Dict[str, Any] | None:
+    """Load connection context from `database_connections.data_context`.
+
+    Returns None if no row exists or `data_context` is NULL.
+    """
+    from backend.models.database_connection import DatabaseConnection
+
+    row = (
+        db.query(DatabaseConnection.data_context)
+        .filter(DatabaseConnection.id == connection_id)
+        .first()
+    )
+    return row[0] if row and row[0] is not None else None
+
+
+def delete_connection_context(db, connection_id: int) -> bool:
+    """Null out `data_context` for a connection. Returns True if a row was updated."""
+    from backend.models.database_connection import DatabaseConnection
+
+    res = (
+        db.query(DatabaseConnection)
+        .filter(DatabaseConnection.id == connection_id)
+        .update({"data_context": None}, synchronize_session=False)
+    )
+    return bool(res)

@@ -53,7 +53,7 @@ def _build_dashboard_context_tool(context: AgentContext, db_session_factory: Cal
         """
         import json
         from backend.models.database_connection import DatabaseConnection
-        from backend.services.connection_context import load_context_file
+        from backend.services.connection_context import load_connection_context
 
         if not context.can_access_connection(connection_id):
             return json.dumps({"success": False, "message": f"Connection {connection_id} not authorized"})
@@ -87,13 +87,13 @@ def _build_dashboard_context_tool(context: AgentContext, db_session_factory: Cal
                         "Dashboard creation will be available once profiling completes."
                     ),
                 })
+
+            conn_context = load_connection_context(db, connection_id)
         finally:
             db.close()
 
-        try:
-            conn_context = load_context_file(connection_id)
-        except FileNotFoundError:
-            return json.dumps({"success": False, "message": "Connection context not found. Try re-profiling."})
+        if conn_context is None:
+            return json.dumps({"success": False, "message": "Connection context not built yet. Try re-profiling."})
 
         ctx_tables = conn_context.get("tables", {})
 

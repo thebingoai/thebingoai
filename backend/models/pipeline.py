@@ -23,6 +23,7 @@ class Pipeline(Base, TimestampMixin):
     timezone = Column(String(64), nullable=False, server_default="UTC")
     mode = Column(String(16), nullable=False, default="full")   # full | incremental
     incremental_key = Column(String(255), nullable=True)
+    unique_key = Column(JSONB, nullable=True)                   # list[str] | None — natural-key columns for snapshot dedup view
     extraction_config = Column(JSONB, nullable=False, server_default="{}")
     pipeline_fingerprint = Column(String(128), nullable=False)
     last_run_at = Column(DateTime, nullable=True)

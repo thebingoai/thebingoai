@@ -115,10 +115,9 @@ def _build_dataset_file_content(db: Session, user: User, connection_id: int) -> 
         "content_type": "text",
     }
 
-    if conn.profiling_status == "ready" and conn.data_context_path:
+    if conn.profiling_status == "ready" and conn.data_context is not None:
         try:
-            from backend.services.connection_context import load_context_file
-            context = load_context_file(connection_id)
+            context = conn.data_context
             profile_lines = [f"=== Dataset Profile: {conn.source_filename or conn.name} ==="]
             profile_lines.append(f"Connection ID: {connection_id} (queryable via SQL)")
             tables = context.get("tables", {})
@@ -138,7 +137,7 @@ def _build_dataset_file_content(db: Session, user: User, connection_id: int) -> 
             file_data["profile_text"] = profile_text
             file_data["truncated_text"] = profile_text
             file_data["profile_status"] = "ready"
-        except (FileNotFoundError, Exception):
+        except Exception:
             file_data.update(_build_schema_fallback(conn, connection_id))
     elif conn.profiling_status in ("pending", "in_progress"):
         file_data["profile_status"] = "processing"

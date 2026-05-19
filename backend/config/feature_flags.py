@@ -13,6 +13,8 @@ silently — see test_feature_flags::test_known_flags):
     governance_v0                — Phase G stage 0
     governance_v1                — Phase G stage 1
     governance_v2                — Phase G stage 2
+    native_merge_data_plane      — BigQueryGCSPlane: MERGE-on-ingest into native
+                                   partitioned table instead of bronze+silver view
 """
 from __future__ import annotations
 
@@ -34,6 +36,7 @@ KNOWN_FLAGS: frozenset[str] = frozenset({
     "governance_v0",
     "governance_v1",
     "governance_v2",
+    "native_merge_data_plane",
 })
 
 

@@ -22,8 +22,8 @@ class TestSqliteHintsConditional:
 
         with patch("backend.agents.tool_registry.get_plugin_tool_builders",
                     return_value={"create_dataset_from_upload": fake_builder}), \
-             patch("backend.services.connection_context.load_context_file",
-                    side_effect=FileNotFoundError):
+             patch("backend.services.connection_context.load_connection_context",
+                    return_value=None):
             prompt = build_dashboard_agent_prompt(available_connections=[1])
             assert "SQLite" in prompt
             assert "strftime" in prompt

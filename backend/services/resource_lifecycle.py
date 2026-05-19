@@ -137,3 +137,16 @@ def guard_connection_delete(connection_id: int, db, *, cascade: bool = False) ->
         delete_pipeline(pipeline.id, db)
     logger.info("guard_connection_delete: cascade-deleted %d pipeline(s) for connection %d",
                 len(dependent), connection_id)
+
+    from backend.migration.substrate import WidgetPendingManualRewrite
+
+    pending_deleted = (
+        db.query(WidgetPendingManualRewrite)
+        .filter(WidgetPendingManualRewrite.connection_id == connection_id)
+        .delete(synchronize_session=False)
+    )
+    if pending_deleted:
+        logger.info(
+            "guard_connection_delete: cleared %d pending-manual-rewrite row(s) for connection %d",
+            pending_deleted, connection_id,
+        )

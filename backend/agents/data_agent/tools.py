@@ -255,7 +255,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 return {"error": "Connection not found"}
 
             reg = get_connector_registration(connection.db_type)
-            is_dataset = reg is not None and reg.sql_dialect_hint is not None and "SQLite" in reg.sql_dialect_hint
+            is_dataset = reg is not None and reg.type_id == "dataset"
             db_type_str = "mysql" if connection.db_type == "mysql" else "postgres"
 
             from backend.services.table_profiler import profile_table as _profile

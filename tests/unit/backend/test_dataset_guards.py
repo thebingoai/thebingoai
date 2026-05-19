@@ -251,7 +251,7 @@ class TestDashboardContextGuard:
         db_factory = MagicMock(return_value=mock_db)
 
         with patch("backend.agents.tool_registry.get_plugin_tool_builders", return_value={}), \
-             patch("backend.services.connection_context.load_context_file", return_value={
+             patch("backend.services.connection_context.load_connection_context", return_value={
                  "tables": {
                      "users": {"schema": "public", "columns": {"id": {"role": "dimension", "type": "integer"}}},
                  },

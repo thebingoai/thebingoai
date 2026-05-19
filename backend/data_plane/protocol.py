@@ -23,8 +23,15 @@ class DataPlane(Protocol):
         table: str,
         data: pa.Table | Iterator[pa.RecordBatch],
         mode: str = "overwrite",
+        unique_key: tuple[str, ...] | None = None,
     ) -> None:
-        """Write *data* as Hive-by-date Parquet at the scope-keyed path."""
+        """Write *data* as Hive-by-date Parquet at the scope-keyed path.
+
+        When `unique_key` is provided, snapshot tables (`mode='overwrite'`)
+        accumulate history across `dt=*` partitions and the plane exposes a
+        dedup view selecting latest snapshot per key. When None, snapshot
+        tables pin to the latest single `dt=` partition.
+        """
         ...
 
     def register_table(

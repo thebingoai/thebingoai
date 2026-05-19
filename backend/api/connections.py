@@ -481,10 +481,8 @@ async def delete_connection(
         except Exception as e:
             logger.warning("on_delete hook failed for connection %s: %s", connection.id, e)
 
-    # Delete schema and context JSON files
+    # Delete schema JSON file; connection context lives on the row and is removed by the DELETE below.
     delete_schema_file(connection.schema_json_path)
-    from backend.services.connection_context import delete_context_file
-    delete_context_file(connection.id)
 
     # Remove any team connection policies first to avoid FK violations
     db.query(TeamConnectionPolicy).filter(
@@ -750,8 +748,8 @@ async def get_connection_context(
             detail=f"Data context is not ready. Current profiling status: {connection.profiling_status}",
         )
 
-    from backend.services.connection_context import load_context_file
-    try:
-        return load_context_file(connection.id)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Context file not found. Try re-profiling the connection.")
+    from backend.services.connection_context import load_connection_context
+    ctx = load_connection_context(db, connection.id)
+    if ctx is None:
+        raise HTTPException(status_code=404, detail="Context not found. Try re-profiling the connection.")
+    return ctx

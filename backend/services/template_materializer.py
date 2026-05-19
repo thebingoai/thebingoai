@@ -67,6 +67,16 @@ def _materialize_pipeline(
     target_table = _resolve_target_table(template, connection)
     fp = compute_pipeline_fingerprint(connection_fingerprint, config)
 
+    template_unique_key = list(template.unique_key) if template.unique_key else None
+
+    def _backfill_unique_key(row: Pipeline) -> None:
+        # Backfill unique_key on existing pipelines that pre-date the field.
+        # Safe: only writes when the row currently has none and the template
+        # declares one. Keeps callers (plugin startup) self-healing.
+        if template_unique_key and not row.unique_key:
+            row.unique_key = template_unique_key
+            db.flush()
+
     # Primary dedup: same fingerprint already on this scope.
     existing = db.query(Pipeline).filter_by(
         owner_scope_kind=scope.kind,
@@ -74,6 +84,7 @@ def _materialize_pipeline(
         pipeline_fingerprint=fp,
     ).first()
     if existing is not None:
+        _backfill_unique_key(existing)
         return None
 
     # Secondary dedup: same (connection, target_table) already exists. Catches
@@ -86,6 +97,7 @@ def _materialize_pipeline(
         target_table=target_table,
     ).first()
     if existing is not None:
+        _backfill_unique_key(existing)
         return None
 
     row = Pipeline(
@@ -98,6 +110,7 @@ def _materialize_pipeline(
         cron=template.cron,
         mode=template.mode,
         incremental_key=template.incremental_key,
+        unique_key=list(template.unique_key) if template.unique_key else None,
         extraction_config=config,
         pipeline_fingerprint=fp,
         enabled=template.enabled,

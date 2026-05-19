@@ -18,8 +18,8 @@ class TestBigQueryHintsConditional:
 
         mock_reg = object()  # any truthy value — registration exists
         with patch("backend.connectors.factory.get_connector_registration", return_value=mock_reg), \
-             patch("backend.services.connection_context.load_context_file",
-                   side_effect=FileNotFoundError):
+             patch("backend.services.connection_context.load_connection_context",
+                   return_value=None):
             prompt = build_dashboard_agent_prompt(available_connections=[1])
             assert "BigQuery SQL Dialect" in prompt
             assert "_TABLE_SUFFIX" in prompt

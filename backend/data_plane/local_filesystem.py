@@ -84,7 +84,12 @@ class LocalFilesystemDataPlane:
         table: str,
         data: pa.Table | Iterator[pa.RecordBatch],
         mode: str = "overwrite",
+        unique_key: tuple[str, ...] | None = None,
     ) -> None:
+        # unique_key is accepted for protocol compatibility but not yet honored
+        # in local-filesystem mode (DuckDB views could implement dedup-at-read
+        # later). Local-fs is dev-only; production uses BigQueryGCSPlane.
+        _ = unique_key
         dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         partition_dir = self._partition_dir(scope, table, dt)
 

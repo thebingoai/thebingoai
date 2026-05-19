@@ -15,6 +15,13 @@ class PipelineTemplate:
 
     `extraction_config` accepts either a static dict or a callable
     `(connection) -> dict` for per-connection values (e.g. workspace_id).
+
+    `unique_key` names the natural-key columns that identify a row across
+    snapshots. When set, the data plane registers a bronze external table
+    over all `dt=*` partitions plus a silver VIEW that returns the latest
+    snapshot per key — letting widgets see the full accumulated history
+    instead of only the trailing lookback window. Leave None for sources
+    that are pure overwrite (no per-row identity).
     """
     name: str
     target_table: Union[str, Callable[[Any], str]]
@@ -22,6 +29,7 @@ class PipelineTemplate:
     cron: Optional[str] = None             # null = run-on-demand
     mode: Literal["full", "incremental"] = "full"
     incremental_key: Optional[str] = None
+    unique_key: Optional[tuple[str, ...]] = None
     enabled: bool = True
 
 

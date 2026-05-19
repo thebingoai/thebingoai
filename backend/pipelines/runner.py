@@ -128,7 +128,10 @@ def run_pipeline(
 
                 # Build dlt destination wrapping DataPlane
                 from backend.pipelines.dlt_destination import make_dataplane_destination
-                destination = make_dataplane_destination(plane, scope, pipeline.target_table)
+                destination = make_dataplane_destination(
+                    plane, scope, pipeline.target_table,
+                    unique_key=tuple(pipeline.unique_key) if pipeline.unique_key else None,
+                )
 
                 # Run dlt
                 import dlt as _dlt

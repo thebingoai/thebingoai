@@ -38,7 +38,7 @@ def _make_mock_connection(cid=1, db_type="postgres", schema_json_path="/tmp/sche
     conn.profiling_progress = None
     conn.profiling_started_at = None
     conn.profiling_completed_at = None
-    conn.data_context_path = None
+    conn.data_context = None
     return conn
 
 
@@ -101,8 +101,7 @@ class TestProfileConnection:
         context_result = patch_overrides.pop("context", {"tables": {}})
         build_context_mock = patch_overrides.pop("build_connection_context", MagicMock(return_value=context_result))
 
-        context_path = patch_overrides.pop("context_path", "/tmp/context.json")
-        save_context_mock = patch_overrides.pop("save_context_file", MagicMock(return_value=context_path))
+        save_context_mock = patch_overrides.pop("save_connection_context", MagicMock(return_value=None))
 
         load_schema_mock = patch_overrides.pop("load_schema_file", MagicMock(return_value=schema))
 
@@ -115,7 +114,7 @@ class TestProfileConnection:
             patch("backend.connectors.factory.get_connector_registration", return_value=mock_reg),
             patch("backend.services.table_profiler.profile_table", profile_table_mock),
             patch("backend.services.connection_context.build_connection_context", build_context_mock),
-            patch("backend.services.connection_context.save_context_file", save_context_mock),
+            patch("backend.services.connection_context.save_connection_context", save_context_mock),
         ):
             _profile_connection_fn(self_mock, connection_id=connection_id)
 
@@ -125,7 +124,7 @@ class TestProfileConnection:
             "load_schema_file": load_schema_mock,
             "profile_table": profile_table_mock,
             "build_connection_context": build_context_mock,
-            "save_context_file": save_context_mock,
+            "save_connection_context": save_context_mock,
             "connector": mock_connector,
             "connector_registration": mock_reg,
             "self_mock": self_mock,
@@ -134,16 +133,15 @@ class TestProfileConnection:
     # ----- Happy path -----
 
     def test_happy_path_sets_status_ready(self):
-        """Full flow: loads schema, profiles tables, builds context, saves file, sets status to 'ready'."""
+        """Full flow: loads schema, profiles tables, builds context, persists to DB, sets status to 'ready'."""
         result = self._run(connection_id=1)
         conn = result["connection"]
 
         assert conn.profiling_status == "ready"
         assert conn.profiling_error is None
-        assert conn.data_context_path is not None
         result["load_schema_file"].assert_called_once_with(1)
         result["build_connection_context"].assert_called_once()
-        result["save_context_file"].assert_called_once()
+        result["save_connection_context"].assert_called_once()
         result["connector"].close.assert_called_once()
 
     # ----- Progress tracking -----
@@ -233,10 +231,10 @@ class TestProfileConnection:
         # Final status should be ready (per-table errors don't fail the whole task)
         assert result["connection"].profiling_status == "ready"
 
-    # ----- Context file saving -----
+    # ----- Context persistence -----
 
-    def test_saves_context_file_on_success(self):
-        """Verify save_context_file is called with the built context."""
+    def test_persists_context_to_data_context_column(self):
+        """save_connection_context is called with (db, connection_id, built_context)."""
         context_data = {"tables": {"orders": {"columns": {}}}}
         build_mock = MagicMock(return_value=context_data)
 
@@ -245,18 +243,11 @@ class TestProfileConnection:
             build_connection_context=build_mock,
         )
 
-        result["save_context_file"].assert_called_once_with(1, context_data)
-
-    def test_sets_data_context_path_on_connection(self):
-        """connection.data_context_path is set to the save result."""
-        context_path = "/data/contexts/conn_1.json"
-
-        result = self._run(
-            connection_id=1,
-            context_path=context_path,
-        )
-
-        assert result["connection"].data_context_path == context_path
+        save_mock = result["save_connection_context"]
+        save_mock.assert_called_once()
+        args, _ = save_mock.call_args
+        assert args[1] == 1
+        assert args[2] == context_data
 
     # ----- General exception & retry -----
 
@@ -274,7 +265,7 @@ class TestProfileConnection:
             patch("backend.connectors.factory.get_connector_registration", return_value=MagicMock(sql_dialect_hint=None, skip_profiling=False)),
             patch("backend.services.table_profiler.profile_table"),
             patch("backend.services.connection_context.build_connection_context"),
-            patch("backend.services.connection_context.save_context_file"),
+            patch("backend.services.connection_context.save_connection_context"),
             pytest.raises(Exception, match="celery-retry-sentinel"),
         ):
             _profile_connection_fn(self_mock, connection_id=1)

@@ -55,13 +55,49 @@ async def _verify_and_retry(
     fix_request = (
         f"FIX EXISTING DASHBOARD (id={dashboard_id}) — validation failed:\n"
         + "\n".join(f"- {v}" for v in violations)
-        + "\nUse update_dashboard to repair. Do NOT create a new dashboard."
+        + "\nUse update_dashboard to repair. Do NOT create a new dashboard. "
+        "Trim ONLY the surplus widgets to satisfy the cap and remove duplicates — "
+        "KEEP every widget that does not violate. NEVER clear the dashboard or "
+        "save an empty widget list; an empty result is treated as a repair failure."
     )
     retry_result = await invoke_dashboard_agent(
         fix_request, context, db_session_factory, target_connection_id=target_connection_id,
     )
     if not (retry_result or {}).get("dashboard_id"):
         retry_result["dashboard_id"] = dashboard_id
+
+    # Guard: if the repair agent cleared the dashboard (or shrunk it absurdly
+    # close to zero), treat that as a failed repair and keep the original
+    # widgets rather than letting the user end up with an empty dashboard.
+    post_widgets = _load_dashboard_widgets(db_session_factory, dashboard_id, context.user_id)
+    if not post_widgets or len(post_widgets) < max(1, len(widgets) // 4):
+        logger.warning(
+            "Dashboard %s repair attempt collapsed widget count %d → %d; reverting and surfacing violations",
+            dashboard_id, len(widgets), len(post_widgets),
+        )
+        try:
+            from backend.models.dashboard import Dashboard
+            db = db_session_factory()
+            try:
+                d = db.query(Dashboard).filter(
+                    Dashboard.id == dashboard_id,
+                    Dashboard.user_id == context.user_id,
+                ).first()
+                if d is not None:
+                    d.widgets = widgets
+                    db.commit()
+            finally:
+                db.close()
+        except Exception as restore_err:
+            logger.exception("Failed to restore widgets after collapsed repair: %s", restore_err)
+        result["violations"] = violations
+        result["warning"] = (
+            "Dashboard saved with structural issues — see violations. "
+            "The repair attempt would have emptied the dashboard, so the "
+            "original widgets were kept. Ask me to trim specific widgets and I will retry."
+        )
+        return result
+
     return await _verify_and_retry(
         retry_result, context, db_session_factory, target_connection_id, retries_left - 1,
     )

@@ -15,6 +15,7 @@ Phase 1 — Context:
    - Pick tables relevant to the user's request
    - Pick dimensions (categorical/date columns) that users would want to filter by
    - The tool returns a baseJoin template and dimension definitions — this is your SQL reference
+   - If `build_dashboard_context` returns `success: false` (e.g. "Connection context not built yet"), STOP. Tell the user in one short sentence which `connection_id` isn't ready and that they should re-profile it. Do NOT call `create_dashboard` afterwards — an empty-widget dashboard is a bug, not a fallback.
 
 Phase 2 — Design (informed by context):
 4. Call `get_widget_spec(widget_type)` for each widget type you plan to use
@@ -250,11 +251,15 @@ def build_dashboard_agent_prompt(
         )
 
     # Include connection context summary if available (pre-built from profiling)
-    from backend.services.connection_context import load_context_file
+    from backend.database.session import SessionLocal
+    from backend.services.connection_context import load_connection_context
 
-    for conn_id in available_connections:
-        try:
-            ctx = load_context_file(conn_id)
+    db = SessionLocal()
+    try:
+        for conn_id in available_connections:
+            ctx = load_connection_context(db, conn_id)
+            if not ctx:
+                continue
             tables = ctx.get("tables", {})
             if not tables:
                 continue
@@ -271,8 +276,8 @@ def build_dashboard_agent_prompt(
                 lines.append(f"Relationships: {', '.join(r['from'] + ' → ' + r['to'] for r in rels[:10])}")
             lines.append("Use `build_dashboard_context` to assemble a dashboard context from these tables.")
             prompt += "\n".join(lines)
-        except FileNotFoundError:
-            pass
+    finally:
+        db.close()
 
     # Dashboard widgets always run against the DataPlane = BigQuery in
     # enterprise lockdown. Lock the generator to BigQuery unconditionally.

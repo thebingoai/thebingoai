@@ -491,6 +491,16 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
         if not isinstance(widgets, list):
             return json.dumps({"success": False, "message": "widgets_json must be a JSON array"})
 
+        if len(widgets) == 0:
+            return json.dumps({
+                "success": False,
+                "message": (
+                    "Refusing to create a dashboard with zero widgets. "
+                    "If build_dashboard_context returned an error, surface that to the user "
+                    "instead of calling create_dashboard."
+                ),
+            })
+
         # Validate widget structure
         error = _validate_widgets(widgets)
         if error:

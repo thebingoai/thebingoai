@@ -146,7 +146,7 @@ class TestReprofileConnection:
 @pytest.mark.asyncio
 class TestGetConnectionContext:
 
-    @patch("backend.services.connection_context.load_context_file")
+    @patch("backend.services.connection_context.load_connection_context")
     async def test_returns_context_json_when_ready(self, mock_load):
         context_data = {"tables": ["orders"], "summary": "test context"}
         mock_load.return_value = context_data
@@ -169,7 +169,7 @@ class TestGetConnectionContext:
         assert exc_info.value.status_code == 409
         assert "not ready" in exc_info.value.detail
 
-    @patch("backend.services.connection_context.load_context_file", side_effect=FileNotFoundError("missing"))
+    @patch("backend.services.connection_context.load_connection_context", return_value=None)
     async def test_context_file_missing_returns_404(self, mock_load):
         conn = _mock_connection(profiling_status="ready")
         db = _mock_db(conn)
@@ -178,7 +178,7 @@ class TestGetConnectionContext:
         with pytest.raises(HTTPException) as exc_info:
             await get_connection_context(connection_id=1, current_user=user, db=db)
         assert exc_info.value.status_code == 404
-        assert "Context file not found" in exc_info.value.detail
+        assert "Context not found" in exc_info.value.detail
 
     async def test_connection_not_found_404(self):
         db = _mock_db(None)

@@ -78,7 +78,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(
@@ -154,7 +154,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(
@@ -175,7 +175,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(
@@ -196,7 +196,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(
@@ -250,7 +250,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=conn_context_no_rels,
         ):
             result_json = tool_fn.invoke(
@@ -298,7 +298,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=conn_context,
         ):
             result_json = tool_fn.invoke(
@@ -333,7 +333,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(
@@ -352,7 +352,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(
@@ -372,7 +372,7 @@ class TestBuildDashboardContext:
         tool_fn = _build_dashboard_context_tool(context, factory)
 
         with patch(
-            "backend.services.connection_context.load_context_file",
+            "backend.services.connection_context.load_connection_context",
             return_value=SAMPLE_CONN_CONTEXT,
         ):
             result_json = tool_fn.invoke(

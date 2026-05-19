@@ -27,7 +27,7 @@ def profile_connection(self, connection_id: int):
     from backend.connectors.factory import get_connector_for_connection, get_connector_registration
     from backend.services.schema_discovery import load_schema_file
     from backend.services.table_profiler import profile_table
-    from backend.services.connection_context import build_connection_context, save_context_file
+    from backend.services.connection_context import build_connection_context, save_connection_context
 
     db = SessionLocal()
     try:
@@ -61,7 +61,7 @@ def profile_connection(self, connection_id: int):
             db.commit()
             logger.info("profile_connection %d: skipped (connector opted out)", connection_id)
             return
-        is_dataset = reg is not None and reg.sql_dialect_hint is not None and "SQLite" in reg.sql_dialect_hint
+        is_dataset = reg is not None and reg.type_id == "dataset"
         if connection.db_type == "bigquery":
             db_type_str = "bigquery"
         elif connection.db_type == "mysql":
@@ -111,14 +111,13 @@ def profile_connection(self, connection_id: int):
         # Build context from schema + profiles
         context = build_connection_context(connection_id, schema_json, table_profiles)
 
-        # Save to disk
-        context_path = save_context_file(connection_id, context)
+        # Persist to database_connections.data_context (JSONB)
+        save_connection_context(db, connection_id, context)
 
         # Mark ready
         connection.profiling_status = ProfilingStatus.READY.value
         connection.profiling_progress = f"{total}/{total} tables"
         connection.profiling_completed_at = datetime.now(timezone.utc)
-        connection.data_context_path = context_path
         db.commit()
 
         logger.info("profile_connection %d: completed — %d tables profiled", connection_id, total)
@@ -289,7 +288,8 @@ def profile_pipeline_output(self, pipeline_id: str, run_id: str):
 
         # For pipeline-only connectors (skip_profiling=True), the connection's
         # profiling_status stays 'pending' after OAuth connect so the UI shows yellow.
-        # Update it to 'ready' now that the pipeline has run successfully.
+        # Update it to 'ready' now that the pipeline has run successfully, and
+        # persist a minimal data_context so the dashboard agent has something to read.
         try:
             from backend.models.database_connection import DatabaseConnection, ProfilingStatus
             conn = db.query(DatabaseConnection).filter(
@@ -297,6 +297,27 @@ def profile_pipeline_output(self, pipeline_id: str, run_id: str):
             ).first()
             if conn and conn.profiling_status == ProfilingStatus.PENDING.value:
                 conn.profiling_status = ProfilingStatus.READY.value
+
+                # Build minimal context from the saved schema. `build_connection_context`
+                # accepts an empty table_profiles dict and still emits tables + relationships
+                # — enough for the dashboard agent's build_dashboard_context to validate
+                # table and dimension names. Per-cell stats remain absent for pipeline flows.
+                try:
+                    from backend.services.schema_discovery import load_schema_file
+                    from backend.services.connection_context import (
+                        build_connection_context,
+                        save_connection_context,
+                    )
+                    schema_json = load_schema_file(conn.id)
+                    context = build_connection_context(conn.id, schema_json, {})
+                    save_connection_context(db, conn.id, context)
+                    conn.profiling_completed_at = datetime.now(timezone.utc)
+                except Exception as ctx_err:
+                    logger.warning(
+                        "profile_pipeline_output: failed to build minimal context for connection %d: %s",
+                        conn.id, ctx_err,
+                    )
+
                 db.commit()
                 logger.info("profile_pipeline_output: updated connection %d profiling_status to ready", conn.id)
         except Exception as e:

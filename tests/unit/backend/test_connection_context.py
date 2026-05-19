@@ -1,16 +1,15 @@
 """Tests for backend.services.connection_context — role inference, relationship inference, context building."""
-import json
-import os
+from unittest.mock import MagicMock
+
 import pytest
 
 from backend.services.connection_context import (
     infer_column_role,
     infer_relationships_from_naming,
     build_connection_context,
-    save_context_file,
-    load_context_file,
-    delete_context_file,
-    CONTEXTS_DIR,
+    save_connection_context,
+    load_connection_context,
+    delete_connection_context,
 )
 
 
@@ -223,37 +222,52 @@ class TestBuildConnectionContext:
 
 
 # ---------------------------------------------------------------------------
-# TestContextFileIO
+# TestConnectionContextDb
 # ---------------------------------------------------------------------------
 
-class TestContextFileIO:
-    """Tests for save_context_file, load_context_file, delete_context_file."""
+class TestConnectionContextDb:
+    """Tests for save_connection_context / load_connection_context / delete_connection_context."""
 
-    def test_save_and_load_roundtrip(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("backend.services.connection_context.CONTEXTS_DIR", str(tmp_path))
+    def test_save_issues_update_to_data_context_column(self):
+        db = MagicMock()
         ctx = {"connectionId": 1, "tables": {"t1": {}}}
 
-        save_context_file(1, ctx)
-        loaded = load_context_file(1)
+        save_connection_context(db, 1, ctx)
 
-        assert loaded == ctx
+        update_call = db.query.return_value.filter.return_value.update
+        update_call.assert_called_once_with({"data_context": ctx}, synchronize_session=False)
 
-    def test_load_nonexistent_raises_file_not_found(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("backend.services.connection_context.CONTEXTS_DIR", str(tmp_path))
+    def test_load_returns_payload_when_row_has_data_context(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = ({"tables": {"t1": {}}},)
 
-        with pytest.raises(FileNotFoundError):
-            load_context_file(999)
+        result = load_connection_context(db, 1)
 
-    def test_delete_removes_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("backend.services.connection_context.CONTEXTS_DIR", str(tmp_path))
-        save_context_file(1, {"test": True})
+        assert result == {"tables": {"t1": {}}}
 
-        result = delete_context_file(1)
-        assert result is True
-        assert not os.path.exists(os.path.join(str(tmp_path), "1_context.json"))
+    def test_load_returns_none_when_row_missing(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = None
 
-    def test_delete_nonexistent_returns_false(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("backend.services.connection_context.CONTEXTS_DIR", str(tmp_path))
+        assert load_connection_context(db, 999) is None
 
-        result = delete_context_file(999)
-        assert result is False
+    def test_load_returns_none_when_data_context_is_null(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = (None,)
+
+        assert load_connection_context(db, 1) is None
+
+    def test_delete_nulls_column_and_reports_rowcount(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.update.return_value = 1
+
+        assert delete_connection_context(db, 1) is True
+        db.query.return_value.filter.return_value.update.assert_called_once_with(
+            {"data_context": None}, synchronize_session=False
+        )
+
+    def test_delete_returns_false_when_no_row_updated(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.update.return_value = 0
+
+        assert delete_connection_context(db, 999) is False

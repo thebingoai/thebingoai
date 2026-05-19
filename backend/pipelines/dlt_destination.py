@@ -16,11 +16,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def make_dataplane_destination(plane, scope: "OwnerScope", table: str):
+def make_dataplane_destination(
+    plane,
+    scope: "OwnerScope",
+    table: str,
+    *,
+    unique_key: tuple[str, ...] | None = None,
+):
     """Return a dlt-compatible destination callable that writes to *plane*.
 
     dlt custom destinations receive (items, table) calls.  We accumulate items
     into a PyArrow table and flush to the DataPlane on each batch.
+
+    `unique_key` (when set) is forwarded to `plane.write_parquet` so the plane
+    can register a bronze external table + silver dedup view per pipeline.
     """
     try:
         import dlt
@@ -38,10 +47,13 @@ def make_dataplane_destination(plane, scope: "OwnerScope", table: str):
             write_disposition = table.get("write_disposition", "replace")
             mode = "overwrite" if write_disposition == "replace" else "append"
             arrow_tbl = pa.Table.from_pylist(items)
-            plane.write_parquet(scope, table_name_from_dlt, arrow_tbl, mode=mode)
+            plane.write_parquet(
+                scope, table_name_from_dlt, arrow_tbl,
+                mode=mode, unique_key=unique_key,
+            )
             logger.debug(
-                "dlt_destination: wrote %d rows to DataPlane table %s (mode=%s)",
-                len(items), table_name_from_dlt, mode,
+                "dlt_destination: wrote %d rows to DataPlane table %s (mode=%s, unique_key=%s)",
+                len(items), table_name_from_dlt, mode, unique_key,
             )
 
         return _dataplane_dest
