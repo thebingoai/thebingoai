@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full">
+  <div ref="containerRef" class="w-full">
     <!-- Loading skeleton -->
     <UiSkeleton v-if="loading" class="h-28 w-full rounded-lg" />
 
@@ -30,7 +30,7 @@
             v-for="day in dayLabels"
             :key="`day-${day.row}`"
             :x="0"
-            :y="TOP_OFFSET + day.row * (CELL_SIZE + CELL_GAP) + CELL_SIZE - 1"
+            :y="TOP_OFFSET + day.row * (cellSize + CELL_GAP) + cellSize - 1"
             font-size="9"
             fill="#57606a"
           >{{ day.text }}</text>
@@ -41,10 +41,10 @@
           <rect
             v-for="cell in cells"
             :key="cell.date"
-            :x="LEFT_OFFSET + cell.col * (CELL_SIZE + CELL_GAP)"
-            :y="TOP_OFFSET + cell.row * (CELL_SIZE + CELL_GAP)"
-            :width="CELL_SIZE"
-            :height="CELL_SIZE"
+            :x="LEFT_OFFSET + cell.col * (cellSize + CELL_GAP)"
+            :y="TOP_OFFSET + cell.row * (cellSize + CELL_GAP)"
+            :width="cellSize"
+            :height="cellSize"
             rx="2"
             ry="2"
             :fill="colorForCount(cell.count)"
@@ -102,17 +102,27 @@ const props = withDefaults(defineProps<{
 })
 
 // Layout constants
-const CELL_SIZE = 11
-const CELL_GAP = 2
+const CELL_GAP = 3
 const LEFT_OFFSET = 24   // space for day labels
 const TOP_OFFSET = 16    // space for month labels
 const LEGEND_SIZE = 10
+const MIN_CELL_SIZE = 11
+
+const containerRef = ref<HTMLElement | null>(null)
+const { width: containerWidth } = useElementSize(containerRef)
+
+const cols = computed(() => props.weeks + 1)
+const cellSize = computed(() => {
+  const avail = containerWidth.value - LEFT_OFFSET
+  if (avail <= 0) return MIN_CELL_SIZE
+  return Math.max(Math.floor(avail / cols.value) - CELL_GAP, MIN_CELL_SIZE)
+})
 
 const COLORS = ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39']
 
 // Computed dimensions
-const svgWidth = computed(() => LEFT_OFFSET + (props.weeks + 1) * (CELL_SIZE + CELL_GAP))
-const svgHeight = computed(() => TOP_OFFSET + 7 * (CELL_SIZE + CELL_GAP) + LEGEND_SIZE + 6)
+const svgWidth = computed(() => LEFT_OFFSET + cols.value * (cellSize.value + CELL_GAP))
+const svgHeight = computed(() => TOP_OFFSET + 7 * (cellSize.value + CELL_GAP) + LEGEND_SIZE + 6)
 const legendWidth = computed(() => 28 + COLORS.length * (LEGEND_SIZE + 2) + 30)
 
 function colorForCount(count: number): string {
@@ -178,7 +188,7 @@ const monthLabels = computed<MonthLabel[]>(() => {
     const d = new Date(cell.date + 'T00:00:00')
     const m = d.getMonth()
     if (m !== lastMonth && cell.col - lastCol >= 3) {
-      labels.push({ text: MONTHS[m], x: cell.col * (CELL_SIZE + CELL_GAP) })
+      labels.push({ text: MONTHS[m], x: cell.col * (cellSize.value + CELL_GAP) })
       lastMonth = m
       lastCol = cell.col
     }
