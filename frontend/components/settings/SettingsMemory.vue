@@ -1,15 +1,17 @@
 <template>
-  <div class="p-6 space-y-8">
+  <div class="flex flex-col h-full overflow-hidden">
+
     <!-- Page header -->
-    <div>
-      <div class="pr-12">
-        <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Memory</p>
-        <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white">Memory</h2>
-      </div>
-      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Bingo automatically learns from your conversations. Each chat adds to what it remembers — and you stay in control of what sticks.</p>
-      <div class="mt-4 border-b border-gray-200 dark:border-neutral-700"></div>
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Memory</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-white mb-1">Memory</h1>
     </div>
 
+    <!-- Scrolling body -->
+    <div class="flex-1 overflow-y-auto px-7 pt-6 pb-6">
+      <p class="text-sm text-gray-500 dark:text-neutral-400 max-w-2xl mb-3">Bingo automatically learns from your conversations. Each chat adds to what it remembers — and you stay in control of what sticks.</p>
+
+      <div class="space-y-8">
     <!-- Section 1: Auto conversation memory -->
     <UiCard class="p-5">
       <div class="flex items-start justify-between gap-4">
@@ -23,7 +25,7 @@
           :disabled="savingSettings"
           @click="toggleMemoryEnabled"
           class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
-          :class="memoryEnabled ? 'bg-blue-600' : 'bg-gray-200'"
+          :class="memoryEnabled ? 'bg-violet-600' : 'bg-gray-200'"
         >
           <span
             class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -61,14 +63,17 @@
           <h3 class="text-base font-medium text-gray-900 dark:text-white">Custom memories</h3>
           <p class="text-sm text-gray-500 dark:text-neutral-400 mt-0.5">Persistent traits Bingo should always know about you.</p>
         </div>
-        <UiButton
-          size="sm"
-          variant="outline"
-          @click="openAddDialog"
-          :disabled="entries.length >= 50"
-        >
-          + Add memory
-        </UiButton>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-400 dark:text-neutral-500">{{ entries.length }} / 50</span>
+          <UiButton
+            size="sm"
+            variant="outline"
+            @click="openAddDialog"
+            :disabled="entries.length >= 50"
+          >
+            + Add memory
+          </UiButton>
+        </div>
       </div>
 
       <!-- Loading -->
@@ -99,11 +104,11 @@
             :title="entry.is_active ? 'Deactivate' : 'Activate'"
             @click="toggleEntry(entry)"
             class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-            :class="entry.is_active ? 'bg-blue-600' : 'bg-gray-200'"
+            :class="entry.is_active ? 'bg-violet-600' : 'bg-gray-200'"
           >
             <span
               class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-              :class="entry.is_active ? 'translate-x-4' : 'translate-x-0.5'"
+              :class="entry.is_active ? 'translate-x-5' : 'translate-x-0.5'"
             />
           </button>
 
@@ -208,6 +213,8 @@
         <UiButton variant="danger" :loading="deletingAll" @click="confirmDeleteAll">Delete All</UiButton>
       </template>
     </UiDialog>
+      </div>
+    </div>
   </div>
 </template>
 

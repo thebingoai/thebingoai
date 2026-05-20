@@ -1,8 +1,14 @@
 <template>
-  <div class="p-6">
-    <div class="mb-6">
-      <h2 class="text-2xl font-medium text-gray-900">Organization</h2>
+  <div class="flex flex-col h-full overflow-hidden">
+
+    <!-- Page header -->
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Workspace</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-neutral-100 mb-1">Organization</h1>
     </div>
+
+    <!-- Scrolling body -->
+    <div class="flex-1 overflow-y-auto px-7 py-6 space-y-6">
 
     <!-- Loading -->
     <div v-if="loading" class="space-y-4">
@@ -86,6 +92,7 @@
         <UiButton :loading="creating" @click="handleCreateTeam">Create Team</UiButton>
       </template>
     </UiDialog>
+    </div>
   </div>
 </template>
 

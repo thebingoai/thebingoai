@@ -1,8 +1,14 @@
 <template>
-  <div class="p-6">
-    <div class="mb-6">
-      <h2 class="text-2xl font-medium text-gray-900">Policies</h2>
+  <div class="flex flex-col h-full overflow-hidden">
+
+    <!-- Page header -->
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Access</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-neutral-100 mb-1">Policies</h1>
     </div>
+
+    <!-- Scrolling body -->
+    <div class="flex-1 overflow-y-auto px-7 py-6 space-y-6">
 
     <!-- Loading teams -->
     <div v-if="loadingTeams" class="space-y-4">
@@ -74,7 +80,7 @@
                     type="button"
                     @click="toggleTool(tool.tool_key)"
                     class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
-                    :class="enabledTools.has(tool.tool_key) ? 'bg-blue-600' : 'bg-gray-200'"
+                    :class="enabledTools.has(tool.tool_key) ? 'bg-violet-600' : 'bg-gray-200'"
                   >
                     <span
                       class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -117,7 +123,7 @@
                 type="button"
                 @click="toggleConnection(conn.id)"
                 class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
-                :class="enabledConnections.has(conn.id) ? 'bg-blue-600' : 'bg-gray-200'"
+                :class="enabledConnections.has(conn.id) ? 'bg-violet-600' : 'bg-gray-200'"
               >
                 <span
                   class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -129,6 +135,7 @@
         </UiCard>
       </template>
     </template>
+    </div>
   </div>
 </template>
 

@@ -1,13 +1,15 @@
 <template>
-  <div class="p-6">
-    <div class="mb-6">
-      <div class="pr-12">
-        <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Skills</p>
-        <h2 class="settings-h1 text-3xl text-gray-900 dark:text-white select-none">Skills</h2>
-      </div>
-      <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1.5 max-w-2xl">Skills are reusable tasks Bingo can perform. Create them by asking Bingo in chat, or accept suggestions where it spots a repeating pattern.</p>
-      <div class="mt-4 border-b border-gray-200 dark:border-neutral-700"></div>
+  <div class="flex flex-col h-full overflow-hidden">
+
+    <!-- Page header -->
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Skills</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-white select-none mb-1">Skills</h1>
     </div>
+
+    <!-- Scrolling body -->
+    <div class="flex-1 overflow-y-auto px-7 py-6">
+      <p class="text-sm text-gray-500 dark:text-neutral-400 max-w-2xl mb-6">Skills are reusable tasks Bingo can perform. Create them by asking Bingo in chat, or accept suggestions where it spots a repeating pattern.</p>
 
     <!-- Suggestions Banner -->
     <div v-if="suggestions.length > 0" class="mb-6 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-4">
@@ -123,7 +125,7 @@
               :title="skill.is_active ? 'Deactivate skill' : 'Activate skill'"
               @click="handleToggle(skill)"
               class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
-              :class="skill.is_active ? 'bg-blue-600' : 'bg-gray-200'"
+              :class="skill.is_active ? 'bg-violet-600' : 'bg-gray-200'"
             >
               <span
                 class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
@@ -290,6 +292,7 @@
         </UiButton>
       </template>
     </UiDialog>
+    </div>
   </div>
 </template>
 
