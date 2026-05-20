@@ -43,7 +43,7 @@ async def get_current_user_info(
             else:
                 role = "user"
         except Exception:
-            pass  # plugin not fully initialized — return None role
+            db.rollback()  # aborted transaction blocks subsequent queries on same session
 
     response = UserResponse.model_validate(current_user)
     response.role = role
