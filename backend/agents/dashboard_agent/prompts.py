@@ -31,7 +31,7 @@ Phase 2 — Design (informed by context):
    - Include the `sources` field on each widget (list of table names from the context)
 
 Phase 3 — Create:
-7. Call `create_dashboard` with data_context_json (the JSON from build_dashboard_context) and widgets
+7. Call `create_dashboard` with `data_context` (the object from build_dashboard_context) and `widgets` (array of widget objects)
    - Validation will reject widgets whose SQL can't reach all dimensions
    - Fix any rejections and retry
 

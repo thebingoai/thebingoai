@@ -358,6 +358,26 @@ def _apply_highlights(original: str, highlighted: Optional[str]) -> str:
     return "".join(out) if applied else original
 
 
+_BUILD_DUMP_DIRECTIVE_MARKER = "Do not include SQL or JSON in your reply"
+_BUILD_DUMP_FAILURE_MESSAGE = (
+    "I couldn't finish building that for you — a tool I needed to design the "
+    "artifact failed. Try again, or rephrase your request and I'll take another "
+    "pass."
+)
+
+_FENCED_DUMP_RE = _re.compile(r"```(?:sql|json)\b", _re.IGNORECASE)
+
+
+def _is_build_dump_reply(text: Optional[str]) -> bool:
+    """True when an assistant reply contains a fenced ``sql`` / ``json`` block.
+
+    Detection runs on the actual reply text, not on the judge's free-form
+    directive — the judge's wording drifts between turns and a substring
+    match silently misses the second leak.
+    """
+    return bool(text) and _FENCED_DUMP_RE.search(text) is not None
+
+
 async def _run_judge_retry(
     user_question: str,
     initial_answer: str,
@@ -398,6 +418,14 @@ async def _run_judge_retry(
             retry_verdict = await judge_response(user_question, retry_answer)
             if not retry_verdict.resolved:
                 logger.warning("Layer-4 retry still unresolved: %s", retry_verdict.reason)
+                if _is_build_dump_reply(retry_answer) or _is_build_dump_reply(initial_answer):
+                    logger.warning(
+                        "Suppressing build/create dump after retry exhausted. "
+                        "judge_reason_initial=%r judge_reason_retry=%r",
+                        initial_verdict.reason,
+                        retry_verdict.reason,
+                    )
+                    retry_answer = _BUILD_DUMP_FAILURE_MESSAGE
             return (
                 retry_answer,
                 retry_verdict.resolved,

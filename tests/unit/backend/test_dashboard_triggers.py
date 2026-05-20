@@ -110,7 +110,7 @@ class TestCreateDashboardDispatch:
             result = await create_fn.ainvoke({
                 "title": "Test",
                 "description": "Test dashboard",
-                "widgets_json": json.dumps(widgets),
+                "widgets": widgets,
             })
 
         parsed = json.loads(result)
@@ -352,7 +352,7 @@ class TestInlineExecutionAlongsideAsync:
             result = await create_fn.ainvoke({
                 "title": "Test",
                 "description": "Test",
-                "widgets_json": json.dumps(widgets),
+                "widgets": widgets,
             })
 
         parsed = json.loads(result)

@@ -102,9 +102,9 @@ class TestDashboardAgentPluginTools:
 # Phase 4: Dataset connection guards
 # ===========================================================================
 
-def _make_widgets_json(connection_id=1):
-    """Create a minimal valid widgets_json string for create_dashboard."""
-    widgets = [{
+def _make_widgets(connection_id=1):
+    """Create a minimal valid widgets list for create_dashboard."""
+    return [{
         "id": "kpi_1",
         "position": {"x": 0, "y": 0, "w": 3, "h": 2},
         "widget": {"type": "kpi", "config": {"label": "Total"}},
@@ -114,7 +114,6 @@ def _make_widgets_json(connection_id=1):
             "mapping": {"type": "kpi", "valueColumn": "value"},
         },
     }]
-    return json.dumps(widgets)
 
 
 class TestDashboardCreateGuard:
@@ -137,7 +136,7 @@ class TestDashboardCreateGuard:
             result_str = await create_tool.ainvoke({
                 "title": "Test",
                 "description": "Test",
-                "widgets_json": _make_widgets_json(),
+                "widgets": _make_widgets(),
             })
             result = json.loads(result_str)
             assert result["success"] is False
@@ -173,7 +172,7 @@ class TestDashboardCreateGuard:
             result_str = await create_tool.ainvoke({
                 "title": "Test",
                 "description": "Test",
-                "widgets_json": _make_widgets_json(),
+                "widgets": _make_widgets(),
             })
             result = json.loads(result_str)
             # Should not be rejected by the guard
@@ -205,7 +204,7 @@ class TestDashboardCreateGuard:
             result_str = await create_tool.ainvoke({
                 "title": "Test",
                 "description": "Test",
-                "widgets_json": _make_widgets_json(),
+                "widgets": _make_widgets(),
             })
             result = json.loads(result_str)
             # Guard should not trigger for postgres

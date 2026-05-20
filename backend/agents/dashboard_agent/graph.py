@@ -102,7 +102,7 @@ async def invoke_dashboard_agent(
         )
 
         return {
-            "success": True,
+            "success": dashboard_id is not None,
             "message": extract_final_answer(messages) or "Dashboard creation completed.",
             "dashboard_id": dashboard_id,
             "dashboard_name": dashboard_name,

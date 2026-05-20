@@ -162,6 +162,102 @@ def _validate_widget_sql_schema(widgets: list) -> list[str]:
     return warnings
 
 
+def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
+    """Pre-persistence verification gate for create_dashboard / update_dashboard.
+
+    Returns a list of structured per-widget violations. Empty list = clean.
+    Consolidates structural checks (collecting ALL errors, not first-only) with
+    the dashboard-level KPI / count rules so the LLM gets every error at once
+    and can patch specific widgets in a single retry.
+    """
+    from backend.agents.orchestrator.dashboard_widget_verifier import verify_dashboard_widgets
+
+    violations: list[dict] = []
+
+    for i, widget in enumerate(widgets):
+        if not isinstance(widget, dict):
+            violations.append({
+                "widget_id": f"index_{i}",
+                "code": "not_object",
+                "message": f"Widget at index {i} must be an object.",
+                "fix_hint": "Wrap the widget as a JSON object with id/position/widget keys.",
+            })
+            continue
+
+        wid = widget.get("id") or f"index_{i}"
+
+        for field in ("id", "position", "widget"):
+            if field not in widget:
+                violations.append({
+                    "widget_id": wid,
+                    "code": f"missing_{field}",
+                    "message": f"Widget missing required field: {field}.",
+                    "fix_hint": f"Add a top-level '{field}' field.",
+                })
+
+        pos = widget.get("position")
+        if isinstance(pos, dict):
+            for axis in ("x", "y", "w", "h"):
+                if axis not in pos:
+                    violations.append({
+                        "widget_id": wid,
+                        "code": f"position_missing_{axis}",
+                        "message": f"position missing required field: {axis}.",
+                        "fix_hint": f"Add position.{axis} (integer on the 12-column grid).",
+                    })
+        elif pos is not None:
+            violations.append({
+                "widget_id": wid,
+                "code": "position_not_object",
+                "message": "position must be an object.",
+                "fix_hint": 'Use {"x": <col>, "y": <row>, "w": <span>, "h": <rows>}.',
+            })
+
+        wcfg = widget.get("widget")
+        if isinstance(wcfg, dict):
+            if "type" not in wcfg:
+                violations.append({
+                    "widget_id": wid,
+                    "code": "widget_missing_type",
+                    "message": "widget missing required field: type.",
+                    "fix_hint": f"Set widget.type to one of {sorted(_VALID_WIDGET_TYPES)}.",
+                })
+            elif wcfg["type"] not in _VALID_WIDGET_TYPES:
+                violations.append({
+                    "widget_id": wid,
+                    "code": "invalid_widget_type",
+                    "message": f"widget.type='{wcfg['type']}' is not valid.",
+                    "fix_hint": f"Use one of {sorted(_VALID_WIDGET_TYPES)}.",
+                })
+        elif wcfg is not None:
+            violations.append({
+                "widget_id": wid,
+                "code": "widget_not_object",
+                "message": "widget must be an object.",
+                "fix_hint": 'Use {"type": <type>, "config": {...}}.',
+            })
+
+        if "dataSource" in widget and isinstance(wcfg, dict) and "type" in wcfg:
+            ds_error = _validate_data_source(widget["dataSource"], wcfg["type"], i)
+            if ds_error:
+                violations.append({
+                    "widget_id": wid,
+                    "code": "invalid_dataSource",
+                    "message": ds_error,
+                    "fix_hint": "Fix the dataSource shape per the create_dashboard schema.",
+                })
+
+    for rule_msg in verify_dashboard_widgets(widgets):
+        violations.append({
+            "widget_id": None,
+            "code": "dashboard_rule",
+            "message": rule_msg,
+            "fix_hint": "Apply the KPI deduplication / widget cap rules from the prompt.",
+        })
+
+    return violations
+
+
 async def _attempt_sql_fix(
     sql: str,
     error_message: str,
@@ -370,7 +466,7 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
     from backend.models.dashboard import Dashboard
 
     @tool
-    async def create_dashboard(title: str, description: str, widgets_json: str, data_context_json: str = "") -> str:
+    async def create_dashboard(title: str, description: str, widgets: list[dict], data_context: dict | None = None) -> str:
         """
         Create a new dashboard with widgets and persist it to the database.
 
@@ -384,7 +480,7 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
         Args:
             title: Dashboard title (e.g. "Property Overview Dashboard")
             description: Brief description of what the dashboard shows
-            widgets_json: JSON array of widget objects. CRITICAL: each widget.widget must have
+            widgets: List of widget objects. CRITICAL: each widget.widget must have
                 a nested "config" sub-object. Layout uses a 12-column grid.
 
                 EXACT structure required:
@@ -468,28 +564,14 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
                 - kpi:    { type, valueColumn, trendValueColumn? (optional), sparklineXColumn? (optional), sparklineYColumn? (optional) }
                 - table:  { type, columnConfig: [{column, label, sortable?, format?}] }
 
-            data_context_json: Optional JSON string from build_dashboard_context. If provided,
+            data_context: Optional dict from build_dashboard_context. If provided,
                 stored on the dashboard for dimension-aware filtering.
 
         Returns:
             JSON with success, dashboard_id, and message
         """
-        # Parse data context (optional)
-        data_context = None
-        if data_context_json and data_context_json.strip():
-            try:
-                data_context = json.loads(data_context_json)
-            except json.JSONDecodeError:
-                logger.warning("create_dashboard: data_context_json is not valid JSON, ignoring")
-
-        # Parse widgets JSON
-        try:
-            widgets = json.loads(widgets_json)
-        except json.JSONDecodeError as e:
-            return json.dumps({"success": False, "message": f"widgets_json is not valid JSON: {e}"})
-
         if not isinstance(widgets, list):
-            return json.dumps({"success": False, "message": "widgets_json must be a JSON array"})
+            return json.dumps({"success": False, "message": "widgets must be a JSON array"})
 
         if len(widgets) == 0:
             return json.dumps({
@@ -501,10 +583,20 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
                 ),
             })
 
-        # Validate widget structure
-        error = _validate_widgets(widgets)
-        if error:
-            return json.dumps({"success": False, "message": f"Widget validation failed: {error}"})
+        # Pre-persistence verification gate (Bug 5).
+        # Consolidates structural validation, KPI dedupe / count caps. Returns
+        # ALL violations as structured per-widget objects so the LLM can fix
+        # specific widgets and retry — no first-error-only opacity.
+        violations = _verify_widgets(widgets, data_context)
+        if violations:
+            return json.dumps({
+                "success": False,
+                "violations": violations,
+                "message": (
+                    "Validation failed — see violations. Fix the listed "
+                    "widgets and call create_dashboard again."
+                ),
+            })
 
         # Verify connection access for any SQL-backed widgets
         for w in widgets:
@@ -592,7 +684,7 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
             db.close()
 
     @tool
-    async def update_dashboard(dashboard_id: int, widgets: list, title: str = "", description: str = "", data_context_json: str = "") -> str:
+    async def update_dashboard(dashboard_id: int, widgets: list, title: str = "", description: str = "", data_context: dict | None = None) -> str:
         """
         Update an existing dashboard's widgets, title, and/or description.
 
@@ -613,18 +705,18 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
         """
         logger.info(f"update_dashboard called: dashboard_id={dashboard_id}, widget_count={len(widgets)}")
 
-        # Parse data context (optional)
-        data_context = None
-        if data_context_json and data_context_json.strip():
-            try:
-                data_context = json.loads(data_context_json)
-            except json.JSONDecodeError:
-                logger.warning("update_dashboard: data_context_json is not valid JSON, ignoring")
-
-        # Validate widget structure
-        error = _validate_widgets(widgets)
-        if error:
-            return json.dumps({"success": False, "message": f"Widget validation failed: {error}"})
+        # Pre-persistence verification gate (Bug 5). Same gate as create_dashboard
+        # so updates can't bypass the KPI / structural rules.
+        violations = _verify_widgets(widgets, data_context)
+        if violations:
+            return json.dumps({
+                "success": False,
+                "violations": violations,
+                "message": (
+                    "Validation failed — see violations. Fix the listed "
+                    "widgets and call update_dashboard again."
+                ),
+            })
 
         # Verify connection access for any SQL-backed widgets
         for w in widgets:

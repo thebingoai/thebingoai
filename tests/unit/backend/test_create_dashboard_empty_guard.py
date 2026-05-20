@@ -19,14 +19,14 @@ def _build_tool():
 
 @pytest.mark.asyncio
 async def test_create_dashboard_rejects_empty_widgets_list():
-    """widgets_json='[]' returns success=false and does not open a DB session."""
+    """widgets=[] returns success=false and does not open a DB session."""
     create_dashboard, db_session_factory = _build_tool()
 
     result_json = await create_dashboard.ainvoke({
         "title": "Empty",
         "description": "should be rejected",
-        "widgets_json": "[]",
-        "data_context_json": "",
+        "widgets": [],
+        "data_context": None,
     })
 
     result = json.loads(result_json)
