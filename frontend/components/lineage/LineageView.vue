@@ -77,7 +77,7 @@ function onClose() {
         <div v-else-if="!graph || graph.nodes.length === 0" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
           No lineage data for this scope yet. Run a Pipeline or dbt model to populate the graph.
         </div>
-        <LineageLineageGraph
+        <LineageGraph
           v-else
           :graph="filteredGraph"
           @select="onSelect"
@@ -85,7 +85,7 @@ function onClose() {
       </div>
 
       <!-- Detail panel -->
-      <LineageNodeDetailPanel :node="selected" @close="onClose" />
+      <NodeDetailPanel :node="selected" @close="onClose" />
     </div>
   </div>
 </template>
