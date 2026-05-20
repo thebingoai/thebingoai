@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { markRaw, reactive } from 'vue'
 import type { Component } from 'vue'
 
 export interface ChannelEntry {
@@ -18,7 +18,7 @@ export interface ChannelRegistry {
 const registry: ChannelRegistry = {
   register(entry) {
     if (channels.find(c => c.id === entry.id)) return
-    channels.push(entry)
+    channels.push({ ...entry, component: markRaw(entry.component) })
   },
   list() {
     return [...channels].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))

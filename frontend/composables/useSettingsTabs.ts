@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { markRaw, reactive } from 'vue'
 import type { Component } from 'vue'
 
 export interface SettingsTab {
@@ -20,7 +20,7 @@ export interface SettingsTabRegistry {
 const registry: SettingsTabRegistry = {
   register(tab) {
     if (tabs.find(t => t.id === tab.id)) return
-    tabs.push(tab)
+    tabs.push({ ...tab, component: markRaw(tab.component) })
   },
   list() {
     return [...tabs].sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
