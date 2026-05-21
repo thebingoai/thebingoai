@@ -33,7 +33,8 @@ export const useChatWsHandlers = () => {
       if (existing) {
         chatStore.updateConversationTitle(threadId, data.content)
       } else if (chatStore.pendingNewConversationId) {
-        // chat.title fired before chat.done — replace pending placeholder directly
+        // chat.title fired before chat.done — update URL + replace pending placeholder
+        chatStore.setCurrentThread(threadId)
         chatStore.replacePendingConversation({
           id: threadId,
           title: data.content,
@@ -43,6 +44,7 @@ export const useChatWsHandlers = () => {
           message_count: 2,
         })
       } else {
+        chatStore.setCurrentThread(threadId)
         chatStore.addConversation({
           id: threadId,
           title: data.content,

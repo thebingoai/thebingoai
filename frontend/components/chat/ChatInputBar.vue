@@ -94,21 +94,12 @@
             </button>
 
             <button
+              v-if="isPermanentThread"
               type="button"
-              :disabled="chatStore.isStreaming"
-              title="Pick a skill  ⌘K"
-              class="composer-chip disabled:opacity-40"
-            >
-              <Sparkles class="h-3 w-3" /> Skill
-              <span class="font-mono text-[9.5px] text-[var(--ink-3)] ml-0.5">⌘K</span>
-            </button>
-
-            <button
-              type="button"
-              :disabled="chatStore.isStreaming"
-              @click="emit('reset')"
+              :disabled="chatStore.isStreaming || isFreshTopic"
+              @click="onClickNewTopic"
               title="New Topic"
-              class="composer-chip disabled:opacity-40"
+              class="composer-chip disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Scissors class="h-3 w-3" /> New topic
             </button>
@@ -152,11 +143,35 @@
         </div>
       </div>
     </div>
+    <UiDialog v-model:open="showResetConfirm" title="Start a new topic?" size="sm">
+      <p class="text-[13px] text-[var(--ink-2)] leading-relaxed">
+        Bingo will clear the current context. Past messages stay visible but won't influence the next reply.
+      </p>
+      <template #footer>
+        <div class="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-md text-[12px] text-[var(--ink-1)] hover:bg-[var(--paper-2)] transition-colors"
+            @click="showResetConfirm = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-md text-[12px] font-medium bg-[var(--ember)] text-white hover:opacity-90 transition-opacity"
+            @click="confirmReset"
+          >
+            Confirm
+          </button>
+        </div>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Scissors, ArrowUp, Paperclip, AtSign, Sparkles } from 'lucide-vue-next'
+import { Scissors, ArrowUp, Paperclip, AtSign } from 'lucide-vue-next'
+import UiDialog from '~/components/ui/UiDialog.vue'
 import { useMentions, type MentionItem } from '~/composables/useMentions'
 import pillDataset from '~/assets/icons/pill/dataset.svg?raw'
 import pillNotion from '~/assets/icons/pill/notion.svg?raw'
@@ -169,6 +184,29 @@ const emit = defineEmits<{ send: []; reset: [] }>()
 
 const { isExhausted, remaining } = useCreditBalance()
 const { config: featureConfig } = useFeatureConfig()
+
+const isPermanentThread = computed(() =>
+  chatStore.currentConversation?.type === 'permanent'
+)
+
+const isFreshTopic = computed(() => {
+  const lastMsg = chatStore.messages[chatStore.messages.length - 1]
+  const noPriorContent =
+    chatStore.messages.length === 0 || lastMsg?.source === 'context_reset'
+  return noPriorContent && !chatStore.inputText.trim()
+})
+
+const showResetConfirm = ref(false)
+
+const onClickNewTopic = () => {
+  if (isFreshTopic.value) return
+  showResetConfirm.value = true
+}
+
+const confirmReset = () => {
+  showResetConfirm.value = false
+  emit('reset')
+}
 
 const editorRef  = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)

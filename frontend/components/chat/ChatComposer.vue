@@ -52,16 +52,6 @@
         <button type="button" class="composer-chip" @click="fileInputRef?.click()" :disabled="chatStore.isStreaming">
           <Paperclip class="h-3 w-3" /> Attach
         </button>
-        <!-- Skills chip — opens skill picker via ⌘K equivalent -->
-        <button
-          type="button"
-          class="composer-chip"
-          :disabled="chatStore.isStreaming"
-          @click="openSkillPicker"
-        >
-          <Sparkles class="h-3 w-3" /> Skills
-          <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--ink-3);margin-left:2px;">⌘K</span>
-        </button>
         <div style="flex:1" />
         <!-- Ask Bingo button -->
         <button
@@ -84,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { AtSign, Paperclip, Sparkles, Send } from 'lucide-vue-next'
+import { AtSign, Paperclip, Send } from 'lucide-vue-next'
 import { useChatFileUpload } from '~/composables/useChatFileUpload'
 import { useMentions, type MentionItem } from '~/composables/useMentions'
 import pillDataset from '~/assets/icons/pill/dataset.svg?raw'
@@ -319,13 +309,6 @@ const triggerAt = () => {
   handleInput()
 }
 
-const openSkillPicker = () => {
-  const el = textareaRef.value; if (!el) return
-  el.focus()
-  document.execCommand('insertText', false, '@')
-  nextTick(() => handleInput())
-}
-
 const handleFileChange = async (e: Event) => {
   const input = e.target as HTMLInputElement
   if (input.files) await addFiles(Array.from(input.files))
@@ -345,7 +328,6 @@ const handleFileChange = async (e: Event) => {
   border: 1px solid var(--line-2);
   border-radius: 20px;
   background: var(--paper-0);
-  box-shadow: var(--shadow-3);
   padding: 18px 20px 12px;
 }
 

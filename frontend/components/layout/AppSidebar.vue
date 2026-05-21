@@ -362,13 +362,22 @@ watch(
   () => chatStore.taskConversations[0]?.id,
   (newId, oldId) => {
     if (newId && newId !== oldId) {
-      // Skip re-animation when the pending placeholder is silently replaced by the real thread ID
-      if (oldId?.startsWith('pending-')) return
       newlyAddedId.value = newId
       setTimeout(() => { newlyAddedId.value = null }, 500)
     }
   },
   { flush: 'post' }
+)
+
+// When pendingNewConversationId is consumed (real ID promoted), trigger slide-in
+watch(
+  () => chatStore.pendingNewConversationId,
+  (newVal, oldVal) => {
+    if (oldVal && !newVal && chatStore.taskConversations[0]) {
+      newlyAddedId.value = chatStore.taskConversations[0].id
+      setTimeout(() => { newlyAddedId.value = null }, 500)
+    }
+  }
 )
 const archivedLoaded = ref(false)
 const taskListRef = ref<HTMLElement | null>(null)

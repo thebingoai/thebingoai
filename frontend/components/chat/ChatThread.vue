@@ -18,8 +18,10 @@
             </svg>
           </button>
 
-          <!-- Schedule (icon only) -->
+          <!-- Schedule (icon only) — Bingo only, links to Settings → Jobs -->
           <button
+            v-if="chatStore.currentConversation?.type === 'permanent'"
+            @click="router.push('/settings?tab=jobs')"
             class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--ink-2)] hover:bg-[var(--paper-2)] transition-colors"
             title="Schedule"
           >
@@ -28,21 +30,30 @@
 
           <!-- Details / toggle dataset pane (icon only) -->
           <button
+            v-if="showInfoButton"
             @click="chatStore.toggleInfoPanel()"
-            class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+            class="relative w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
             :class="chatStore.infoPanelOpen
               ? 'bg-[var(--ember-wash)] text-[var(--ember)]'
               : 'text-[var(--ink-2)] hover:bg-[var(--paper-2)]'"
             title="Datasets"
           >
             <Info class="w-4 h-4" />
+            <span
+              v-if="datasetCount > 0"
+              class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full
+                     bg-[var(--ember)] text-white text-[10px] font-semibold
+                     flex items-center justify-center leading-none pointer-events-none"
+            >
+              {{ datasetCount }}
+            </span>
           </button>
         </div>
       </div>
     </div>
 
     <!-- Scrollable message content -->
-    <div ref="threadRef" class="flex-1 overflow-y-auto px-14 pt-7 pb-40">
+    <div ref="threadRef" class="flex-1 overflow-y-auto px-14 pt-7 pb-6">
       <div class="max-w-[760px] mx-auto">
         <div v-if="chatStore.messages.length === 0" class="flex h-full items-center justify-center py-24">
           <div v-if="chatStore.currentConversation?.type === 'permanent'" class="text-center max-w-sm">
@@ -100,6 +111,8 @@ import { Activity, Info } from 'lucide-vue-next'
 import { formatDateLabel, isSameDay, parseUtcDate } from '~/utils/format'
 import type { Message } from '~/stores/chat'
 import { useAgentProfile } from '~/composables/useAgentProfile'
+import { useDatasetStatus } from '~/composables/useDatasetStatus'
+import { useBriefingsList } from '~/composables/useBriefingsList'
 
 const emit = defineEmits<{
   'send-action': [text: string, source?: Message['source']]
@@ -111,6 +124,17 @@ const router = useRouter()
 const { config: featureConfig } = useFeatureConfig()
 const api = useApi()
 const agentProfile = useAgentProfile()
+const { datasets } = useDatasetStatus()
+const { briefings } = useBriefingsList()
+
+const datasetCount = computed(() => datasets.value.length)
+const isPermanentThread = computed(() =>
+  chatStore.currentThreadId === chatStore.permanentConversation?.id
+)
+const showInfoButton = computed(() =>
+  datasetCount.value > 0 ||
+  (isPermanentThread.value && briefings.value.length > 0)
+)
 
 const isTelegramEnabled = computed(() => featureConfig.value?.telegram_enabled === true)
 const telegramConnected = ref(false)

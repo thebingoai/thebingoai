@@ -112,7 +112,7 @@
 /* ── Contenteditable composer editor ──────────────────────── */
 .composer-editor {
   width: 100%;
-  min-height: 28px;
+  min-height: 52px;
   max-height: 192px; /* ~8 lines */
   overflow-y: auto;
   font-family: var(--font-sans);

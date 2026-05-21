@@ -162,8 +162,9 @@
           @analyze="openAnalyzePanel"
         />
 
-        <!-- Toolbar — always visible -->
+        <!-- Toolbar — edit-mode only -->
         <DashboardToolbar
+          v-if="store.editMode"
           :widget-count="store.currentWidgets.length"
           @add-widget="handleAddWidget"
         />
@@ -393,25 +394,28 @@ const dashboardListItems = computed(() => {
 })
 
 async function handleEmptyStateSend() {
-  if (!chatStore.inputText.trim()) return
+  const text = chatStore.inputText.trim()
+  if (!text) return
   const fileIds = getFileIds()
-  if (!chatStore.currentThreadId) {
-    const tempId = `pending-${Date.now()}`
-    chatStore.pendingNewConversationId = tempId
-    chatStore.addConversation({
-      id: tempId,
-      title: chatStore.inputText.trim().substring(0, 80),
-      type: 'task',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      message_count: 1,
-    })
-  }
-  chat.sendMessage(chatStore.inputText, fileIds)
+
+  // Always start a fresh task — never piggyback on the previously-loaded thread
+  // that may have rehydrated from localStorage on this page mount.
+  chat.newChat()
+
+  const tempId = `pending-${Date.now()}`
+  chatStore.pendingNewConversationId = tempId
+  chatStore.addConversation({
+    id: tempId,
+    title: text.substring(0, 80),
+    type: 'task',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    message_count: 1,
+  })
+
+  chat.sendMessage(text, fileIds)
   clearFiles()
-  if (chatStore.pendingNewConversationId) {
-    chatStore.currentThreadId = chatStore.pendingNewConversationId
-  }
+  chatStore.setCurrentThread(tempId)
   await navigateTo('/chat')
 }
 
@@ -762,4 +766,5 @@ definePageMeta({
   transform: translateX(100%);
   opacity: 0;
 }
+
 </style>

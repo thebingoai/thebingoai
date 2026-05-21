@@ -1,52 +1,74 @@
 <template>
-  <div class="flex flex-1 overflow-hidden relative" :class="{ 'enter-from-send': enterFromSend }">
+  <div class="flex flex-1 overflow-hidden relative">
 
-    <!-- ── Main content area with view transition ─────────── -->
-    <!-- mode="out-in" matches Nuxt's page-fade-slide (Bingo↔Dashboard) feel:
-         old view fully leaves, then new view enters. -->
-    <Transition name="view-switch" mode="out-in">
-      <!-- New Task / Home screen (no active thread) -->
-      <div v-if="showNewTaskScreen" key="new-task" class="flex flex-1 flex-col min-w-0 min-h-0" :class="{ 'new-task-sending': sendingFromNewTask }">
-        <HomeNewTaskScreen :is-sending="sendingFromNewTask" @send="handleSend" />
-      </div>
+    <!-- ── Stacked content area ──────────────────────────────── -->
+    <!-- ChatThread underneath, HomeNewTaskScreen on top when New Task screen active.
+         ChatInputBar rendered ONCE at container level — same element moves from center to bottom. -->
+    <div
+      class="relative flex-1 min-w-0 min-h-0 overflow-hidden"
+      :class="{ 'composer-anchored': isComposerAnchored }"
+      :style="{ '--composer-h': composerHeightPx }"
+    >
 
-      <!-- Briefing reading view inline -->
-      <div v-else-if="activeBriefingId" :key="'briefing-' + activeBriefingId" class="flex flex-1 flex-col min-w-0 min-h-0">
-        <div class="flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] flex-shrink-0">
-          <button
-            class="text-[12px] text-[var(--ink-2)] hover:text-[var(--ink-0)] flex items-center gap-1"
-            @click="closeBriefing"
-          >
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-            Back to chat
-          </button>
-        </div>
-        <div class="flex-1 overflow-y-auto">
-          <ChatBriefingView :briefing-id="activeBriefingId" />
-        </div>
-      </div>
-
-      <!-- Active thread (conversation in progress) -->
-      <div v-else-if="chatStore.currentThreadId || isTransitioning" key="chat" class="flex flex-1 flex-col min-w-0 min-h-0">
-        <!-- Inner page-fade-slide handles task A → task B (mirrors Bingo↔Dashboard).
-             :name="''" when currentThreadId is null suppresses CSS during outer transitions
-             (going to/from New Task), preventing the previous double-animation. -->
-        <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <!-- Chat layer — mounts when thread exists or transitioning -->
+      <div
+        v-if="chatStore.currentThreadId || isTransitioning"
+        class="absolute left-0 right-0 top-0 flex flex-col z-0"
+        :style="{ bottom: composerHeightPx }"
+      >
+        <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
           <Transition :name="chatStore.currentThreadId ? 'page-fade-slide' : ''" mode="out-in">
-            <ChatThread v-if="chatStore.currentThreadId" :key="chatStore.currentThreadId" @send-action="handleAction" />
+            <ChatThread v-if="chatStore.currentThreadId || chatStore.messages.length > 0" :key="chatStore.currentThreadId ?? 'pending'" @send-action="handleAction" />
           </Transition>
         </div>
+      </div>
+
+      <!-- Briefing layer — opaque overlay, closes back to chat -->
+      <Transition name="view-switch" mode="out-in">
+        <div
+          v-if="activeBriefingId"
+          :key="'briefing-' + activeBriefingId"
+          class="absolute inset-0 flex flex-col z-20 bg-[var(--paper-0)]"
+        >
+          <div class="flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] flex-shrink-0">
+            <button
+              class="text-[12px] text-[var(--ink-2)] hover:text-[var(--ink-0)] flex items-center gap-1"
+              @click="closeBriefing"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+              Back to chat
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto">
+            <ChatBriefingView :briefing-id="activeBriefingId" />
+          </div>
+        </div>
+      </Transition>
+
+      <!-- New Task layer — headings + sections only (no composer). -->
+      <!-- Stays mounted during the 500ms slide so headings can fade out. -->
+      <div
+        v-if="(showNewTaskScreen || isTransitioning) && chatStore.messages.length === 0"
+        class="absolute inset-0 flex flex-col z-10 overflow-y-auto new-task-layer"
+      >
+        <HomeNewTaskScreen :is-sending="isTransitioning" @send="handleSend" />
+      </div>
+
+      <!-- PAGE-LEVEL ChatInputBar — same element transitions between center and bottom -->
+      <div
+        ref="composerStageRef"
+        v-if="showNewTaskScreen || isTransitioning || chatStore.currentThreadId || chatStore.messages.length > 0"
+        class="composer-stage absolute left-0 right-0 z-30"
+        :class="composerStageClasses"
+        :style="composerStageStyle"
+      >
         <ChatInputBar @send="handleSend" @reset="handleReset" />
       </div>
 
-      <!-- Loading placeholder: keeps right pane pinned to the right while
-           conversationsLoaded is false and no thread is active yet. Without
-           this, the flex row has no flex-1 sibling and the pane shifts left. -->
-      <div v-else key="loading" class="flex flex-1" />
-    </Transition>
+    </div>
 
     <!-- Desktop right pane (Datasets) — shared across both states -->
-    <template v-if="!isMobile && chatStore.infoPanelOpen">
+    <template v-if="!isMobile && chatStore.infoPanelOpen && hasPaneContent">
       <div class="right-pane-handle" @mousedown="startRightResize" />
       <div
         class="shrink-0 border-l border-[var(--line)] overflow-hidden flex flex-col"
@@ -59,7 +81,7 @@
     <!-- Mobile: full-screen overlay panel -->
     <Transition name="slide-up">
       <div
-        v-if="isMobile && chatStore.infoPanelOpen"
+        v-if="isMobile && chatStore.infoPanelOpen && hasPaneContent"
         class="fixed inset-0 z-50 bg-[var(--paper-0)] flex flex-col"
       >
         <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
@@ -78,7 +100,10 @@
 
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
+import { useElementSize } from '@vueuse/core'
 import { useChatFileUpload } from '~/composables/useChatFileUpload'
+import { useDatasetStatus } from '~/composables/useDatasetStatus'
+import { useBriefingsList } from '~/composables/useBriefingsList'
 
 const chatStore = useChatStore()
 const chat = useChat()
@@ -86,6 +111,18 @@ const { getFileIds, clearFiles } = useChatFileUpload()
 const { isMobile } = useIsMobile()
 const router = useRouter()
 const route = useRoute()
+
+const { datasets } = useDatasetStatus()
+const { briefings } = useBriefingsList()
+
+const isPermanentThread = computed(() =>
+  chatStore.currentThreadId === chatStore.permanentConversation?.id
+)
+
+const hasPaneContent = computed(() =>
+  datasets.value.length > 0 ||
+  (isPermanentThread.value && briefings.value.length > 0)
+)
 
 // ── Right pane resize ─────────────────────────────────────
 const RIGHT_MIN = 280
@@ -123,57 +160,125 @@ onMounted(() => {
   if (isMobile.value) {
     chatStore.infoPanelOpen = false
   } else {
-    chatStore.infoPanelOpen = true
+    chatStore.infoPanelOpen = hasPaneContent.value
   }
   if (chatStore.inputText.trim()) {
     handleSend()
+  } else if (!chatStore.currentThreadId) {
+    // Position ChatInputBar at center on the New Task screen
+    nextTick(() => computeComposerCenter())
+  }
+  window.addEventListener('resize', onWindowResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onWindowResize)
+})
+
+watch(hasPaneContent, (now, prev) => {
+  if (!prev && now && !isMobile.value) {
+    chatStore.infoPanelOpen = true
   }
 })
 
 // ── View transition ───────────────────────────────────────
 const isTransitioning = ref(false)
-const sendingFromNewTask = ref(false)
-const enterFromSend = ref(false)
 const showNewTaskScreen = computed(() =>
   chatStore.conversationsLoaded &&
   !chatStore.currentThreadId &&
   !isTransitioning.value
 )
 watch(() => chatStore.currentThreadId, (id) => {
-  if (!id) { isTransitioning.value = false; sendingFromNewTask.value = false }
-  else if (route.path === '/chat' && route.query.id !== id) {
-    router.replace({ path: '/chat', query: { id } })
+  if (id) {
+    isTransitioning.value = false
+    composerSlideOffset.value = 0
+    if (route.path === '/chat' && route.query.id !== id) {
+      router.replace({ path: '/chat', query: { id } })
+    }
+  } else {
+    // New Task screen — reposition composer to center
+    nextTick(() => computeComposerCenter())
   }
 })
 
+// ── Composer stage (single ChatInputBar, center↔bottom slide) ──
+const composerSlideOffset = ref(0)
+const composerStageAnimating = ref(false)
+const composerStageRef = ref<HTMLElement | null>(null)
+const { height: composerMeasured } = useElementSize(composerStageRef, undefined, { box: 'border-box' })
+const composerHeightPx = computed(() => {
+  const h = composerMeasured.value
+  return (h && h > 0 ? h : 220) + 'px'
+})
+const isComposerAnchored = computed(() =>
+  !!(chatStore.currentThreadId
+  || isTransitioning.value
+  || chatStore.isStreaming
+  || chatStore.messages.length > 0)
+)
+
+const composerStageClasses = computed(() => ({
+  'composer-stage--animating': composerStageAnimating.value,
+}))
+
+const composerStageStyle = computed(() => {
+  if (composerSlideOffset.value === 0 && !composerStageAnimating.value) return undefined
+  return { transform: `translateY(${composerSlideOffset.value}px)` }
+})
+
+// Compute the offset to position ChatInputBar below the hero subtitle.
+// Falls back to vh * 0.38 when the subtitle isn't mounted yet.
+const computeComposerCenter = () => {
+  const vh = window.innerHeight
+  let targetTop = vh * 0.38
+  nextTick(() => {
+    const stage = document.querySelector('.composer-stage') as HTMLElement | null
+    if (!stage) return
+    const heroSub = document.querySelector('.home-hero-sub') as HTMLElement | null
+    if (heroSub) {
+      const subBottom = heroSub.getBoundingClientRect().bottom
+      targetTop = Math.max(subBottom + 32, vh * 0.38)
+    }
+    const stageHeight = stage.offsetHeight
+    composerSlideOffset.value = targetTop - (vh - stageHeight)
+  })
+}
+
+const onWindowResize = () => {
+  if (!chatStore.currentThreadId && !isTransitioning.value) {
+    computeComposerCenter()
+  }
+}
+
 // ── Message handlers ──────────────────────────────────────
 const handleSend = () => {
-  if (chatStore.inputText.trim()) {
-    const fileIds = getFileIds()
-    if (!chatStore.currentThreadId) {
-      // Add sidebar entry immediately so slide-in animation fires right away
-      const tempId = `pending-${Date.now()}`
-      chatStore.pendingNewConversationId = tempId
-      chatStore.addConversation({
-        id: tempId,
-        title: chatStore.inputText.trim().substring(0, 80),
-        type: 'task',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        message_count: 1,
-      })
-      // Trigger in-place element animation; swap view after 0.5s (matches composer slide)
-      sendingFromNewTask.value = true
-      setTimeout(() => {
-        enterFromSend.value = true   // suppress horizontal slide-in on chat view
-        isTransitioning.value = true
-        setTimeout(() => { sendingFromNewTask.value = false }, 30)
-        setTimeout(() => { enterFromSend.value = false }, 280)  // after 0.25s fade-in
-      }, 500)
-    }
-    chat.sendMessage(chatStore.inputText, fileIds)
-    clearFiles()
+  if (!chatStore.inputText.trim()) return
+  const fileIds = getFileIds()
+
+  if (!chatStore.currentThreadId) {
+    // Add sidebar entry immediately
+    const tempId = `pending-${Date.now()}`
+    chatStore.pendingNewConversationId = tempId
+    chatStore.addConversation({
+      id: tempId,
+      title: chatStore.inputText.trim().substring(0, 80),
+      type: 'task',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      message_count: 1,
+    })
+    isTransitioning.value = true
+    // Enable CSS transition on the composer stage
+    composerStageAnimating.value = true
+    // On next frame, remove the center offset → transitions to bottom (0)
+    nextTick(() => {
+      composerSlideOffset.value = 0
+    })
+    setTimeout(() => { composerStageAnimating.value = false }, 520)
   }
+
+  chat.sendMessage(chatStore.inputText, fileIds)
+  clearFiles()
 }
 
 const handleAction = (text: string, source?: string) => {
@@ -203,16 +308,16 @@ definePageMeta({
 .view-switch-enter-from,
 .view-switch-leave-to { opacity: 0; }
 
-/* When sending from New Task: the New Task wrapper has already animated
-   its contents internally — suppress the leave so there's no horizontal snap */
-.new-task-sending.view-switch-leave-active { transition: none; }
+/* New Task layer — no fade-out when unmounted (ChatThread underneath is already visible) */
+.new-task-layer.view-switch-leave-active { transition: none; }
 
-/* Chat view appears INSTANTLY at full opacity at the moment the composer
-   reaches the bottom — visual continuity: composer at bottom → swap →
-   ChatInputBar at bottom (looks like the same element). The opacity:1 override
-   is what stops the fade-in that previously read as "the text box faded away". */
-.enter-from-send .view-switch-enter-active { transition: none; }
-.enter-from-send .view-switch-enter-from   { opacity: 1; transform: none; }
+/* ── Composer stage — ChatInputBar slides from center to bottom ──────────── */
+.composer-stage {
+  bottom: 0;
+}
+.composer-stage--animating {
+  transition: transform 0.5s ease-in;
+}
 
 
 .right-pane-handle {
