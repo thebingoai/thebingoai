@@ -292,6 +292,18 @@ def _do_migrate(connection, journal: MigrationJournal, *, dry_run: bool, db) -> 
             for (table_name,) in table_rows:
                 legacy_table_names.append(table_name)
 
+                # Capture PRIMARY KEY columns so the DataPlane can register a
+                # dedup view (bronze+silver pattern) or MERGE-into-native table
+                # under the `native_merge_data_plane` flag.
+                pk_cols: tuple[str, ...] = ()
+                try:
+                    pk_cursor = conn_ro.execute(f'PRAGMA table_info("{table_name}")')
+                    pk_cols = tuple(
+                        row[1] for row in pk_cursor.fetchall() if row[5]
+                    )
+                except Exception:
+                    pk_cols = ()
+
                 cur.execute(f"SELECT * FROM \"{table_name}\"")
                 col_names = [desc[0] for desc in cur.description]
                 data_rows = cur.fetchall()
@@ -307,7 +319,10 @@ def _do_migrate(connection, journal: MigrationJournal, *, dry_run: bool, db) -> 
                     arrow_arrays = [pa.array(col_data[c]) for c in col_names]
                     arrow_table = pa.table(dict(zip(col_names, arrow_arrays)))
 
-                    plane.write_parquet(scope, table_name, arrow_table, mode="overwrite")
+                    write_kwargs: dict = {"mode": "overwrite"}
+                    if pk_cols:
+                        write_kwargs["unique_key"] = pk_cols
+                    plane.write_parquet(scope, table_name, arrow_table, **write_kwargs)
                     new_dataplane_table = table_name  # last table; spec uses singular
 
                 tables_migrated += 1
@@ -355,6 +370,22 @@ def _do_migrate(connection, journal: MigrationJournal, *, dry_run: bool, db) -> 
         journal.new_dataplane_table = new_dataplane_table
         journal.status = "migrated"
         journal.finished_at = datetime.utcnow()
+
+        # Auto-materialise Pipeline + stg_ DbtModel rows for every migrated
+        # table so the dbt project's sources.yml + staging layer references the
+        # new DataPlane data. Failures are non-fatal — the post-migration sync
+        # can be re-run idempotently. cron=None so the dispatcher never picks
+        # the rows up (SQLite is a one-shot upload).
+        try:
+            from backend.services.template_materializer import materialize_post_migration
+            materialize_post_migration(connection, db)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "materialize_post_migration failed for connection %s; "
+                "Pipeline + stg_ rows will be missing until re-run",
+                connection.id, exc_info=True,
+            )
 
         db.commit()
 

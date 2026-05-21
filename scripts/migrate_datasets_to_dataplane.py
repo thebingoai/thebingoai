@@ -68,6 +68,15 @@ def main():
         action="store_true",
         help="Skip confirmation prompt (for automation)",
     )
+    parser.add_argument(
+        "--mark-flag",
+        action="store_true",
+        help=(
+            "After a successful batch, set the `substrate_migration_complete` "
+            "feature flag to true for every Org whose connections were processed. "
+            "Phase 5 (legacy code retirement) hard-requires this flag."
+        ),
+    )
     args = parser.parse_args()
 
     from dotenv import load_dotenv
@@ -223,6 +232,22 @@ def _handle_migration(args) -> int:
     logger.info(f"  Widgets queued for review:    {widget_review_pending}")
     logger.info(f"  Failed:                       {failed}")
     logger.info("=" * 60)
+
+    # Flip the substrate_migration_complete feature flag for every affected Org
+    # so Phase 5 (legacy code retirement) can detect global readiness.
+    if args.mark_flag and not args.dry_run and migrated > 0 and failed == 0:
+        org_ids = sorted({c.org_id for c in connections if c.org_id})
+        if org_ids:
+            try:
+                from backend.config.feature_flags import set_flag
+                for org_id in org_ids:
+                    set_flag(org_id, "substrate_migration_complete", True)
+                logger.info(
+                    "Flagged %d Org(s) with substrate_migration_complete=true",
+                    len(org_ids),
+                )
+            except Exception:
+                logger.exception("Failed to set substrate_migration_complete flag")
 
     # Post-migration check query
     logger.info(

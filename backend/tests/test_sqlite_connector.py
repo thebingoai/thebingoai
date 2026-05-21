@@ -213,3 +213,49 @@ class TestFromConnection:
         db_session.refresh(conn)
         assert conn.health_status == "unhealthy"
         assert conn.health_checked_at is not None
+
+
+class TestFromConnectionDataPlaneReroute:
+    """Phase 4: when MigrationJournal.status='migrated' exists for the connection,
+    `from_connection` must return a DataPlaneConnector and bypass the DO Spaces blob."""
+
+    def test_reroutes_to_dataplane_when_migrated(self):
+        connection = MagicMock(id=123)
+
+        migrated_journal = MagicMock(status="migrated")
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = migrated_journal
+
+        dataplane_connector = MagicMock(spec=["test_connection", "get_tables"])
+
+        with patch("backend.connectors.data_plane.DataPlaneConnector.from_connection",
+                   return_value=dataplane_connector) as mock_dp, \
+             patch("backend.services.object_storage.download_bytes") as mock_download:
+            result = SqliteFileConnector.from_connection(connection, db_session=db)
+
+        assert result is dataplane_connector
+        mock_dp.assert_called_once_with(connection)
+        mock_download.assert_not_called()
+
+    def test_falls_back_to_blob_when_not_migrated(self, sample_db, tmp_path):
+        """No journal row (or status != 'migrated') keeps the legacy DO Spaces path."""
+        connection = MagicMock(id=456)
+        connection.dataset_table_name = "sqlite/blob.sqlite"
+
+        db = MagicMock()
+        # No migrated journal → filter().first() returns None.
+        db.query.return_value.filter.return_value.first.return_value = None
+
+        with open(sample_db, "rb") as f:
+            blob = f.read()
+
+        with patch("backend.config.settings") as mock_settings, \
+             patch("backend.services.object_storage.download_bytes",
+                   return_value=blob) as mock_download, \
+             patch("backend.connectors.data_plane.DataPlaneConnector.from_connection") as mock_dp:
+            mock_settings.dataset_cache_dir = str(tmp_path)
+            result = SqliteFileConnector.from_connection(connection, db_session=db)
+
+        assert isinstance(result, SqliteFileConnector)
+        mock_dp.assert_not_called()
+        mock_download.assert_called_once()

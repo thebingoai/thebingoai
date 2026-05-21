@@ -30,17 +30,51 @@ class SqliteFileConnector:
         self.db_path = db_path
 
     @classmethod
-    def from_connection(cls, connection, db_session=None) -> "SqliteFileConnector":
+    def from_connection(cls, connection, db_session=None):
         """
-        Download (or use cached) SQLite file from DO Spaces and return a connector.
+        Return the right connector for this .sqlite connection.
 
-        The DO Spaces key is stored in connection.dataset_table_name.
-        The file is cached locally for up to 1 hour.
+        Post-migration (MigrationJournal status='migrated') the .sqlite data
+        lives in the DataPlane as Parquet; reroute to `DataPlaneConnector` and
+        bypass the DO Spaces blob entirely.
 
-        If ``db_session`` is provided and the download fails (file missing in
-        DO Spaces), the connection's ``health_status`` is set to ``"unhealthy"``
-        before the error is raised.
+        Pre-migration: download (or use cached) SQLite file from DO Spaces and
+        return a `SqliteFileConnector`. The blob path is in
+        `connection.dataset_table_name`; cache TTL is 1h.
+
+        If ``db_session`` is provided and the legacy download fails (file
+        missing in DO Spaces), the connection's ``health_status`` is set to
+        ``"unhealthy"`` before the error is raised.
         """
+        journal = None
+        owns_session = db_session is None
+        use_session = db_session
+        try:
+            if use_session is None:
+                from backend.database.session import SessionLocal
+                use_session = SessionLocal()
+            from backend.migration.substrate import MigrationJournal
+            journal = (
+                use_session.query(MigrationJournal)
+                .filter(
+                    MigrationJournal.connection_id == connection.id,
+                    MigrationJournal.status == "migrated",
+                )
+                .first()
+            )
+        except Exception:
+            journal = None
+        finally:
+            if owns_session and use_session is not None:
+                try:
+                    use_session.close()
+                except Exception:
+                    pass
+
+        if journal is not None:
+            from backend.connectors.data_plane import DataPlaneConnector
+            return DataPlaneConnector.from_connection(connection)
+
         from backend.config import settings
         from backend.connectors._sqlite_cache import download_and_cache_sqlite_blob
 

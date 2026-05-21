@@ -477,3 +477,146 @@ class TestWidgetsReferencing:
 
         results = widgets_referencing(42, db=db)
         assert results == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: unique_key from PRAGMA + post-migration template materialise
+# ---------------------------------------------------------------------------
+
+
+def _make_sqlite_blob_with_pk(table: str, pk_col: str, rows: list[dict]) -> bytes:
+    """Build a SQLite blob with an explicit PRIMARY KEY column.
+
+    The default `make_sqlite_db` helper writes all columns as TEXT without a
+    PRIMARY KEY constraint, which doesn't exercise the PRAGMA-driven unique_key
+    branch added in Phase 4.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+        path = tmp.name
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            cols = list(rows[0].keys()) if rows else [pk_col]
+            col_defs = ", ".join(
+                f'"{c}" INTEGER PRIMARY KEY' if c == pk_col else f'"{c}" TEXT'
+                for c in cols
+            )
+            conn.execute(f'CREATE TABLE "{table}" ({col_defs})')
+            placeholders = ", ".join("?" for _ in cols)
+            for row in rows:
+                conn.execute(
+                    f'INSERT INTO "{table}" VALUES ({placeholders})',
+                    [row[c] for c in cols],
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        with open(path, "rb") as f:
+            return f.read()
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+class TestPhase4UniqueKey:
+    @patch("backend.services.object_storage.download_bytes")
+    @patch("backend.services.object_storage.delete_object")
+    @patch("backend.services.data_plane_service.get_default_plane")
+    def test_migrate_passes_unique_key_when_pk_present(
+        self, mock_get_plane, _mock_delete, mock_download,
+    ):
+        """SQLite PRAGMA reports a PRIMARY KEY → write_parquet receives unique_key tuple."""
+        blob = _make_sqlite_blob_with_pk(
+            "accounts", "id",
+            [{"id": i, "name": f"a{i}"} for i in range(3)],
+        )
+        mock_download.return_value = blob
+        mock_plane = MagicMock()
+        mock_get_plane.return_value = mock_plane
+
+        connection = _make_mock_connection(dataset_table_name="legacy/accounts.sqlite")
+        db = _make_fresh_db(connection=connection, journal=None)
+
+        # Stub out post-migration materialiser so this test stays scoped.
+        with patch("backend.services.template_materializer.materialize_post_migration",
+                   create=True) as _m:
+            _m.return_value = ([], [])
+            result = migrate_connection(1, dry_run=False, db=db)
+
+        assert result.status == "migrated"
+        mock_plane.write_parquet.assert_called_once()
+        call_kwargs = mock_plane.write_parquet.call_args.kwargs
+        assert call_kwargs.get("mode") == "overwrite"
+        assert call_kwargs.get("unique_key") == ("id",)
+
+    @patch("backend.services.object_storage.download_bytes")
+    @patch("backend.services.object_storage.delete_object")
+    @patch("backend.services.data_plane_service.get_default_plane")
+    def test_migrate_passes_no_unique_key_when_no_pk(
+        self, mock_get_plane, _mock_delete, mock_download,
+    ):
+        """Tables without PK fall back to plain overwrite (no dedup)."""
+        blob = make_sqlite_db({"events": [{"a": "1", "b": "2"}]})
+        mock_download.return_value = blob
+        mock_plane = MagicMock()
+        mock_get_plane.return_value = mock_plane
+
+        connection = _make_mock_connection(dataset_table_name="legacy/events.sqlite")
+        db = _make_fresh_db(connection=connection, journal=None)
+
+        with patch("backend.services.template_materializer.materialize_post_migration",
+                   create=True) as _m:
+            _m.return_value = ([], [])
+            migrate_connection(1, dry_run=False, db=db)
+
+        call_kwargs = mock_plane.write_parquet.call_args.kwargs
+        assert call_kwargs.get("mode") == "overwrite"
+        assert "unique_key" not in call_kwargs
+
+    @patch("backend.services.object_storage.download_bytes")
+    @patch("backend.services.object_storage.delete_object")
+    @patch("backend.services.data_plane_service.get_default_plane")
+    def test_migrate_calls_materialize_post_migration_on_success(
+        self, mock_get_plane, _mock_delete, mock_download,
+    ):
+        """Successful (non-dry) migration triggers Pipeline + stg_ row creation."""
+        blob = _make_sqlite_blob_with_pk(
+            "txn", "id", [{"id": 1, "amount": "10"}],
+        )
+        mock_download.return_value = blob
+        mock_get_plane.return_value = MagicMock()
+
+        connection = _make_mock_connection(dataset_table_name="legacy/txn.sqlite")
+        db = _make_fresh_db(connection=connection, journal=None)
+
+        with patch("backend.services.template_materializer.materialize_post_migration",
+                   create=True) as mock_post:
+            mock_post.return_value = ([], [])
+            migrate_connection(1, dry_run=False, db=db)
+
+        mock_post.assert_called_once_with(connection, db)
+
+    @patch("backend.services.object_storage.download_bytes")
+    @patch("backend.services.object_storage.delete_object")
+    @patch("backend.services.data_plane_service.get_default_plane")
+    def test_post_migration_failure_does_not_fail_migration(
+        self, mock_get_plane, _mock_delete, mock_download,
+    ):
+        """A crash inside materialize_post_migration is logged but never undoes
+        the successful blob → DataPlane write.
+        """
+        blob = make_sqlite_db({"t": [{"a": "1"}]})
+        mock_download.return_value = blob
+        mock_get_plane.return_value = MagicMock()
+
+        connection = _make_mock_connection(dataset_table_name="legacy/t.sqlite")
+        db = _make_fresh_db(connection=connection, journal=None)
+
+        with patch("backend.services.template_materializer.materialize_post_migration",
+                   create=True) as mock_post:
+            mock_post.side_effect = RuntimeError("downstream boom")
+            result = migrate_connection(1, dry_run=False, db=db)
+
+        assert result.status == "migrated"
