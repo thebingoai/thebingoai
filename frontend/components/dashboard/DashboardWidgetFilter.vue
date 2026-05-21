@@ -42,7 +42,6 @@
             v-if="openMultiKey === control.key"
             :ref="el => { teleportedDropdownRef = el as HTMLElement }"
             class="fixed z-[9999] w-48 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:bg-neutral-800 dark:border-neutral-700"
-            :style="dropdownStyle"
           >
             <label
               v-for="opt in getOptions(control)"
