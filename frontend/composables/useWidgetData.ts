@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { DashboardWidget } from '~/types/dashboard'
 import { useApi } from '~/composables/useApi'
@@ -65,14 +65,6 @@ export function useWidgetData(widget: Ref<DashboardWidget>) {
   // not when the getter recomputes due to unrelated widget array mutations.
   watch(() => JSON.stringify(store.activeFilters), (newVal, oldVal) => {
     if (hasDataSource.value && newVal !== oldVal) {
-      refresh()
-    }
-  })
-
-  // If filters were restored from localStorage before this widget mounted,
-  // the watch above won't fire (no change detected). Apply them immediately.
-  onMounted(() => {
-    if (hasDataSource.value && store.activeFilters.length > 0) {
       refresh()
     }
   })
