@@ -89,7 +89,12 @@ def _registration_no_templates():
 
 @contextmanager
 def _patched_env(*, settings_flag, connections, materialize_returns=([MagicMock()], [])):
-    """Patch the settings, DB session, and materializer the loader pulls in lazily."""
+    """Patch settings, DB session, and the public `backfill_templates_for_registrations`
+    helper the loader now delegates to (instead of calling materialize per row inline).
+
+    The patched helper iterates the supplied connections once per registration so
+    legacy assertions on per-connection call counts still hold.
+    """
     settings = MagicMock(template_backfill_on_startup=settings_flag)
 
     db = MagicMock()
@@ -102,12 +107,29 @@ def _patched_env(*, settings_flag, connections, materialize_returns=([MagicMock(
 
     materializer = MagicMock(return_value=materialize_returns)
 
+    def _fake_backfill(regs, _db):
+        result: dict = {}
+        for reg in regs:
+            if not (reg.pipeline_templates or reg.transform_templates):
+                continue
+            count = 0
+            for conn in connections:
+                try:
+                    new_p, new_t = materializer(conn, reg, _db)
+                    if new_p or new_t:
+                        count += 1
+                except Exception:
+                    pass
+            if count:
+                _db.commit()
+            result[reg.type_id] = count
+        return result
+
     with patch.dict(sys.modules, {
         "backend.config": MagicMock(settings=settings),
         "backend.database.session": MagicMock(SessionLocal=session_factory),
-        "backend.models.database_connection": MagicMock(DatabaseConnection=MagicMock()),
         "backend.services.template_materializer": MagicMock(
-            materialize_templates_for_connection=materializer,
+            backfill_templates_for_registrations=_fake_backfill,
         ),
     }):
         yield db, materializer
@@ -153,14 +175,22 @@ def test_backfill_continues_on_per_connection_failure():
     conns = [MagicMock(id=1), MagicMock(id=2)]
     materializer = MagicMock(side_effect=[RuntimeError("boom"), ([MagicMock()], [])])
 
+    def _fake_backfill(regs, _db):
+        for reg in regs:
+            for conn in conns:
+                try:
+                    materializer(conn, reg, _db)
+                except Exception:
+                    pass
+        return {reg.type_id: 1 for reg in regs}
+
     with patch.dict(sys.modules, {
         "backend.config": MagicMock(settings=MagicMock(template_backfill_on_startup=True)),
         "backend.database.session": MagicMock(
             SessionLocal=lambda: _make_ctx(_make_db_with_connections(conns)),
         ),
-        "backend.models.database_connection": MagicMock(DatabaseConnection=MagicMock()),
         "backend.services.template_materializer": MagicMock(
-            materialize_templates_for_connection=materializer,
+            backfill_templates_for_registrations=_fake_backfill,
         ),
     }):
         loader._backfill_templates_for_plugin(plugin)

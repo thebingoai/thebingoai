@@ -38,6 +38,17 @@ async def lifespan(app: FastAPI):
     for router, prefix in get_plugin_routers():
         app.include_router(router, prefix=prefix)
 
+    # Backfill dynamic SQL pipeline templates for core connectors (postgres /
+    # mysql / sqlite) which are registered at module import in
+    # `backend.connectors.factory`, not via a BingoPlugin.
+    try:
+        from backend.database.session import SessionLocal
+        from backend.services.template_materializer import backfill_templates_for_core_connectors
+        with SessionLocal() as db:
+            backfill_templates_for_core_connectors(db)
+    except Exception:
+        logger.warning("Core-connector template backfill failed", exc_info=True)
+
     # Backfill profiling for existing connections (runs once after deploy)
     try:
         from backend.tasks.profiling_tasks import backfill_profile_all_connections

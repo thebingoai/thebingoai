@@ -187,12 +187,22 @@ async def create_connection(
     db.refresh(connection)
 
     # Materialize plugin-shipped pipeline + transform templates for this connector type.
-    # Idempotent — safe even if a later retry hits the same connection.
+    # Also covers dynamic SQL registrations (postgres / mysql / sqlite) which
+    # ship no static templates but fan out one Pipeline per source table at
+    # materialise time. Idempotent — safe even if a later retry hits the same
+    # connection.
     reg = get_connector_registration(connection.db_type)
-    if reg and (reg.pipeline_templates or reg.transform_templates):
+    from backend.services.template_materializer import (
+        materialize_templates_for_connection,
+        _is_dynamic_sql_registration,
+    )
+    if reg and (
+        reg.pipeline_templates
+        or reg.transform_templates
+        or _is_dynamic_sql_registration(reg)
+    ):
         try:
-            from backend.services.template_materializer import materialize_templates_for_connection
-            materialize_templates_for_connection(connection, reg, db)
+            new_p, new_t = materialize_templates_for_connection(connection, reg, db)
             db.commit()
             db.refresh(connection)
         except Exception as e:
@@ -201,6 +211,22 @@ async def create_connection(
                 connection.id, connection.db_type, e,
             )
             db.rollback()
+            new_p, new_t = [], []
+
+        # If any pipelines or stg_ dbt models were materialised, refresh the
+        # per-Org dbt project synth so the new sources.yml + stg files are on
+        # disk before the user's first dbt run. Failures are non-fatal — the
+        # next dbt run will re-synth from scratch.
+        if new_p or new_t:
+            try:
+                from backend.transforms.project_synth import synthesize_project
+                from backend.data_plane.scope import OwnerScope
+                synthesize_project(OwnerScope.from_connection(connection), db)
+            except Exception:
+                logger.warning(
+                    "synthesize_project failed for connection %s after materialise; "
+                    "next dbt run will retry", connection.id, exc_info=True,
+                )
 
     # Auto-discover schema for all connector types except BigQuery (too many datasets)
     if request.db_type != "bigquery":

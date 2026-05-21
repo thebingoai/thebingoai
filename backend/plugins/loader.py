@@ -97,48 +97,25 @@ def _backfill_templates_for_plugin(plugin: BingoPlugin) -> None:
 
     Idempotent — relies on the materializer's dedup logic. Safe to run on every
     boot. Gated by settings.template_backfill_on_startup so it can be disabled.
+    Dynamic SQL registrations (postgres / mysql / sqlite) are also included so
+    plugin-shipped SQL sources fan out per table on startup.
     """
     from backend.config import settings
     if not settings.template_backfill_on_startup:
         return
 
-    templated_regs = [
-        reg for reg in plugin.connectors()
-        if reg.pipeline_templates or reg.transform_templates
-    ]
-    if not templated_regs:
-        return
-
     from backend.database.session import SessionLocal
-    from backend.models.database_connection import DatabaseConnection
-    from backend.services.template_materializer import materialize_templates_for_connection
+    from backend.services.template_materializer import (
+        backfill_templates_for_registrations,
+    )
 
     with SessionLocal() as db:
-        for reg in templated_regs:
-            connections = db.query(DatabaseConnection).filter(
-                DatabaseConnection.db_type == reg.type_id,
-            ).all()
-            if not connections:
-                continue
-            backfilled = 0
-            for conn in connections:
-                try:
-                    new_p, new_t = materialize_templates_for_connection(conn, reg, db)
-                    if new_p or new_t:
-                        backfilled += 1
-                except Exception:
-                    logger.exception(
-                        "Template backfill failed for connection %s (%s)",
-                        conn.id, reg.type_id,
-                    )
-                    # Reset the session so the next connection in the loop
-                    # isn't blocked by a poisoned transaction state.
-                    db.rollback()
-            if backfilled:
-                db.commit()
+        backfilled = backfill_templates_for_registrations(plugin.connectors(), db)
+        for type_id, count in backfilled.items():
+            if count:
                 logger.info(
                     "Backfilled templates for %d %s connection(s) (plugin '%s')",
-                    backfilled, reg.type_id, plugin.name,
+                    count, type_id, plugin.name,
                 )
 
 
