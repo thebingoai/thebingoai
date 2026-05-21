@@ -73,3 +73,58 @@ def dlt_source_for(connection, extraction_config: dict | None = None):
 
 def fingerprint(connection) -> str:
     return f"mysql:{connection.host}:{connection.port}/{connection.database}"
+
+
+import re as _re
+
+_FUNC_COL_RE = _re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s*\(\s*[`\"]?([A-Za-z_][A-Za-z0-9_]*)[`\"]?\s*\)\s*$")
+_BARE_COL_RE = _re.compile(r"^\s*[`\"]?([A-Za-z_][A-Za-z0-9_]*)[`\"]?\s*$")
+
+
+def _parse_partition_expression(expr: str | None) -> str | None:
+    """Parse a MySQL PARTITION_EXPRESSION down to a single column name.
+
+    Handles bare `col` and one-level wraps `FUNC(col)` (TO_DAYS, YEAR, MONTH,
+    UNIX_TIMESTAMP, etc.). Hash, list-by-expression, multi-column composites
+    return None.
+    """
+    if not expr:
+        return None
+    m = _BARE_COL_RE.match(expr)
+    if m:
+        return m.group(1)
+    m = _FUNC_COL_RE.match(expr)
+    if m:
+        return m.group(1)
+    return None
+
+
+def detect_partition_key(connector: "MySQLConnector", schema: str, table: str) -> str | None:
+    """Return the partition-key column for a MySQL range/list-partitioned table or None.
+
+    Reads `INFORMATION_SCHEMA.PARTITIONS.PARTITION_EXPRESSION` and parses the
+    expression with `_parse_partition_expression`. Any failure returns None
+    silently — partition detection is best-effort and should not break ingestion
+    scaffolding.
+    """
+    if not schema:
+        schema = connector.database
+    sql = """
+        SELECT PARTITION_EXPRESSION, PARTITION_METHOD
+        FROM INFORMATION_SCHEMA.PARTITIONS
+        WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND PARTITION_METHOD IS NOT NULL
+        LIMIT 1
+    """
+    conn = None
+    try:
+        conn = connector._get_connection()
+        cur = connector._get_cursor(conn, dict_mode=False)
+        cur.execute(sql, (schema, table))
+        row = cur.fetchone()
+        cur.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    expr = row[0] if not isinstance(row, dict) else row.get("partition_expression")
+    return _parse_partition_expression(expr)

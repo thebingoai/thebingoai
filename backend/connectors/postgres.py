@@ -79,3 +79,36 @@ def dlt_source_for(connection, extraction_config: dict | None = None):
 
 def fingerprint(connection) -> str:
     return f"postgres:{connection.host}:{connection.port}/{connection.database}"
+
+
+def detect_partition_key(connector: "PostgresConnector", schema: str, table: str) -> str | None:
+    """Return the first declarative partition-key column for *schema.table* or None.
+
+    Targets PG 10+ declarative partitioning (`pg_partitioned_table`). Inheritance
+    partitioning and partitioned children are ignored — only parent tables match.
+    Any failure (insufficient permissions, query error) returns None silently.
+    """
+    if not schema:
+        schema = "public"
+    sql = """
+        SELECT a.attname
+        FROM pg_partitioned_table pt
+        JOIN pg_class c ON c.oid = pt.partrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attribute a ON a.attrelid = pt.partrelid AND a.attnum = ANY(pt.partattrs::int[])
+        WHERE n.nspname = %s AND c.relname = %s
+        ORDER BY a.attnum
+        LIMIT 1
+    """
+    conn = None
+    try:
+        conn = connector._get_connection()
+        cur = connector._get_cursor(conn, dict_mode=False)
+        cur.execute(sql, (schema, table))
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            return row[0]
+    except Exception:
+        return None
+    return None
