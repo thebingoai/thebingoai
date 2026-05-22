@@ -290,12 +290,17 @@ async function initDateRangeDefaults() {
           store.setFilterValue(control.key, { from: fmt(from), to: fmt(max) })
           continue
         }
-      } catch {
-        // Fall back to today-based range on error
+        console.warn(`[date_range] dateRangeSource returned no max_date for "${control.key}"; leaving filter blank.`)
+      } catch (err) {
+        console.warn(`[date_range] dateRangeSource query failed for "${control.key}"; leaving filter blank.`, err)
       }
+      // dateRangeSource was configured but failed/returned empty —
+      // leave the filter unset so the widget sees the full data range.
+      // Do NOT fall through to today-based range (wrong for historical data).
+      continue
     }
 
-    // Fallback: today-based range
+    // Fallback (no dateRangeSource configured): today-based range
     const yesterday = new Date()
     yesterday.setDate(yesterday.getDate() - 1)
     const sevenDaysAgo = new Date()

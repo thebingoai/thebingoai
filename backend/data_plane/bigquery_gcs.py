@@ -587,18 +587,28 @@ class BigQueryGCSPlane:
             bq_name = self._bq_table_name(scope, t)
             target = f"`{prefix}{bq_name}`"
             # Already-backticked occurrences (LLM emits these now that the
-            # dashboard agent prompt locks SQL to BigQuery dialect).
-            result = re.sub(rf"`{re.escape(t)}`", target, result)
+            # dashboard agent prompt locks SQL to BigQuery dialect). Match
+            # both bare `t` and schema-qualified `<schema>.t` inside backticks
+            # — the dashboard agent's filter SQL parrots the sources hint
+            # (e.g. `dataset.csv_40`) which BigQuery would otherwise parse
+            # as a literal dataset name.
+            result = re.sub(
+                rf"`(?:main\.|public\.|dataset\.)?{re.escape(t)}`",
+                target,
+                result,
+            )
             # Bare or schema-qualified occurrences. The lookbehind/ahead avoids
             # wrapping a table name that already sits inside a backticked FQN
             # like `proj.ds.scope__insights_daily` (which would otherwise produce
             # `` `proj.ds.scope__`...`insights_daily` `` ` → empty identifier).
-            # `main.` and `public.` prefixes are swallowed because the dashboard
-            # agent's sources hint surfaces them from SQLite/Postgres-origin
-            # connection contexts; leaving them in front of the rewritten FQN
-            # would make BigQuery parse `main` / `public` as the project name.
+            # `main.` / `public.` / `dataset.` prefixes are swallowed because
+            # the dashboard agent's sources hint surfaces them from
+            # SQLite/Postgres/CSV-origin connection contexts (the CSV plugin
+            # hardcodes schema="dataset" in bingo_csv_connector/service.py);
+            # leaving them in front of the rewritten FQN would make BigQuery
+            # parse `main` / `public` / `dataset` as the project name.
             result = re.sub(
-                rf"(?<![`\w])(?:main\.|public\.)?{re.escape(t)}(?![`\w])",
+                rf"(?<![`\w])(?:main\.|public\.|dataset\.)?{re.escape(t)}(?![`\w])",
                 target,
                 result,
             )
