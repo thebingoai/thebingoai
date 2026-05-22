@@ -17,15 +17,23 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "organizations",
-        sa.Column(
-            "feature_flags",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
-        ),
-    )
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns"
+            " WHERE table_name='organizations' AND column_name='feature_flags'"
+        )
+    ).fetchone()
+    if result is None:
+        op.add_column(
+            "organizations",
+            sa.Column(
+                "feature_flags",
+                postgresql.JSONB(astext_type=sa.Text()),
+                nullable=False,
+                server_default=sa.text("'{}'::jsonb"),
+            ),
+        )
 
 
 def downgrade():

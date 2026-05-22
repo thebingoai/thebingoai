@@ -4,9 +4,11 @@ This service is the single place that knows how to load a DataPlaneModel row,
 decrypt its credentials, and hand back a concrete DataPlane instance.
 
 Shape A (per-Org auto-provisioned internal-GCP plane): there is no env-driven
-singleton fallback. When `get_default_plane` finds no row in the scope chain,
-it raises `NoPlaneProvisionedError`. Auto-provisioning lives in the bingo-admin
-plugin's org-create listener and writes a per-Org row before any read happens.
+singleton fallback. When `get_default_plane` finds no row in the scope chain
+under lockdown, it invokes a plugin-registered provisioner (lazy "provision-on-miss")
+before raising ``NoPlaneProvisionedError``. The bingo-admin plugin registers a
+provisioner that creates a per-Org GCP plane synchronously. In dev (lockdown off),
+the local-filesystem fallback is unchanged.
 """
 from __future__ import annotations
 
@@ -22,6 +24,25 @@ from backend.data_plane.scope import OwnerScope
 logger = logging.getLogger(__name__)
 
 
+_provision_on_miss = None
+
+_registration_trace = []
+
+def register_plane_provisioner(fn) -> None:
+    """Plugin hook: register a function ``fn(org_id: str)`` that provisions a
+    default plane for an Org. Called as a last-resort on a lockdown no-row miss
+    before raising ``NoPlaneProvisionedError``. Scoped plugins (bingo-admin)
+    register during ``on_startup``. Only one provisioner is active at a time."""
+    global _provision_on_miss, _registration_trace
+    import sys as _sys, traceback as _tb
+    _provision_on_miss = fn
+    _registration_trace.append(
+        f"register_plane_provisioner called with {getattr(fn, '__name__', repr(fn))}"
+        f" at {_tb.format_stack()[-1].strip()}"
+    )
+    logger.info("plane provisioner registered (%s)", getattr(fn, "__qualname__", repr(fn)))
+
+
 def get_default_plane(scope: OwnerScope, db=None):
     """Return the default DataPlane for *scope*, walking the scope chain.
 
@@ -29,17 +50,12 @@ def get_default_plane(scope: OwnerScope, db=None):
     team→org). First ``is_default`` row at any scope wins.
 
     No-row behaviour:
-      - Under lockdown (`DISABLE_LOCAL_DATA_PLANE=true`): raise
-        ``NoPlaneProvisionedError`` so the route handler returns 503 with an
-        admin-facing message. Auto-provisioning lives in the bingo-admin
-        plugin's org-create listener.
+      - Under lockdown (`DISABLE_LOCAL_DATA_PLANE=true`): invoke the
+        plugin-registered provisioner (lazy "provision-on-miss"), re-query,
+        then raise ``NoPlaneProvisionedError`` if still missing.
       - Dev (lockdown off): return a ``LocalFilesystemDataPlane`` rooted at
-        ``DATA_PLANE_LOCAL_ROOT`` so the platform is usable without manual
-        plane creation. This is the historical dev-convenience path.
+        ``DATA_PLANE_LOCAL_ROOT`` — the historical dev-convenience path.
     """
-    from sqlalchemy import tuple_
-    from backend.models.data_plane import DataPlaneModel
-
     if db is None:
         from backend.database.session import SessionLocal
         with SessionLocal() as _db:
@@ -58,6 +74,20 @@ def _resolve_default_row(scope: OwnerScope, db):
     from backend.models.data_plane import DataPlaneModel
 
     chain = _scope_chain(scope, db)
+    row = _resolve_row(chain, db)
+    if row is None and _try_provision_on_miss(chain):
+        row = _resolve_row(chain, db)
+    if row is not None:
+        return _instantiate(row)
+
+    return _no_row_fallback(scope)
+
+
+def _resolve_row(chain, db):
+    """Return the default DataPlaneModel row for the scope chain, or None."""
+    from sqlalchemy import tuple_
+    from backend.models.data_plane import DataPlaneModel
+
     rows = (
         db.query(DataPlaneModel)
         .filter(DataPlaneModel.is_default == True)
@@ -110,6 +140,32 @@ def get_gcs_duckdb_reader(scope: OwnerScope, db=None):
 
     plane = _instantiate(row)
     return GCSDuckDBReader(plane.bucket, key_id, secret)
+
+
+def _try_provision_on_miss(chain) -> bool:
+    """Under lockdown, ask the registered provisioner to create a plane for the
+    Org in *chain*. Returns True when an attempt was made (caller re-queries).
+
+    Best-effort: exceptions are logged and swallowed — a miss after a failed
+    attempt still raises ``NoPlaneProvisionedError`` for the caller to surface.
+    """
+    from backend.config import settings
+
+    if not getattr(settings, "disable_local_data_plane", False):
+        return False
+    if _provision_on_miss is None:
+        return False
+    org_scope = next((s for s in chain if s.kind == "org"), None)
+    if org_scope is None:
+        return False
+    logger.debug("attempting provision-on-miss for org=%s", org_scope.id)
+    try:
+        _provision_on_miss(org_scope.id)
+    except Exception:
+        logger.exception(
+            "plane provision-on-miss failed for org %s", org_scope.id,
+        )
+    return True
 
 
 def _no_row_fallback(scope: OwnerScope):

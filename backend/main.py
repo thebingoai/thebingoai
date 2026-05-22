@@ -38,6 +38,15 @@ async def lifespan(app: FastAPI):
     for router, prefix in get_plugin_routers():
         app.include_router(router, prefix=prefix)
 
+    # Verify provision-on-miss is wired up after plugin load (fail fast under lockdown)
+    if getattr(settings, "disable_local_data_plane", False):
+        from backend.services.data_plane_service import _provision_on_miss
+        if _provision_on_miss is None:
+            raise RuntimeError(
+                "DISABLE_LOCAL_DATA_PLANE=true but no plane provisioner registered. "
+                "bingo-admin plugin on_startup must call register_plane_provisioner()."
+            )
+
     # Backfill dynamic SQL pipeline templates for core connectors (postgres /
     # mysql / sqlite) which are registered at module import in
     # `backend.connectors.factory`, not via a BingoPlugin.
