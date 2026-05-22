@@ -1,20 +1,23 @@
 <template>
   <TransformDetailView v-if="detailId" :id="detailId" @back="closeDetail" />
 
-  <div v-else class="p-4 md:p-6">
-    <!-- Header -->
-    <div class="mb-6 flex items-center justify-between">
+  <div v-else class="flex flex-col h-full overflow-hidden">
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0 flex items-start justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-medium text-gray-900 dark:text-neutral-100">Transforms</h1>
-        <p class="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-          Define SQL models that join and aggregate your pipeline data.
-        </p>
+        <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Data Platform</p>
+        <h1 class="settings-h1 text-3xl text-gray-900 dark:text-neutral-100 mb-1">Transforms</h1>
       </div>
-      <UiButton @click="showCreateModal = true">
-        <Plus class="h-4 w-4" />
-        New Transform
-      </UiButton>
+      <div class="flex items-center gap-2 shrink-0">
+        <UiButton @click="showCreateModal = true">
+          <Plus class="h-4 w-4" />
+          New Transform
+        </UiButton>
+      </div>
     </div>
+    <div class="flex-1 overflow-y-auto px-7 py-6">
+      <p class="text-sm text-gray-500 dark:text-neutral-400 max-w-2xl mb-6">
+        Define SQL models that join and aggregate your pipeline data.
+      </p>
 
     <!-- Loading skeletons -->
     <div v-if="loading" class="space-y-3">
@@ -107,6 +110,7 @@
       @update:open="showCreateModal = $event"
       @created="handleCreated"
     />
+    </div>
   </div>
 </template>
 

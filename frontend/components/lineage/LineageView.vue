@@ -48,44 +48,50 @@ function onClose() {
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
-    <!-- Toolbar -->
-    <div class="px-4 py-3 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3">
-      <h1 class="text-base font-medium text-gray-900 dark:text-neutral-100">Lineage</h1>
-      <div class="flex-1 max-w-sm">
-        <input
-          v-model="filter"
-          type="text"
-          placeholder="Filter by name…"
-          class="w-full text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-neutral-100"
-        />
-      </div>
-      <div v-if="incompleteCount > 0" class="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-300">
-        {{ incompleteCount }} widget(s) with incomplete lineage
-      </div>
+  <div class="flex flex-col h-full overflow-hidden">
+    <div class="px-7 pt-3 pb-2 border-b border-[var(--line)] flex-shrink-0">
+      <p class="eyebrow mb-0.5 text-gray-400 dark:text-neutral-500">Settings · Data Platform</p>
+      <h1 class="settings-h1 text-3xl text-gray-900 dark:text-neutral-100 mb-1">Lineage</h1>
     </div>
 
-    <div class="flex flex-1 min-h-0">
-      <!-- Graph -->
-      <div class="flex-1 relative">
-        <div v-if="loading" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-          Loading lineage…
+    <div class="flex flex-col flex-1 min-h-0">
+      <!-- Toolbar -->
+      <div class="px-7 py-3 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3">
+        <div class="flex-1 max-w-sm">
+          <input
+            v-model="filter"
+            type="text"
+            placeholder="Filter by name…"
+            class="w-full text-sm px-3 py-1.5 rounded-md border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-neutral-100"
+          />
         </div>
-        <div v-else-if="error" class="absolute inset-0 flex items-center justify-center text-sm text-red-600">
-          {{ error }}
+        <div v-if="incompleteCount > 0" class="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800 border border-yellow-300">
+          {{ incompleteCount }} widget(s) with incomplete lineage
         </div>
-        <div v-else-if="!graph || graph.nodes.length === 0" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-          No lineage data for this scope yet. Run a Pipeline or dbt model to populate the graph.
-        </div>
-        <LineageGraph
-          v-else
-          :graph="filteredGraph"
-          @select="onSelect"
-        />
       </div>
 
-      <!-- Detail panel -->
-      <NodeDetailPanel :node="selected" @close="onClose" />
+      <div class="flex flex-1 min-h-0">
+        <!-- Graph -->
+        <div class="flex-1 relative">
+          <div v-if="loading" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
+            Loading lineage…
+          </div>
+          <div v-else-if="error" class="absolute inset-0 flex items-center justify-center text-sm text-red-600">
+            {{ error }}
+          </div>
+          <div v-else-if="!graph || graph.nodes.length === 0" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
+            No lineage data for this scope yet. Run a Pipeline or dbt model to populate the graph.
+          </div>
+          <LineageGraph
+            v-else
+            :graph="filteredGraph"
+            @select="onSelect"
+          />
+        </div>
+
+        <!-- Detail panel -->
+        <NodeDetailPanel :node="selected" @close="onClose" />
+      </div>
     </div>
   </div>
 </template>
