@@ -163,7 +163,27 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
                         if date_col:
                             query_sql = _apply_date_filter(original_sql, date_col, date_range_days)
 
-                        result = connector.execute_query(query_sql)
+                        # Route `bigquery_ga4` widget SQL through the data
+                        # plane so bare table names resolve to the
+                        # materialised view. Source connector's BQ client
+                        # cannot see the data plane's project.
+                        if connection.db_type == "bigquery_ga4":
+                            from backend.data_plane.scope import OwnerScope as _OS
+                            from backend.models.pipeline import Pipeline as _Pipeline
+                            from backend.services.data_plane_service import (
+                                get_default_plane as _get_default_plane,
+                            )
+                            _p = db.query(_Pipeline).filter(
+                                _Pipeline.source_connection_id == connection.id,
+                            ).first()
+                            if _p is not None:
+                                _s = _OS(kind=_p.owner_scope_kind, id=_p.owner_scope_id)
+                                _plane = _get_default_plane(_s, db)
+                                result = _plane.query(_s, query_sql)
+                            else:
+                                result = connector.execute_query(query_sql)
+                        else:
+                            result = connector.execute_query(query_sql)
 
                         arrow_table = pa.table(
                             {col: [row[i] for row in result.rows] for i, col in enumerate(result.columns)}

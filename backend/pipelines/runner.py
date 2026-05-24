@@ -128,7 +128,7 @@ def run_pipeline(
 
                 # Build dlt destination wrapping DataPlane
                 from backend.pipelines.dlt_destination import make_dataplane_destination
-                destination = make_dataplane_destination(
+                destination, row_counter = make_dataplane_destination(
                     plane, scope, pipeline.target_table,
                     unique_key=tuple(pipeline.unique_key) if pipeline.unique_key else None,
                 )
@@ -147,10 +147,14 @@ def run_pipeline(
                     primary_key=pipeline.incremental_key or None,
                 )
 
-                # Collect metrics
+                # Rows: closure counter from the custom destination is the
+                # only accurate source -- dlt LoadPackage exposes file_size
+                # (bytes), not row counts.
+                rows_written = row_counter["rows"]
+                # Bytes: dlt LoadPackage job.file_size sums to the actual
+                # bytes written to the plane (Parquet on GCS / local fs).
                 for load_pkg in (load_info.load_packages or []):
                     for job in (load_pkg.jobs.get("completed_jobs") or []):
-                        rows_written += getattr(job, "file_size", 0) or 0  # approximate
                         bytes_written += getattr(job, "file_size", 0) or 0
 
                 # Persist dlt incremental state. Isolate this in its own

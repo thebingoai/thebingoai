@@ -324,11 +324,16 @@ const isQuestionAnswered = computed(() => {
 })
 
 const createdDashboardId = computed<number | null>(() => {
+  // Recognise both the direct tool (create_dashboard / update_dashboard) and
+  // the sub-agent wrapper (dashboard_agent) -- the orchestrator increasingly
+  // delegates dashboard creation through the wrapper, which returns the
+  // same {success, dashboard_id} shape but under a different tool_name.
+  const DASHBOARD_TOOLS = new Set(['create_dashboard', 'update_dashboard', 'dashboard_agent'])
   for (const step of props.message.agent_steps ?? []) {
-    if (step.tool_name !== 'create_dashboard' && step.tool_name !== 'update_dashboard') continue
+    if (!DASHBOARD_TOOLS.has(step.tool_name)) continue
     try {
       const result = typeof step.content?.result === 'string' ? JSON.parse(step.content.result) : step.content?.result
-      if (result?.success === true) return result.dashboard_id ?? null
+      if (result?.success === true && result?.dashboard_id) return result.dashboard_id
     } catch { continue }
   }
   return null

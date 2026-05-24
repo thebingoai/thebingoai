@@ -16,6 +16,37 @@ _DATA_WIDGET_TYPES = {"kpi", "chart", "table"}
 _VALID_MAPPING_TYPES = {"kpi", "chart", "table"}
 
 
+def _execute_widget_sql(connection, sql: str, db, connector):
+    """Execute widget SQL against the right surface.
+
+    For connectors that own a managed pipeline + materialised view in the
+    data plane (currently just `bigquery_ga4`), route SQL through
+    `plane.query()` so bare table names like `ga4_events_17_249794534`
+    resolve to the fully-qualified BigQuery view -- the source connection's
+    BQ client can't see the data plane's project.
+
+    For every other connector type, fall back to the standard
+    `connector.execute_query(sql)` path.
+    """
+    if connection.db_type == "bigquery_ga4":
+        from backend.data_plane.scope import OwnerScope
+        from backend.models.pipeline import Pipeline
+        from backend.services.data_plane_service import get_default_plane
+
+        pipeline = db.query(Pipeline).filter(
+            Pipeline.source_connection_id == connection.id,
+        ).first()
+        if pipeline is None:
+            # No managed pipeline yet -- nothing to query. Defer to the
+            # source connector so the LLM sees a clear "table not found"
+            # rather than a silent empty result.
+            return connector.execute_query(sql)
+        scope = OwnerScope(kind=pipeline.owner_scope_kind, id=pipeline.owner_scope_id)
+        plane = get_default_plane(scope, db)
+        return plane.query(scope, sql)
+    return connector.execute_query(sql)
+
+
 def _validate_data_source(data_source: dict, widget_type: str, widget_index: int) -> str | None:
     """Validate optional dataSource field. Returns error message or None if valid."""
     if not isinstance(data_source, dict):
@@ -391,7 +422,7 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
         connector = get_connector_for_connection(connection)
 
         try:
-            result = connector.execute_query(sql)
+            result = _execute_widget_sql(connection, sql, db, connector)
             config = transform_widget_data(result, mapping)
             widget["widget"]["config"].update(config)
             logger.info(f"Widget '{widget_id}': SQL executed, config populated with {result.row_count} rows")
@@ -407,7 +438,9 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
             tables = extract_table_names(sql)
             for tbl in list(tables)[:2]:
                 try:
-                    sample_result = connector.execute_query(f'SELECT * FROM "{tbl}" LIMIT 3')
+                    sample_result = _execute_widget_sql(
+                        connection, f'SELECT * FROM "{tbl}" LIMIT 3', db, connector,
+                    )
                     sample_data += f"\nTable '{tbl}' sample:\n"
                     sample_data += f"  Columns: {sample_result.columns}\n"
                     for srow in sample_result.rows[:3]:
@@ -435,7 +468,7 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
 
         logger.info(f"Widget '{widget_id}': SQL fix attempted, retrying with corrected SQL")
         try:
-            result = connector.execute_query(fixed_sql)
+            result = _execute_widget_sql(connection, fixed_sql, db, connector)
             config = transform_widget_data(result, mapping)
             widget["widget"]["config"].update(config)
             # Persist the fixed SQL back to the widget's dataSource

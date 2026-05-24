@@ -277,7 +277,23 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             db.close()
 
     # Return list of tools with captured context
-    return [list_tables, get_table_schema, search_tables, execute_query, profile_table]
+    core = [list_tables, get_table_schema, search_tables, execute_query, profile_table]
+
+    # Append plugin-provided data-agent tools (e.g. query_ga4_pipeline). These
+    # are explicit opt-ins via `BingoPlugin.data_agent_tool_builders()` -- they
+    # only land here, not in the orchestrator's general tool pool, so the data
+    # agent's prompt stays focused on SQL/analytics.
+    try:
+        from backend.agents.tool_registry import get_data_agent_plugin_tool_builders
+        for name, builder in get_data_agent_plugin_tool_builders().items():
+            try:
+                core.extend(builder(context))
+            except Exception:
+                logger.exception("Failed to build data-agent plugin tool '%s'", name)
+    except Exception:
+        # Plugin registry not yet importable (early bootstrap); no plugin tools.
+        pass
+    return core
 
 
 # ---------------------------------------------------------------------------

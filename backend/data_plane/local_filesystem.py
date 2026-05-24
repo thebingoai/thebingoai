@@ -90,6 +90,7 @@ class LocalFilesystemDataPlane:
         # in local-filesystem mode (DuckDB views could implement dedup-at-read
         # later). Local-fs is dev-only; production uses BigQueryGCSPlane.
         _ = unique_key
+        import uuid
         dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         partition_dir = self._partition_dir(scope, table, dt)
 
@@ -98,7 +99,10 @@ class LocalFilesystemDataPlane:
 
         os.makedirs(partition_dir, exist_ok=True)
 
-        part_path = os.path.join(partition_dir, "part-0.parquet")
+        # Unique part suffix per call for append/merge so multi-batch dlt loads
+        # accumulate. Overwrite stays at part-0 (dir is wiped above).
+        part_id = "0" if mode == "overwrite" else uuid.uuid4().hex[:12]
+        part_path = os.path.join(partition_dir, f"part-{part_id}.parquet")
         tmp_path = part_path + ".tmp"
         try:
             if isinstance(data, pa.Table):

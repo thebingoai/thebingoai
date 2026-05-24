@@ -1,5 +1,5 @@
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
 from backend.agents.orchestrator.prompts import build_orchestrator_prompt, build_lean_orchestrator_prompt
 from backend.agents.orchestrator.skill_tools import build_skill_tools
@@ -378,6 +378,55 @@ def _is_build_dump_reply(text: Optional[str]) -> bool:
     return bool(text) and _FENCED_DUMP_RE.search(text) is not None
 
 
+def _extract_steps_from_messages(
+    messages: list,
+    start_index: int,
+    base_step_number: int,
+) -> List[Dict[str, Any]]:
+    """Walk `messages[start_index:]` and emit orchestrator tool_call/tool_result
+    step dicts in the same shape as the streaming path produces. Used to surface
+    tool calls made by the Layer-4 retry (which runs outside `astream_events`)
+    so frontend artefact detection (dashboard buttons, etc.) still works.
+    """
+    steps: List[Dict[str, Any]] = []
+    tool_call_index: Dict[str, str] = {}
+    n = base_step_number
+    for msg in messages[start_index:]:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tool_name = tc.get("name")
+                args = tc.get("args", {})
+                tool_call_id = tc.get("id", "")
+                tool_call_index[tool_call_id] = tool_name
+                n += 1
+                steps.append({
+                    "agent_type": "orchestrator",
+                    "step_type": "tool_call",
+                    "tool_name": tool_name,
+                    "content": {"tool": tool_name, "args": args},
+                    "step_number": n,
+                })
+        elif isinstance(msg, ToolMessage):
+            tool_call_id = getattr(msg, "tool_call_id", "")
+            tool_name = tool_call_index.get(tool_call_id, "unknown")
+            raw = msg.content
+            parsed = raw
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = raw
+            n += 1
+            steps.append({
+                "agent_type": "orchestrator",
+                "step_type": "tool_result",
+                "tool_name": tool_name,
+                "content": {"tool": tool_name, "result": parsed},
+                "step_number": n,
+            })
+    return steps
+
+
 async def _run_judge_retry(
     user_question: str,
     initial_answer: str,
@@ -385,12 +434,15 @@ async def _run_judge_retry(
     orchestrator,
     base_messages: list,
     callbacks: Optional[list] = None,
-) -> Tuple[str, bool, Dict[str, Any]]:
+) -> Tuple[str, bool, Dict[str, Any], List[Dict[str, Any]]]:
     """Execute Layer-4 one-shot retry after the judge rejected the initial answer.
 
     Called only when `initial_verdict.resolved` is False. Returns
-    (final_answer, retry_succeeded, judge_metadata). On retry error or empty
-    retry output, returns the initial_answer as final with retry_succeeded=False.
+    (final_answer, retry_succeeded, judge_metadata, retry_steps). On retry error
+    or empty retry output, returns the initial_answer as final with
+    retry_succeeded=False and retry_steps=[].
+    `retry_steps` are orchestrator step dicts extracted from any tool calls the
+    retry made (so downstream UI can detect dashboard creation, etc.).
     Caller is responsible for emitting any UX status event before invoking.
     """
     retry_directive = (
@@ -412,7 +464,13 @@ async def _run_judge_retry(
                 "callbacks": callbacks or [],
             },
         )
-        retry_answer = _extract_final_answer(retry_result.get("messages", []))
+        retry_messages_out = retry_result.get("messages", [])
+        # Extract any tool steps the retry produced so the frontend can detect
+        # artefacts (dashboards, etc.) created during the retry phase.
+        retry_steps = _extract_steps_from_messages(
+            retry_messages_out, start_index=len(retry_messages), base_step_number=0,
+        )
+        retry_answer = _extract_final_answer(retry_messages_out)
         if retry_answer:
             retry_answer = _sanitize_technical_errors(_redact_connection_ids(retry_answer))
             retry_verdict = await judge_response(user_question, retry_answer)
@@ -438,6 +496,7 @@ async def _run_judge_retry(
                     "judge_model": settings.judge_llm_model,
                     "retry_highlighted_response": retry_verdict.highlighted_response,
                 },
+                retry_steps,
             )
         return (
             initial_answer,
@@ -450,6 +509,7 @@ async def _run_judge_retry(
                 "judge_directive": initial_verdict.suggested_directive,
                 "judge_model": settings.judge_llm_model,
             },
+            retry_steps,
         )
     except Exception as retry_exc:
         logger.warning("Layer-4 retry orchestrator call failed: %s", retry_exc)
@@ -464,6 +524,7 @@ async def _run_judge_retry(
                 "judge_directive": initial_verdict.suggested_directive,
                 "judge_model": settings.judge_llm_model,
             },
+            [],
         )
 
 
@@ -1055,7 +1116,7 @@ async def run_orchestrator(
             verdict = await judge_response(user_question, final_answer)
             if not verdict.resolved:
                 logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
-                final_answer, retry_succeeded, judge_metadata = await _run_judge_retry(
+                final_answer, retry_succeeded, judge_metadata, _retry_steps = await _run_judge_retry(
                     user_question, final_answer, verdict, orchestrator, messages,
                     callbacks=callbacks,
                 )
@@ -1289,10 +1350,34 @@ async def stream_orchestrator(
             verdict = await judge_response(user_question, final_answer_text)
             if not verdict.resolved:
                 logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
-                final_answer_text, retry_succeeded, judge_metadata = await _run_judge_retry(
+                final_answer_text, retry_succeeded, judge_metadata, retry_steps = await _run_judge_retry(
                     user_question, final_answer_text, verdict, orchestrator, messages,
                     callbacks=callbacks,
                 )
+                # Re-number retry steps against current step_number and emit
+                # tool_call/tool_result events so the UI updates live, then
+                # append to collected_steps so persistence/artefact detection
+                # (e.g. dashboard buttons) sees the retry tool calls.
+                for s in retry_steps:
+                    step_number += 1
+                    s["step_number"] = step_number
+                    collected_steps.append(s)
+                    if s["step_type"] == "tool_call":
+                        yield {
+                            "type": "tool_call",
+                            "content": _scrub_sql_for_client({
+                                "tool": s["tool_name"], "status": "started",
+                                "args": s["content"].get("args", {}),
+                            }),
+                        }
+                    else:
+                        yield {
+                            "type": "tool_result",
+                            "content": _scrub_sql_for_client({
+                                "tool": s["tool_name"], "status": "completed",
+                                "result": s["content"].get("result"),
+                            }),
+                        }
                 highlighted_text = (judge_metadata or {}).get("retry_highlighted_response")
                 yield {"type": "judge_status", "content": {"state": "refined"}}
             else:

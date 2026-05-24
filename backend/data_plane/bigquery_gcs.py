@@ -92,6 +92,10 @@ class BigQueryGCSPlane:
         self._sa_json = service_account_json
         self._bq_client = None
         self._gcs_client = None
+        # Per-instance cache of (scope_kind, scope_id, table, register_kind)
+        # keys that have already been registered. Skips redundant BQ metadata
+        # calls when dlt drives many write_parquet batches into the same target.
+        self._registered: set[tuple[str, str, str, str]] = set()
 
     # ── Lazy client accessors ─────────────────────────────────────────────
 
@@ -120,7 +124,7 @@ class BigQueryGCSPlane:
     def _gcs_prefix(self, scope: OwnerScope, table: str, dt: str) -> str:
         return f"data_plane/{scope.as_path()}/{table}/dt={dt}"
 
-    def _gcs_object_path(self, scope: OwnerScope, table: str, dt: str, part: int = 0) -> str:
+    def _gcs_object_path(self, scope: OwnerScope, table: str, dt: str, part: str | int = 0) -> str:
         return f"{self._gcs_prefix(scope, table, dt)}/part-{part}.parquet"
 
     # ── DataPlane interface ───────────────────────────────────────────────
@@ -133,8 +137,12 @@ class BigQueryGCSPlane:
         mode: str = "overwrite",
         unique_key: tuple[str, ...] | None = None,
     ) -> None:
+        import uuid
         dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        gcs_path = self._gcs_object_path(scope, table, dt)
+        # Unique part suffix per call so multi-batch dlt loads accumulate in the
+        # `dt=<date>/` partition instead of every batch overwriting `part-0`.
+        part_id = uuid.uuid4().hex[:12] if mode != "overwrite" else "0"
+        gcs_path = self._gcs_object_path(scope, table, dt, part=part_id)
 
         if isinstance(data, pa.Table):
             arrow_table = data
@@ -172,22 +180,33 @@ class BigQueryGCSPlane:
         table_prefix = f"data_plane/{scope.as_path()}/{table}/"
         if unique_key:
             if self._native_merge_enabled(scope):
+                # MERGE must run every batch (each staging dt= partition needs
+                # upsert into native). Skip the cache.
                 self._merge_into_native(
                     scope, table, arrow_table.schema, unique_key, dt,
                 )
             else:
-                bronze_uri = f"gs://{self._bucket_name}/{table_prefix}*"
-                bronze_prefix = f"gs://{self._bucket_name}/{table_prefix}"
-                self._register_bronze_and_view(
-                    scope, table, bronze_uri, bronze_prefix,
-                    arrow_table.schema, unique_key,
-                )
+                cache_key = (scope.kind, scope.id, table, "bronze_view")
+                if cache_key not in self._registered:
+                    bronze_uri = f"gs://{self._bucket_name}/{table_prefix}*"
+                    bronze_prefix = f"gs://{self._bucket_name}/{table_prefix}"
+                    self._register_bronze_and_view(
+                        scope, table, bronze_uri, bronze_prefix,
+                        arrow_table.schema, unique_key,
+                    )
+                    self._registered.add(cache_key)
         elif mode == "overwrite":
+            # Overwrite uses a dt-pinned URI; register every batch because the
+            # `dt=<today>` in the URI may differ from prior calls if the run
+            # spans midnight. Skip the cache.
             uri = f"gs://{self._bucket_name}/{self._gcs_prefix(scope, table, dt)}/*"
             self.register_table(scope, table, uri, arrow_table.schema)
         else:
-            uri = f"gs://{self._bucket_name}/{table_prefix}*"
-            self.register_table(scope, table, uri, arrow_table.schema)
+            cache_key = (scope.kind, scope.id, table, "plain_external")
+            if cache_key not in self._registered:
+                uri = f"gs://{self._bucket_name}/{table_prefix}*"
+                self.register_table(scope, table, uri, arrow_table.schema)
+                self._registered.add(cache_key)
 
     def _native_merge_enabled(self, scope: OwnerScope) -> bool:
         """Org-scoped feature gate for the MERGE-into-native path.
@@ -224,13 +243,16 @@ class BigQueryGCSPlane:
         external_config.source_uris = [path if path.endswith("*") else path + "/*"]
 
         # Hive partitioning is meaningful only when the URI globs over
-        # multiple `dt=` partitions (true-delta pipelines). For snapshot
-        # pipelines the URI is anchored to one `dt=YYYY-MM-DD` directory
-        # and `dt` is constant, so omit Hive options to keep the schema clean.
-        if "/dt=*/" in path:
+        # multiple `dt=` partitions (true-delta pipelines, append mode).
+        # Snapshot pipelines anchor at one `dt=YYYY-MM-DD/` dir — `dt` is
+        # constant there, so omit Hive options to keep schema clean.
+        # Detection: snapshot URIs contain `/dt=<date>/`; append URIs have
+        # only a trailing `*` at the table root.
+        import re
+        if not re.search(r"/dt=[^/*]+/", path):
             external_config.hive_partitioning = bigquery.HivePartitioningOptions()
             external_config.hive_partitioning.mode = "AUTO"
-            external_config.hive_partitioning.source_uri_prefix = path.split("/dt=")[0]
+            external_config.hive_partitioning.source_uri_prefix = path.rstrip("*").rstrip("/")
 
         table_ref = bigquery.Table(full_table_id, schema=bq_schema)
         table_ref.external_data_configuration = external_config

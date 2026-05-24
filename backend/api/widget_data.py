@@ -385,7 +385,23 @@ async def refresh_widget(
                 widget_sources=request.widget_sources,
             )
 
-        result = connector.execute_query(sql, params=params)
+        # Route bigquery_ga4 widget SQL through the data plane (managed
+        # materialised view) instead of the raw GA4 source connector.
+        if connection.db_type == "bigquery_ga4":
+            from backend.data_plane.scope import OwnerScope
+            from backend.models.pipeline import Pipeline
+            from backend.services.data_plane_service import get_default_plane
+            _p = db.query(Pipeline).filter(
+                Pipeline.source_connection_id == connection.id,
+            ).first()
+            if _p is not None:
+                _scope = OwnerScope(kind=_p.owner_scope_kind, id=_p.owner_scope_id)
+                _plane = get_default_plane(_scope, db)
+                result = _plane.query(_scope, sql, params=params)
+            else:
+                result = connector.execute_query(sql, params=params)
+        else:
+            result = connector.execute_query(sql, params=params)
 
         config = transform_widget_data(result, request.mapping)
 
@@ -486,7 +502,23 @@ async def refresh_dashboard_widgets(
         connector = get_connector_for_connection(connection)
 
         try:
-            result = connector.execute_query(sql)
+            if connection.db_type == "bigquery_ga4":
+                from backend.data_plane.scope import OwnerScope as _OS
+                from backend.models.pipeline import Pipeline as _Pipeline
+                from backend.services.data_plane_service import (
+                    get_default_plane as _get_default_plane,
+                )
+                _p = db.query(_Pipeline).filter(
+                    _Pipeline.source_connection_id == connection.id,
+                ).first()
+                if _p is not None:
+                    _s = _OS(kind=_p.owner_scope_kind, id=_p.owner_scope_id)
+                    _plane = _get_default_plane(_s, db)
+                    result = _plane.query(_s, sql)
+                else:
+                    result = connector.execute_query(sql)
+            else:
+                result = connector.execute_query(sql)
             results[widget_id] = {
                 "config": transform_widget_data(result, mapping),
                 "refreshed_at": refreshed_at,

@@ -108,6 +108,42 @@ def profile_connection(self, connection_id: int):
         finally:
             connector.close()
 
+        # For connectors with managed pipelines (e.g. bigquery_ga4 -> bronze
+        # + dedup view), also profile the materialised target table via the
+        # data plane. Without this, the dashboard agent sees the table in
+        # schema_json (added by augment_schema_with_pipelines) but with no
+        # profile -> no dimension/measure roles -> dashboard build refuses.
+        if connection.db_type == "bigquery_ga4":
+            try:
+                from backend.data_plane.scope import OwnerScope
+                from backend.models.pipeline import Pipeline
+                from backend.services.data_plane_service import get_default_plane
+
+                pipelines = db.query(Pipeline).filter(
+                    Pipeline.source_connection_id == connection_id,
+                ).all()
+                for p in pipelines:
+                    try:
+                        scope = OwnerScope(kind=p.owner_scope_kind, id=p.owner_scope_id)
+                        plane = get_default_plane(scope, db)
+                        prof = _profile_table(scope, plane, p.target_table, "pipeline")
+                        if prof:
+                            table_profiles[p.target_table] = prof
+                            logger.info(
+                                "profile_connection %d: profiled managed pipeline table %s",
+                                connection_id, p.target_table,
+                            )
+                    except Exception:
+                        logger.exception(
+                            "profile_connection %d: pipeline table %s profile failed",
+                            connection_id, p.target_table,
+                        )
+            except Exception:
+                logger.exception(
+                    "profile_connection %d: managed-pipeline profile block failed",
+                    connection_id,
+                )
+
         # Build context from schema + profiles
         context = build_connection_context(connection_id, schema_json, table_profiles)
 
@@ -213,12 +249,46 @@ def profile_chat_file(file_id: str):
     logger.info("profile_chat_file: completed for file %s", file_id)
 
 
+def _arrow_type_canonical(arrow_type) -> str:
+    """Map a pyarrow DataType to a canonical SQL-style type name so
+    downstream consumers (connection_context.infer_column_role,
+    NUMERIC_TYPES / DATE_TYPES sets in table_profiler) match correctly.
+
+    Without this, types like `date32[day]` or `timestamp[us, tz=UTC]` fall
+    through `infer_column_role` and every column ends up as `attribute`,
+    which the dashboard agent treats as non-dimension.
+    """
+    try:
+        import pyarrow as pa
+    except Exception:
+        return str(arrow_type)
+    t = arrow_type
+    if pa.types.is_date(t):
+        return "date"
+    if pa.types.is_timestamp(t):
+        return "timestamp"
+    if pa.types.is_time(t):
+        return "time"
+    if pa.types.is_floating(t):
+        return "float64"
+    if pa.types.is_integer(t):
+        return "int64"
+    if pa.types.is_boolean(t):
+        return "boolean"
+    if pa.types.is_string(t) or pa.types.is_large_string(t):
+        return "string"
+    return str(t)
+
+
 def _profile_table(scope, plane, table_name: str, source_type: str) -> dict:
     """Read column types from DataPlane for *table_name* and return a profile dict."""
     try:
         schema = plane.get_schema(scope, table_name)
         columns = {
-            field.name: {"type": str(field.type), "nullable": field.nullable}
+            field.name: {
+                "type": _arrow_type_canonical(field.type),
+                "nullable": field.nullable,
+            }
             for field in schema
         }
         return {"columns": columns, "source_type": source_type, "table_name": table_name}

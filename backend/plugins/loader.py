@@ -81,6 +81,19 @@ def discover_and_load_plugins() -> None:
                 except Exception:
                     logger.exception("Failed to register tool builders from plugin '%s'", plugin.name)
 
+                try:
+                    from backend.agents.tool_registry import register_data_agent_plugin_tool_builder
+                    for tool_name, builder in plugin.data_agent_tool_builders().items():
+                        register_data_agent_plugin_tool_builder(tool_name, builder)
+                        logger.info(
+                            "Registered data-agent tool builder '%s' from plugin '%s'",
+                            tool_name, plugin.name,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Failed to register data-agent tool builders from plugin '%s'", plugin.name,
+                    )
+
                 plugin.on_startup()
                 _backfill_templates_for_plugin(plugin)
                 _loaded_plugins[plugin.name] = plugin

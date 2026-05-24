@@ -6,6 +6,7 @@ export interface ConnectorType {
   badge_variant: string
   version: string | null
   card_meta_items: string[]
+  skip_schema_refresh?: boolean
 }
 
 export interface DatabaseConnection {

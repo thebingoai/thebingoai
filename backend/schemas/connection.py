@@ -91,6 +91,7 @@ class ConnectorTypeResponse(BaseModel):
     badge_variant: str
     version: str | None = None
     card_meta_items: list[str]
+    skip_schema_refresh: bool = False
 
 
 class ConnectionTestResponse(BaseModel):

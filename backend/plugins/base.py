@@ -64,6 +64,12 @@ class ConnectorRegistration:
     skip_schema_refresh: bool = False
     skip_profiling: bool = False
     sql_dialect_hint: Optional[str] = None
+    # Connector-specific guidance the dashboard agent should follow when
+    # designing dashboards against this connector's data (e.g. recommended
+    # KPIs, common breakdowns, useful time-series). Injected into the
+    # dashboard agent's system prompt for every connection of this type the
+    # user has access to. Plain Markdown.
+    dashboard_design_hint: Optional[str] = None
     version: Optional[str] = None
     card_meta_items: Optional[list[str]] = None
     # Phase 1: scope routing + dedup fingerprint
@@ -109,6 +115,15 @@ class BingoPlugin(ABC):
 
     def tool_builders(self) -> dict[str, Callable]:
         """Return {tool_name: builder_fn} for agent tools this plugin provides."""
+        return {}
+
+    def data_agent_tool_builders(self) -> dict[str, Callable]:
+        """Return {tool_name: builder_fn} for tools that should be injected
+        into the data agent's tool list (so SQL/analytics workflows can use
+        them). Defaults to empty; only the connectors that own materialised
+        pipelines need to add anything here. Each builder receives an
+        AgentContext and returns a list of LangChain tools.
+        """
         return {}
 
     def celery_task_modules(self) -> list[str]:

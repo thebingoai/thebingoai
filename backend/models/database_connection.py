@@ -59,7 +59,10 @@ class DatabaseConnection(Base, TimestampMixin):
     is_active = Column(Boolean, default=True, nullable=False)
 
     # Schema caching
+    # schema_json_path is legacy (DO Spaces key). Kept nullable for backward
+    # compat; set to "db:<id>" when schema lives in `schema_json` column below.
     schema_json_path = Column(String, nullable=True)
+    schema_json = Column(JSONB, nullable=True)
     schema_generated_at = Column(DateTime, nullable=True)
     table_count = Column(Integer, nullable=True)
 

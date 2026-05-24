@@ -147,6 +147,7 @@ def _build_communication_tools(context: AgentContext) -> List:
 # ---------------------------------------------------------------------------
 
 _PLUGIN_TOOL_BUILDERS: Dict[str, Callable] = {}
+_DATA_AGENT_PLUGIN_TOOL_BUILDERS: Dict[str, Callable] = {}
 
 
 def register_plugin_tool_builder(name: str, builder: Callable) -> None:
@@ -154,9 +155,24 @@ def register_plugin_tool_builder(name: str, builder: Callable) -> None:
     _PLUGIN_TOOL_BUILDERS[name] = builder
 
 
+def register_data_agent_plugin_tool_builder(name: str, builder: Callable) -> None:
+    """Register a data-agent-specific tool builder (plugin-provided).
+
+    These tools land in the data agent's tool list instead of (or in addition
+    to) the orchestrator's, so SQL/analytics workflows can reach connector-
+    specific helpers like `query_ga4_pipeline`.
+    """
+    _DATA_AGENT_PLUGIN_TOOL_BUILDERS[name] = builder
+
+
 def get_plugin_tool_builders() -> Dict[str, Callable]:
     """Return a copy of all plugin-registered tool builders."""
     return dict(_PLUGIN_TOOL_BUILDERS)
+
+
+def get_data_agent_plugin_tool_builders() -> Dict[str, Callable]:
+    """Return a copy of all data-agent-specific plugin tool builders."""
+    return dict(_DATA_AGENT_PLUGIN_TOOL_BUILDERS)
 
 
 TOOL_BUILDERS: Dict[str, Callable[[AgentContext], List]] = {

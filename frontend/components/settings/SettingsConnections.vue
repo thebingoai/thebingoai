@@ -58,100 +58,6 @@
 
     <!-- Connections Grid -->
     <div v-if="!loading && connections.length > 0" class="flex flex-wrap gap-4">
-      <!-- Ungrouped connections (non-dataset or unique fingerprint datasets) -->
-      <UiCard
-        v-for="connection in ungroupedConnections"
-        :key="connection.id"
-        class="relative overflow-hidden px-4 py-5 h-56 w-56 max-md:w-full cursor-pointer hover:shadow-lg transition-shadow"
-        @click="openEditDialog(connection)"
-      >
-        <!-- Top accent border -->
-        <div
-          class="absolute top-0 left-0 right-0 h-[3px]"
-          :class="getAccentClass(connection)"
-        />
-        <div class="flex flex-col h-full">
-          <!-- Header: icon + type name + spinner -->
-          <div class="flex items-start gap-2.5">
-            <div
-              class="h-8 w-8 shrink-0"
-              v-if="connectorIcons[connection.db_type]"
-              v-html="connectorIcons[connection.db_type]"
-            />
-            <component v-else :is="Database" class="h-8 w-8 text-gray-400 shrink-0" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-gray-900 dark:text-neutral-100 truncate">{{ getConnectorType(connection.db_type)?.display_name || connection.db_type }}</p>
-              <div v-if="getConnectorType(connection.db_type)?.version" class="flex items-center gap-1 mt-0.5">
-                <span class="text-[11px] text-gray-400 dark:text-neutral-500">v{{ getConnectorType(connection.db_type)?.version }}</span>
-                <button
-                  @click.stop="openChangelog(connection.db_type)"
-                  class="h-3.5 w-3.5 rounded-full border border-gray-300 dark:border-neutral-600 inline-flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:border-gray-400 dark:hover:border-neutral-400"
-                >
-                  <Info class="h-2 w-2" />
-                </button>
-              </div>
-            </div>
-            <!-- Spinner while sync or profile is running -->
-            <Loader2
-              v-if="connection.profiling_status === 'in_progress' || connection.profiling_status === 'pending'"
-              class="h-4 w-4 text-yellow-500 animate-spin shrink-0 mt-1"
-            />
-          </div>
-          <!-- Connected account (Facebook Ads) or source filename (file-based connectors) -->
-          <div v-if="connection.db_type === 'bigquery' && connection.host" class="flex items-center gap-1 mt-1">
-            <Database class="h-3 w-3 text-gray-400 shrink-0" />
-            <span class="text-[11px] text-gray-400 truncate">{{ connection.host }}</span>
-          </div>
-          <div v-else-if="connection.db_type === 'facebook_ads'" class="flex items-center gap-1 mt-1">
-            <User class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
-            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">Account: {{ connection.name }}</span>
-          </div>
-          <div v-else-if="connection.database" class="flex items-center gap-1 mt-1">
-            <Database class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
-            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">{{ connection.database }}</span>
-          </div>
-          <div v-else-if="connection.source_filename" class="flex items-center gap-1 mt-1">
-            <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-500 shrink-0" />
-            <span class="text-[11px] text-gray-400 dark:text-neutral-500 truncate">{{ connection.source_filename }}</span>
-          </div>
-          <!-- Bottom metadata row -->
-          <div class="mt-auto border-t border-gray-100 dark:border-neutral-700 pt-2.5 flex items-end gap-4">
-            <!-- Profiling status (always first) -->
-            <div class="flex flex-col items-center gap-1" :title="getProfilingTitle(connection)">
-              <Activity class="h-3.5 w-3.5" :class="getProfilingIconClass(connection)" />
-              <span class="text-[10px]" :class="getProfilingTextClass(connection)">{{ getProfilingLabel(connection) }}</span>
-            </div>
-            <!-- Dynamic meta items from connector type -->
-            <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
-              <div v-if="item === 'ssl' && connection.ssl_enabled" class="flex flex-col items-center gap-1" title="SSL Enabled">
-                <Lock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
-                <span class="text-[10px] text-gray-500 dark:text-neutral-400">SSL</span>
-              </div>
-              <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} tables`">
-                <Table2 class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
-                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ connection.table_count }} tables</span>
-              </div>
-              <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} datasets`">
-                <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
-                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ connection.table_count }} datasets</span>
-              </div>
-              <div v-if="item === 'schema_date' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Schema refreshed ${formatRelativeDate(connection.schema_generated_at)}`">
-                <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
-                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
-              </div>
-              <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1" title="Lookback window">
-                <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
-                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ parseLookbackDays(connection) }}d lookback</span>
-              </div>
-              <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Last synced ${formatRelativeDate(connection.schema_generated_at)}`">
-                <RefreshCw class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-400" />
-                <span class="text-[10px] text-gray-500 dark:text-neutral-400">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
-              </div>
-            </template>
-          </div>
-        </div>
-      </UiCard>
-
       <!-- WAREHOUSES · DATABASES -->
       <div>
         <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-3">Warehouses · Databases</p>
@@ -1011,7 +917,7 @@ const connectorIcons: Record<string, string> = {
   dataset:      connectorDataset,
   facebook_ads: connectorFacebookAds,
   sqlite:       connectorSqlite,
-  bigquery:     connectorBigquery,
+  bigquery_ga4: connectorBigquery,
   notion:       connectorNotion,
 }
 
@@ -1080,27 +986,6 @@ const schemaLoading = ref(false)
 const schemaError = ref<string | null>(null)
 const csvPreviewColumns = ref<Array<{ name: string; type: string }>>([])
 
-// GA4 Unnesting state
-interface GA4DatasetConfig {
-  analytics_dataset_id: string
-  bingo_dataset_id: string
-  config_id?: number
-  tag_name: string
-  lookback_days: number
-  schedule_time: string
-  enabled: boolean
-  last_run_at?: string
-  last_run_status?: string
-  last_run_error?: string
-  params_count?: number
-  discovering_params?: boolean
-  triggering?: boolean
-}
-const ga4Enabled = ref(false)
-const ga4Expanded = ref(true)
-const ga4Loading = ref(false)
-const ga4Datasets = ref<GA4DatasetConfig[]>([])
-
 // Profiling state
 const reprofilingId = ref<number | null>(null)
 const profilingPollers = ref<Record<number, ReturnType<typeof setInterval>>>({})
@@ -1123,18 +1008,6 @@ const uploadingSqlite = ref(false)
 const sqliteForm = ref({ name: '' })
 const sqliteFormErrors = ref<{ name?: string; file?: string }>({})
 const sqliteUploadResult = ref<{ table_count: number; tables: Array<{ name: string; row_count: number; column_count: number }> } | null>(null)
-
-// BigQuery connection state
-const bigqueryJsonContent = ref('')
-const bigqueryJsonFile = ref<File | null>(null)
-const bigqueryJsonDragOver = ref(false)
-const bigqueryJsonFileInputRef = ref<HTMLInputElement | null>(null)
-const bigqueryFormErrors = ref<{ json?: string }>({})
-// Parsed SA info for permission checker
-const bigquerySaInfo = ref<{ project_id?: string; client_email?: string } | null>(null)
-const bigqueryPermissionCheck = ref<{ read: boolean | null; write: boolean | null }>({ read: null, write: null })
-const permissionCheckExpanded = ref(true)
-const bigqueryPermissionError = ref<{ read: string | null; write: string | null }>({ read: null, write: null })
 
 // Dataset grouping state
 const expandedGroups = ref<Record<string, boolean>>({})
@@ -1337,10 +1210,6 @@ const isSqliteConnection = computed(() => {
 
 const isFacebookAdsConnection = computed(() => {
   return form.value.db_type === 'facebook_ads' || editingConnection.value?.db_type === 'facebook_ads'
-})
-
-const isBigQueryConnection = computed(() => {
-  return form.value.db_type === 'bigquery' || editingConnection.value?.db_type === 'bigquery'
 })
 
 const isNotionConnection = computed(() => {
@@ -1632,13 +1501,6 @@ function selectConnectorType(typeId: string) {
   clearSqliteFile()
   sqliteForm.value = { name: '' }
   sqliteFormErrors.value = {}
-  bigqueryJsonContent.value = ''
-  bigqueryJsonFile.value = null
-  bigqueryJsonDragOver.value = false
-  bigqueryFormErrors.value = {}
-  bigquerySaInfo.value = null
-  bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
   notionApiKey.value = ''
   notionFormErrors.value = {}
   // Close type picker first to avoid HeadlessUI focus trap conflict
@@ -1654,10 +1516,6 @@ function goBackToTypePicker() {
 function handleFormSheetClose(value: boolean) {
   if (value === false) {
     testSuccess.value = false
-    if (isBigQueryConnection.value) {
-      bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
-    }
     // If creating, go back to type picker
     // If editing, close form sheet
     if (!editingConnection.value) {
@@ -1795,13 +1653,6 @@ function openCreateDialog() {
   clearSqliteFile()
   sqliteForm.value = { name: '' }
   sqliteFormErrors.value = {}
-  bigqueryJsonContent.value = ''
-  bigqueryJsonFile.value = null
-  bigqueryJsonDragOver.value = false
-  bigqueryFormErrors.value = {}
-  bigquerySaInfo.value = null
-  bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
   selectedTypeId.value = null
   typeSearchQuery.value = ''
   showTypePicker.value = true
@@ -1841,27 +1692,16 @@ function openEditDialog(connection: DatabaseConnection) {
   schema.value = null
   schemaError.value = null
   notionPages.value = []
-  // Reset BigQuery state
-  bigqueryJsonFile.value = null
-  bigqueryJsonContent.value = ''
-  bigqueryFormErrors.value = {}
-  bigquerySaInfo.value = null
-  bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
-  // Reset GA4 state
-  ga4Enabled.value = false
-  ga4Datasets.value = []
-  ga4Expanded.value = true
   // Edit skips type picker, opens form sheet directly
   showFormSheet.value = true
-  // For BigQuery, auto-run permission check and load GA4 state
-  if (connection.db_type === 'bigquery') {
-    checkBigQueryPermissionsFromSaved(connection.id)
-    loadGa4State()
-  }
   // For Notion, fetch synced pages instead of schema tree
   if (connection.db_type === 'notion') {
     fetchNotionPages(connection.id)
+    return
+  }
+  // Skip schema fetch for connectors that don't expose a SQL schema
+  // (e.g. bigquery_ga4 — dataset discovery handled by plugin EditPanel).
+  if (getConnectorType(connection.db_type)?.skip_schema_refresh) {
     return
   }
   // Fetch schema in background
@@ -1882,12 +1722,8 @@ function validateForm(): boolean {
     return isValid
   }
 
-  // BigQuery: only JSON is required; other fields auto-populated
-  if (form.value.db_type === 'bigquery') {
-    if (!editingConnection.value && !bigqueryJsonContent.value) {
-      bigqueryFormErrors.value.json = 'Service account JSON is required'
-      isValid = false
-    }
+  // BigQuery (GA4): create form handled by plugin layer (GA4ConnectForm); skip generic validation.
+  if (form.value.db_type === 'bigquery_ga4') {
     return isValid
   }
 
@@ -1941,17 +1777,6 @@ async function handleFormSubmit() {
   }
 
   if (!validateForm()) return
-
-  // BigQuery: auto-populate fields from parsed JSON before building payload
-  if (isBigQueryConnection.value && bigqueryJsonContent.value) {
-    const parsed = JSON.parse(bigqueryJsonContent.value)
-    form.value.name = parsed.project_id || parsed.client_email?.split('@')[0] || 'BigQuery Connection'
-    form.value.host = parsed.project_id || ''
-    // database (dataset filter) is user-configurable — do not overwrite
-    form.value.username = 'service-account'
-    form.value.port = 443
-    form.value.password = bigqueryJsonContent.value
-  }
 
   try {
     saving.value = true
@@ -2014,17 +1839,6 @@ async function handleTestConnection() {
       // Use saved connection's stored credentials
       response = await api.connections.test(String(editingConnection.value.id)) as { success: boolean; message: string }
     } else {
-      // BigQuery: auto-populate fields from parsed JSON for unsaved test
-      if (isBigQueryConnection.value && bigqueryJsonContent.value) {
-        const parsed = JSON.parse(bigqueryJsonContent.value)
-        form.value.name = parsed.project_id || parsed.client_email?.split('@')[0] || 'BigQuery Connection'
-        form.value.host = parsed.project_id || ''
-        form.value.database = ''
-        form.value.username = 'service-account'
-        form.value.port = 443
-        form.value.password = bigqueryJsonContent.value
-      }
-
       const payload: any = {
         name: form.value.name,
         db_type: form.value.db_type,
@@ -2279,343 +2093,6 @@ async function handleSqliteUpload() {
   } finally {
     uploadingSqlite.value = false
   }
-}
-
-async function applyBigQueryJsonFile(file: File) {
-  bigqueryJsonFile.value = file
-  bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
-  try {
-    bigqueryJsonContent.value = await file.text()
-    const parsed = JSON.parse(bigqueryJsonContent.value)
-    if (parsed.type !== 'service_account') {
-      bigqueryFormErrors.value.json = 'Not a service account key (expected "type": "service_account")'
-      bigquerySaInfo.value = null
-      return
-    }
-    bigquerySaInfo.value = { project_id: parsed.project_id, client_email: parsed.client_email }
-    bigqueryFormErrors.value.json = undefined
-
-    // Auto-populate form fields
-    form.value.name = parsed.project_id || parsed.client_email?.split('@')[0] || 'BigQuery Connection'
-    form.value.host = parsed.project_id || ''
-    form.value.database = ''
-    form.value.username = 'service-account'
-    form.value.port = 443
-
-    // Trigger permission check
-    await checkBigQueryPermissions()
-  } catch {
-    bigqueryFormErrors.value.json = 'File is not valid JSON'
-    bigqueryJsonContent.value = ''
-    bigquerySaInfo.value = null
-  }
-}
-
-async function runBigQueryCheck(ssl_enabled: boolean): Promise<{ success: boolean; message: string }> {
-  const payload = {
-    name: bigquerySaInfo.value!.project_id || 'BigQuery',
-    db_type: 'bigquery',
-    host: bigquerySaInfo.value!.project_id,
-    port: 443,
-    database: '',
-    username: 'service-account',
-    password: bigqueryJsonContent.value,
-    ssl_enabled
-  }
-  try {
-    return await api.connections.testUnsaved(payload) as { success: boolean; message: string }
-  } catch (e: any) {
-    return { success: false, message: e?.data?.detail || e?.message || 'Connection failed' }
-  }
-}
-
-async function checkBigQueryPermissions() {
-  if (!bigquerySaInfo.value) return
-  bigqueryPermissionCheck.value.read = null
-  bigqueryPermissionError.value.read = null
-  if (form.value.ssl_enabled) {
-    bigqueryPermissionCheck.value.write = null
-    bigqueryPermissionError.value.write = null
-  }
-
-  const readResult = await runBigQueryCheck(false)
-  bigqueryPermissionCheck.value.read = readResult.success
-  if (!readResult.success) bigqueryPermissionError.value.read = readResult.message
-
-  if (form.value.ssl_enabled) {
-    const payload = {
-      name: bigquerySaInfo.value!.project_id || 'BigQuery',
-      db_type: 'bigquery',
-      host: bigquerySaInfo.value!.project_id,
-      port: 443,
-      database: form.value.database || '',
-      username: 'service-account',
-      password: bigqueryJsonContent.value,
-      ssl_enabled: true
-    }
-    try {
-      const writeResult = await api.connections.testWriteUnsaved(payload) as { success: boolean; message: string }
-      bigqueryPermissionCheck.value.write = writeResult.success
-      if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
-    } catch (e: any) {
-      bigqueryPermissionCheck.value.write = false
-      bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
-    }
-  }
-}
-
-async function checkBigQueryPermissionsFromSaved(connectionId: number) {
-  bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
-
-  // Read check
-  try {
-    const result = await api.connections.test(String(connectionId)) as { success: boolean; message: string }
-    bigqueryPermissionCheck.value.read = result.success
-    if (!result.success) bigqueryPermissionError.value.read = result.message
-  } catch (e: any) {
-    bigqueryPermissionCheck.value.read = false
-    bigqueryPermissionError.value.read = e?.data?.detail || e?.message || 'Connection failed'
-  }
-
-  // Write check (independent — tests roles/bigquery.dataEditor)
-  if (form.value.ssl_enabled) {
-    try {
-      const writeResult = await api.connections.testWrite(String(connectionId)) as { success: boolean; message: string }
-      bigqueryPermissionCheck.value.write = writeResult.success
-      if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
-    } catch (e: any) {
-      bigqueryPermissionCheck.value.write = false
-      bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
-    }
-  }
-}
-
-// ── GA4 Unnesting ─────────────────────────────────────────────────────────────
-
-function _cronToTime(cron: string): string {
-  const parts = (cron || '0 6 * * *').split(' ')
-  if (parts.length < 2) return '06:00'
-  return `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`
-}
-
-async function loadGa4State() {
-  if (!editingConnection.value || editingConnection.value.db_type !== 'bigquery') return
-  ga4Loading.value = true
-  try {
-    const [detected, existing] = await Promise.all([
-      api.ga4.detect(editingConnection.value.id) as Promise<{ datasets: any[] }>,
-      api.ga4.listConfigs(editingConnection.value.id) as Promise<{ configs: any[] }>,
-    ])
-    const configMap = new Map((existing.configs || []).map((c: any) => [c.analytics_dataset_id, c]))
-    ga4Datasets.value = (detected.datasets || []).map((ds: any) => {
-      const cfg: any = configMap.get(ds.analytics_dataset_id)
-      return {
-        analytics_dataset_id: ds.analytics_dataset_id,
-        bingo_dataset_id: ds.bingo_dataset_id,
-        config_id: cfg?.id,
-        tag_name: cfg?.tag_name || '',
-        lookback_days: cfg?.lookback_days ?? 2,
-        schedule_time: cfg ? _cronToTime(cfg.schedule_cron) : '06:00',
-        enabled: cfg?.enabled ?? true,
-        last_run_at: cfg?.last_run_at,
-        last_run_status: cfg?.last_run_status,
-        params_count: Array.isArray(cfg?.discovered_params) ? cfg.discovered_params.length : 0,
-      } as GA4DatasetConfig
-    })
-    if (ga4Datasets.value.some(d => d.config_id && d.enabled)) ga4Enabled.value = true
-  } catch (e) {
-    console.error('Failed to load GA4 state', e)
-  } finally {
-    ga4Loading.value = false
-  }
-}
-
-async function toggleGa4Unnesting() {
-  ga4Enabled.value = !ga4Enabled.value
-  if (ga4Enabled.value) {
-    if (ga4Datasets.value.length === 0) await loadGa4State()
-    // Save new configs or re-enable existing disabled ones
-    for (const ds of ga4Datasets.value) {
-      if (!ds.config_id) {
-        await saveGa4Config(ds)
-      } else if (!ds.enabled) {
-        try { await api.ga4.patchConfig(ds.config_id, { enabled: true }) } catch {}
-        ds.enabled = true
-      }
-    }
-  }
-  if (!ga4Enabled.value) {
-    // Disable all configs without deleting
-    for (const ds of ga4Datasets.value) {
-      if (ds.config_id) {
-        try { await api.ga4.patchConfig(ds.config_id, { enabled: false }) } catch {}
-        ds.enabled = false
-      }
-    }
-  }
-}
-
-async function saveGa4Config(ds: GA4DatasetConfig) {
-  if (!editingConnection.value) return
-  try {
-    const result = await api.ga4.upsertConfig({
-      connection_id: editingConnection.value.id,
-      analytics_dataset_id: ds.analytics_dataset_id,
-      tag_name: ds.tag_name,
-      lookback_days: ds.lookback_days,
-      schedule_time: ds.schedule_time,
-    }) as { config_id: number }
-    ds.config_id = result.config_id
-    ds.enabled = true
-  } catch (e: any) {
-    console.error('Failed to save GA4 config', e)
-  }
-}
-
-async function discoverGa4Params(ds: GA4DatasetConfig) {
-  if (!editingConnection.value) return
-  ds.discovering_params = true
-  try {
-    const result = await api.ga4.discoverParams({
-      connection_id: editingConnection.value.id,
-      analytics_dataset_id: ds.analytics_dataset_id,
-      lookback_days: 7,
-    }) as { count: number }
-    ds.params_count = result.count
-  } catch (e) {
-    console.error('GA4 param discovery failed', e)
-  } finally {
-    ds.discovering_params = false
-  }
-}
-
-async function triggerGa4Run(ds: GA4DatasetConfig) {
-  if (!ds.config_id) await saveGa4Config(ds)
-  if (!ds.config_id) return
-  ds.triggering = true
-  try {
-    await api.ga4.trigger(ds.config_id)
-    ds.last_run_status = 'running'
-    pollGa4Status(ds)
-  } catch (e) {
-    console.error('GA4 trigger failed', e)
-  } finally {
-    ds.triggering = false
-  }
-}
-
-function pollGa4Status(ds: GA4DatasetConfig) {
-  const MAX_POLLS = 60  // 5 minutes at 5s intervals
-  let count = 0
-  const interval = setInterval(async () => {
-    count++
-    if (count > MAX_POLLS || !editingConnection.value) {
-      clearInterval(interval)
-      return
-    }
-    try {
-      const res = await api.ga4.listConfigs(editingConnection.value.id) as { configs: any[] }
-      const updated = res.configs.find((c: any) => c.id === ds.config_id)
-      if (updated) {
-        ds.last_run_status = updated.last_run_status
-        ds.last_run_error = updated.last_run_error
-        if (updated.last_run_status !== 'running') clearInterval(interval)
-      }
-    } catch {
-      clearInterval(interval)
-    }
-  }, 5000)
-}
-
-watch(editingConnection, (conn) => {
-  ga4Enabled.value = false
-  ga4Datasets.value = []
-  if (conn?.db_type === 'bigquery') loadGa4State()
-})
-
-async function toggleWriteAccess() {
-  form.value.ssl_enabled = !form.value.ssl_enabled
-  if (form.value.ssl_enabled) {
-    bigqueryPermissionCheck.value.write = null
-    bigqueryPermissionError.value.write = null
-    if (bigquerySaInfo.value) {
-      // Create mode — use uploaded JSON
-      const payload = {
-        name: bigquerySaInfo.value.project_id || 'BigQuery',
-        db_type: 'bigquery',
-        host: bigquerySaInfo.value.project_id,
-        port: 443,
-        database: form.value.database || '',
-        username: 'service-account',
-        password: bigqueryJsonContent.value,
-        ssl_enabled: true
-      }
-      try {
-        const writeResult = await api.connections.testWriteUnsaved(payload) as { success: boolean; message: string }
-        bigqueryPermissionCheck.value.write = writeResult.success
-        if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
-      } catch (e: any) {
-        bigqueryPermissionCheck.value.write = false
-        bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
-      }
-    } else if (editingConnection.value) {
-      // Edit mode — use saved credentials
-      try {
-        const writeResult = await api.connections.testWrite(String(editingConnection.value.id)) as { success: boolean; message: string }
-        bigqueryPermissionCheck.value.write = writeResult.success
-        if (!writeResult.success) bigqueryPermissionError.value.write = writeResult.message
-      } catch (e: any) {
-        bigqueryPermissionCheck.value.write = false
-        bigqueryPermissionError.value.write = e?.data?.detail || e?.message || 'Write check failed'
-      }
-    }
-  } else {
-    bigqueryPermissionCheck.value.write = null
-    bigqueryPermissionError.value.write = null
-  }
-
-  // Auto-persist the toggle when editing an existing connection
-  if (editingConnection.value) {
-    try {
-      await api.connections.update(String(editingConnection.value.id), { ssl_enabled: form.value.ssl_enabled })
-      // Update local connection record so re-opening the dialog reflects the saved state
-      const idx = connections.value.findIndex(c => c.id === editingConnection.value!.id)
-      if (idx >= 0) connections.value[idx] = { ...connections.value[idx], ssl_enabled: form.value.ssl_enabled }
-    } catch {
-      // Non-fatal: the user can still save manually
-    }
-  }
-}
-
-function clearBigQueryJson() {
-  bigqueryJsonFile.value = null
-  bigqueryJsonContent.value = ''
-  bigqueryFormErrors.value.json = undefined
-  bigquerySaInfo.value = null
-  bigqueryPermissionCheck.value = { read: null, write: null }
-  bigqueryPermissionError.value = { read: null, write: null }
-  if (bigqueryJsonFileInputRef.value) {
-    bigqueryJsonFileInputRef.value.value = ''
-  }
-}
-
-function handleBigQueryJsonFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) applyBigQueryJsonFile(file)
-}
-
-function handleBigQueryJsonDrop(event: DragEvent) {
-  bigqueryJsonDragOver.value = false
-  const file = event.dataTransfer?.files?.[0]
-  if (!file) return
-  if (!file.name.endsWith('.json') && file.type !== 'application/json') {
-    toast.error('Only .json service account key files are accepted')
-    return
-  }
-  applyBigQueryJsonFile(file)
 }
 
 async function handleDatasetUpload() {

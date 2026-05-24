@@ -85,7 +85,7 @@ def dispatch_pipelines():
         db.close()
 
 
-@shared_task(name="run_pipeline_task", time_limit=1800)
+@shared_task(name="run_pipeline_task", time_limit=3600)
 def run_pipeline_task(pipeline_id: str, triggered_by: str, triggered_by_user_id: str | None):
     """Execute a single pipeline run. Delegates to runner.run_pipeline()."""
     from backend.pipelines.runner import run_pipeline
