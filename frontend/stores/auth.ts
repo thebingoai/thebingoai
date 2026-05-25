@@ -182,6 +182,10 @@ export const useAuthStore = defineStore('auth', {
             body: { token },
           }
         )
+        // Drop any prior session before installing the new account's tokens, so a
+        // stale token (e.g. an account still logged in this browser) can't shadow the
+        // freshly-verified user.
+        this._clearLocalSession()
         this.token = data.access_token
         this.refreshToken = data.refresh_token
         this._isFirstLogin = data.is_first_login ?? false
@@ -354,6 +358,14 @@ export const useAuthStore = defineStore('auth', {
         }
       }
 
+      this._clearLocalSession()
+    },
+
+    // Tear down all client-side session state (stores, websocket, tokens,
+    // localStorage). Does NOT call the SSO logout endpoint — used both by logout()
+    // (after it blacklists the refresh token) and by verifyEmail() to wipe a stale
+    // session before adopting a new account.
+    _clearLocalSession() {
       const chatStore = useChatStore()
       const dashboardStore = useDashboardStore()
       const { disconnect, clearHandlers } = useWebSocket()
