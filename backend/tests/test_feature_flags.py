@@ -252,6 +252,7 @@ def test_known_flags_registry():
         "governance_v0",
         "governance_v1",
         "governance_v2",
+        "duckdb_widget_serving",
     }
     assert KNOWN_FLAGS >= expected, f"Missing from KNOWN_FLAGS: {expected - KNOWN_FLAGS}"
 
