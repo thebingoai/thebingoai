@@ -228,7 +228,9 @@ async def create_connection(
                     "next dbt run will retry", connection.id, exc_info=True,
                 )
 
-    # Auto-discover schema for all connector types except BigQuery (too many datasets)
+    # Auto-discover schema for all connector types except BigQuery (legacy —
+    # opted out because projects often have hundreds of datasets). BigQuery GA4
+    # is single-project and runs discovery so the dashboard agent gets context.
     if request.db_type != "bigquery":
         try:
             with get_connector(
@@ -242,6 +244,11 @@ async def create_connection(
                 ssl_ca_cert=request.ssl_ca_cert
             ) as connector:
                 schema_data = discover_schema(connector)
+                # Inject materialised pipeline tables (e.g. bigquery_ga4 dedup
+                # view) so dashboard/briefing agents see flat columns rather
+                # than just raw source schema. No-op for other db_types.
+                from backend.services.schema_discovery import augment_schema_with_pipelines
+                schema_data = augment_schema_with_pipelines(schema_data, connection)
                 schema_json = generate_schema_json(
                     connection.id,
                     connection.name,
@@ -263,6 +270,11 @@ async def create_connection(
 
         except Exception as e:
             logger.error("Schema discovery failed for connection %s: %s", connection.id, e, exc_info=True)
+    else:
+        # GA4 / BigQuery: no traditional schema discovery.  Clear the profiling
+        # status so the UI doesn't show a stuck spinner on the connection card.
+        connection.profiling_status = ""
+        db.commit()
 
     db.refresh(connection)
     logger.info("Connection '%s' (id=%s) created successfully", connection.name, connection.id)
@@ -643,6 +655,7 @@ async def refresh_connection_schema(
                 connection.id,
                 connection.name,
                 connection.db_type,
+                connection=connection,
             )
 
             # Load refreshed schema to get table count

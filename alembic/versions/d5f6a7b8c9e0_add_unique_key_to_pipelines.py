@@ -7,7 +7,7 @@ pipeline still pins the BQ external table to a single latest partition
 (no dedup view).
 
 Revision ID: d5f6a7b8c9e0
-Revises: c4e5f6a7b8d9
+Revises: f7a8b9c0d1e2
 Create Date: 2026-05-18
 """
 from alembic import op
@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 revision = "d5f6a7b8c9e0"
-down_revision = "c4e5f6a7b8d9"
+down_revision = "f7a8b9c0d1e2"
 branch_labels = None
 depends_on = None
 

@@ -41,6 +41,7 @@ def get_available_types() -> list[dict]:
             "badge_variant": reg.badge_variant,
             "version": reg.version,
             "card_meta_items": reg.card_meta_items or [],
+            "skip_schema_refresh": reg.skip_schema_refresh,
         }
         for reg in _CONNECTORS.values()
     ]

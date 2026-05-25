@@ -281,6 +281,30 @@ def build_dashboard_agent_prompt(
     finally:
         db.close()
 
+    # Connector-specific dashboard design hints (e.g. GA4 recommended KPIs +
+    # breakdowns + filter patterns). Plugins set this on
+    # ConnectorRegistration.dashboard_design_hint. Inject one block per
+    # unique connector type the user can reach so the agent has concrete
+    # guidance instead of generic dashboard heuristics.
+    try:
+        from backend.connectors.factory import get_connector_registration
+        from backend.models.database_connection import DatabaseConnection
+        seen_types: set[str] = set()
+        for conn in (connection_metadata or []):
+            db_type = getattr(conn, "db_type", None)
+            if not db_type or db_type in seen_types:
+                continue
+            seen_types.add(db_type)
+            reg = get_connector_registration(db_type)
+            hint = getattr(reg, "dashboard_design_hint", None) if reg else None
+            if hint:
+                prompt += (
+                    f"\n\n## Connector-specific guidance — {db_type}\n{hint}"
+                )
+    except Exception:
+        # Defensive: hint injection must never block prompt build.
+        pass
+
     # SQL dialect hints: DuckDB once the Org is cut over to DuckDB-over-Parquet
     # serving, BigQuery otherwise (default / legacy).
     from backend.agents.profile_defaults import _dialect_hints_for_org

@@ -23,17 +23,25 @@ def make_dataplane_destination(
     *,
     unique_key: tuple[str, ...] | None = None,
 ):
-    """Return a dlt-compatible destination callable that writes to *plane*.
+    """Return (destination, row_counter) for a dlt run.
 
     dlt custom destinations receive (items, table) calls.  We accumulate items
     into a PyArrow table and flush to the DataPlane on each batch.
 
     `unique_key` (when set) is forwarded to `plane.write_parquet` so the plane
     can register a bronze external table + silver dedup view per pipeline.
+
+    `row_counter` is a mutable dict (`{"rows": int}`) that the destination
+    increments per batch -- the caller reads it after `dlt_pipeline.run`
+    finishes to record an accurate row count on the PipelineRun. dlt's
+    LoadPackage stats expose only `file_size` (bytes), not row counts, so
+    a closure-tracked counter is the simplest correct source.
     """
     try:
         import dlt
         import pyarrow as pa
+
+        row_counter: dict[str, int] = {"rows": 0}
 
         @dlt.destination(name="dataplane", batch_size=5000)
         def _dataplane_dest(items: list[dict], table: dlt.TTableSchema) -> None:
@@ -51,12 +59,13 @@ def make_dataplane_destination(
                 scope, table_name_from_dlt, arrow_tbl,
                 mode=mode, unique_key=unique_key,
             )
+            row_counter["rows"] += len(items)
             logger.debug(
                 "dlt_destination: wrote %d rows to DataPlane table %s (mode=%s, unique_key=%s)",
                 len(items), table_name_from_dlt, mode, unique_key,
             )
 
-        return _dataplane_dest
+        return _dataplane_dest, row_counter
 
     except ImportError:
         raise ImportError(

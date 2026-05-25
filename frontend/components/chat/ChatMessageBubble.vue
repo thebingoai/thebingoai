@@ -79,7 +79,7 @@
     <!-- Assistant message: left-aligned plain text -->
     <div v-else class="pr-4 md:pr-32">
       <div class="flex gap-2.5 items-start">
-        <div class="w-7 h-7 rounded-[var(--r-md)] bg-transparent flex items-center justify-center flex-shrink-0 overflow-hidden mt-0.5">
+        <div class="w-7 h-7 rounded-[var(--r-md)] bg-transparent flex items-center justify-center flex-shrink-0 overflow-hidden mt-0.5" :class="{ 'avatar-spin': isLoading }">
           <img v-if="agentAvatarUrl" :src="agentAvatarUrl" class="w-full h-full object-cover" alt="Agent" />
           <img v-else src="/logo/BINGO Logo Design_FA_Icon_W.png" class="w-full h-full object-contain p-1" :alt="agentName || 'Bingo'" />
         </div>
@@ -324,11 +324,16 @@ const isQuestionAnswered = computed(() => {
 })
 
 const createdDashboardId = computed<number | null>(() => {
+  // Recognise both the direct tool (create_dashboard / update_dashboard) and
+  // the sub-agent wrapper (dashboard_agent) -- the orchestrator increasingly
+  // delegates dashboard creation through the wrapper, which returns the
+  // same {success, dashboard_id} shape but under a different tool_name.
+  const DASHBOARD_TOOLS = new Set(['create_dashboard', 'update_dashboard', 'dashboard_agent'])
   for (const step of props.message.agent_steps ?? []) {
-    if (step.tool_name !== 'create_dashboard' && step.tool_name !== 'update_dashboard') continue
+    if (!DASHBOARD_TOOLS.has(step.tool_name)) continue
     try {
       const result = typeof step.content?.result === 'string' ? JSON.parse(step.content.result) : step.content?.result
-      if (result?.success === true) return result.dashboard_id ?? null
+      if (result?.success === true && result?.dashboard_id) return result.dashboard_id
     } catch { continue }
   }
   return null

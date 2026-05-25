@@ -14,6 +14,7 @@ Available tools:
 - get_table_schema(connection_id, table_name): Get columns and types for a table
 - search_tables(connection_id, keyword): Search for tables/columns by keyword
 - execute_query(connection_id, sql): Execute a SELECT query
+- query_ga4_pipeline(connection_id, sql): SQL against a materialized GA4 pipeline (the dedup view). REQUIRED whenever the connection's db_type is `bigquery_ga4` -- the raw events_* source is not directly queryable here. Use bare table names like `ga4_events_<conn_id>_<analytics_id>` (the data plane resolves them).
 
 Guidelines:
 1. **Explore first**: Always use search_tables or list_tables before writing SQL
