@@ -571,6 +571,15 @@ class BigQueryGCSPlane:
             raise FileNotFoundError(f"Table {table!r} not found in scope {scope}")
         return _bq_schema_to_arrow(bq_table.schema)
 
+    def read_dbt_model(self, scope: OwnerScope, model_name: str) -> pa.Table:
+        """Read a dbt-materialized model out of the BigQuery dataset into Arrow.
+
+        dbt (prod) materializes natively into `<project>.<dataset>.<model>`.
+        Used by the GAP-3 step that lands dbt outputs in the GCS Parquet lake.
+        """
+        table_id = f"{self._project}.{self._dataset}.{model_name}"
+        return self._bq().query(f"SELECT * FROM `{table_id}`").result().to_arrow()
+
     # ── Internal helpers ──────────────────────────────────────────────────
 
     def _scope_bq_prefix(self, scope: OwnerScope) -> str:

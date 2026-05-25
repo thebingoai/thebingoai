@@ -175,6 +175,22 @@ class LocalFilesystemDataPlane:
             raise FileNotFoundError(f"No parquet files in {latest}")
         return pq.read_schema(os.path.join(latest, parquet_files[0]))
 
+    def read_dbt_model(self, scope: OwnerScope, model_name: str) -> pa.Table:
+        """Read a dbt-materialized model out of the per-scope DuckDB store into Arrow.
+
+        dbt (dev) materializes natively into `<root>/<scope>/dbt.duckdb`
+        (`project_synth` points the duckdb profile there). Used by the GAP-3
+        step that lands dbt outputs in the DataPlane Parquet lake.
+        """
+        dbt_path = os.path.join(self._scope_root(scope), "dbt.duckdb")
+        if not os.path.exists(dbt_path):
+            raise FileNotFoundError(f"dbt duckdb store not found: {dbt_path}")
+        conn = duckdb.connect(dbt_path, read_only=True)
+        try:
+            return conn.execute(f'SELECT * FROM "{model_name}"').fetch_arrow_table()
+        finally:
+            conn.close()
+
     # ── Internal helpers ──────────────────────────────────────────────────
 
     def _register_scope_views(self, conn: duckdb.DuckDBPyConnection, scope: OwnerScope) -> None:

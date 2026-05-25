@@ -159,10 +159,20 @@ def run_dbt(
             except Exception:
                 logger.warning("run_dbt: failed to publish dbt.run.failed for run %s", run_id)
 
-        # Chain profiling for each successfully-materialized model
+        # Land each materialized model in the DataPlane Parquet lake (GAP-3),
+        # then chain profiling. Materialize first so the model is present as
+        # Parquet before profile_dbt_model reads its schema. Non-fatal per model.
         if status in ("success", "partial_success") and models_run:
             ok_models = [m["name"] for m in models_run if m["status"] == "success"]
             for model_name in ok_models:
+                try:
+                    from backend.transforms.materialize import materialize_dbt_model_to_dataplane
+                    materialize_dbt_model_to_dataplane(scope, model_name, db=db)
+                except Exception:
+                    logger.warning(
+                        "run_dbt: failed to materialize %s to DataPlane for run %s",
+                        model_name, run_id, exc_info=True,
+                    )
                 try:
                     from backend.tasks.profiling_tasks import profile_dbt_model
                     profile_dbt_model.delay(run_id, model_name, scope.kind, scope.id)
