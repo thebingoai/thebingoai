@@ -382,6 +382,13 @@ def _serve_widget_via_dataplane(
     if not connection:
         return None
 
+    # GAP-10 cutover gate: only dashboards journaled as DuckDB (migrated or
+    # born-DuckDB) serve via DuckDB; un-migrated ones fall back to BQ/source so
+    # a mid-cutover viewer never gets BigQuery SQL run through DuckDB.
+    from backend.migration.dialect_migration import is_duckdb_ready
+    if not is_duckdb_ready(request.dashboard_id, db):
+        return None
+
     data_context = dashboard.data_context if dashboard else None
 
     # Same (plane, scope) the writers (CSV connector, Pipeline, migration) use —

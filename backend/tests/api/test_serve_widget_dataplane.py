@@ -35,6 +35,16 @@ def current_user():
     return SimpleNamespace(id="u1", org_id="o1")
 
 
+@pytest.fixture(autouse=True)
+def _gate_open(monkeypatch):
+    """Default the GAP-10 cutover gate open so serving-mechanics tests proceed.
+
+    The dedicated gate test overrides this.
+    """
+    import backend.migration.dialect_migration as dm
+    monkeypatch.setattr(dm, "is_duckdb_ready", lambda dashboard_id, db: True)
+
+
 @pytest.fixture
 def db_with_connection():
     """Fake Session whose connection lookup returns a truthy connection."""
@@ -175,6 +185,17 @@ def test_prod_reader_none_falls_back(monkeypatch, current_user, db_with_connecti
     monkeypatch.setattr(dps, "get_gcs_duckdb_reader", lambda scope, db: None)
     req = _request("SELECT region FROM csv_1", dashboard_id=5)
     assert _serve_widget_via_dataplane(req, SimpleNamespace(data_context=None), current_user, db_with_connection) is None
+
+
+def test_gate_blocks_unmigrated_dashboard(monkeypatch, plane, scope, current_user, db_with_connection):
+    # Dashboard not yet journaled DuckDB → gate returns None → BQ/source fallback,
+    # even though the source Parquet exists and the plane is local.
+    import backend.migration.dialect_migration as dm
+    monkeypatch.setattr(dm, "is_duckdb_ready", lambda dashboard_id, db: False)
+    _write_sales(plane, scope)
+    monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (plane, scope))
+    req = _request("SELECT region, SUM(amount) AS total FROM csv_1 GROUP BY region", dashboard_id=5)
+    assert _serve_widget_via_dataplane(req, None, current_user, db_with_connection) is None
 
 
 def test_prod_cold_cache_falls_back(monkeypatch, current_user, db_with_connection):

@@ -142,6 +142,19 @@ async def create_dashboard(
     db.add(dashboard)
     db.commit()
     db.refresh(dashboard)
+
+    # If the Org is cut over to DuckDB serving, the agent emits DuckDB SQL, so
+    # mark this dashboard born-DuckDB: it's never re-transpiled and serving may
+    # use the DuckDB path immediately (Phase 3 cutover gate).
+    if current_user.org_id:
+        try:
+            from backend.config.feature_flags import enabled
+            if enabled(str(current_user.org_id), "duckdb_widget_serving"):
+                from backend.migration.dialect_migration import mark_born_duckdb
+                mark_born_duckdb(dashboard.id, db)
+        except Exception:
+            logger.warning("mark_born_duckdb failed for dashboard %s", dashboard.id, exc_info=True)
+
     return _dashboard_to_response(dashboard)
 
 
