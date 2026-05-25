@@ -81,10 +81,14 @@ async def get_current_user_info(
 async def logout(
     request: LogoutRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    current_user: User = Depends(get_current_user),
 ):
     """
     Logout: invalidate tokens via the configured auth provider.
+
+    Best-effort — does NOT require a valid/unexpired token. The access token is
+    forwarded to SSO for invalidation as-is; an already-expired token is fine
+    (it's being discarded anyway). Gating this on get_current_user caused a 401
+    whenever the access token had expired by logout time.
 
     Requires: Bearer token in Authorization header
     Body: { "refresh_token": "..." }
