@@ -55,6 +55,51 @@ class LocalFilesystemDataPlane:
         )
         return os.path.join(table_root, partitions[0]) if partitions else None
 
+    # ── Dedup-key sidecar ─────────────────────────────────────────────────
+
+    def _meta_path(self, scope: OwnerScope, table: str) -> str:
+        return os.path.join(self._table_root(scope, table), "_meta.json")
+
+    def _write_meta(self, scope: OwnerScope, table: str, unique_key: tuple[str, ...]) -> None:
+        import json
+        path = self._meta_path(scope, table)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"unique_key": list(unique_key)}, f)
+        os.rename(tmp, path)
+
+    def _read_unique_key(self, scope: OwnerScope, table: str) -> tuple[str, ...] | None:
+        import json
+        path = self._meta_path(scope, table)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path) as f:
+                uk = json.load(f).get("unique_key")
+        except (OSError, ValueError):
+            return None
+        return tuple(uk) if uk else None
+
+    def _resolve_view_key(self, scope: OwnerScope, table: str) -> tuple[str, ...] | None:
+        """Stored unique_key intersected with the table's actual Parquet columns.
+
+        Falls back to None (raw-union view) when no key is stored, no partition
+        exists yet, or none of the key columns are present — so an invalid
+        `PARTITION BY` is never emitted.
+        """
+        unique_key = self._read_unique_key(scope, table)
+        if not unique_key:
+            return None
+        latest = self._latest_partition(scope, table)
+        if latest is None:
+            return None
+        parquet_files = [f for f in os.listdir(latest) if f.endswith(".parquet")]
+        if not parquet_files:
+            return None
+        cols = set(pq.read_schema(os.path.join(latest, parquet_files[0])).names)
+        filtered = tuple(k for k in unique_key if k in cols)
+        return filtered or None
+
     # ── DuckDB connection ─────────────────────────────────────────────────
 
     def _get_conn(self) -> duckdb.DuckDBPyConnection:
@@ -86,10 +131,6 @@ class LocalFilesystemDataPlane:
         mode: str = "overwrite",
         unique_key: tuple[str, ...] | None = None,
     ) -> None:
-        # unique_key is accepted for protocol compatibility but not yet honored
-        # in local-filesystem mode (DuckDB views could implement dedup-at-read
-        # later). Local-fs is dev-only; production uses BigQueryGCSPlane.
-        _ = unique_key
         import uuid
         dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         partition_dir = self._partition_dir(scope, table, dt)
@@ -98,6 +139,13 @@ class LocalFilesystemDataPlane:
             shutil.rmtree(partition_dir)
 
         os.makedirs(partition_dir, exist_ok=True)
+
+        # Persist the dedup key beside the data so `_register_scope_views` can
+        # build a latest-`dt`-per-key view (parity with BigQueryGCSPlane's
+        # silver view). Sidecar sits in the table root, not a `dt=` dir, so it
+        # never enters the `dt=*/*.parquet` glob or `list_tables`.
+        if unique_key:
+            self._write_meta(scope, table, unique_key)
 
         # Unique part suffix per call for append/merge so multi-batch dlt loads
         # accumulate. Overwrite stays at part-0 (dir is wiped above).
@@ -199,6 +247,8 @@ class LocalFilesystemDataPlane:
 
     def _register_scope_views(self, conn: duckdb.DuckDBPyConnection, scope: OwnerScope) -> None:
         """Create/replace DuckDB VIEWs for every table in scope so SQL can use bare names."""
+        from .duckdb_exec import build_scope_view_sql
+
         scope_root = self._scope_root(scope)
         if not os.path.isdir(scope_root):
             return
@@ -207,8 +257,5 @@ class LocalFilesystemDataPlane:
             if not os.path.isdir(table_root):
                 continue
             glob_pattern = os.path.join(table_root, "dt=*", "*.parquet")
-            safe = table.replace("-", "_")
-            conn.execute(
-                f"CREATE OR REPLACE VIEW {safe} AS "
-                f"SELECT * FROM read_parquet({glob_pattern!r}, hive_partitioning=true)"
-            )
+            unique_key = self._resolve_view_key(scope, table)
+            conn.execute(build_scope_view_sql(table, glob_pattern, unique_key))

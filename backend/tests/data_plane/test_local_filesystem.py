@@ -170,3 +170,55 @@ def test_connection_per_task(root, scope, sample_table):
         t.join()
 
     assert errors == [], f"Thread errors: {errors}"
+
+
+# ── Read-time dedup (unique_key) ──────────────────────────────────────────
+
+def _write_on_dt(monkeypatch, plane, scope, table, date_str, table_data, **kw):
+    """Write `table_data` so it lands in partition `dt=<date_str>`."""
+    import backend.data_plane.local_filesystem as mod
+    from datetime import datetime as _real_dt
+
+    class _FixedDT:
+        @staticmethod
+        def now(tz=None):
+            return _real_dt(
+                int(date_str[:4]), int(date_str[5:7]), int(date_str[8:10]), tzinfo=tz
+            )
+
+    monkeypatch.setattr(mod, "datetime", _FixedDT)
+    try:
+        plane.write_parquet(scope, table, table_data, **kw)
+    finally:
+        monkeypatch.setattr(mod, "datetime", _real_dt)
+
+
+def _insights_row(spend):
+    return pa.table({
+        "ad_id": pa.array(["A"], type=pa.string()),
+        "date_start": pa.array(["2026-05-20"], type=pa.string()),
+        "spend": pa.array([spend], type=pa.float64()),
+    })
+
+
+def test_dedup_view_keeps_latest_dt_per_key(plane, scope, monkeypatch):
+    """unique_key → the view collapses overlapping dt= snapshots to the newest per key."""
+    _write_on_dt(monkeypatch, plane, scope, "insights_daily", "2026-05-24",
+                 _insights_row(10.0), mode="overwrite", unique_key=("ad_id", "date_start"))
+    _write_on_dt(monkeypatch, plane, scope, "insights_daily", "2026-05-25",
+                 _insights_row(12.5), mode="overwrite", unique_key=("ad_id", "date_start"))
+
+    result = plane.query(scope, "SELECT ad_id, date_start, spend FROM insights_daily")
+    assert result.row_count == 1
+    assert result.rows[0][2] == 12.5  # newest dt wins (latest revision)
+
+
+def test_no_unique_key_keeps_raw_union(plane, scope, monkeypatch):
+    """Without unique_key the view is a raw union — overlapping rows are NOT deduped."""
+    _write_on_dt(monkeypatch, plane, scope, "events", "2026-05-24",
+                 _insights_row(10.0), mode="overwrite")
+    _write_on_dt(monkeypatch, plane, scope, "events", "2026-05-25",
+                 _insights_row(12.5), mode="overwrite")
+
+    result = plane.query(scope, "SELECT count(*) AS n FROM events")
+    assert result.rows[0][0] == 2  # both snapshots present, no dedup

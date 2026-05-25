@@ -17,6 +17,34 @@ from backend.connectors.base import QueryResult
 _NAMED_PARAM_RE = re.compile(r"\$[A-Za-z_]\w*")
 
 
+def build_scope_view_sql(
+    table: str,
+    source_glob: str,
+    unique_key: tuple[str, ...] | None = None,
+) -> str:
+    """`CREATE OR REPLACE VIEW` DDL exposing a table's Parquet under its bare name.
+
+    Shared by every DuckDB-backed reader (`LocalFilesystemDataPlane` dev,
+    `GCSDuckDBReader` prod) so the view definition lives in one place.
+
+    Without *unique_key* the view is a raw union over all `dt=` partitions (the
+    historical behavior). With *unique_key* it dedups to the latest `dt=`
+    snapshot per key — the DuckDB analog of `BigQueryGCSPlane`'s silver view
+    (`ROW_NUMBER() OVER (PARTITION BY <key> ORDER BY dt DESC) = 1`).
+    """
+    safe = table.replace("-", "_")
+    read = f"read_parquet('{source_glob}', hive_partitioning=true)"
+    if not unique_key:
+        return f"CREATE OR REPLACE VIEW {safe} AS SELECT * FROM {read}"
+    keys = ", ".join(f'"{k}"' for k in unique_key)
+    return (
+        f"CREATE OR REPLACE VIEW {safe} AS "
+        f"SELECT * EXCLUDE (dt, _rn) FROM ("
+        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {keys} ORDER BY dt DESC) AS _rn "
+        f"FROM {read}) WHERE _rn = 1"
+    )
+
+
 def run_duckdb_query(conn, sql: str, params: dict[str, Any] | None = None) -> QueryResult:
     """Execute *sql* on *conn*, binding *params* and capping rows.
 

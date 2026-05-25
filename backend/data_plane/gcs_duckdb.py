@@ -32,17 +32,17 @@ def _secret_sql(key_id: str, secret: str) -> str:
     return f"CREATE OR REPLACE SECRET bingo_gcs (TYPE GCS, KEY_ID '{key_id}', SECRET '{secret}')"
 
 
-def _view_sql(table: str, glob: str) -> str:
+def _view_sql(table: str, glob: str, unique_key: tuple[str, ...] | None = None) -> str:
     """CREATE-VIEW DDL exposing a table's GCS Parquet under its bare name.
 
-    Mirrors `LocalFilesystemDataPlane._register_scope_views` so the same widget
-    SQL (bare table names) runs unchanged against either plane.
+    Delegates to the shared `duckdb_exec.build_scope_view_sql` so dev
+    (`LocalFilesystemDataPlane`) and prod (this reader) share one view
+    definition. *unique_key* is None today (no GCS sidecar reader yet); once
+    Phase 2 sources it, this path dedups to the latest `dt=` per key for free.
     """
-    safe = table.replace("-", "_")
-    return (
-        f"CREATE OR REPLACE VIEW {safe} AS "
-        f"SELECT * FROM read_parquet('{glob}', hive_partitioning=true)"
-    )
+    from .duckdb_exec import build_scope_view_sql
+
+    return build_scope_view_sql(table, glob, unique_key)
 
 
 class GCSDuckDBReader:
