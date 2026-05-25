@@ -604,6 +604,24 @@ async def refresh_dashboard_widgets(
         if chart_type and "chartType" not in mapping:
             mapping = {**mapping, "chartType": chart_type}
 
+        # DuckDB-over-DataPlane serving (flag-gated, per migrated dashboard) —
+        # same path as single-widget refresh, so bulk loads on cut-over Orgs
+        # avoid the per-widget BQ job. Falls through on None (GAP-7).
+        if _duckdb_serving_enabled(org_id):
+            try:
+                served = _serve_widget_via_dataplane(
+                    WidgetRefreshRequest(
+                        connection_id=connection_id, sql=sql, mapping=mapping,
+                        dashboard_id=dashboard_id, widget_id=widget_id,
+                    ),
+                    dashboard, current_user, db,
+                )
+                if served is not None:
+                    results[widget_id] = {"config": served.config, "refreshed_at": refreshed_at}
+                    continue
+            except Exception as e:
+                logger.warning(f"DuckDB serving failed for widget {widget_id}, falling back: {e}")
+
         # Try DataPlane cache first.
         try:
             cached = _read_widget_from_cache(
