@@ -54,6 +54,31 @@ def test_query_count(plane, scope, sample_table):
     assert result.rows[0][0] == 3
 
 
+def test_query_named_param_binding(plane, scope, sample_table):
+    # DuckDB `$name` placeholders bind from the dict by name (duckdb-dialect
+    # inject_filters output).
+    plane.write_parquet(scope, "test", sample_table)
+    result = plane.query(scope, "SELECT name FROM test WHERE id = $_f0", {"_f0": 2})
+    assert [r[0] for r in result.rows] == ["Bob"]
+
+
+def test_query_positional_param_binding_preserved(plane, scope, sample_table):
+    # Legacy positional `?` placeholder path still binds values in order.
+    plane.write_parquet(scope, "test", sample_table)
+    result = plane.query(scope, "SELECT name FROM test WHERE id = ?", {"x": 3})
+    assert [r[0] for r in result.rows] == ["Carol"]
+
+
+def test_query_truncates_at_max_rows(plane, scope, monkeypatch):
+    import backend.config as cfg
+    monkeypatch.setattr(cfg.settings, "max_query_rows", 5, raising=False)
+    big = pa.table({"i": pa.array(list(range(20)), type=pa.int64())})
+    plane.write_parquet(scope, "big", big)
+    result = plane.query(scope, "SELECT i FROM big ORDER BY i")
+    assert result.truncated is True
+    assert result.row_count == 5
+
+
 def test_atomic_write_tmp_cleaned_on_failure(plane, scope, root):
     """Simulate failure during write — .tmp file must not remain."""
     bad_data = iter([pa.record_batch({"x": pa.array([1])}, schema=pa.schema([("x", pa.int64())]))])

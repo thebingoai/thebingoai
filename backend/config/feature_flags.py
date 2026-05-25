@@ -15,6 +15,9 @@ silently — see test_feature_flags::test_known_flags):
     governance_v2                — Phase G stage 2
     native_merge_data_plane      — BigQueryGCSPlane: MERGE-on-ingest into native
                                    partitioned table instead of bronze+silver view
+    duckdb_widget_serving        — serve widget reads via DuckDB over DataPlane
+                                   Parquet (transpiled/DuckDB stored SQL) instead
+                                   of per-widget materialization + source BQ jobs
 """
 from __future__ import annotations
 
@@ -37,6 +40,7 @@ KNOWN_FLAGS: frozenset[str] = frozenset({
     "governance_v1",
     "governance_v2",
     "native_merge_data_plane",
+    "duckdb_widget_serving",
 })
 
 
