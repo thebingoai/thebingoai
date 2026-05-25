@@ -95,6 +95,7 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
     from backend.services.data_plane_service import get_default_plane
 
     db = SessionLocal()
+    duck_reader = None
     try:
         dashboard = db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
         if not dashboard:
@@ -107,6 +108,16 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
         org_id = _get_org_for_user(dashboard.user_id)
         scope = OwnerScope("org", org_id) if org_id else OwnerScope("user", dashboard.user_id)
         plane = get_default_plane(scope)
+
+        # Phase 2: when DuckDB-over-GCS serving is on for this Org, warm the
+        # cache by computing each widget via DuckDB-over-GCS (direct httpfs)
+        # instead of a per-widget BQ job. None (residency-locked / customer /
+        # no-HMAC / non-GCS plane) → keep the source-connector path. Per-widget
+        # fallback below handles not-yet-migrated BigQuery SQL.
+        from backend.config.feature_flags import enabled as _flag_enabled
+        from backend.services.data_plane_service import get_gcs_duckdb_reader
+        if org_id and _flag_enabled(org_id, "duckdb_widget_serving"):
+            duck_reader = get_gcs_duckdb_reader(scope, db)
 
         connection_groups: dict[int, list[dict]] = {}
         for widget in widgets:
@@ -163,7 +174,17 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
                         if date_col:
                             query_sql = _apply_date_filter(original_sql, date_col, date_range_days)
 
-                        result = connector.execute_query(query_sql)
+                        result = None
+                        if duck_reader is not None:
+                            try:
+                                result = duck_reader.query(scope, query_sql)
+                            except Exception as duck_err:
+                                logger.warning(
+                                    "DuckDB warm failed for widget %s, using source connector: %s",
+                                    w_id, duck_err,
+                                )
+                        if result is None:
+                            result = connector.execute_query(query_sql)
 
                         arrow_table = pa.table(
                             {col: [row[i] for row in result.rows] for i, col in enumerate(result.columns)}
@@ -187,6 +208,8 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
             widget_errors=widget_errors,
         )
     finally:
+        if duck_reader is not None:
+            duck_reader.close()
         db.close()
 
 

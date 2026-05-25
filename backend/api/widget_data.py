@@ -335,28 +335,44 @@ def _duckdb_serving_enabled(org_id: str | None) -> bool:
     return enabled(str(org_id), "duckdb_widget_serving")
 
 
+def _build_widget_response(result, mapping) -> "WidgetRefreshResponse":
+    """Shared QueryResult → WidgetRefreshResponse (local + GCS serving paths)."""
+    return WidgetRefreshResponse(
+        config=transform_widget_data(result, mapping),
+        execution_time_ms=result.execution_time_ms,
+        row_count=result.row_count,
+        truncated=result.truncated,
+        refreshed_at=datetime.now(timezone.utc).isoformat(),
+        source_columns=result.columns,
+        source_rows=[[_to_json_safe(v) for v in row] for row in result.rows],
+    )
+
+
 def _serve_widget_via_dataplane(
     request: "WidgetRefreshRequest",
     dashboard: "Dashboard | None",
     current_user: User,
     db: Session,
 ) -> "WidgetRefreshResponse | None":
-    """Serve a widget read from DuckDB over the DataPlane source-table Parquet.
+    """Serve a widget read from DuckDB over the DataPlane Parquet.
 
-    Runs the widget's (DuckDB-dialect) stored SQL — filtered or not — directly
-    over the registered source-table views, with filters injected in the duckdb
-    dialect. Returns a response on success, or None to signal the caller to fall
-    back to the legacy cache / source-DB path. None is returned for:
-      - a missing/foreign connection,
-      - a non-local plane (prod BigQueryGCSPlane serving is Phase 2),
-      - a cold source (referenced table(s) not yet in the DataPlane).
+    Per-plane behavior:
+      - **LocalFilesystemDataPlane (dev):** run the widget's (DuckDB) SQL live
+        over the local source-table views — filtered and unfiltered alike.
+      - **BigQueryGCSPlane (prod):** DuckDB-over-GCS via httpfs (Phase 2).
+        Unfiltered → read the warm `_dash_*` results cache (small, fast);
+        filtered → run the full SQL live (dt=-pruned). Gated by the reader
+        factory (residency-locked / customer / no-HMAC planes → None → BQ).
 
-    Transpile never runs here — the stored SQL is assumed DuckDB (migrated or
-    agent-emitted). Unmigrated BigQuery SQL fails to parse → the caller falls
-    back to the source DB, so nothing breaks.
+    Returns a response on success, or None to fall back to the legacy cache /
+    source-DB path. Transpile never runs here — stored SQL is assumed DuckDB;
+    unmigrated BigQuery SQL fails to parse → fall back, nothing breaks.
     """
     from backend.data_plane.local_filesystem import LocalFilesystemDataPlane
-    from backend.services.data_plane_service import get_plane_for_connection
+    from backend.services.data_plane_service import (
+        get_gcs_duckdb_reader,
+        get_plane_for_connection,
+    )
     from backend.utils.sql_refs import extract_table_refs
 
     connection = db.query(DatabaseConnection).filter(
@@ -366,37 +382,58 @@ def _serve_widget_via_dataplane(
     if not connection:
         return None
 
+    data_context = dashboard.data_context if dashboard else None
+
     # Same (plane, scope) the writers (CSV connector, Pipeline, migration) use —
     # guarantees the read resolves to where the source Parquet was written.
     plane, scope = get_plane_for_connection(connection)
-    if not isinstance(plane, LocalFilesystemDataPlane):
-        return None  # Phase 1: local/dev plane only
 
-    sql = request.sql
-    tables = extract_table_refs(sql)
-    if not tables or not all(plane.table_exists(scope, t) for t in tables):
-        return None  # cold/missing source → fall back to source DB
+    # ── Dev: local plane → serve live over local Parquet ──────────────────
+    if isinstance(plane, LocalFilesystemDataPlane):
+        tables = extract_table_refs(request.sql)
+        if not tables or not all(plane.table_exists(scope, t) for t in tables):
+            return None  # cold/missing source → fall back to source DB
+        sql, params = request.sql, None
+        if request.filters:
+            sql, params = inject_filters(
+                request.sql, request.filters,
+                data_context=data_context, widget_sources=request.widget_sources,
+                dialect="duckdb",
+            )
+        return _build_widget_response(plane.query(scope, sql, params), request.mapping)
 
-    params = None
-    if request.filters:
-        sql, params = inject_filters(
-            sql, request.filters,
-            data_context=dashboard.data_context if dashboard else None,
-            widget_sources=request.widget_sources,
-            dialect="duckdb",
+    # ── Prod: DuckDB-over-GCS (direct httpfs) ─────────────────────────────
+    reader = None
+    try:
+        reader = get_gcs_duckdb_reader(scope, db)
+        if reader is None:
+            return None  # residency-locked / customer / no-HMAC → BQ fallback
+
+        if request.filters:
+            # Filtered → no unfiltered cache hit; run the full SQL live (pruned).
+            sql, params = inject_filters(
+                request.sql, request.filters,
+                data_context=data_context, widget_sources=request.widget_sources,
+                dialect="duckdb",
+            )
+            return _build_widget_response(reader.query(scope, sql, params), request.mapping)
+
+        # Unfiltered → read the warm _dash_* results cache (small, fast).
+        if not (dashboard and request.widget_id):
+            return None
+        from backend.services.dashboard_cache import _sanitize_widget_id
+        cache_table = f'_dash_{request.dashboard_id}__{_sanitize_widget_id(request.widget_id)}'
+        result = reader.query(scope, f'SELECT * FROM "{cache_table}"')
+        return _build_widget_response(result, request.mapping)
+    except Exception as e:
+        logger.warning(
+            "DuckDB-over-GCS serve failed for widget %s, falling back: %s",
+            request.widget_id, e,
         )
-
-    result = plane.query(scope, sql, params)
-    config = transform_widget_data(result, request.mapping)
-    return WidgetRefreshResponse(
-        config=config,
-        execution_time_ms=result.execution_time_ms,
-        row_count=result.row_count,
-        truncated=result.truncated,
-        refreshed_at=datetime.now(timezone.utc).isoformat(),
-        source_columns=result.columns,
-        source_rows=[[_to_json_safe(v) for v in row] for row in result.rows],
-    )
+        return None
+    finally:
+        if reader is not None:
+            reader.close()
 
 
 router = APIRouter(prefix="/dashboards", tags=["widget-data"])

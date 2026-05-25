@@ -126,6 +126,13 @@ class Settings(BaseSettings):
     internal_gcp_sa_json_path: Optional[str] = None
     internal_gcp_location: str = "US"   # GCS + BQ region for auto-provisioned per-Org buckets/datasets
 
+    # GCS HMAC interop key for DuckDB-over-GCS serving (Phase 2). DuckDB's httpfs
+    # GCS provider authenticates with an HMAC KEY_ID/SECRET, not the SA JSON.
+    # Provision for the internal SA (projects.hmacKeys.create); empty → the
+    # DuckDB-over-GCS serving path is unavailable and reads fall back to BQ.
+    internal_gcs_hmac_key_id: Optional[str] = None
+    internal_gcs_hmac_secret: Optional[str] = None
+
     # Signup flow — when on, every SSO sign-up creates a new Org (1 user = 1 Org).
     # Required for per-Org auto-provisioned internal-GCP planes (Shape A).
     per_user_org_signup: bool = False

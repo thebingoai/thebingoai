@@ -45,6 +45,18 @@ def get_default_plane(scope: OwnerScope, db=None):
         with SessionLocal() as _db:
             return get_default_plane(scope, _db)
 
+    row = _resolve_default_row(scope, db)
+    if row is not None:
+        return _instantiate(row)
+
+    return _no_row_fallback(scope)
+
+
+def _resolve_default_row(scope: OwnerScope, db):
+    """Return the first ``is_default`` DataPlaneModel row in the scope chain, or None."""
+    from sqlalchemy import tuple_
+    from backend.models.data_plane import DataPlaneModel
+
     chain = _scope_chain(scope, db)
     rows = (
         db.query(DataPlaneModel)
@@ -60,9 +72,44 @@ def get_default_plane(scope: OwnerScope, db=None):
     for s in chain:
         row = by_key.get((s.kind, s.id))
         if row is not None:
-            return _instantiate(row)
+            return row
+    return None
 
-    return _no_row_fallback(scope)
+
+def get_gcs_duckdb_reader(scope: OwnerScope, db=None):
+    """Return a `GCSDuckDBReader` for DuckDB-over-GCS serving, or None (use BQ).
+
+    None — caller falls back to the BQ path — when any of:
+      - no default plane row, or it isn't a `google_cloud_project` plane;
+      - the plane is **residency_locked** (data must not leave its region);
+      - the plane is customer-managed (BYO) — internal HMAC only fits the
+        bingo-managed internal bucket; per-plane HMAC is deferred;
+      - internal GCS HMAC creds aren't configured.
+    """
+    if db is None:
+        from backend.database.session import SessionLocal
+        with SessionLocal() as _db:
+            return get_gcs_duckdb_reader(scope, _db)
+
+    from backend.config import settings
+
+    row = _resolve_default_row(scope, db)
+    if row is None or row.type != "google_cloud_project":
+        return None
+    if getattr(row, "residency_locked", False):
+        return None
+    if getattr(row, "managed_by", "customer") != "bingo":
+        return None
+
+    key_id = getattr(settings, "internal_gcs_hmac_key_id", None)
+    secret = getattr(settings, "internal_gcs_hmac_secret", None)
+    if not key_id or not secret:
+        return None
+
+    from backend.data_plane.gcs_duckdb import GCSDuckDBReader
+
+    plane = _instantiate(row)
+    return GCSDuckDBReader(plane.bucket, key_id, secret)
 
 
 def _no_row_fallback(scope: OwnerScope):

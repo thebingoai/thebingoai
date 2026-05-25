@@ -12,6 +12,7 @@ import pytest
 
 import backend.services.data_plane_service as dps
 from backend.api.widget_data import _serve_widget_via_dataplane
+from backend.connectors.base import QueryResult
 from backend.data_plane.local_filesystem import LocalFilesystemDataPlane
 from backend.data_plane.scope import OwnerScope
 from backend.schemas.widget_data import FilterParam, WidgetRefreshRequest
@@ -55,14 +56,34 @@ def _write_sales(plane, scope):
     )
 
 
-def _request(sql, filters=None):
+def _request(sql, filters=None, dashboard_id=None):
     return WidgetRefreshRequest(
         connection_id=1,
         sql=sql,
         mapping={"type": "table", "columnConfig": [{"column": "region"}, {"column": "total"}]},
         filters=filters,
         widget_id="w1",
+        dashboard_id=dashboard_id,
     )
+
+
+class _FakeReader:
+    """Stand-in for GCSDuckDBReader capturing the SQL/params it's asked to run."""
+
+    def __init__(self, result):
+        self._result = result
+        self.calls = []
+
+    def query(self, scope, sql, params=None):
+        self.calls.append((sql, params))
+        return self._result
+
+    def close(self):
+        pass
+
+
+def _qr(columns, rows):
+    return QueryResult(columns=columns, rows=rows, row_count=len(rows), execution_time_ms=1.0, truncated=False)
 
 
 def test_serves_unfiltered_from_dataplane(monkeypatch, plane, scope, current_user, db_with_connection):
@@ -112,3 +133,59 @@ def test_missing_connection_returns_none(monkeypatch, current_user):
     db.query.return_value.filter.return_value.first.return_value = None
     req = _request("SELECT region FROM csv_1")
     assert _serve_widget_via_dataplane(req, None, current_user, db) is None
+
+
+# --- Prod branch: BigQueryGCSPlane via the DuckDB-over-GCS reader -----------
+
+def test_prod_unfiltered_reads_warm_cache(monkeypatch, current_user, db_with_connection):
+    reader = _FakeReader(_qr(["region", "total"], [("EMEA", 15)]))
+    monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (object(), OwnerScope("org", "o1")))
+    monkeypatch.setattr(dps, "get_gcs_duckdb_reader", lambda scope, db: reader)
+
+    dashboard = SimpleNamespace(data_context=None)
+    req = _request("SELECT region, SUM(amount) AS total FROM csv_1 GROUP BY region", dashboard_id=5)
+    resp = _serve_widget_via_dataplane(req, dashboard, current_user, db_with_connection)
+
+    assert resp is not None
+    # Unfiltered prod read must hit the warm _dash_* cache, not run the full SQL.
+    assert reader.calls == [('SELECT * FROM "_dash_5__w1"', None)]
+
+
+def test_prod_filtered_runs_live_injected(monkeypatch, current_user, db_with_connection):
+    reader = _FakeReader(_qr(["region", "total"], [("EMEA", 15)]))
+    monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (object(), OwnerScope("org", "o1")))
+    monkeypatch.setattr(dps, "get_gcs_duckdb_reader", lambda scope, db: reader)
+
+    dashboard = SimpleNamespace(data_context=None)
+    req = _request(
+        "SELECT region, SUM(amount) AS total FROM csv_1 GROUP BY region",
+        filters=[FilterParam(column="region", op="eq", value="EMEA")],
+        dashboard_id=5,
+    )
+    resp = _serve_widget_via_dataplane(req, dashboard, current_user, db_with_connection)
+
+    assert resp is not None
+    sql, params = reader.calls[0]
+    assert "$_f0" in sql and params == {"_f0": "EMEA"}  # filtered → live injected SQL
+
+
+def test_prod_reader_none_falls_back(monkeypatch, current_user, db_with_connection):
+    # residency-locked / customer / no-HMAC plane → factory returns None → BQ fallback.
+    monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (object(), OwnerScope("org", "o1")))
+    monkeypatch.setattr(dps, "get_gcs_duckdb_reader", lambda scope, db: None)
+    req = _request("SELECT region FROM csv_1", dashboard_id=5)
+    assert _serve_widget_via_dataplane(req, SimpleNamespace(data_context=None), current_user, db_with_connection) is None
+
+
+def test_prod_cold_cache_falls_back(monkeypatch, current_user, db_with_connection):
+    # Cache table not warmed yet → reader raises → None → fall back.
+    class _Raiser:
+        def query(self, *a, **k):
+            raise RuntimeError("no files matched gs://…/_dash_5__w1/dt=*")
+        def close(self):
+            pass
+
+    monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (object(), OwnerScope("org", "o1")))
+    monkeypatch.setattr(dps, "get_gcs_duckdb_reader", lambda scope, db: _Raiser())
+    req = _request("SELECT region FROM csv_1", dashboard_id=5)
+    assert _serve_widget_via_dataplane(req, SimpleNamespace(data_context=None), current_user, db_with_connection) is None

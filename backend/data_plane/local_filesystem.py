@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import shutil
 import time
 from datetime import datetime, timezone
@@ -24,10 +23,6 @@ from .scope import OwnerScope
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ROOT = "/data/data_plane"
-
-# DuckDB named placeholder `$name` (name starts with a letter/underscore — `$1`
-# numbered-positional placeholders are deliberately excluded).
-_NAMED_PARAM_RE = re.compile(r"\$[A-Za-z_]\w*")
 
 
 class LocalFilesystemDataPlane:
@@ -137,43 +132,11 @@ class LocalFilesystemDataPlane:
         sql: str,
         params: dict[str, Any] | None = None,
     ) -> QueryResult:
-        import time as _time
-
-        from backend.config import settings
+        from .duckdb_exec import run_duckdb_query
 
         conn = self._get_conn()
         self._register_scope_views(conn, scope)
-
-        start = _time.time()
-        if params:
-            # DuckDB named placeholders (`$name`, as emitted by inject_filters
-            # in the duckdb dialect) bind from the dict by name. Legacy callers
-            # use positional placeholders (`?` / `$1`) — bind values in order.
-            if _NAMED_PARAM_RE.search(sql):
-                rel = conn.execute(sql, params)
-            else:
-                rel = conn.execute(sql, list(params.values()))
-        else:
-            rel = conn.execute(sql)
-
-        columns = [desc[0] for desc in rel.description]
-        # Row-cap parity with the source-DB connectors (base.py): fetch one
-        # extra to detect truncation, then trim. Prevents unbounded result sets
-        # now that widgets are served straight from Parquet.
-        max_rows = settings.max_query_rows
-        rows = rel.fetchmany(max_rows + 1)
-        truncated = len(rows) > max_rows
-        if truncated:
-            rows = rows[:max_rows]
-        execution_time_ms = (_time.time() - start) * 1000
-
-        return QueryResult(
-            columns=columns,
-            rows=rows,
-            row_count=len(rows),
-            execution_time_ms=execution_time_ms,
-            truncated=truncated,
-        )
+        return run_duckdb_query(conn, sql, params)
 
     def list_tables(self, scope: OwnerScope, namespace: str | None = None) -> list[str]:
         scope_root = self._scope_root(scope)

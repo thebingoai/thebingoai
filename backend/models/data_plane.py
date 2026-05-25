@@ -26,3 +26,12 @@ class DataPlaneModel(Base, TimestampMixin):
         server_default="customer",
         default="customer",
     )
+    # When true, data must not leave this plane's region — DuckDB-over-GCS
+    # serving is skipped and the plane stays {BQ stored + BQ serving}. Default
+    # false: planes serve via DuckDB once the Org flag is on.
+    residency_locked = Column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        default=False,
+    )

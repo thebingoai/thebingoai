@@ -25,6 +25,16 @@ _ISO_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 _ISO_DATETIME_RE = re.compile(r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}')
 
 
+def gcs_parquet_glob(bucket: str, scope: "OwnerScope", table: str) -> str:
+    """gs:// glob over all `dt=` partitions of *table* for *scope*.
+
+    Single source of truth for the lake path scheme (matches the prefix written
+    by `BigQueryGCSPlane._gcs_prefix`); consumed by the Phase 2 DuckDB-over-GCS
+    reader (`gcs_duckdb.GCSDuckDBReader`).
+    """
+    return f"gs://{bucket}/data_plane/{scope.as_path()}/{table}/dt=*/*.parquet"
+
+
 def _pyformat_to_bq(query: str, params: dict[str, Any] | None):
     """Rewrite pyformat ``%(key)s`` placeholders to BigQuery ``@key`` syntax
     and build a list of ``ScalarQueryParameter`` for ``QueryJobConfig``.
@@ -92,6 +102,11 @@ class BigQueryGCSPlane:
         self._sa_json = service_account_json
         self._bq_client = None
         self._gcs_client = None
+
+    @property
+    def bucket(self) -> str:
+        """GCS bucket name (without gs:// prefix) — used by the DuckDB-over-GCS reader."""
+        return self._bucket_name
 
     # ── Lazy client accessors ─────────────────────────────────────────────
 
