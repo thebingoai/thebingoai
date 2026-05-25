@@ -43,6 +43,8 @@ def seed_sample_connections(user_id: str, db: Session) -> None:
         username="sqlite",
         dataset_table_name=SAMPLE_DB_PATH,
         source_filename=SAMPLE_SOURCE_MARKER,
+        owner_scope_kind="user",
+        owner_scope_id=user_id,
     )
     connection.password = "sqlite"
     connection.ssl_ca_cert = None
