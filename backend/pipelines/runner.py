@@ -232,6 +232,10 @@ def run_pipeline(
             except Exception:
                 logger.warning("Failed to chain profile_pipeline_output for pipeline %s", pipeline_id)
 
+            # GAP-2f: warm dashboards backed by the freshly-written table.
+            from backend.services.dashboard_cache import enqueue_dashboard_warm_for_table
+            enqueue_dashboard_warm_for_table(scope, pipeline.target_table)
+
         return run_id
 
     except Exception as exc:

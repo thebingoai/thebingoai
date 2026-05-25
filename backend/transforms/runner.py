@@ -167,7 +167,10 @@ def run_dbt(
             for model_name in ok_models:
                 try:
                     from backend.transforms.materialize import materialize_dbt_model_to_dataplane
-                    materialize_dbt_model_to_dataplane(scope, model_name, db=db)
+                    if materialize_dbt_model_to_dataplane(scope, model_name, db=db):
+                        # GAP-2f: warm dashboards backed by the model's table.
+                        from backend.services.dashboard_cache import enqueue_dashboard_warm_for_table
+                        enqueue_dashboard_warm_for_table(scope, model_name)
                 except Exception:
                     logger.warning(
                         "run_dbt: failed to materialize %s to DataPlane for run %s",

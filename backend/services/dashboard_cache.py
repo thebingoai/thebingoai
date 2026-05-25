@@ -213,6 +213,62 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
         db.close()
 
 
+def enqueue_dashboard_warm_for_table(scope, table_name: str) -> int:
+    """Enqueue a cache warm for each dashboard backed by *table_name* (GAP-2f).
+
+    Called after a pipeline/dbt write so dashboards reading that table refresh
+    promptly instead of waiting for the periodic dispatcher. Debounced via the
+    same `materialize_rate:{id}` Redis key `/materialize` uses (5 min) so a busy
+    writer can't trigger warm storms. Best-effort — never raises into the caller.
+    Returns the number of dashboards enqueued.
+    """
+    try:
+        import redis as _redis
+
+        from backend.config import settings
+        from backend.database.session import SessionLocal
+        from backend.models.dashboard import Dashboard
+        from backend.models.user import User
+        from backend.tasks.dashboard_refresh_tasks import execute_dashboard_refresh
+        from backend.utils.sql_refs import extract_table_refs
+
+        tnorm = table_name.lower()
+        enqueued = 0
+        with SessionLocal() as db:
+            if scope.kind == "org":
+                user_ids = [u.id for u in db.query(User).filter(User.org_id == scope.id).all()]
+                dashboards = (
+                    db.query(Dashboard).filter(Dashboard.user_id.in_(user_ids)).all()
+                    if user_ids else []
+                )
+            else:
+                dashboards = db.query(Dashboard).filter(Dashboard.user_id == scope.id).all()
+
+            r = _redis.from_url(settings.redis_url)
+            try:
+                for dash in dashboards:
+                    backed = any(
+                        tnorm in extract_table_refs((w.get("dataSource") or {}).get("sql") or "")
+                        for w in (dash.widgets or [])
+                    )
+                    if not backed:
+                        continue
+                    key = f"materialize_rate:{dash.id}"
+                    if r.exists(key):
+                        continue  # debounce — recently warmed / queued
+                    r.setex(key, 300, "1")
+                    execute_dashboard_refresh.delay(dash.id)
+                    enqueued += 1
+            finally:
+                r.close()
+        if enqueued:
+            logger.info("Enqueued warm for %d dashboard(s) backed by %s", enqueued, table_name)
+        return enqueued
+    except Exception:
+        logger.warning("enqueue_dashboard_warm_for_table failed for %s", table_name, exc_info=True)
+        return 0
+
+
 def read_widget_data_plane(
     dashboard_id: int,
     widget_id: str,
