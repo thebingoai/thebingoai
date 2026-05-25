@@ -131,8 +131,12 @@ export const useDatasetStatus = () => {
           attachedFiles.value = updated
         }
       }
-    } catch {
-      // Silently ignore polling errors
+    } catch (e: any) {
+      // Connection gone or not visible to this user — terminal, stop polling.
+      if (e?.statusCode === 404 || e?.status === 404) {
+        stopPolling(connectionId)
+      }
+      // Other errors: ignore and let the next tick retry.
     }
   }
 
