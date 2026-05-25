@@ -5,6 +5,7 @@ from backend.agents.dashboard_agent.prompts import build_dashboard_agent_prompt
 from backend.agents.invoke_helpers import extract_final_answer, run_inline_react, run_via_mesh_runtime
 from backend.agents.prompt_resolver import resolve_agent_prompt
 from backend.agents.context import AgentContext
+from backend.services.dashboard_cache import _get_org_for_user
 from backend.agents.loop_detector import make_loop_detector
 from backend.config import settings
 from typing import Dict, Any, Callable, List
@@ -34,6 +35,7 @@ def _resolve_dashboard_agent_prompt(
             mesh_enabled=mesh_enabled,
             target_connection_id=target_connection_id,
             connection_metadata=context.connection_metadata,
+            org_id=_get_org_for_user(context.user_id),
         ),
         log_prefix=__name__,
     )

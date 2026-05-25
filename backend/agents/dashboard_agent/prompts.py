@@ -208,6 +208,7 @@ def build_dashboard_agent_prompt(
     mesh_enabled: bool = False,
     target_connection_id: int | None = None,
     connection_metadata: list | None = None,
+    org_id: str | None = None,
 ) -> str:
     """
     Build dynamic system prompt with user's available connections.
@@ -217,6 +218,7 @@ def build_dashboard_agent_prompt(
         mesh_enabled: Whether to use mesh-aware prompt
         target_connection_id: Pre-selected connection to focus on (e.g. from a CSV upload)
         connection_metadata: Optional list of ConnectionInfo with name/db_type/database
+        org_id: Org whose dialect flag selects the SQL hints (DuckDB once cut over)
 
     Returns:
         System prompt with connection context injected
@@ -279,9 +281,9 @@ def build_dashboard_agent_prompt(
     finally:
         db.close()
 
-    # Dashboard widgets always run against the DataPlane = BigQuery in
-    # enterprise lockdown. Lock the generator to BigQuery unconditionally.
-    from backend.agents.profile_defaults import BIGQUERY_DIALECT_HINTS
-    prompt += BIGQUERY_DIALECT_HINTS
+    # SQL dialect hints: DuckDB once the Org is cut over to DuckDB-over-Parquet
+    # serving, BigQuery otherwise (default / legacy).
+    from backend.agents.profile_defaults import _dialect_hints_for_org
+    prompt += _dialect_hints_for_org(org_id)
 
     return prompt

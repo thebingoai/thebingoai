@@ -170,7 +170,11 @@ def _build_agent_config(agent_type: str, context, db_session) -> tuple:
         from backend.agents.dashboard_agent.prompts import build_dashboard_agent_prompt
 
         tools = build_dashboard_agent_tools(context, lambda: db_session)
-        prompt = build_dashboard_agent_prompt(context.available_connections)
+        from backend.services.dashboard_cache import _get_org_for_user
+        prompt = build_dashboard_agent_prompt(
+            context.available_connections,
+            org_id=_get_org_for_user(context.user_id),
+        )
         return tools, prompt
 
     elif agent_type == "rag_agent":

@@ -95,6 +95,72 @@ GROUP BY 1
 - `LIMIT` goes at the end of the query"""
 
 
+# ---------------------------------------------------------------------------
+# DuckDB dialect hints — used once an Org is cut over to DuckDB-over-Parquet
+# serving (`duckdb_widget_serving` on). Post-cutover the agent emits native
+# DuckDB so newly-created widgets need no transpile.
+# ---------------------------------------------------------------------------
+DUCKDB_DIALECT_HINTS = """
+
+## DuckDB SQL Dialect — REQUIRED for all generated SQL
+
+All widget queries execute against DuckDB (over the DataPlane Parquet lake). Apply these rules without exception:
+
+**Syntax rules:**
+- Identifiers in double quotes: `"col"` or `"table"`. Backticks are NOT valid.
+- `CAST(x AS TYPE)`; use `TRY_CAST(x AS TYPE)` for null-safe casts (NEVER `SAFE_CAST`).
+- `DATE_TRUNC('day', col)` — arg order is `('unit', col)`, unit is a QUOTED string. (This is the opposite of BigQuery.)
+- `INTERVAL N UNIT` — e.g. `INTERVAL 1 DAY`. Date subtraction: `col - INTERVAL 1 DAY`; `DATE_SUB`/`DATE_ADD` also work.
+- `now()` returns UTC; `current_date` for day precision. Day-truncated timestamp: `DATE_TRUNC('day', now())`.
+- `ILIKE` for case-insensitive match (or `LOWER(col) LIKE LOWER(pattern)`).
+- No `SAFE_DIVIDE` — use `a / NULLIF(b, 0)` for divide-by-zero-safe division.
+
+**Date arithmetic skeleton (copy/adapt):**
+```sql
+WITH bounds AS (
+  SELECT current_date AS today,
+         current_date - INTERVAL 1 DAY AS yesterday,
+         current_date - INTERVAL 60 DAY AS sixty_days_ago
+)
+SELECT CAST(date_start AS DATE) AS date_start, SUM(spend) AS spend
+FROM insights_daily, bounds
+WHERE CAST(date_start AS DATE) = bounds.yesterday
+GROUP BY 1
+```
+
+**Partitioned tables** — the lake is Hive-partitioned by `dt=`. Filter on `dt` to prune partitions and avoid full scans.
+
+**General:**
+- `LIMIT` goes at the end of the query"""
+
+
+_DUCKDB_REQUIRED_TOKENS = (
+    "double quotes",
+    "TRY_CAST",
+    "DATE_TRUNC('day', col)",
+    "INTERVAL N UNIT",
+    "NULLIF",
+    "ILIKE",
+)
+
+
+def _dialect_hints_for_org(org_id: Optional[str]) -> str:
+    """Return the dashboard-agent SQL dialect hints for *org_id*.
+
+    DuckDB once the Org has `duckdb_widget_serving` on (post-cutover the agent
+    emits native DuckDB); BigQuery otherwise (default / legacy / no org).
+    """
+    if org_id:
+        try:
+            from backend.config.feature_flags import enabled
+            if enabled(str(org_id), "duckdb_widget_serving"):
+                return DUCKDB_DIALECT_HINTS
+        except Exception:
+            # Flag store unavailable → fail safe to the established BigQuery hints.
+            pass
+    return BIGQUERY_DIALECT_HINTS
+
+
 def _bigquery_plugin_loaded() -> bool:
     """Check if the BigQuery connector plugin is registered."""
     try:
@@ -711,12 +777,15 @@ DEFAULTS: Dict[str, Dict[str, Optional[str]]] = {
 }
 
 
-def get_default_section(agent_type: str, section: str) -> Optional[str]:
-    """Get the default content for a specific agent type and section."""
+def get_default_section(agent_type: str, section: str, org_id: Optional[str] = None) -> Optional[str]:
+    """Get the default content for a specific agent type and section.
+
+    For the dashboard agent's tools section, append the SQL dialect hints —
+    DuckDB once the Org is cut over (`org_id` with `duckdb_widget_serving` on),
+    BigQuery otherwise.
+    """
     agent_defaults = DEFAULTS.get(agent_type, {})
     content = agent_defaults.get(section)
-    # Dashboard widgets always run against the DataPlane = BigQuery in
-    # enterprise lockdown. Lock the generator to BigQuery unconditionally.
     if content and agent_type == "dashboard_agent" and section == "tools":
-        content += BIGQUERY_DIALECT_HINTS
+        content += _dialect_hints_for_org(org_id)
     return content

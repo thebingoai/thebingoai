@@ -13,7 +13,10 @@ from backend.agents import profile_defaults
 from backend.agents.dashboard_agent.prompts import build_dashboard_agent_prompt
 from backend.agents.profile_defaults import (
     BIGQUERY_DIALECT_HINTS,
+    DUCKDB_DIALECT_HINTS,
     SQLITE_DIALECT_HINTS,
+    _DUCKDB_REQUIRED_TOKENS,
+    _dialect_hints_for_org,
     get_default_section,
 )
 
@@ -65,10 +68,43 @@ def test_dashboard_prompt_never_contains_sqlite_hints():
 
 
 def test_get_default_section_dashboard_tools_locks_to_bigquery():
-    """Profile-defaults helper also returns BQ-only hints for dashboard_agent."""
+    """Profile-defaults helper returns BQ hints for dashboard_agent (no org / legacy)."""
     with patch.object(profile_defaults, "_csv_plugin_loaded", return_value=True), \
          patch.object(profile_defaults, "_bigquery_plugin_loaded", return_value=False):
         content = get_default_section("dashboard_agent", "tools")
     assert content is not None
     assert BIGQUERY_DIALECT_HINTS in content
     assert SQLITE_DIALECT_HINTS not in content
+
+
+# --- Phase 3: per-Org dialect flip (GAP-1) ---------------------------------
+
+def test_duckdb_hints_contain_critical_syntax_rules():
+    for token in _DUCKDB_REQUIRED_TOKENS:
+        assert token in DUCKDB_DIALECT_HINTS, (
+            f"DUCKDB_DIALECT_HINTS missing required syntax rule: {token!r}"
+        )
+
+
+def test_hints_flip_to_duckdb_when_flag_on(monkeypatch):
+    import backend.config.feature_flags as ff
+    monkeypatch.setattr(ff, "enabled", lambda org_id, flag, default=False: flag == "duckdb_widget_serving")
+    assert _dialect_hints_for_org("org-1") == DUCKDB_DIALECT_HINTS
+
+
+def test_hints_stay_bigquery_when_flag_off(monkeypatch):
+    import backend.config.feature_flags as ff
+    monkeypatch.setattr(ff, "enabled", lambda *a, **k: False)
+    assert _dialect_hints_for_org("org-1") == BIGQUERY_DIALECT_HINTS
+
+
+def test_hints_bigquery_when_no_org():
+    assert _dialect_hints_for_org(None) == BIGQUERY_DIALECT_HINTS
+
+
+def test_get_default_section_flips_to_duckdb_for_migrated_org(monkeypatch):
+    import backend.config.feature_flags as ff
+    monkeypatch.setattr(ff, "enabled", lambda *a, **k: True)
+    content = get_default_section("dashboard_agent", "tools", org_id="org-1")
+    assert DUCKDB_DIALECT_HINTS in content
+    assert BIGQUERY_DIALECT_HINTS not in content
