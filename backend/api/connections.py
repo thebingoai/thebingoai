@@ -12,7 +12,12 @@ from backend.schemas.connection import (
     ConnectionTestResponse, SchemaRefreshResponse, ConnectorTypeResponse,
     SchemaResponse
 )
-from backend.connectors.factory import get_connector, get_available_types, get_connector_registration
+from backend.connectors.factory import (
+    get_connector,
+    get_available_types,
+    get_connector_registration,
+    get_connector_for_connection,
+)
 from backend.services.schema_discovery import (
     discover_schema, generate_schema_json, save_schema_file,
     refresh_schema, delete_schema_file, load_schema_file, schema_key_for,
@@ -639,16 +644,7 @@ async def refresh_connection_schema(
         )
 
     try:
-        with get_connector(
-            db_type=connection.db_type,
-            host=connection.host,
-            port=connection.port,
-            database=connection.database,
-            username=connection.username,
-            password=connection.password,
-            ssl_enabled=connection.ssl_enabled,
-            ssl_ca_cert=connection.ssl_ca_cert
-        ) as connector:
+        with get_connector_for_connection(connection) as connector:
             schema_path = refresh_schema(
                 schema_key_for(connection),
                 connector,
