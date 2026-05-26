@@ -57,10 +57,16 @@
 
 
     <!-- Connections Grid -->
-    <div v-if="!loading && connections.length > 0" class="flex flex-wrap gap-4">
+    <div v-if="!loading && connections.length > 0" class="flex flex-col gap-8">
       <!-- WAREHOUSES · DATABASES -->
       <div>
-        <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-3">Warehouses · Databases</p>
+        <div class="flex items-center gap-3 mb-3">
+          <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest shrink-0">Warehouses · Databases</p>
+          <div class="flex-1 border-t border-dashed border-gray-200 dark:border-neutral-700"></div>
+          <span class="text-xs text-gray-400 dark:text-neutral-500 shrink-0">
+            {{ warehouseConnections.length }} {{ warehouseConnections.length === 1 ? 'connection' : 'connections' }}
+          </span>
+        </div>
         <div class="flex flex-wrap gap-4">
           <UiCard
             v-for="connection in warehouseConnections"
@@ -101,39 +107,7 @@
                 <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
                 <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">{{ connection.source_filename }}</span>
               </div>
-              <div class="mt-auto border-t border-gray-100 dark:border-neutral-600 pt-2.5 flex items-center gap-3 flex-wrap">
-                <span
-                  class="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                  :class="getProfilingTextClass(connection)"
-                  :title="getProfilingTitle(connection)"
-                >{{ getProfilingLabel(connection) }}</span>
-                <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
-                  <div v-if="item === 'ssl' && connection.ssl_enabled" class="flex flex-col items-center gap-1" title="SSL Enabled">
-                    <Lock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">SSL</span>
-                  </div>
-                  <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} tables`">
-                    <Table2 class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} tables</span>
-                  </div>
-                  <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1" :title="`${connection.table_count} datasets`">
-                    <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} datasets</span>
-                  </div>
-                  <div v-if="item === 'schema_date' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Schema refreshed ${formatRelativeDate(connection.schema_generated_at)}`">
-                    <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
-                  </div>
-                  <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1" title="Lookback window">
-                    <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ parseLookbackDays(connection) }}d lookback</span>
-                  </div>
-                  <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1" :title="`Last synced ${formatRelativeDate(connection.schema_generated_at)}`">
-                    <RefreshCw class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
-                  </div>
-                </template>
-              </div>
+              <ConnectionCardMeta :connection="connection" />
             </div>
           </UiCard>
 
@@ -154,9 +128,10 @@
 
       <!-- FILES & UPLOADS -->
       <div v-if="fileUngroupedConnections.length > 0 || filteredDatasetGroups.length > 0">
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest">Files & Uploads</p>
-          <span class="text-xs text-gray-400 dark:text-neutral-500">Grouped by schema</span>
+        <div class="flex items-center gap-3 mb-3">
+          <p class="text-xs font-semibold text-gray-400 dark:text-neutral-500 uppercase tracking-widest shrink-0">Files & Uploads</p>
+          <div class="flex-1 border-t border-dashed border-gray-200 dark:border-neutral-700"></div>
+          <span class="text-xs text-gray-400 dark:text-neutral-500 shrink-0">Grouped by schema</span>
         </div>
         <div class="flex flex-wrap gap-4">
           <!-- Ungrouped file connections (sqlite, facebook_ads, standalone datasets) -->
@@ -195,31 +170,7 @@
                 <FileText class="h-3 w-3 text-gray-400 dark:text-neutral-300 shrink-0" />
                 <span class="text-[11px] text-gray-400 dark:text-neutral-300 truncate">{{ connection.source_filename }}</span>
               </div>
-              <div class="mt-auto border-t border-gray-100 dark:border-neutral-600 pt-2.5 flex items-center gap-3 flex-wrap">
-                <span
-                  class="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                  :class="getProfilingTextClass(connection)"
-                  :title="getProfilingTitle(connection)"
-                >{{ getProfilingLabel(connection) }}</span>
-                <template v-for="item in (getConnectorType(connection.db_type)?.card_meta_items || [])" :key="item">
-                  <div v-if="item === 'table_count' && connection.table_count != null" class="flex flex-col items-center gap-1">
-                    <Table2 class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} tables</span>
-                  </div>
-                  <div v-if="item === 'dataset_count' && connection.table_count != null" class="flex flex-col items-center gap-1">
-                    <Database class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ connection.table_count }} datasets</span>
-                  </div>
-                  <div v-if="item === 'last_sync' && connection.schema_generated_at" class="flex flex-col items-center gap-1">
-                    <RefreshCw class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ formatRelativeDate(connection.schema_generated_at) }}</span>
-                  </div>
-                  <div v-if="item === 'lookback'" class="flex flex-col items-center gap-1">
-                    <Clock class="h-3.5 w-3.5 text-gray-500 dark:text-neutral-300" />
-                    <span class="text-[10px] text-gray-500 dark:text-neutral-300">{{ parseLookbackDays(connection) }}d lookback</span>
-                  </div>
-                </template>
-              </div>
+              <ConnectionCardMeta :connection="connection" />
             </div>
           </UiCard>
 
@@ -685,7 +636,7 @@
         </div>
 
         <!-- 60% right-column panel — renders plugin editPanel when registered, otherwise community default. -->
-        <div v-if="showRightColumn" class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-0 md:pl-6 px-6 py-6 flex flex-col gap-3 overflow-y-auto">
+        <div v-if="showRightColumn" class="w-full md:w-3/5 border-t md:border-t-0 md:border-l border-gray-200 dark:border-neutral-700 pt-4 md:pt-6 md:pl-6 px-6 py-6 flex flex-col gap-3 overflow-y-auto">
           <!-- Plugin-provided panel: during edit, OR during CSV create (pluginEditPanel = CsvUploadPreviewPanel). -->
           <template v-if="pluginEditPanel && (editingConnection || isDatasetConnection)">
             <component
@@ -895,7 +846,7 @@
 </template>
 
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Table2, Key, Link2, Search, Sheet, Info, Loader2, Lock, Clock, Activity, FileText, User, CheckCircle2, XCircle, ExternalLink } from 'lucide-vue-next'
+import { Database, Plus, RefreshCw, Trash2, ArrowLeft, X, Check, ChevronDown, ChevronRight, Key, Link2, Search, Sheet, Info, Loader2, FileText, User, CheckCircle2, XCircle, ExternalLink } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { DatabaseConnection, ConnectionFormData, ConnectorType, DatabaseSchema, DatasetUploadResponse } from '~/types/connection'
 import { parseUtcDate } from '~/utils/format'
@@ -1123,64 +1074,6 @@ function getAccentClass(connection: DatabaseConnection): string {
     return 'bg-yellow-400'
   }
   return connection.is_active ? 'bg-green-500' : 'bg-red-500'
-}
-
-// Profiling status helpers for bottom metadata
-function getProfilingLabel(connection: DatabaseConnection): string {
-  const status = connection.profiling_status
-  const progress = connection.profiling_progress
-  if ((status === 'in_progress' || status === 'pending') && progress) {
-    return progress
-  }
-  switch (status) {
-    case 'ready': return 'Profiled'
-    case 'in_progress': return 'Profiling...'
-    case 'pending': return 'Queued'
-    case 'failed': return 'Failed'
-    default: return 'Pending'
-  }
-}
-
-function getProfilingIconClass(connection: DatabaseConnection): string {
-  switch (connection.profiling_status) {
-    case 'ready': return 'text-green-600'
-    case 'in_progress': return 'text-yellow-500'
-    case 'pending': return 'text-yellow-500'
-    case 'failed': return 'text-red-500'
-    default: return 'text-gray-400'
-  }
-}
-
-function getProfilingTextClass(connection: DatabaseConnection): string {
-  switch (connection.profiling_status) {
-    case 'ready': return 'text-green-600'
-    case 'in_progress': return 'text-yellow-600'
-    case 'pending': return 'text-yellow-600'
-    case 'failed': return 'text-red-500'
-    default: return 'text-gray-500'
-  }
-}
-
-function getProfilingTitle(connection: DatabaseConnection): string {
-  const progress = connection.profiling_progress
-  switch (connection.profiling_status) {
-    case 'ready': return 'Profiling complete'
-    case 'in_progress': return progress || 'Profiling in progress'
-    case 'pending': return progress || 'Profiling queued'
-    case 'failed': return 'Profiling failed — click card to retry'
-    default: return 'Profiling status unknown'
-  }
-}
-
-// Parse lookback days from Facebook Ads source_filename JSON metadata
-function parseLookbackDays(connection: DatabaseConnection): string {
-  if (connection.source_filename) {
-    try {
-      const meta = JSON.parse(connection.source_filename)
-      if (meta.lookback_days) return String(meta.lookback_days)
-    } catch {}
-  }
-  return '7'
 }
 
 // Changelog
