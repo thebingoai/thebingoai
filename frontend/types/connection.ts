@@ -30,6 +30,8 @@ export interface DatabaseConnection {
   profiling_status: 'pending' | 'in_progress' | 'ready' | 'failed'
   profiling_progress: string | null
   profiling_error: string | null
+  profiling_started_at: string | null
+  profiling_completed_at: string | null
   is_ephemeral: boolean
   schema_fingerprint: string | null
 }
