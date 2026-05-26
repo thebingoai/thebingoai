@@ -57,7 +57,7 @@
       <!-- PAGE-LEVEL ChatInputBar — same element transitions between center and bottom -->
       <div
         ref="composerStageRef"
-        v-if="showNewTaskScreen || isTransitioning || chatStore.currentThreadId || chatStore.messages.length > 0"
+        v-if="(showNewTaskScreen || isTransitioning || chatStore.currentThreadId || chatStore.messages.length > 0) && !activeBriefingId"
         class="composer-stage absolute left-0 right-0 z-30"
         :class="composerStageClasses"
         :style="composerStageStyle"

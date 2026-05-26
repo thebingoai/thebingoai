@@ -31,6 +31,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "gridstack": "^12.4.2",
+    "html2pdf.js": "^0.10.3",
     "lucide-vue-next": "^0.468.0",
     "markdown-it": "^14.1.0",
     "markdown-it-mark": "^4.0.0",

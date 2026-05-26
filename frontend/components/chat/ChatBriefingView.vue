@@ -35,7 +35,17 @@
     </div>
 
     <!-- Ready -->
-    <article v-else-if="briefing?.payload" class="max-w-3xl mx-auto px-6 py-10">
+    <article v-else-if="briefing?.payload" ref="articleRef" class="max-w-3xl mx-auto px-6 py-10">
+      <div data-pdf-ignore="true" class="flex justify-end mb-6">
+        <button
+          class="text-xs px-3 py-1 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="exporting"
+          @click="onExportPdf"
+        >
+          {{ exporting ? 'Generating…' : 'Export PDF' }}
+        </button>
+      </div>
+
       <p class="text-xs uppercase tracking-wider text-neutral-500 mb-3">
         Dashboard #{{ briefing.dashboard_id }}
         <template v-if="briefing.date_range_from">  · {{ formatRange(briefing) }}</template>
@@ -74,6 +84,7 @@
           :widget-id="s.widget_id"
           :dashboard-id="briefing.dashboard_id"
           class="mt-4"
+          @loaded="markWidgetLoaded"
         />
       </section>
 
@@ -90,6 +101,21 @@
 <script setup lang="ts">
 const props = defineProps<{ briefingId: number }>()
 const { briefing, loading, error } = useBriefing(props.briefingId)
+
+const articleRef = ref<HTMLElement | null>(null)
+const { exporting, markWidgetLoaded, resetWidgets, exportPdf } = useBriefingPdf()
+
+const expectedWidgets = computed(
+  () => briefing.value?.payload?.sections.filter((s) => s.widget_id).length ?? 0,
+)
+
+// briefingId is a prop that may change without remount — reset the widget counter.
+watch(() => props.briefingId, () => resetWidgets())
+
+async function onExportPdf() {
+  if (!briefing.value?.payload || !articleRef.value) return
+  await exportPdf(articleRef.value, briefing.value.payload.headline, expectedWidgets.value)
+}
 
 function deltaClass(dir?: 'up' | 'down' | 'flat' | null) {
   if (dir === 'up') return 'text-emerald-600'

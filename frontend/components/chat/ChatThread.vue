@@ -126,7 +126,7 @@ const { config: featureConfig } = useFeatureConfig()
 const api = useApi()
 const agentProfile = useAgentProfile()
 const { datasets } = useDatasetStatus()
-const { briefings } = useBriefingsList()
+const { briefings, ensure: ensureBriefings } = useBriefingsList()
 
 const datasetCount = computed(() => datasets.value.length)
 const isPermanentThread = computed(() =>
@@ -136,6 +136,10 @@ const showInfoButton = computed(() =>
   datasetCount.value > 0 ||
   (isPermanentThread.value && briefings.value.length > 0)
 )
+
+// Load the briefings list on the assistant thread so the info-panel toggle
+// (and its Briefings tab) appears whenever >0 briefings exist. ensure() fetches once.
+watch(isPermanentThread, (v) => { if (v) ensureBriefings() }, { immediate: true })
 
 const isTelegramEnabled = computed(() => featureConfig.value?.telegram_enabled === true)
 const telegramConnected = ref(false)
