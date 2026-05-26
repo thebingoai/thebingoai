@@ -23,6 +23,17 @@
     </Transition>
 
     <div class="home-composer">
+      <!-- File attachment preview strip -->
+      <div v-if="attachedFiles.some(f => !f.sent) && !chatStore.isStreaming" class="flex flex-wrap gap-2 mb-2">
+        <div v-for="(file, index) in attachedFiles" :key="index" class="group">
+          <ChatFilePreview v-if="!file.sent" :file="file" :index="index" @remove="removeFile" />
+        </div>
+      </div>
+      <div v-if="fileErrors.length > 0" class="mb-1">
+        <p v-for="(err, i) in fileErrors" :key="i" class="text-[11px] text-[var(--bad)]">
+          {{ err.name }}: {{ err.error }}
+        </p>
+      </div>
       <!-- Contenteditable replaces textarea for inline pill support -->
       <div
         ref="textareaRef"
@@ -57,7 +68,7 @@
         <button
           type="button"
           class="home-ask-btn"
-          :disabled="!chatStore.inputText.trim() || chatStore.isStreaming"
+          :disabled="!chatStore.inputText.trim() || chatStore.isStreaming || (attachedFiles.length > 0 && !allFilesReady)"
           @click="handleSend"
         >
           <Send class="h-3.5 w-3.5" />
@@ -101,11 +112,12 @@ const emit = defineEmits<{
 }>()
 
 const chatStore = useChatStore()
-const { addFiles } = useChatFileUpload()
+const { addFiles, attachedFiles, removeFile, allFilesReady } = useChatFileUpload()
 
 const textareaRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const composerWrapRef = ref<HTMLElement | null>(null)
+const fileErrors = ref<{ name: string; error: string }[]>([])
 
 // ── Mention panel ─────────────────────────────────────────
 const {
@@ -311,7 +323,10 @@ const triggerAt = () => {
 
 const handleFileChange = async (e: Event) => {
   const input = e.target as HTMLInputElement
-  if (input.files) await addFiles(Array.from(input.files))
+  if (input.files) {
+    const rejections = await addFiles(Array.from(input.files))
+    fileErrors.value = rejections
+  }
   input.value = ''
 }
 </script>

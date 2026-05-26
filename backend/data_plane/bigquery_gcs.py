@@ -511,17 +511,20 @@ class BigQueryGCSPlane:
 
     @staticmethod
     def _resolve_partition_field(schema: pa.Schema) -> str | None:
-        """Pick the first date-typed column whose name matches a convention.
+        """Pick the first date/timestamp column whose name matches a convention.
 
         Returns the column name for `PARTITION BY DATE(<field>)`, or None to
-        fall back to ingestion-time partitioning.
+        fall back to ingestion-time partitioning.  BQ accepts both DATE and
+        TIMESTAMP fields for DAY partitioning.
         """
-        candidates = ("date_start", "date", "event_date", "day")
-        date_types = {pa.date32(), pa.date64()}
+        candidates = ("date_start", "date", "event_date", "day", "created_time", "last_edited_time")
         for name in candidates:
             if name not in schema.names:
                 continue
-            if schema.field(name).type in date_types:
+            t = schema.field(name).type
+            if t in (pa.date32(), pa.date64()):
+                return name
+            if pa.types.is_timestamp(t):
                 return name
         return None
 

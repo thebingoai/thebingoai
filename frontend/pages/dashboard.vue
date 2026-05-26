@@ -260,8 +260,10 @@ import DashboardCardGrid from '~/components/dashboard/DashboardCardGrid.vue'
 import ChatComposer from '~/components/chat/ChatComposer.vue'
 import { useChatFileUpload } from '~/composables/useChatFileUpload'
 import { useChat } from '~/composables/useChat'
+import { useDatasetStatus } from '~/composables/useDatasetStatus'
 
 const store = useDashboardStore()
+useDatasetStatus()
 const route = useRoute()
 const { isMobile } = useIsMobile()
 

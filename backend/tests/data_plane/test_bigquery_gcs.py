@@ -154,6 +154,35 @@ def test_resolve_partition_field_returns_none_when_no_date_col():
     assert BigQueryGCSPlane._resolve_partition_field(schema) is None
 
 
+def test_resolve_partition_field_picks_created_time_timestamp():
+    from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
+    schema = pa.schema([
+        pa.field("id", pa.string()),
+        pa.field("created_time", pa.timestamp("us", tz="UTC")),
+        pa.field("last_edited_time", pa.timestamp("us", tz="UTC")),
+    ])
+    assert BigQueryGCSPlane._resolve_partition_field(schema) == "created_time"
+
+
+def test_resolve_partition_field_picks_last_edited_when_no_created():
+    from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
+    schema = pa.schema([
+        pa.field("id", pa.string()),
+        pa.field("last_edited_time", pa.timestamp("us", tz="UTC")),
+    ])
+    assert BigQueryGCSPlane._resolve_partition_field(schema) == "last_edited_time"
+
+
+def test_resolve_partition_field_prefers_date_over_timestamp():
+    """date-typed date_start should win because it appears earlier in the candidate list."""
+    from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
+    schema = pa.schema([
+        pa.field("date_start", pa.date32()),
+        pa.field("created_time", pa.timestamp("us", tz="UTC")),
+    ])
+    assert BigQueryGCSPlane._resolve_partition_field(schema) == "date_start"
+
+
 def test_resolve_cluster_fields_intersects_with_schema():
     from backend.data_plane.bigquery_gcs import BigQueryGCSPlane
     schema = _insights_schema()

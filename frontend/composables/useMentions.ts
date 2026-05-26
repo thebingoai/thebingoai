@@ -1,12 +1,13 @@
 // @ts-nocheck — ref/computed/useApi are Nuxt auto-imports; .nuxt types only exist inside Docker
 export interface MentionItem {
-  type: 'dashboard' | 'connection' | 'notion_page'
+  type: 'dashboard' | 'connection' | 'notion_page' | 'notion_database'
   id: number
   name: string           // slugified token used in @mention text
   displayName: string    // original label shown in panel
   dbType?: string        // connections only
   pageId?: string        // notion_page only: Notion page UUID
-  connectionId?: number  // notion_page only: parent connection id
+  databaseId?: string    // notion_database only: Notion database UUID
+  connectionId?: number  // notion_page / notion_database: parent connection id
 }
 
 export interface MentionGroup {
@@ -28,6 +29,7 @@ interface MentionsState {
   dashboardsCache: ReturnType<typeof ref<MentionItem[]>>
   connectionsCache: ReturnType<typeof ref<MentionItem[]>>
   notionPagesCache: ReturnType<typeof ref<MentionItem[]>>
+  notionDatabasesCache: ReturnType<typeof ref<MentionItem[]>>
   notionSyncHint: ReturnType<typeof ref<string>>
   notionConnectionNames: ReturnType<typeof ref<Map<number, string>>>
   mentionGroups: ReturnType<typeof computed<MentionGroup[]>>
@@ -80,17 +82,28 @@ async function _doLoad(api: ReturnType<typeof useApi>, state: MentionsState) {
   for (const c of notionConnections) nameMap.set(c.id, c.name || 'Notion')
   state.notionConnectionNames.value = nameMap
 
-  const pageResults = await Promise.all(
-    notionConnections.map((c: any) =>
-      api.notion.listPages(c.id).catch(() => ({ pages: [], synced: false, synced_page_count: 0 }))
-    )
-  )
+  const [pageResults, dbResults] = await Promise.all([
+    Promise.all(
+      notionConnections.map((c: any) =>
+        api.notion.listPages(c.id).catch(() => ({ pages: [], synced: false, synced_page_count: 0 }))
+      )
+    ),
+    Promise.all(
+      notionConnections.map((c: any) =>
+        (api.notion.listDatabases ? api.notion.listDatabases(c.id) : Promise.resolve({ databases: [] }))
+          .catch(() => ({ databases: [] }))
+      )
+    ),
+  ])
 
   const notionPages: MentionItem[] = []
+  const notionDatabases: MentionItem[] = []
   let syncHint = ''
   notionConnections.forEach((conn: any, i: number) => {
-    const result = pageResults[i]
-    for (const page of result.pages) {
+    const pageResult = pageResults[i]
+    const dbResult = dbResults[i]
+
+    for (const page of pageResult.pages) {
       if (!page.title) continue
       notionPages.push({
         type: 'notion_page' as const,
@@ -101,11 +114,25 @@ async function _doLoad(api: ReturnType<typeof useApi>, state: MentionsState) {
         connectionId: conn.id,
       })
     }
-    if (result.synced && result.pages.length === 0 && !syncHint) {
-      syncHint = 'No Notion pages found — share pages with your integration in Notion, then Sync Now.'
+
+    for (const db of (dbResult.databases || [])) {
+      if (!db.title) continue
+      notionDatabases.push({
+        type: 'notion_database' as const,
+        id: conn.id,
+        name: `notion-db-${slugify(db.title)}`,
+        displayName: db.title,
+        databaseId: db.id,
+        connectionId: conn.id,
+      })
+    }
+
+    if (pageResult.synced && pageResult.pages.length === 0 && (dbResult.databases || []).length === 0 && !syncHint) {
+      syncHint = 'No Notion content found — share pages or databases with your integration in Notion, then Sync Now.'
     }
   })
   state.notionPagesCache.value = notionPages
+  state.notionDatabasesCache.value = notionDatabases
   state.notionSyncHint.value = syncHint
 }
 
@@ -146,6 +173,7 @@ export const useMentions = () => {
     const dashboardsCache = ref<MentionItem[]>([])
     const connectionsCache = ref<MentionItem[]>([])
     const notionPagesCache = ref<MentionItem[]>([])
+    const notionDatabasesCache = ref<MentionItem[]>([])
     const notionSyncHint = ref('')
     const notionConnectionNames = ref(new Map<number, string>())
     const scopedPill = ref<HTMLElement | null>(null)
@@ -178,35 +206,34 @@ export const useMentions = () => {
         })
       }
 
-      // One group per Notion connection
-      const notionConnIds = [...new Set(notionPagesCache.value.map(p => p.connectionId!))]
-      for (const connId of notionConnIds) {
+      // One group per Notion connection — merge pages + databases
+      const notionConns = connectionsCache.value.filter(c => c.dbType === 'notion')
+      for (const conn of notionConns) {
+        const connId = conn.id
         const pages = notionPagesCache.value.filter(p => p.connectionId === connId)
-        const name = notionConnectionNames.value.get(connId) || 'Notion'
+        const dbs = notionDatabasesCache.value.filter(d => d.connectionId === connId)
+        const allItems = [...dbs, ...pages]
+        const name = notionConnectionNames.value.get(connId) || conn.displayName || 'Notion'
+
+        let subLabel: string
+        if (dbs.length > 0 && pages.length > 0) {
+          subLabel = `${dbs.length} database${dbs.length !== 1 ? 's' : ''} · ${pages.length} page${pages.length !== 1 ? 's' : ''}`
+        } else if (dbs.length > 0) {
+          subLabel = `${dbs.length} database${dbs.length !== 1 ? 's' : ''}`
+        } else if (pages.length > 0) {
+          subLabel = `${pages.length} page${pages.length !== 1 ? 's' : ''}`
+        } else {
+          subLabel = '0 pages'
+        }
+
         groups.push({
           id: `notion:${connId}`,
           label: name,
-          subLabel: `${pages.length} page${pages.length !== 1 ? 's' : ''}`,
+          subLabel,
           iconType: 'notion',
-          count: pages.length,
-          items: pages,
+          count: allItems.length,
+          items: allItems,
         })
-      }
-
-      // If Notion connections exist but no pages yet, still show the group (with hint)
-      const notionConns = connectionsCache.value.filter(c => c.dbType === 'notion')
-      for (const conn of notionConns) {
-        const alreadyAdded = notionConnIds.includes(conn.id)
-        if (!alreadyAdded) {
-          groups.push({
-            id: `notion:${conn.id}`,
-            label: notionConnectionNames.value.get(conn.id) || conn.displayName || 'Notion',
-            subLabel: '0 pages',
-            iconType: 'notion',
-            count: 0,
-            items: [],
-          })
-        }
       }
 
       return groups
@@ -238,7 +265,7 @@ export const useMentions = () => {
     _state = {
       isMentionOpen, mentionQuery, mentionAnchor, mentionLevel, activeGroupId,
       resolvedMentions, dashboardsCache, connectionsCache, notionPagesCache,
-      notionSyncHint, notionConnectionNames,
+      notionDatabasesCache, notionSyncHint, notionConnectionNames,
       mentionGroups, filteredGroups, activeGroup, activeGroupItems,
       scopedPill, isChildMode,
     }
@@ -303,7 +330,7 @@ export const useMentions = () => {
     for (const m of text.matchAll(/@([\w.-]+)/g)) {
       const item = state.resolvedMentions.value.get(m[1])
       if (item?.type === 'connection') ids.push(item.id)
-      else if (item?.type === 'notion_page' && item.connectionId) ids.push(item.connectionId)
+      else if ((item?.type === 'notion_page' || item?.type === 'notion_database') && item.connectionId) ids.push(item.connectionId)
     }
     return ids
   }
@@ -334,6 +361,7 @@ export const useMentions = () => {
         display_name: item.displayName,
         db_type: item.dbType,
         page_id: item.pageId,
+        database_id: item.databaseId,
         connection_id: item.connectionId,
       })
     }

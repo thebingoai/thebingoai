@@ -114,6 +114,7 @@ export default defineNuxtConfig({
         '@headlessui/vue',
         'chart.js',
         'chartjs-plugin-datalabels',
+        '@vue-flow/core',
       ],
       exclude: [],
     },

@@ -210,6 +210,13 @@ const composerHeightPx = computed(() => {
   const h = composerMeasured.value
   return (h && h > 0 ? h : 220) + 'px'
 })
+
+// Re-center the floating composer when its height changes (e.g. file chip added/removed).
+// Gated by isComposerAnchored so it only fires on the New Task screen.
+watch(composerMeasured, () => {
+  if (!isComposerAnchored.value) computeComposerCenter()
+})
+
 const isComposerAnchored = computed(() =>
   !!(chatStore.currentThreadId
   || isTransitioning.value
@@ -237,7 +244,7 @@ const computeComposerCenter = () => {
     const heroSub = document.querySelector('.home-hero-sub') as HTMLElement | null
     if (heroSub) {
       const subBottom = heroSub.getBoundingClientRect().bottom
-      targetTop = Math.max(subBottom + 32, vh * 0.38)
+      targetTop = subBottom + 32
     }
     const stageHeight = stage.offsetHeight
     composerSlideOffset.value = targetTop - (vh - stageHeight)
