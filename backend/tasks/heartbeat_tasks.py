@@ -108,14 +108,14 @@ def execute_heartbeat_job(job_id: str):
                     from bingo_admin.credit_context import CreditContextManager
                 else:
                     from backend.services.token_tracking_service import CreditContextManager
-                    _credit_mgr = CreditContextManager(
-                        db=db,
-                        user_id=job.user_id,
-                        title=f"Heartbeat: {job.prompt[:60]}",
-                        provider_name=None,
-                        conversation_id=None,
-                        block_on_insufficient=False,
-                    )
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=job.user_id,
+                    title=f"Heartbeat: {job.prompt[:60]}",
+                    provider_name=None,
+                    conversation_id=None,
+                    block_on_insufficient=False,
+                )
             except Exception as _credit_err:
                 logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
                 _credit_mgr = None
@@ -283,14 +283,14 @@ def execute_agent_heartbeat_job(job_id: str):
                     from bingo_admin.credit_context import CreditContextManager
                 else:
                     from backend.services.token_tracking_service import CreditContextManager
-                    _credit_mgr = CreditContextManager(
-                        db=db,
-                        user_id=job.user_id,
-                        title=f"Heartbeat: {job.prompt[:60]}",
-                        provider_name=None,
-                        conversation_id=None,
-                        block_on_insufficient=False,
-                    )
+                _credit_mgr = CreditContextManager(
+                    db=db,
+                    user_id=job.user_id,
+                    title=f"Heartbeat: {job.prompt[:60]}",
+                    provider_name=None,
+                    conversation_id=None,
+                    block_on_insufficient=False,
+                )
             except Exception as _credit_err:
                 logger.warning("Credit context setup failed for heartbeat: %s", _credit_err)
                 _credit_mgr = None

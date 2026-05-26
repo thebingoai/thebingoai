@@ -280,14 +280,14 @@ def _process_user(db, user, cutoff: datetime):
                 from bingo_admin.credit_context import CreditContextManager
             else:
                 from backend.services.token_tracking_service import CreditContextManager
-                _credit_mgr = CreditContextManager(
-                    db=db,
-                    user_id=user.id,
-                    title=f"Skill detection: {user.id}",
-                    provider_name=settings.default_llm_provider,
-                    conversation_id=None,
-                    block_on_insufficient=False,
-                )
+            _credit_mgr = CreditContextManager(
+                db=db,
+                user_id=user.id,
+                title=f"Skill detection: {user.id}",
+                provider_name=settings.default_llm_provider,
+                conversation_id=None,
+                block_on_insufficient=False,
+            )
         except Exception as _credit_err:
             logger.warning("Credit context setup failed for skill detection: %s", _credit_err)
             _credit_mgr = None

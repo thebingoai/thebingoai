@@ -40,14 +40,14 @@ def generate_daily_memories():
                         from bingo_admin.credit_context import CreditContextManager
                     else:
                         from backend.services.token_tracking_service import CreditContextManager
-                        _credit_mgr = CreditContextManager(
-                            db=db,
-                            user_id=user.id,
-                            title=f"Memory generation: {yesterday.date()}",
-                            provider_name=None,
-                            conversation_id=None,
-                            block_on_insufficient=False,
-                        )
+                    _credit_mgr = CreditContextManager(
+                        db=db,
+                        user_id=user.id,
+                        title=f"Memory generation: {yesterday.date()}",
+                        provider_name=None,
+                        conversation_id=None,
+                        block_on_insufficient=False,
+                    )
                 except Exception as _credit_err:
                     logger.warning("Credit context setup failed for memory generation: %s", _credit_err)
                     _credit_mgr = None
@@ -91,14 +91,14 @@ def generate_user_memory(user_id: str, date_str: str):
                 from bingo_admin.credit_context import CreditContextManager
             else:
                 from backend.services.token_tracking_service import CreditContextManager
-                _credit_mgr = CreditContextManager(
-                    db=db,
-                    user_id=user_id,
-                    title=f"Memory generation: {date_str}",
-                    provider_name=None,
-                    conversation_id=None,
-                    block_on_insufficient=False,
-                )
+            _credit_mgr = CreditContextManager(
+                db=db,
+                user_id=user_id,
+                title=f"Memory generation: {date_str}",
+                provider_name=None,
+                conversation_id=None,
+                block_on_insufficient=False,
+            )
         except Exception as _credit_err:
             logger.warning("Credit context setup failed for memory generation: %s", _credit_err)
             _credit_mgr = None
