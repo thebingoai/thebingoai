@@ -10,11 +10,8 @@
       <Moon v-else class="h-4 w-4" />
     </button>
 
-    <img
-      :src="isDark ? '/logo/logo-white.png' : '/logo/logo-black.png'"
-      alt="Bingo"
-      class="h-12 w-auto mb-10"
-    />
+    <img src="/logo/BINGO Logo Design_FA_Primary.png" alt="Bingo" class="h-12 w-auto mb-10 dark:hidden" />
+    <img src="/logo/BINGO Logo Design_FA_Primary_W.png" alt="Bingo" class="h-12 w-auto mb-10 hidden dark:block" />
 
     <h1 class="font-display text-5xl font-bold text-neutral-900 dark:text-neutral-50 mb-4">
       We'll be back shortly.
