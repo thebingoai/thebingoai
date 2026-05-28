@@ -15,11 +15,24 @@ export interface User {
   org_feature_flags?: Record<string, unknown>
 }
 
+export interface MaintenanceState {
+  active: boolean
+  bypass_active: boolean
+  message: string
+}
+
 export interface AuthConfig {
   provider: string
   sso_base_url?: string
   publishable_key?: string
   google_oauth_url?: string
+  maintenance?: MaintenanceState
+}
+
+const DEFAULT_MAINTENANCE: MaintenanceState = {
+  active: false,
+  bypass_active: false,
+  message: '',
 }
 
 // Deduplication: when multiple widgets get 401 simultaneously,
@@ -33,6 +46,7 @@ export const useAuthStore = defineStore('auth', {
     token: null as string | null,
     refreshToken: null as string | null,
     authConfig: null as AuthConfig | null,
+    maintenance: { ...DEFAULT_MAINTENANCE } as MaintenanceState,
     loading: false,
     error: null as string | null,
     isInactive: false,
@@ -52,8 +66,13 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async loadAuthConfig() {
       try {
-        const data = await $fetch<AuthConfig>('/api/auth/config')
+        const data = await $fetch<AuthConfig>('/api/auth/config', {
+          credentials: 'include',  // send maint_bypass cookie if present
+        })
         this.authConfig = data
+        this.maintenance = data.maintenance
+          ? { ...data.maintenance }
+          : { ...DEFAULT_MAINTENANCE }
       } catch (error) {
         console.error('Failed to load auth config:', error)
       }

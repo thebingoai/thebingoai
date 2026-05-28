@@ -164,6 +164,13 @@ class Settings(BaseSettings):
     orchestrator_lean_tools: bool = False  # ≤10 primary tools + manage meta-tool + @-mention scope
     template_backfill_on_startup: bool = True  # plugin-template framework: backfill existing connections at boot
 
+    # Maintenance mode — hides login UI behind a static page. Developers can bypass via
+    # `?maint_bypass=KEY` URL param which the backend exchanges for an HttpOnly cookie.
+    maintenance_mode: bool = False
+    maintenance_bypass_key: str = ""           # empty → bypass disabled (404)
+    maintenance_message: str = "Bingo is undergoing scheduled maintenance."
+    maintenance_cookie_secure: bool = True     # set False over plain HTTP (local dev)
+
     # Connector picker visibility
     hidden_connector_types: str = ""  # comma-separated connector type_ids hidden from the picker
 

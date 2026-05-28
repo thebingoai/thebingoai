@@ -14,14 +14,23 @@ security = HTTPBearer()
 
 
 @router.get("/config")
-async def get_auth_config():
+async def get_auth_config(request: Request):
     """
     Get auth provider configuration for the frontend.
 
-    Returns provider-specific config (URLs, public keys, etc.).
-    Public endpoint - no authentication required.
+    Returns provider-specific config (URLs, public keys, etc.) plus the runtime
+    maintenance-mode state. Public endpoint - no authentication required. The
+    `maintenance.bypass_active` flag reflects whether the caller already holds a
+    valid HttpOnly bypass cookie, so the frontend can decide whether to render
+    the maintenance page or the login form without exposing the bypass key.
     """
-    return sso_get_config()
+    config = sso_get_config()
+    config["maintenance"] = {
+        "active": settings.maintenance_mode,
+        "bypass_active": request.cookies.get("maint_bypass") == "1",
+        "message": settings.maintenance_message,
+    }
+    return config
 
 
 @router.get("/me", response_model=UserResponse)

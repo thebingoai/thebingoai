@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files, sqlite_upload, credits
+from backend.api import upload, query, health, jobs, auth, connections, usage, chat, memory, sql_query, chat_files, sqlite_upload, credits, maintenance
 from backend.api import agents as custom_agents, skills, heartbeat_jobs, dashboards, widget_data, dashboard_schedule
 from backend.api import feature_config, briefings
 from backend.auth.webhooks import router as webhook_router
@@ -12,6 +12,9 @@ router = APIRouter()
 
 # Authentication
 router.include_router(auth.router)
+
+# Maintenance mode bypass (frontend-only gate)
+router.include_router(maintenance.router)
 
 # SSO Webhooks
 router.include_router(webhook_router)
