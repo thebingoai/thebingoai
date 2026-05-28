@@ -1,18 +1,6 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const authStore = useAuthStore()
 
-  // Maintenance gate: when maintenance_mode is on, only callers with a valid
-  // bypass cookie may reach normal routes. Everyone else lands on /maintenance.
-  // Populated by auth-init.ts plugin via /api/auth/config before this runs.
-  if (authStore.maintenance.active && !authStore.maintenance.bypass_active) {
-    if (to.path !== '/maintenance') return navigateTo('/maintenance')
-    return
-  }
-  // Inverse: when maintenance is off, /maintenance is not a real destination.
-  if (!authStore.maintenance.active && to.path === '/maintenance') {
-    return navigateTo('/')
-  }
-
   const publicRoutes = ['/login', '/register', '/auth/verify', '/auth/success', '/auth/error', '/auth/forgot-password', '/auth/reset-password', '/verify-account', '/reset-password']
   // Token-exchange routes must not redirect authenticated users — a token is being
   // consumed to switch identity. This includes OAuth callbacks AND the email-verify
