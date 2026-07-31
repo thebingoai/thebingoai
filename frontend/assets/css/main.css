@@ -43,26 +43,39 @@
   --bad:  oklch(0.60 0.18 25);
 
   /* Dashboard section bands — mixed against paper-0 so every theme
-     (incl. .dark) gets a readable tint from one definition. */
-  --section-default:      color-mix(in oklch, var(--ink-2) 5%, var(--paper-0));
-  --section-default-line: color-mix(in oklch, var(--ink-2) 22%, var(--paper-0));
-  --section-violet:       color-mix(in oklch, #6E489D 7%, var(--paper-0));
-  --section-violet-line:  color-mix(in oklch, #6E489D 30%, var(--paper-0));
-  --section-blue:         color-mix(in oklch, #2f6fd0 7%, var(--paper-0));
-  --section-blue-line:    color-mix(in oklch, #2f6fd0 30%, var(--paper-0));
-  --section-green:        color-mix(in oklch, #2f8a5b 7%, var(--paper-0));
-  --section-green-line:   color-mix(in oklch, #2f8a5b 30%, var(--paper-0));
-  --section-amber:        color-mix(in oklch, #c07f1f 8%, var(--paper-0));
-  --section-amber-line:   color-mix(in oklch, #c07f1f 32%, var(--paper-0));
-  --section-rose:         color-mix(in oklch, #c2477c 7%, var(--paper-0));
-  --section-rose-line:    color-mix(in oklch, #c2477c 30%, var(--paper-0));
-  /* Mid-strength fills for the section widget's title bar */
-  --section-default-bar:  color-mix(in oklch, var(--ink-2) 14%, var(--paper-0));
-  --section-violet-bar:   color-mix(in oklch, #6E489D 18%, var(--paper-0));
-  --section-blue-bar:     color-mix(in oklch, #2f6fd0 18%, var(--paper-0));
-  --section-green-bar:    color-mix(in oklch, #2f8a5b 18%, var(--paper-0));
-  --section-amber-bar:    color-mix(in oklch, #c07f1f 20%, var(--paper-0));
-  --section-rose-bar:     color-mix(in oklch, #c2477c 18%, var(--paper-0));
+     (incl. .dark) gets a readable tint from one definition. Hue anchors and
+     mix strengths are vars so .dark can retune both in one place.
+     Note: one shared strength per role instead of per-colour numbers —
+     costs default/amber a ~2% drift from their old hand-tuned light values;
+     split them out again only if that reads wrong. */
+  --sec-h-default: var(--ink-2);
+  --sec-h-violet:  #6E489D;
+  --sec-h-blue:    #2f6fd0;
+  --sec-h-green:   #2f8a5b;
+  --sec-h-amber:   #c07f1f;
+  --sec-h-rose:    #c2477c;
+  --sec-fill: 7%;   /* band background */
+  --sec-bar:  18%;  /* section widget title bar */
+  --sec-line: 30%;  /* band border + nav dot */
+
+  --section-default:      color-mix(in oklch, var(--sec-h-default) var(--sec-fill), var(--paper-0));
+  --section-default-bar:  color-mix(in oklch, var(--sec-h-default) var(--sec-bar),  var(--paper-0));
+  --section-default-line: color-mix(in oklch, var(--sec-h-default) var(--sec-line), var(--paper-0));
+  --section-violet:       color-mix(in oklch, var(--sec-h-violet) var(--sec-fill), var(--paper-0));
+  --section-violet-bar:   color-mix(in oklch, var(--sec-h-violet) var(--sec-bar),  var(--paper-0));
+  --section-violet-line:  color-mix(in oklch, var(--sec-h-violet) var(--sec-line), var(--paper-0));
+  --section-blue:         color-mix(in oklch, var(--sec-h-blue) var(--sec-fill), var(--paper-0));
+  --section-blue-bar:     color-mix(in oklch, var(--sec-h-blue) var(--sec-bar),  var(--paper-0));
+  --section-blue-line:    color-mix(in oklch, var(--sec-h-blue) var(--sec-line), var(--paper-0));
+  --section-green:        color-mix(in oklch, var(--sec-h-green) var(--sec-fill), var(--paper-0));
+  --section-green-bar:    color-mix(in oklch, var(--sec-h-green) var(--sec-bar),  var(--paper-0));
+  --section-green-line:   color-mix(in oklch, var(--sec-h-green) var(--sec-line), var(--paper-0));
+  --section-amber:        color-mix(in oklch, var(--sec-h-amber) var(--sec-fill), var(--paper-0));
+  --section-amber-bar:    color-mix(in oklch, var(--sec-h-amber) var(--sec-bar),  var(--paper-0));
+  --section-amber-line:   color-mix(in oklch, var(--sec-h-amber) var(--sec-line), var(--paper-0));
+  --section-rose:         color-mix(in oklch, var(--sec-h-rose) var(--sec-fill), var(--paper-0));
+  --section-rose-bar:     color-mix(in oklch, var(--sec-h-rose) var(--sec-bar),  var(--paper-0));
+  --section-rose-line:    color-mix(in oklch, var(--sec-h-rose) var(--sec-line), var(--paper-0));
 
   /* Typography */
   --font-display: 'Fraunces', 'Cambria', Georgia, serif;
@@ -160,6 +173,17 @@ html.font-lg .mention-pc           { font-size: 14px; }
   --ink-2:   #a1a1aa;
   --ink-3:   #71717a;
   --ember-wash: color-mix(in oklch, #6E489D 12%, #18181b);
+
+  /* Section bands: a 7% mix of a mid-dark hue against #18181b is invisible —
+     dark needs lighter hue anchors AND more of them. */
+  --sec-h-violet: #A78BD4;
+  --sec-h-blue:   #7EA6E8;
+  --sec-h-green:  #6FCF97;
+  --sec-h-amber:  #E5B567;
+  --sec-h-rose:   #E58BB0;
+  --sec-fill: 16%;
+  --sec-bar:  32%;
+  --sec-line: 48%;
 }
 
 /* ─── Settings paper-theme palettes ──────────────────────────── */
