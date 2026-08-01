@@ -16,6 +16,11 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
+    # SQLAlchemy's default is 30s. A saturated pool then stalls each waiter for
+    # half a minute while it still holds every other resource it acquired,
+    # which turns contention into a pile-up. Fail fast and let the 503 handler
+    # in main.py shed load instead.
+    pool_timeout=settings.db_pool_timeout,
     pool_recycle=1800,
     echo=settings.log_level == "DEBUG",
 )

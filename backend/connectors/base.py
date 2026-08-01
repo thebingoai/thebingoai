@@ -475,7 +475,10 @@ class BaseConnector(ABC):
 
         Raises:
             ValueError: If query is not read-only (not SELECT)
-            Exception: If query execution fails
+            Exception: the driver's own exception, unwrapped. It used to be
+                re-raised as a bare Exception, which erased the class and made
+                error classification (retryable? permission? syntax?) impossible
+                downstream. Callers already prefix their own context.
         """
         from backend.config import settings
 
@@ -521,8 +524,6 @@ class BaseConnector(ABC):
                 rows = rows[:max_rows]
             execution_time_ms = (time.time() - start_time) * 1000
 
-            cursor.close()
-
             return QueryResult(
                 columns=columns,
                 rows=rows,
@@ -530,9 +531,21 @@ class BaseConnector(ABC):
                 execution_time_ms=execution_time_ms,
                 truncated=truncated,
             )
-        except Exception as e:
+        finally:
             cursor.close()
-            raise Exception(f"Query execution failed: {str(e)}")
+            # The connector outlives the query — dashboard_cache and
+            # profiling_tasks reuse one across N widgets/tables. Without this
+            # rollback a failure leaves the transaction ABORTED and every later
+            # query on the same connector dies with 25P02, so one bad widget
+            # poisons the rest of the dashboard. On the success path it ends the
+            # read transaction that SET TRANSACTION READ ONLY opened, which
+            # otherwise pins a customer-DB backend `idle in transaction`
+            # holding an MVCC snapshot (blocking VACUUM) for the connector's
+            # whole lifetime — minutes to hours during profiling.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     def close(self):
         """Close database connection if open."""

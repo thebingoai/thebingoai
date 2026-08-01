@@ -23,6 +23,20 @@ CHAT_FILE_PREFIX = "chat_file:"
 IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 SUPPORTED_IMAGE_FORMATS = {"PNG", "JPEG", "GIF", "WEBP"}
 
+# A small upload can be a very large raster: PNG compresses flat colour to
+# almost nothing, so a ~10 MB file can be 13000x13000 (169 Mpx), which decodes
+# to ~507 MB of RGB and peaks near 1 GB through resize() — in a pod limited to
+# 2 GB that is an OOMKill from one authenticated request. The file-size check
+# upstream cannot see this; pixel count is the dimension that matters.
+#
+# 40 Mpx passes anything a camera or screenshot produces (~8K is 33 Mpx) and
+# caps the decode near 120 MB. Pillow's own guard only *warns* at
+# MAX_IMAGE_PIXELS and raises at 2x, so the explicit check in _process_image
+# is what actually enforces the limit; this assignment is the backstop for any
+# other decode path.
+MAX_IMAGE_PIXELS = 40_000_000
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+
 EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 MIME_TO_CONTENT_TYPE = {
@@ -39,15 +53,27 @@ MIME_TO_CONTENT_TYPE = {
 
 def _process_image(file_bytes: bytes, mime_type: str) -> dict:
     """Validate, optionally resize, and base64-encode an image."""
-    image = Image.open(io.BytesIO(file_bytes))
+    try:
+        image = Image.open(io.BytesIO(file_bytes))
+    except Image.DecompressionBombError as exc:
+        raise ValueError(f"Image is too large to process: {exc}") from exc
+
+    # Image.open only reads the header, so .size is known before any pixel is
+    # decoded — this check must stay ahead of resize(), which forces the full
+    # decode. Callers map ValueError to 400 (api/chat_files.py:197).
+    width, height = image.size
+    if width * height > MAX_IMAGE_PIXELS:
+        raise ValueError(
+            f"Image is too large to process: {width}x{height} exceeds the "
+            f"{MAX_IMAGE_PIXELS:,} pixel limit"
+        )
 
     fmt = image.format or ""
     if fmt.upper() not in SUPPORTED_IMAGE_FORMATS:
         raise ValueError(f"Unsupported image format: {fmt}. Supported: PNG, JPEG, GIF, WEBP")
 
-    # Resize if longest side > 2048px
+    # Resize if longest side > 2048px  (width/height read above)
     max_side = 2048
-    width, height = image.size
     if max(width, height) > max_side:
         scale = max_side / max(width, height)
         new_width = int(width * scale)
