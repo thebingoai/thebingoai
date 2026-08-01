@@ -111,6 +111,8 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
     # Multi-workspace: an X-Workspace-Id header selects the active workspace
     # when the user is a member of it. In-memory only; no commit happens here.
     user.active_role = "member"
+    active_org = active_role = None
+    resolved_workspace = False
     if settings.enable_governance:
         try:
             from bingo_org_governance.deps import resolve_active_workspace
@@ -121,14 +123,48 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
             active_org, active_role = resolve_active_workspace(
                 db, user=user, header_org_id=header_org,
             )
-            user.home_org_id = str(user.org_id) if user.org_id else None
-            if active_org and str(user.org_id) != str(active_org):
-                user.org_id = active_org
-            user.active_role = active_role
-            request.state.active_org_id = active_org
-            request.state.active_role = active_role
+            resolved_workspace = True
+
+    # Every DB read this dependency performs is done by here. Ending the
+    # transaction now is what stops each authenticated request from pinning a
+    # PgBouncer server slot for its whole wall-clock lifetime — including
+    # requests that go on to do nothing but LLM, Qdrant or GCS work.
+    _end_read_transaction(db)
+
+    # Strictly after _end_read_transaction: user.org_id is a mapped column
+    # deliberately overridden in memory and never persisted, so it must not be
+    # part of the commit above.
+    if resolved_workspace:
+        user.home_org_id = str(user.org_id) if user.org_id else None
+        if active_org and str(user.org_id) != str(active_org):
+            user.org_id = active_org
+        user.active_role = active_role
+        request.state.active_org_id = active_org
+        request.state.active_role = active_role
 
     return user
+
+
+def _end_read_transaction(db: Session) -> None:
+    """End the dependency's transaction while keeping `user` usable as-is.
+
+    A bare commit() or rollback() ends the transaction but expires every mapped
+    attribute in the identity map, so the handler's first `current_user.x` read
+    issues a refresh SELECT — which opens a *new* transaction and gives back
+    exactly the pooler slot we were trying to release. Suppressing expiry for
+    this one commit ends the transaction and leaves the already-loaded row
+    readable, with no extra query.
+
+    The session itself is unchanged afterwards: `user` stays attached, so a
+    handler that mutates it and commits (api/memory.py does) still persists.
+    expire_on_commit is restored so handler commits keep default semantics.
+    """
+    previous = db.expire_on_commit
+    db.expire_on_commit = False
+    try:
+        db.commit()
+    finally:
+        db.expire_on_commit = previous
 
 
 def _enforce_account_active(db: Session, user: User, sso_user) -> None:
