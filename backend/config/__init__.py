@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     rag_default_top_k: int = 5
     rag_context_score_threshold: float = 0.5
     rag_conversation_history_messages: int = 6
+    # Chat turns replay history into the prompt. Unbounded, this grew until the
+    # provider's context limit rejected the turn outright, bricking that user's
+    # chat until they reset it — permanent conversations cannot be deleted.
+    chat_history_max_messages: int = 100
 
     # Agent settings
     agent_recursion_limit: int = 100  # Max LangGraph ReAct loop steps per agent invocation

@@ -685,12 +685,8 @@ async def _handle_chat_send(
         )
 
         # Conversation history (fetched before saving the current user message)
+        # Already windowed and cut at the last context reset, in SQL.
         history = ConversationService.get_conversation_history(db, conversation.thread_id, user.id)
-        # Truncate at last context reset boundary
-        for i in range(len(history) - 1, -1, -1):
-            if history[i].source == "context_reset":
-                history = history[i + 1:]
-                break
 
         # Wait for any connection:N files still being profiled by Celery
         if not await _wait_for_file_processing(

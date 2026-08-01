@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date
 from backend.models.conversation import Conversation
 from backend.models.message import Message
+from backend.config import settings
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -95,16 +96,62 @@ class ConversationService:
         return message
 
     @staticmethod
-    def get_conversation_history(db: Session, thread_id: str, user_id: str) -> List[Message]:
-        """Get all messages in a conversation."""
+    def get_conversation_history(
+        db: Session,
+        thread_id: str,
+        user_id: str,
+        limit: Optional[int] = None,
+    ) -> List[Message]:
+        """Recent messages of a conversation, oldest-first.
+
+        Bounded on purpose. This used to load every message a thread had ever
+        had, on every turn, and the callers trimmed the list in Python
+        afterwards — so the cost was paid in full before anything was dropped.
+        Permanent conversations cannot be archived or deleted, so their message
+        count only ever grows, and the first thing to break was not memory but
+        the turn itself: the assembled prompt eventually exceeded the model's
+        context limit and that user's chat stayed broken until they reset it.
+
+        The context-reset boundary is applied in SQL for the same reason —
+        those rows are deliberately discarded, so there is no point loading
+        them. `limit` overrides settings.chat_history_max_messages for callers
+        that genuinely want a different window.
+        """
         conversation = ConversationService.get_conversation_by_thread(db, thread_id, user_id)
 
         if not conversation:
             return []
 
-        return db.query(Message).filter(
-            Message.conversation_id == conversation.id
-        ).order_by(Message.timestamp).all()
+        max_messages = limit if limit is not None else settings.chat_history_max_messages
+
+        query = db.query(Message).filter(Message.conversation_id == conversation.id)
+
+        # Message.id is autoincrement, so "after the reset" is exact — the
+        # positional slice the callers used could not disambiguate messages
+        # sharing a timestamp.
+        last_reset_id = (
+            db.query(Message.id)
+            .filter(
+                Message.conversation_id == conversation.id,
+                Message.source == "context_reset",
+            )
+            .order_by(Message.id.desc())
+            .limit(1)
+            .scalar()
+        )
+        if last_reset_id is not None:
+            query = query.filter(Message.id > last_reset_id)
+
+        # Newest-first + LIMIT to select the window, then flip back: the caller
+        # contract is oldest-first. id breaks timestamp ties so the window is
+        # deterministic.
+        rows = (
+            query.order_by(Message.timestamp.desc(), Message.id.desc())
+            .limit(max_messages)
+            .all()
+        )
+        rows.reverse()
+        return rows
 
     @staticmethod
     def list_conversations(
