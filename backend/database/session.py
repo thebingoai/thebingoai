@@ -20,6 +20,40 @@ engine = create_engine(
     echo=settings.log_level == "DEBUG",
 )
 
+# Pool pressure tracing. Off by default; DB_POOL_TRACE=true turns it on. The
+# cluster has no metrics-server, so this is the only visibility into whether
+# the client pool or the PgBouncer server pool is the thing running out.
+# Two signals: demand exceeded pool_size, and a checkout held far too long
+# (usually a session kept open across network I/O rather than a slow query).
+if settings.db_pool_trace:
+    import logging
+    import time
+    from sqlalchemy import event
+
+    _pool_log = logging.getLogger("backend.db.pool")
+
+    @event.listens_for(engine, "checkout")
+    def _trace_checkout(dbapi_conn, conn_record, conn_proxy):
+        conn_record.info["checkout_at"] = time.monotonic()
+        # overflow() > 0, not checkedout() >= pool_size: the latter is true for
+        # every checkout while the pool is merely full, which under load is a
+        # log line per request. Overflow means demand actually exceeded
+        # pool_size — rare, and the number worth waking up for.
+        if engine.pool.overflow() > 0:
+            _pool_log.warning("pool in overflow: %s", engine.pool.status())
+
+    @event.listens_for(engine, "checkin")
+    def _trace_checkin(dbapi_conn, conn_record):
+        started = conn_record.info.pop("checkout_at", None)
+        if started is None:
+            return
+        held_ms = (time.monotonic() - started) * 1000
+        if held_ms >= settings.db_pool_trace_slow_ms:
+            _pool_log.warning(
+                "checkout held %.0fms | %s", held_ms, engine.pool.status()
+            )
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # expire_on_commit=False: chat.py / websocket.py hand ORM rows (history Messages,

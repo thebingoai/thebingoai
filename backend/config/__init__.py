@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     database_url_direct: Optional[str] = None  # Direct connection for migrations (bypasses Supabase connection pooler)
     db_pool_size: int = 10      # client-side connections kept warm per process
     db_max_overflow: int = 20   # extra connections allowed beyond pool_size under burst
+    db_pool_timeout: int = 5    # seconds to wait for a free slot before raising TimeoutError
+    db_pool_trace: bool = False           # log pool pressure (see database/session.py)
+    db_pool_trace_slow_ms: int = 1000     # warn when a checkout is held at least this long
 
     # Schema storage
     schemas_dir: str = "data/schemas"
