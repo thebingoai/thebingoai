@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.exc import IntegrityError
 from backend.auth.sso import validate_token as sso_validate_token
 from backend.database.session import end_read_transaction, get_db
@@ -137,7 +138,18 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
     if resolved_workspace:
         user.home_org_id = str(user.org_id) if user.org_id else None
         if active_org and str(user.org_id) != str(active_org):
-            user.org_id = active_org
+            # set_committed_value, not a plain assignment. org_id is a mapped
+            # column, so `user.org_id = active_org` leaves the User dirty in a
+            # session the handler goes on to reuse — FastAPI caches get_db per
+            # request. The next db.commit() anywhere in that handler (e.g.
+            # api/memory.py's soul/preferences writes) then flushes the selected
+            # workspace over the user's *home* org, permanently.
+            #
+            # That is not just a stale column: resolve_active_workspace returns
+            # `_role_in(home_org) or "member"`, so a user whose home_org has been
+            # rewritten to someone else's org keeps a fallback 'member' role there
+            # even after their membership row is deleted.
+            set_committed_value(user, "org_id", active_org)
         user.active_role = active_role
         request.state.active_org_id = active_org
         request.state.active_role = active_role

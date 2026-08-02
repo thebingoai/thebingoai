@@ -12,6 +12,7 @@ opens a new transaction. These tests pin all four required properties.
 
 from sqlalchemy import Column, Integer, String, create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm.attributes import set_committed_value
 
 import pytest
 
@@ -102,6 +103,45 @@ def test_in_memory_org_override_is_not_persisted(db_and_queries):
     stored = check.query(_User).filter(_User.id == 1).first().org_id
     check.close()
     assert stored == "home-org", "the workspace override leaked into the database"
+
+
+def test_the_override_survives_a_later_handler_commit(db_and_queries):
+    """The case the test above does not reach — and the one that bites.
+
+    Committing before the override keeps it out of *that* commit, but the
+    override still leaves the User dirty, and FastAPI caches get_db per request:
+    the handler goes on to use the same session. Any db.commit() it makes
+    (api/memory.py's soul and preferences writes do exactly this) flushes the
+    selected workspace over users.org_id permanently.
+
+    That is durable cross-tenant access, not just a stale column —
+    resolve_active_workspace returns `_role_in(home_org) or "member"`, so once
+    home_org points at someone else's org the user keeps a fallback 'member'
+    role there even after their membership row is deleted.
+
+    Asserting on the response body would not catch this; only the stored row does.
+    """
+    db, _selects, Session = db_and_queries
+    user = db.query(_User).filter(_User.id == 1).first()
+
+    end_read_transaction(db)
+    # Exactly what _resolve_local_user does for an X-Workspace-Id request.
+    set_committed_value(user, "org_id", "active-workspace")
+
+    # ...and then the handler writes something unrelated, as PUT /api/memory/soul does.
+    user.email = "changed@b.c"
+    db.commit()
+
+    check = Session()
+    row = check.query(_User).filter(_User.id == 1).first()
+    stored_org, stored_email = row.org_id, row.email
+    check.close()
+
+    assert stored_email == "changed@b.c", "the handler's own write must still persist"
+    assert stored_org == "home-org", (
+        "the workspace override was flushed by the handler's commit — the user's "
+        "home org is now someone else's workspace"
+    )
 
 
 def test_handler_mutation_still_persists(db_and_queries):
