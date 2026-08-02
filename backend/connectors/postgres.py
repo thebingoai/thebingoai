@@ -41,6 +41,13 @@ class PostgresConnector(BaseConnector):
             # drop idle conns) so a stalled read doesn't hang past the 60s
             # frontend cap. Only test_connection had a connect_timeout before.
             'connect_timeout': settings.source_connect_timeout_s,
+            # Connection-wide statement cap. execute_query already issues
+            # `SET LOCAL statement_timeout` per query, but the *schema* path
+            # never did — get_table_schema is 5 round-trips per table plus a
+            # 6th for FKs, and _get_row_count can fall back to an exact
+            # COUNT(*), all unbounded server-side. Same value as the per-query
+            # cap, so SET LOCAL stays a no-op change for queries.
+            'options': f'-c statement_timeout={settings.query_timeout_ms}',
             'keepalives': 1,
             'keepalives_idle': 30,
             'keepalives_interval': 10,
@@ -69,7 +76,20 @@ class PostgresConnector(BaseConnector):
                 return int(est)
         except Exception:
             pass
-        return super()._get_row_count(cursor, schema, table_name)
+        try:
+            return super()._get_row_count(cursor, schema, table_name)
+        except Exception:
+            # statement_timeout killed the scan (see _get_connect_kwargs), or
+            # the table vanished mid-walk. The count is a display hint that is
+            # never computed on (see BaseConnector._get_row_count), so degrade
+            # instead of failing the whole schema refresh. Roll back first:
+            # Postgres leaves the transaction ABORTED, and every later schema
+            # query on this connection would die with 25P02.
+            try:
+                cursor.connection.rollback()
+            except Exception:
+                pass
+            return 0
 
     def _get_column_comments(self, cursor, schema: str, table_name: str) -> Dict[str, str]:
         """Read column comments from ``pg_description`` (via ``col_description``)."""

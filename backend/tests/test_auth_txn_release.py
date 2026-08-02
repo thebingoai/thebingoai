@@ -15,7 +15,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 import pytest
 
-from backend.auth.dependencies import _end_read_transaction
+from backend.database.session import end_read_transaction
 
 Base = declarative_base()
 
@@ -55,7 +55,7 @@ def test_transaction_is_closed_afterwards(db_and_queries):
     db.query(_User).filter(_User.id == 1).first()
     assert db.in_transaction(), "precondition: the lookup opened a transaction"
 
-    _end_read_transaction(db)
+    end_read_transaction(db)
 
     assert not db.in_transaction(), (
         "the read transaction must be closed, or a transaction-mode pooler "
@@ -73,7 +73,7 @@ def test_reading_the_user_afterwards_issues_no_extra_query(db_and_queries):
     user = db.query(_User).filter(_User.id == 1).first()
     after_load = len(selects)
 
-    _end_read_transaction(db)
+    end_read_transaction(db)
     _ = user.email
     _ = user.org_id
 
@@ -93,7 +93,7 @@ def test_in_memory_org_override_is_not_persisted(db_and_queries):
     db, _selects, Session = db_and_queries
     user = db.query(_User).filter(_User.id == 1).first()
 
-    _end_read_transaction(db)
+    end_read_transaction(db)
     user.org_id = "active-workspace"  # as get_current_user does, after the commit
 
     assert user.org_id == "active-workspace", "override must be visible to handlers"
@@ -113,7 +113,7 @@ def test_handler_mutation_still_persists(db_and_queries):
     db, _selects, Session = db_and_queries
     user = db.query(_User).filter(_User.id == 1).first()
 
-    _end_read_transaction(db)
+    end_read_transaction(db)
 
     user.email = "changed@b.c"  # PUT /api/memory/soul shape
     db.commit()
@@ -134,6 +134,6 @@ def test_expire_on_commit_is_restored(db_and_queries):
     db.query(_User).filter(_User.id == 1).first()
     before = db.expire_on_commit
 
-    _end_read_transaction(db)
+    end_read_transaction(db)
 
     assert db.expire_on_commit is before is True

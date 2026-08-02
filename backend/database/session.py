@@ -89,3 +89,31 @@ def get_detached_read_db() -> Session:
         yield db
     finally:
         db.close()
+
+
+def end_read_transaction(db: Session) -> None:
+    """End an open read transaction while leaving loaded rows usable as-is.
+
+    Behind a transaction-mode pooler the scarce resource is the *server* slot,
+    which is released at transaction end even though the client checkout stays.
+    So a session that has only read should end its transaction before anything
+    slow — a network call to a customer database, an LLM, GCS — rather than
+    pinning a slot for the request's whole wall-clock lifetime.
+
+    A bare commit() or rollback() does end the transaction, but it also expires
+    every mapped attribute in the identity map, so the next `obj.x` read issues
+    a refresh SELECT — which opens a *new* transaction and takes back exactly
+    the slot we were freeing. Suppressing expiry for this one commit ends the
+    transaction and leaves the already-loaded rows readable, with no extra
+    query.
+
+    The session is otherwise unchanged: instances stay attached, so a handler
+    that mutates one and commits still persists. expire_on_commit is restored
+    so later commits keep default semantics.
+    """
+    previous = db.expire_on_commit
+    db.expire_on_commit = False
+    try:
+        db.commit()
+    finally:
+        db.expire_on_commit = previous

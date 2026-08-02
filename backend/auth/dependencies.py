@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from backend.auth.sso import validate_token as sso_validate_token
-from backend.database.session import get_db
+from backend.database.session import end_read_transaction, get_db
 from backend.models.user import User
 from backend.models.team_membership import TeamMembership, MemberRole
 from backend.config import settings
@@ -129,9 +129,9 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
     # transaction now is what stops each authenticated request from pinning a
     # PgBouncer server slot for its whole wall-clock lifetime — including
     # requests that go on to do nothing but LLM, Qdrant or GCS work.
-    _end_read_transaction(db)
+    end_read_transaction(db)
 
-    # Strictly after _end_read_transaction: user.org_id is a mapped column
+    # Strictly after end_read_transaction: user.org_id is a mapped column
     # deliberately overridden in memory and never persisted, so it must not be
     # part of the commit above.
     if resolved_workspace:
@@ -143,28 +143,6 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
         request.state.active_role = active_role
 
     return user
-
-
-def _end_read_transaction(db: Session) -> None:
-    """End the dependency's transaction while keeping `user` usable as-is.
-
-    A bare commit() or rollback() ends the transaction but expires every mapped
-    attribute in the identity map, so the handler's first `current_user.x` read
-    issues a refresh SELECT — which opens a *new* transaction and gives back
-    exactly the pooler slot we were trying to release. Suppressing expiry for
-    this one commit ends the transaction and leaves the already-loaded row
-    readable, with no extra query.
-
-    The session itself is unchanged afterwards: `user` stays attached, so a
-    handler that mutates it and commits (api/memory.py does) still persists.
-    expire_on_commit is restored so handler commits keep default semantics.
-    """
-    previous = db.expire_on_commit
-    db.expire_on_commit = False
-    try:
-        db.commit()
-    finally:
-        db.expire_on_commit = previous
 
 
 def _enforce_account_active(db: Session, user: User, sso_user) -> None:
