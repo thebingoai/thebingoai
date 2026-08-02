@@ -870,6 +870,45 @@ async def _handle_chat_send(
         db.close()
 
 
+async def _close_quietly(ws: WebSocket) -> None:
+    try:
+        await ws.close(code=1011)
+    except Exception:
+        pass
+
+
+def _on_listener_done(task: asyncio.Task, ws: WebSocket, user_id: str) -> None:
+    """Close the socket if the Redis listener ever stops on its own.
+
+    `listen_redis` resubscribes forever, so finishing at all means it raised out
+    of its own retry loop. The socket would then stay open answering pings while
+    nothing published over Redis ever reaches it, and the client reconnects only
+    on close — so close it and let the frontend's existing backoff take over.
+    """
+    if task.cancelled():
+        return  # normal teardown from the endpoint's finally
+    exc = task.exception()
+    if exc is None:
+        return
+    logger.error("WS Redis listener died for user=%s: %r", user_id, exc)
+    asyncio.create_task(_close_quietly(ws))
+
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Surface anything that escaped a chat.send task's own error handling.
+
+    `_handle_chat_send` catches `Exception` around its whole body, so reaching
+    here means the failure happened in that handler or in the `finally` — where
+    it was previously swallowed until GC printed "Task exception was never
+    retrieved", if at all.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("chat.send task failed: %r", exc, exc_info=exc)
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     """
@@ -901,6 +940,12 @@ async def websocket_endpoint(ws: WebSocket):
 
     # Start Redis listener as background task
     redis_task = asyncio.create_task(manager.listen_redis(user.id, ws))
+    redis_task.add_done_callback(lambda t: _on_listener_done(t, ws, user.id))
+
+    # Strong references to the in-flight chat.send tasks. asyncio only holds a
+    # weak reference to a scheduled task, so a discarded handle can be collected
+    # mid-run; the set doubles as the one-turn-per-socket gate below.
+    chat_tasks: set[asyncio.Task] = set()
 
     try:
         while True:
@@ -943,12 +988,30 @@ async def websocket_endpoint(ws: WebSocket):
                     }))
                     continue
 
+                if chat_tasks:
+                    # The composer is disabled while a turn streams, so a second
+                    # send on the same socket is a duplicate or a scripted
+                    # client. One turn per socket stops a single authenticated
+                    # connection from fanning out N orchestrator runs on the
+                    # pod's only event loop.
+                    await ws.send_text(json.dumps({
+                        "type": "chat.error",
+                        "request_id": request_id,
+                        "thread_id": thread_id or "",
+                        "content": "A message is already being answered on this connection.",
+                        "error_code": "busy",
+                    }))
+                    continue
+
                 # Fire-and-forget so this loop stays responsive
-                asyncio.create_task(_handle_chat_send(
+                task = asyncio.create_task(_handle_chat_send(
                     ws, user, request_id, thread_id, message, connection_ids,
                     file_ids=file_ids,
                     mentions=mentions,
                 ))
+                chat_tasks.add(task)
+                task.add_done_callback(chat_tasks.discard)
+                task.add_done_callback(_log_task_exception)
 
             elif msg_type == "conversation.switch":
                 pass  # Frontend-only state change
@@ -996,4 +1059,10 @@ async def websocket_endpoint(ws: WebSocket):
         logger.exception(f"WS error for user {user.id}: {e}")
     finally:
         redis_task.cancel()
+        # chat_tasks are deliberately NOT cancelled. Outliving the socket is the
+        # designed behaviour: the run finishes, persists the answer, and
+        # publishes chat.stream_complete over Redis, which the reconnected
+        # socket picks up (frontend useChatConversations.checkStreamingViaWs
+        # sends stream.check and waits for it). Cancelling here would discard a
+        # completed, already-charged turn on every wifi blip.
         manager.disconnect(user.id, ws)

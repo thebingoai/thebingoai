@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 # Redis Pub/Sub channel prefix
 _CHANNEL_PREFIX = "ws:user:"
 
+# Resubscribe backoff for listen_redis, in seconds.
+_RESUBSCRIBE_MIN_DELAY = 1.0
+_RESUBSCRIBE_MAX_DELAY = 30.0
+
 
 class ConnectionManager:
     """
@@ -54,29 +58,56 @@ class ConnectionManager:
     async def listen_redis(self, user_id: str, ws: WebSocket) -> None:
         """
         Subscribe to the user's Redis channel and forward messages to this WebSocket.
-        Runs as a background task per connection.
+        Runs as a background task per connection, until cancelled.
+
+        The subscribe/listen block is retried with backoff because `listen()`
+        itself raises on any Redis blip — restart, failover, idle reap — and the
+        inner try only ever covered the decode and the send. This task is created
+        fire-and-forget and never awaited, so before the retry loop a single blip
+        permanently deafened every socket open at that instant, across all pods,
+        with no log line: chat kept streaming over the socket itself while query
+        result tables, briefings, skill detections and file-ready events (all of
+        which arrive on this channel) simply stopped.
         """
         import redis.asyncio as aioredis
         from backend.config import settings
 
         channel = f"{_CHANNEL_PREFIX}{user_id}"
-        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-        pubsub = redis_client.pubsub()
-        await pubsub.subscribe(channel)
-        try:
-            async for raw in pubsub.listen():
-                if raw["type"] != "message":
-                    continue
+        delay = _RESUBSCRIBE_MIN_DELAY
+        while True:
+            redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+            pubsub = redis_client.pubsub()
+            try:
+                await pubsub.subscribe(channel)
+                # Reset only once a subscribe has succeeded. Resetting on entry
+                # would retry a Redis that is genuinely down once a second
+                # forever instead of backing off.
+                delay = _RESUBSCRIBE_MIN_DELAY
+                async for raw in pubsub.listen():
+                    if raw["type"] != "message":
+                        continue
+                    try:
+                        payload = json.loads(raw["data"])
+                        await ws.send_text(json.dumps(payload))
+                    except Exception as e:
+                        logger.debug(f"Redis→WS forward error: {e}")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    "WS Redis listener dropped for user=%s (%s); resubscribing in %.0fs",
+                    user_id, e, delay,
+                )
+            finally:
+                # Best-effort: a dead connection makes these raise too, and the
+                # next iteration builds a fresh client either way.
                 try:
-                    payload = json.loads(raw["data"])
-                    await ws.send_text(json.dumps(payload))
-                except Exception as e:
-                    logger.debug(f"Redis→WS forward error: {e}")
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await pubsub.unsubscribe(channel)
-            await redis_client.aclose()
+                    await pubsub.aclose()
+                    await redis_client.aclose()
+                except Exception:
+                    pass
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, _RESUBSCRIBE_MAX_DELAY)
 
     @staticmethod
     def publish_to_user_sync(user_id: str, message: dict) -> None:
