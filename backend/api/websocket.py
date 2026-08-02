@@ -870,6 +870,20 @@ async def _handle_chat_send(
         db.close()
 
 
+# Chat turns are designed to outlive their socket (see the endpoint's finally),
+# so they must stay referenced after the endpoint frame is gone. The endpoint's
+# own set cannot do that: it is reachable only through the task's done-callback,
+# so set and task form a cycle that nothing else holds once the frame dies.
+#
+# In practice the loop anchors a task that has a wakeup registered with it — a
+# timer, a selector callback, an executor callback, or a ready handle — and a
+# chat turn awaiting an LLM call or DB work always has one. A task with *no*
+# such wakeup is collectable, and the cyclic collector does take it (CPython
+# prints "Task was destroyed but it is pending!"). This makes the guarantee
+# hold by construction rather than by that coincidence.
+_inflight_chat_tasks: set[asyncio.Task] = set()
+
+
 async def _close_quietly(ws: WebSocket) -> None:
     try:
         await ws.close(code=1011)
@@ -942,9 +956,9 @@ async def websocket_endpoint(ws: WebSocket):
     redis_task = asyncio.create_task(manager.listen_redis(user.id, ws))
     redis_task.add_done_callback(lambda t: _on_listener_done(t, ws, user.id))
 
-    # Strong references to the in-flight chat.send tasks. asyncio only holds a
-    # weak reference to a scheduled task, so a discarded handle can be collected
-    # mid-run; the set doubles as the one-turn-per-socket gate below.
+    # The one-turn-per-socket gate. Scoped to this connection on purpose, so it
+    # dies with the frame; the strong reference that has to outlive the socket is
+    # _inflight_chat_tasks.
     chat_tasks: set[asyncio.Task] = set()
 
     try:
@@ -1010,7 +1024,9 @@ async def websocket_endpoint(ws: WebSocket):
                     mentions=mentions,
                 ))
                 chat_tasks.add(task)
+                _inflight_chat_tasks.add(task)
                 task.add_done_callback(chat_tasks.discard)
+                task.add_done_callback(_inflight_chat_tasks.discard)
                 task.add_done_callback(_log_task_exception)
 
             elif msg_type == "conversation.switch":
