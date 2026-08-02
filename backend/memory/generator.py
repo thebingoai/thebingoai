@@ -91,7 +91,11 @@ class MemoryGenerator:
         conversation_texts = []
         for conv in daily_conversations:
             messages = ConversationService.get_conversation_history(
-                db, conv.thread_id, user_id
+                db, conv.thread_id, user_id,
+                limit=settings.memory_history_max_messages,
+                # A context reset means "start this conversation fresh", not
+                # "this day did not happen" — the summary needs the whole record.
+                since_reset=False,
             )
             conv_text = f"Conversation (ID: {conv.thread_id}):\n"
             for msg in messages:

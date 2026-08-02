@@ -101,6 +101,7 @@ class ConversationService:
         thread_id: str,
         user_id: str,
         limit: Optional[int] = None,
+        since_reset: bool = True,
     ) -> List[Message]:
         """Recent messages of a conversation, oldest-first.
 
@@ -116,6 +117,12 @@ class ConversationService:
         those rows are deliberately discarded, so there is no point loading
         them. `limit` overrides settings.chat_history_max_messages for callers
         that genuinely want a different window.
+
+        `since_reset=False` keeps the messages before the last context reset.
+        A reset is a chat-UX boundary — "start this conversation fresh" — not an
+        instruction to forget that the messages happened, so callers summarising
+        history rather than replaying it into a turn (the daily memory generator)
+        must opt out or they silently lose part of the record.
         """
         conversation = ConversationService.get_conversation_by_thread(db, thread_id, user_id)
 
@@ -129,18 +136,19 @@ class ConversationService:
         # Message.id is autoincrement, so "after the reset" is exact — the
         # positional slice the callers used could not disambiguate messages
         # sharing a timestamp.
-        last_reset_id = (
-            db.query(Message.id)
-            .filter(
-                Message.conversation_id == conversation.id,
-                Message.source == "context_reset",
+        if since_reset:
+            last_reset_id = (
+                db.query(Message.id)
+                .filter(
+                    Message.conversation_id == conversation.id,
+                    Message.source == "context_reset",
+                )
+                .order_by(Message.id.desc())
+                .limit(1)
+                .scalar()
             )
-            .order_by(Message.id.desc())
-            .limit(1)
-            .scalar()
-        )
-        if last_reset_id is not None:
-            query = query.filter(Message.id > last_reset_id)
+            if last_reset_id is not None:
+                query = query.filter(Message.id > last_reset_id)
 
         # Newest-first + LIMIT to select the window, then flip back: the caller
         # contract is oldest-first. id breaks timestamp ties so the window is

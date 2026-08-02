@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # provider's context limit rejected the turn outright, bricking that user's
     # chat until they reset it — permanent conversations cannot be deleted.
     chat_history_max_messages: int = 100
+    # The daily memory generator summarises history instead of replaying it into
+    # a turn, so it wants a wider window than a chat turn and keeps the messages
+    # before a context reset. Still bounded — it concatenates across every
+    # conversation of the day into one prompt.
+    memory_history_max_messages: int = 500
 
     # Agent settings
     agent_recursion_limit: int = 100  # Max LangGraph ReAct loop steps per agent invocation

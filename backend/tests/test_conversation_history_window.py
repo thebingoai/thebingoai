@@ -129,6 +129,52 @@ def test_only_the_latest_reset_applies(db):
     )
 
 
+def test_since_reset_false_keeps_the_pre_reset_messages(db):
+    """The daily memory generator summarises the day; it does not replay a turn.
+
+    A context reset means "start this conversation fresh", not "this day did not
+    happen". Applying the chat window's reset boundary to the memory generator
+    silently dropped part of the record it exists to preserve.
+    """
+    _make_conversation(db, 20, reset_at=15)
+
+    history = ConversationService.get_conversation_history(
+        db, "t-1", USER_ID, since_reset=False,
+    )
+
+    contents = [m.content for m in history]
+    assert "m0" in contents and "m14" in contents, (
+        "opting out must keep everything before the reset"
+    )
+    assert contents[-1] == "m19", "and still return the later messages, oldest-first"
+
+
+def test_since_reset_false_is_still_bounded(db):
+    """Opting out of the reset boundary must not opt out of the window too.
+
+    The window deliberately reaches past the reset — only 49 messages follow it,
+    so a run that still applied the boundary would return 49, not 100.
+    """
+    _make_conversation(db, 250, reset_at=200)
+
+    history = ConversationService.get_conversation_history(
+        db, "t-1", USER_ID, limit=100, since_reset=False,
+    )
+
+    assert len(history) == 100, "the cap still applies when the boundary is off"
+    assert history[-1].content == "m249", "the window is the newest N, oldest-first"
+    assert history[0].content == "m150"
+
+
+def test_the_reset_boundary_is_still_the_default(db):
+    """Every chat caller relies on the default; only the summariser opts out."""
+    _make_conversation(db, 20, reset_at=15)
+
+    assert [m.content for m in ConversationService.get_conversation_history(
+        db, "t-1", USER_ID,
+    )] == ["m16", "m17", "m18", "m19"]
+
+
 def test_unknown_thread_returns_empty(db):
     assert ConversationService.get_conversation_history(db, "nope", USER_ID) == []
 
