@@ -1,12 +1,11 @@
 /**
- * useCreditBalance — fetches and exposes the user's daily credit balance.
+ * useCreditBalance — fetches and exposes the workspace credit balance.
  *
  * Refreshes automatically after each conversation turn via `refresh()`.
  * The chat layer should call `refresh()` after receiving the `done` SSE event.
  */
 
 interface BalanceResponse {
-  daily_limit: number
   used_today: number
   remaining: number
   resets_at: string
@@ -18,14 +17,13 @@ export const useCreditBalance = () => {
   const { fetchWithRefresh } = useApi()
 
   // Shared state across all useCreditBalance() instances (Nuxt useState)
-  const dailyLimit = useState<number>('credit:dailyLimit', () => 180)
   const usedToday = useState<number>('credit:usedToday', () => 0)
   const remaining = useState<number>('credit:remaining', () => 180)
   const resetsAt = useState<string>('credit:resetsAt', () => '')
   const loading = useState<boolean>('credit:loading', () => false)
   const error = useState<string | null>('credit:error', () => null)
-  // Workspace (org) credit pool drained — distinct from the daily quota so the
-  // banner can show a workspace-specific message instead of "resets at midnight".
+  // Workspace (org) credit pool drained — lets the banner show a
+  // workspace-specific message instead of "resets at midnight".
   const orgExhausted = useState<boolean>('credit:orgExhausted', () => false)
   // "workspace" → `remaining` is the org pool total and gates spending.
   // "unlimited" → no org pool; nothing gates the user, so the number is not a
@@ -43,7 +41,6 @@ export const useCreditBalance = () => {
       const data = await fetchWithRefresh<BalanceResponse>('/api/credits/balance', {
         method: 'GET',
       })
-      dailyLimit.value = data.daily_limit
       usedToday.value = data.used_today
       remaining.value = data.remaining
       resetsAt.value = data.resets_at
@@ -66,7 +63,6 @@ export const useCreditBalance = () => {
   }
 
   return {
-    dailyLimit,
     usedToday,
     remaining,
     resetsAt,

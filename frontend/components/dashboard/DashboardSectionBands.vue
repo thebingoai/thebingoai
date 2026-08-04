@@ -38,8 +38,10 @@ function bandStyle(section: DashboardSection) {
 }
 .section-band {
   position: absolute;
-  left: 0;
-  right: 0;
+  /* Cards sit 4px inside their grid item, so bleed 4px outward into the
+     page padding for an 8px band-to-card gap matching the top/bottom. */
+  left: -4px;
+  right: -4px;
   border: 1px solid;
   border-radius: 14px;
   transition: top 0.2s ease, height 0.2s ease;
