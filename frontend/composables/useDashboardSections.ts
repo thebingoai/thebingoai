@@ -54,14 +54,14 @@ export function useDashboardSections(
   // Adjacent gridstack items are contiguous (the 4px card breathing lives
   // inside each item), so all section spacing is carved out of the header
   // item's headroom above the bar (.section-widget-bar margin-top: 22px →
-  // bar top = item + 26). Split: previous band tails 8px past the header's
-  // item top (12px air under its last card), band top starts 8px above the
-  // bar (title padding), leaving a 10px gap between bands.
+  // bar top = item + 26). Every band-to-content gap is 8px: band top starts
+  // 8px above the bar, and the tails add 4px to the card's own 4px inset.
+  // That leaves a 14px gap between adjacent bands.
   const SECTION_TOP_INSET = 18   // band top below header item top
-  const SECTION_TAIL = 8         // previous band's overhang into a section header's item
+  const SECTION_TAIL = 4         // previous band's overhang into a section header's item
   const TEXT_TOP_INSET = 2       // legacy text headers: card starts at item+4, stay above it
   const TEXT_TAIL = -2
-  const LAST_TAIL = 8            // air under the final section's last card
+  const LAST_TAIL = 4            // air under the final section's last card
 
   function measure() {
     const wrapper = wrapperRef.value

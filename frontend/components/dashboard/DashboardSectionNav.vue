@@ -4,7 +4,6 @@
       v-for="section in sections"
       :key="section.id"
       class="section-nav-pill"
-      :class="{ 'section-nav-pill--active': section.id === activeId }"
       :title="section.title"
       @click="jump(section.id)"
     >
@@ -23,8 +22,6 @@ const props = defineProps<{
   /** The grid wrapper element the bounds are relative to. */
   gridWrapper: HTMLElement | null
 }>()
-
-const activeId = ref<string | null>(null)
 
 function scrollContainer(): HTMLElement | null {
   const wrapper = props.gridWrapper
@@ -54,29 +51,6 @@ function jump(id: string) {
   if (!container || top === null) return
   container.scrollTo({ top: Math.max(0, top - JUMP_OFFSET), behavior: 'smooth' })
 }
-
-function updateActive() {
-  const container = scrollContainer()
-  if (!container) return
-  const cursor = container.scrollTop + JUMP_OFFSET + 24
-  let current: string | null = props.sections[0]?.id ?? null
-  for (const section of props.sections) {
-    const top = sectionScrollTop(section.id)
-    if (top !== null && top <= cursor) current = section.id
-  }
-  activeId.value = current
-}
-
-let container: HTMLElement | null = null
-// The wrapper ref flushes after this component mounts — attach when it lands.
-watch(() => props.gridWrapper, () => {
-  container?.removeEventListener('scroll', updateActive)
-  container = scrollContainer()
-  container?.addEventListener('scroll', updateActive, { passive: true })
-  updateActive()
-}, { immediate: true })
-onBeforeUnmount(() => container?.removeEventListener('scroll', updateActive))
-watch(() => [props.sections, props.bounds], updateActive, { deep: true })
 </script>
 
 <style scoped>
@@ -112,11 +86,6 @@ watch(() => [props.sections, props.bounds], updateActive, { deep: true })
 .section-nav-pill:hover {
   background: var(--paper-1);
   border-color: var(--line-2);
-}
-.section-nav-pill--active {
-  background: var(--ink-0);
-  color: var(--paper-0);
-  border-color: var(--ink-0);
 }
 .section-nav-dot {
   width: 7px;
