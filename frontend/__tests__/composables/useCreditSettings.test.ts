@@ -16,7 +16,7 @@ import { useCreditSettings } from '~/composables/useCreditSettings'
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function makeBalance(overrides = {}) {
-  return { daily_limit: 180, used_today: 60, remaining: 120, ...overrides }
+  return { used_today: 60, remaining: 120, ...overrides }
 }
 
 function makeHistory(items: any[] = [], page = 1, total = 0) {
@@ -38,24 +38,37 @@ describe('useCreditSettings', () => {
       .mockResolvedValueOnce(makeHistory())         // history
       .mockResolvedValueOnce([])                    // api-keys
 
-    const { dailyLimit, usedToday, remaining } = useCreditSettings()
+    const { usedToday, remaining } = useCreditSettings()
     await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
 
-    expect(dailyLimit.value).toBe(180)
     expect(usedToday.value).toBe(60)
     expect(remaining.value).toBe(120)
   })
 
-  it('usedPercent computes correctly', async () => {
+  it('is not unlimited when the balance is scoped to a workspace pool', async () => {
     mockFetch
-      .mockResolvedValueOnce(makeBalance({ used_today: 90, remaining: 90 }))
+      .mockResolvedValueOnce(makeBalance({ balance_scope: 'workspace' }))
       .mockResolvedValueOnce(makeHistory())
       .mockResolvedValueOnce([])
 
-    const { usedPercent } = useCreditSettings()
+    const { isUnlimited } = useCreditSettings()
     await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
 
-    expect(usedPercent.value).toBeCloseTo(50)
+    expect(isUnlimited.value).toBe(false)
+  })
+
+  it('is unlimited when there is no workspace pool, so the balance can be hidden', async () => {
+    // Community / no-org: `remaining` is not a spending limit, and rendering it
+    // as "credits remaining" showed a fake declining balance.
+    mockFetch
+      .mockResolvedValueOnce(makeBalance({ balance_scope: 'unlimited', remaining: 0 }))
+      .mockResolvedValueOnce(makeHistory())
+      .mockResolvedValueOnce([])
+
+    const { isUnlimited } = useCreditSettings()
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+
+    expect(isUnlimited.value).toBe(true)
   })
 
   it('loads usage history items', async () => {

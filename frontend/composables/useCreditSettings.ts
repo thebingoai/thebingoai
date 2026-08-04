@@ -29,24 +29,25 @@ export const useCreditSettings = () => {
   const { fetchWithRefresh } = useApi()
 
   // ----- Balance -----
-  const dailyLimit = ref<number>(180)
   const usedToday = ref<number>(0)
-  const remaining = ref<number>(180)
+  const remaining = ref<number>(0)
   const resetsAt = ref<string | null>(null)
   const balanceLoading = ref(false)
+  // "unlimited" → no workspace pool exists to count (community edition, or a
+  // user with no org). `remaining` is not a balance there, so callers hide it
+  // rather than render a number that gates nothing. Mirrors useCreditBalance.
+  const balanceScope = ref<'workspace' | 'unlimited'>('workspace')
 
-  const usedPercent = computed(() =>
-    dailyLimit.value > 0 ? Math.min(100, (usedToday.value / dailyLimit.value) * 100) : 0
-  )
+  const isUnlimited = computed(() => balanceScope.value === 'unlimited')
 
   async function fetchBalance() {
     balanceLoading.value = true
     try {
       const data = await fetchWithRefresh<any>('/api/credits/balance', { method: 'GET' })
-      dailyLimit.value = data.daily_limit
       usedToday.value = data.used_today
       remaining.value = data.remaining
       resetsAt.value = data.resets_at ?? null
+      balanceScope.value = data.balance_scope ?? 'workspace'
     } finally {
       balanceLoading.value = false
     }
@@ -162,7 +163,7 @@ export const useCreditSettings = () => {
 
   return {
     // Balance
-    dailyLimit, usedToday, remaining, usedPercent, resetsAt, balanceLoading, fetchBalance,
+    usedToday, remaining, resetsAt, balanceLoading, fetchBalance, isUnlimited,
     // History
     historyItems, historyTotal, historyPage, historyPerPage, historyTotalPages,
     historyLoading, fetchHistory, nextPage, prevPage,
