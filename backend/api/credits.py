@@ -12,7 +12,6 @@ router = APIRouter(prefix="/credits", tags=["credits"])
 
 
 class BalanceResponse(BaseModel):
-    daily_limit: int
     used_today: int
     remaining: int
     resets_at: str
@@ -32,6 +31,9 @@ async def get_balance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # ponytail: `daily_limit` gates nothing and is no longer part of the
+    # response; it only backs `remaining` in the no-org-pool branch below.
+    # Drop this read when the column itself is dropped.
     row = db.execute(
         text("SELECT daily_limit FROM user_credit_balances WHERE user_id = :uid"),
         {"uid": str(current_user.id)}
@@ -82,7 +84,6 @@ async def get_balance(
     resets_at = tomorrow.replace(tzinfo=timezone.utc).isoformat()
 
     return BalanceResponse(
-        daily_limit=daily_limit,
         used_today=used_today,
         remaining=remaining,
         resets_at=resets_at,

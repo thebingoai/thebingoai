@@ -182,11 +182,15 @@ const sections = computed<Section[]>(() => {
 // Sync initial section from URL query param
 const route = useRoute()
 
-// Legacy deep links: users/members/invitations were merged into the People page.
+// Legacy deep links: users/members/invitations and the standalone org-members
+// tab were merged into the People page; the org-credits page was removed and
+// its nearest survivor is the account-level Credits section.
 const LEGACY_TAB_REDIRECTS: Record<string, string> = {
   users: 'people',
   members: 'people',
   invitations: 'people',
+  'org-members': 'people',
+  'org-credits': 'credits',
 }
 
 watch([() => route.query.tab, sections], ([tab, secs]) => {

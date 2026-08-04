@@ -16,7 +16,7 @@ import { useCreditSettings } from '~/composables/useCreditSettings'
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function makeBalance(overrides = {}) {
-  return { daily_limit: 180, used_today: 60, remaining: 120, ...overrides }
+  return { used_today: 60, remaining: 120, ...overrides }
 }
 
 function makeHistory(items: any[] = [], page = 1, total = 0) {
@@ -38,24 +38,11 @@ describe('useCreditSettings', () => {
       .mockResolvedValueOnce(makeHistory())         // history
       .mockResolvedValueOnce([])                    // api-keys
 
-    const { dailyLimit, usedToday, remaining } = useCreditSettings()
+    const { usedToday, remaining } = useCreditSettings()
     await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
 
-    expect(dailyLimit.value).toBe(180)
     expect(usedToday.value).toBe(60)
     expect(remaining.value).toBe(120)
-  })
-
-  it('usedPercent computes correctly', async () => {
-    mockFetch
-      .mockResolvedValueOnce(makeBalance({ used_today: 90, remaining: 90 }))
-      .mockResolvedValueOnce(makeHistory())
-      .mockResolvedValueOnce([])
-
-    const { usedPercent } = useCreditSettings()
-    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
-
-    expect(usedPercent.value).toBeCloseTo(50)
   })
 
   it('loads usage history items', async () => {

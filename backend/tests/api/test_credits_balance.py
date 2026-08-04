@@ -46,13 +46,13 @@ def test_community_org_user_is_unlimited_not_workspace(
     assert data["org_exhausted"] is False
 
 
-def test_no_org_reports_daily_only(authenticated_client):
+def test_no_org_reports_unlimited(authenticated_client):
     # sample_user has no org_id → pool not consulted, org_exhausted False.
     # The daily cap is gone, so a no-org user is unlimited; balance_scope says so
     # explicitly and the frontend hides the (now meaningless) number.
     data = authenticated_client.get("/api/credits/balance").json()
     assert data["org_exhausted"] is False
-    assert data["remaining"] == data["daily_limit"]
+    assert "daily_limit" not in data  # the per-user cap was removed
     assert data["balance_scope"] == "unlimited"
 
 
@@ -61,7 +61,6 @@ def test_drained_org_pool_clamps_remaining_to_zero(authenticated_client, db_sess
     data = authenticated_client.get("/api/credits/balance").json()
     assert data["org_exhausted"] is True
     assert data["remaining"] == 0
-    assert data["daily_limit"] > 0  # n unchanged → "0 of n"
 
 
 def test_funded_org_pool_remaining_is_workspace_total(authenticated_client, db_session, sample_user, with_admin_plugin):
