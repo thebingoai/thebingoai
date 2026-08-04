@@ -115,7 +115,6 @@ def detection_db():
             CREATE TABLE user_credit_balances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id VARCHAR NOT NULL REFERENCES users(id),
-                daily_limit INTEGER NOT NULL DEFAULT 180,
                 created_at DATETIME NOT NULL,
                 UNIQUE (user_id)
             )

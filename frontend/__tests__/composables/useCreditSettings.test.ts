@@ -45,6 +45,32 @@ describe('useCreditSettings', () => {
     expect(remaining.value).toBe(120)
   })
 
+  it('is not unlimited when the balance is scoped to a workspace pool', async () => {
+    mockFetch
+      .mockResolvedValueOnce(makeBalance({ balance_scope: 'workspace' }))
+      .mockResolvedValueOnce(makeHistory())
+      .mockResolvedValueOnce([])
+
+    const { isUnlimited } = useCreditSettings()
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+
+    expect(isUnlimited.value).toBe(false)
+  })
+
+  it('is unlimited when there is no workspace pool, so the balance can be hidden', async () => {
+    // Community / no-org: `remaining` is not a spending limit, and rendering it
+    // as "credits remaining" showed a fake declining balance.
+    mockFetch
+      .mockResolvedValueOnce(makeBalance({ balance_scope: 'unlimited', remaining: 0 }))
+      .mockResolvedValueOnce(makeHistory())
+      .mockResolvedValueOnce([])
+
+    const { isUnlimited } = useCreditSettings()
+    await vi.waitUntil(() => mockFetch.mock.calls.length >= 3)
+
+    expect(isUnlimited.value).toBe(true)
+  })
+
   it('loads usage history items', async () => {
     const items = [
       { id: 1, title: 'Query 1', credits_used: 2.5, date: '2026-04-10', created_at: '2026-04-10T10:00:00' },

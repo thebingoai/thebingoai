@@ -11,10 +11,13 @@
     <div class="flex-1 overflow-y-auto px-7 py-6 space-y-6">
 
       <!-- Section 1: Workspace Credits + Consumption -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+      <!-- No workspace pool (community edition / no org) means there is no
+           balance to report — `remaining` is not a spending limit there, so the
+           card is omitted rather than showing a number that gates nothing. -->
+      <div class="grid grid-cols-1 gap-6 items-stretch" :class="isUnlimited ? '' : 'lg:grid-cols-2'">
 
         <!-- Workspace Credits -->
-        <div class="rounded-xl border border-gray-200 dark:border-neutral-700 p-6 flex flex-col gap-3">
+        <div v-if="!isUnlimited" class="rounded-xl border border-gray-200 dark:border-neutral-700 p-6 flex flex-col gap-3">
           <p class="text-sm font-medium tracking-wider uppercase text-gray-400 dark:text-neutral-500">Workspace Credits</p>
           <div class="flex items-baseline gap-2">
             <span class="text-5xl font-semibold tabular-nums text-gray-900 dark:text-white">{{ Math.round(remaining) }}</span>
@@ -194,7 +197,7 @@
 import { parseUtcDate } from '~/utils/format'
 
 const {
-  remaining,
+  remaining, isUnlimited,
   historyItems, historyPage, historyTotalPages, historyLoading, nextPage, prevPage,
   dailyTotals, dailyTotalsLoading,
   apiKeys, saveApiKey, deleteApiKey,

@@ -83,6 +83,7 @@
 
 <script setup lang="ts">
 import { X, Database, Sparkles, Clock, Brain, Key, User, MessageSquare, Shield, Settings } from 'lucide-vue-next'
+import { resolveLegacyTab, canonicalizeTabQuery } from '~/utils/settingsLegacyTabs'
 
 const router = useRouter()
 const { isMobile } = useIsMobile()
@@ -182,22 +183,18 @@ const sections = computed<Section[]>(() => {
 // Sync initial section from URL query param
 const route = useRoute()
 
-// Legacy deep links: users/members/invitations and the standalone org-members
-// tab were merged into the People page; the org-credits page was removed and
-// its nearest survivor is the account-level Credits section.
-const LEGACY_TAB_REDIRECTS: Record<string, string> = {
-  users: 'people',
-  members: 'people',
-  invitations: 'people',
-  'org-members': 'people',
-  'org-credits': 'credits',
-}
-
 watch([() => route.query.tab, sections], ([tab, secs]) => {
   const raw = (tab as string) || 'agent'
-  const id = LEGACY_TAB_REDIRECTS[raw] ?? raw
+  const legacy = resolveLegacyTab(raw)
+  const id = legacy?.tab ?? raw
   if (secs.some(s => s.id === id)) {
     currentSection.value = id
+    if (legacy) {
+      // Rewrite the URL onto the canonical tab (and sub-tab, where the legacy
+      // id named one). Targets are never themselves legacy ids, so the replace
+      // cannot re-trigger this watcher.
+      router.replace({ query: canonicalizeTabQuery(route.query, legacy) })
+    }
   } else if (secs.length && !secs.some(s => s.id === currentSection.value)) {
     // Requested tab isn't available (e.g. a viewer deep-linking a workspace
     // section) — fall back to the first visible section (Profile/account).

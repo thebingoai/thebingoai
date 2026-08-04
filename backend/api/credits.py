@@ -4,7 +4,6 @@ from sqlalchemy import text
 from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
-from backend.services.token_tracking_service import _default_user_daily_credits
 from datetime import datetime, date, timedelta, timezone
 from pydantic import BaseModel
 
@@ -21,8 +20,9 @@ class BalanceResponse(BaseModel):
     org_total: int = 0
     # Tells the frontend how to read `remaining` instead of inferring it:
     #   "workspace" → org pool total (recurring + topup), gates spending.
-    #   "unlimited" → no org pool; the daily cap was removed, so nothing gates
-    #                 this user. `remaining` is not a real limit — hide it.
+    #   "unlimited" → no org pool exists to count. Nothing gates this user and
+    #                 there is no balance to report, so `remaining` is 0 and
+    #                 the UI hides it rather than rendering a meaningless zero.
     balance_scope: str = "unlimited"
 
 
@@ -31,15 +31,6 @@ async def get_balance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # ponytail: `daily_limit` gates nothing and is no longer part of the
-    # response; it only backs `remaining` in the no-org-pool branch below.
-    # Drop this read when the column itself is dropped.
-    row = db.execute(
-        text("SELECT daily_limit FROM user_credit_balances WHERE user_id = :uid"),
-        {"uid": str(current_user.id)}
-    ).fetchone()
-    daily_limit = row.daily_limit if row else _default_user_daily_credits()
-
     today = date.today()
     used_row = db.execute(
         text("SELECT COALESCE(SUM(credits_used), 0) AS used FROM credit_usage WHERE user_id = :uid AND date = :today"),
@@ -58,11 +49,10 @@ async def get_balance(
     from backend.services.org_credit_pool import read_org_pool_breakdown, lookup_user_org_id
     org_exhausted = False
     org_recurring = org_topup = org_total = 0
-    # No org pool (community / no-org user): the daily cap was removed, so nothing
-    # gates this user — they are unlimited. `remaining` carries the legacy daily
-    # figure only for the settings consumption view; the chat UI hides it because
+    # No org pool (community / no-org user): nothing gates this user and there is
+    # no balance to count, so `remaining` stays 0 and every surface hides it on
     # balance_scope == "unlimited". Enterprise users always resolve to a pool.
-    remaining = max(0, daily_limit - used_today)
+    remaining = 0
     balance_scope = "unlimited"
     org_id = (
         lookup_user_org_id(db, current_user.id)
