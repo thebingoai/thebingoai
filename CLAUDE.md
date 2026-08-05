@@ -270,7 +270,12 @@ Structured logging via `backend/logging_config.py`:
 
 1. Create handler in appropriate `backend/api/*.py` file
 2. Add route in `backend/api/routes.py`
-3. Use async def for all handlers
+3. Use `async def` — **unless the handler makes a blocking call**. FastAPI runs
+   plain `def` handlers in a threadpool, so a handler that does synchronous I/O
+   (psycopg2/PyMySQL driver calls, `requests`, filesystem work) must be plain
+   `def` or it stalls the event loop for every other request. `backend/api/
+   connections.py` is entirely `def` for this reason — it drives blocking DB
+   drivers. Don't convert one back to `async def` without adding `await`.
 4. Import dependencies at function level if they're slow (e.g., LLM providers)
 
 ### Adding a New LLM Provider
@@ -299,7 +304,7 @@ The `ConversationState` in `state.py` uses LangGraph's `add_messages` reducer:
 
 1. **Embedding dimensions mismatch**: Qdrant collection vector size MUST be 3072 for text-embedding-3-large. Changing embedding model requires recreating collections.
 
-2. **Redis connection**: Three separate DBs. Don't reuse connections across purposes (cache vs broker vs results).
+2. **Redis connection**: Separate DBs per purpose — 0 cache, 1 Celery broker, 2 Celery results, 3 SSO token cache, 4 agent mesh (see "Redis Usage"). Don't point Celery at the cache DB or vice versa; a `FLUSHDB` for one purpose must not take out another. DB 0 (`settings.redis_url`) additionally holds short-lived coordination keys — the cross-replica leases in `backend/services/redis_lease.py` and the chat turn lock — which is deliberate: they're TTL'd, single-flight, and belong with the cache rather than in the queues.
 
 3. **Async vs Sync**: Upload uses sync helpers (_sync suffix) because Celery workers are synchronous. Don't use async/await in Celery tasks.
 

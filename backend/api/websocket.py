@@ -14,6 +14,7 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
+from backend.services.redis_lease import release_lease
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
@@ -909,13 +910,11 @@ async def _handle_chat_send(
                 pass
         # Release the turn lock, but only if we still own it. A turn that
         # outran its 600s TTL must not delete the lock a *later* turn has since
-        # claimed on the same thread.
+        # claimed on the same thread. release_lease compares and deletes in one
+        # Lua call — a GET-then-DELETE here would let that later turn claim the
+        # key in between and lose its lock to this one.
         if turn_lock:
-            try:
-                if redis_client.get(turn_lock) == request_id:
-                    redis_client.delete(turn_lock)
-            except Exception:
-                pass
+            release_lease(turn_lock, request_id)
         db.close()
 
 

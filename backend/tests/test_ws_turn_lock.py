@@ -24,12 +24,23 @@ from backend.api import websocket as ws_mod
 
 
 class _FakeRedis:
-    """Records SET NX / GET / DELETE against a dict."""
+    """Records SET NX / GET / DELETE / EVAL against a dict.
+
+    `eval` stands in for `redis_lease._RELEASE_LUA`, which is how the turn lock
+    is released — compare-and-delete in one call. It lands in `deleted` like a
+    plain DELETE would, so the assertions below read the same either way.
+    """
 
     def __init__(self, initial=None):
         self.store = dict(initial or {})
         self.deleted: list[str] = []
         self.set_calls: list[tuple] = []
+
+    def eval(self, script, numkeys, key, token):
+        if self.store.get(key) != token:
+            return 0
+        self.delete(key)
+        return 1
 
     def set(self, key, value, nx=False, ex=None):
         self.set_calls.append((key, value, nx, ex))
