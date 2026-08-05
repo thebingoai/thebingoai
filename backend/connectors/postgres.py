@@ -55,6 +55,18 @@ class PostgresConnector(BaseConnector):
                 kwargs['sslmode'] = 'require'
         return kwargs
 
+    def _begin_schema_read(self, cursor) -> None:
+        """Cap the whole catalog read for this transaction.
+
+        SET LOCAL, not a `-c statement_timeout` startup option: PgBouncer refuses
+        `options` outright ("unsupported startup parameter"), which would stop
+        every pooler-fronted source database from connecting at all, and even
+        where a pooler accepts it a connection-level timeout persists on the
+        server connection and leaks to the next client that borrows it.
+        """
+        from backend.config import settings
+        cursor.execute(f"SET LOCAL statement_timeout = '{settings.query_timeout_ms}'")
+
     def _get_row_count(self, cursor, schema: str, table_name: str) -> int:
         """Use pg_class.reltuples (planner estimate, no scan). Falls back to an
         exact COUNT(*) when the table was never analyzed (reltuples <= 0)."""
@@ -69,7 +81,22 @@ class PostgresConnector(BaseConnector):
                 return int(est)
         except Exception:
             pass
-        return super()._get_row_count(cursor, schema, table_name)
+        try:
+            # Bounded by _begin_schema_read's SET LOCAL, which is still in force
+            # for this transaction — this scan is what that cap exists for.
+            return super()._get_row_count(cursor, schema, table_name)
+        except Exception:
+            # statement_timeout killed the scan, or the table vanished
+            # mid-walk. The count is a display hint that is
+            # never computed on (see BaseConnector._get_row_count), so degrade
+            # instead of failing the whole schema refresh. Roll back first:
+            # Postgres leaves the transaction ABORTED, and every later schema
+            # query on this connection would die with 25P02.
+            try:
+                cursor.connection.rollback()
+            except Exception:
+                pass
+            return 0
 
     def _get_column_comments(self, cursor, schema: str, table_name: str) -> Dict[str, str]:
         """Read column comments from ``pg_description`` (via ``col_description``)."""

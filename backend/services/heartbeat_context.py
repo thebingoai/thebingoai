@@ -8,6 +8,7 @@ reuse the same context-building logic without duplicating it.
 from dataclasses import dataclass, field
 from typing import Optional
 from sqlalchemy.orm import Session, joinedload
+from backend.database.session import end_read_transaction
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.agents.context import AgentContext, ConnectionInfo
@@ -150,21 +151,10 @@ async def build_orchestrator_context(
         target_connection_id=target_connection_id,
     )
 
-    # Check if auto-memory retrieval is enabled
+    # Check if auto-memory retrieval is enabled. The Qdrant fetch this gates is
+    # deliberately deferred to the end of this function — see the comment there.
     prefs = user.preferences or {}
     memory_enabled = prefs.get("memory_enabled", True)
-
-    # Pre-fetch auto-generated memory context (Qdrant)
-    memory_context = ""
-    if memory_enabled and query:
-        try:
-            from backend.memory.retriever import MemoryRetriever
-            retriever = MemoryRetriever()
-            memory_context = await retriever.get_relevant_context(
-                user_id=user.id, query=query, top_k=3
-            )
-        except Exception as mem_err:
-            logger.warning(f"Memory retrieval failed: {mem_err}")
 
     # Load user-directed memories (PostgreSQL)
     from backend.models.user_memory import UserMemory as UserMemoryModel
@@ -224,6 +214,36 @@ async def build_orchestrator_context(
     fresh_user = db.query(User).filter(User.id == user.id).first()
     # Sync soul_prompt: prefer profile.soul, fall back to User.soul_prompt for migration
     soul = profile.soul if profile.soul else ((fresh_user.soul_prompt if fresh_user else None) or "")
+
+    # Why every agent-path release in this codebase exists, stated once here
+    # because this one runs on every chat turn:
+    #
+    # DATABASE_URL is a transaction-mode pooler, which frees its scarce *server*
+    # slot at transaction end, not at checkout end. So a session that has only
+    # read and then sits in an open transaction across network I/O — an LLM call,
+    # Qdrant, GCS, a customer's database — pins a slot for work that needs no
+    # database at all. end_read_transaction ends it without expiring loaded rows
+    # (a bare commit would, and the next attribute read would re-query and retake
+    # the slot). See database/session.py:94.
+    #
+    # Here: every Postgres read above is done, and the Qdrant lookup below is an
+    # OpenAI embedding round-trip plus a vector search. `profile`,
+    # `custom_agents` and `user_skills` stay populated across the release, which
+    # the caller depends on — it hands them to the orchestrator after closing
+    # this session (see websocket.py before its db.close()).
+    end_read_transaction(db)
+
+    # Deferred to after the release so it sits outside the transaction.
+    memory_context = ""
+    if memory_enabled and query:
+        try:
+            from backend.memory.retriever import MemoryRetriever
+            retriever = MemoryRetriever()
+            memory_context = await retriever.get_relevant_context(
+                user_id=user.id, query=query, top_k=3
+            )
+        except Exception as mem_err:
+            logger.warning(f"Memory retrieval failed: {mem_err}")
 
     logger.info("heartbeat_context returning: profile=%s, profile.id=%s", profile, getattr(profile, 'id', 'N/A'))
     result = OrchestratorInvocationContext(

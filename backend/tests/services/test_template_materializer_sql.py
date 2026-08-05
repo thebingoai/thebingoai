@@ -971,7 +971,11 @@ def test_startup_backfill_takes_the_lease_then_releases_its_own_token():
     assert client.set.call_args.kwargs["ex"] == materializer._BACKFILL_LEASE_TTL
 
     # Release: compare-and-delete against the token we wrote, not a blind DEL.
-    assert client.eval.call_args.args[0] == materializer._RELEASE_LEASE_LUA
+    # The lease itself now lives in backend.services.redis_lease, shared with
+    # seed.py — this still asserts the behaviour, just not the inline copy.
+    from backend.services import redis_lease
+
+    assert client.eval.call_args.args[0] == redis_lease._RELEASE_LUA
     assert client.eval.call_args.args[-1] == token
 
 

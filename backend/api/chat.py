@@ -127,13 +127,15 @@ async def chat(
         )
 
         # Fetch conversation history (exclude the just-saved user message)
-        history = ConversationService.get_conversation_history(db, conversation.thread_id, current_user.id)
+        # Already windowed and cut at the last context reset, in SQL. The
+        # trailing drop stays: unlike the websocket path, this fetches *after*
+        # saving the current user message — hence the +1, so both paths hand the
+        # orchestrator the same number of *prior* messages.
+        history = ConversationService.get_conversation_history(
+            db, conversation.thread_id, current_user.id,
+            limit=settings.chat_history_max_messages + 1,
+        )
         history = history[:-1]
-        # Truncate at last context reset boundary
-        for i in range(len(history) - 1, -1, -1):
-            if history[i].source == "context_reset":
-                history = history[i + 1:]
-                break
 
         # Resolve provider + LLM call settings from the published agent profile
         # (draft edits stay confined to settings until publish).

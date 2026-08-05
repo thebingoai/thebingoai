@@ -97,8 +97,13 @@ def on_celeryd_init(**kwargs):
 def on_worker_process_init(**kwargs):
     """Dispose inherited DB connections, then load plugins."""
     from backend.database import engine
-    engine.dispose()
-    logger.info("Celery worker process: disposed inherited DB connections")
+    # close=False: the pool was built in the parent before the fork, so the
+    # sockets in it belong to the parent. A plain dispose() closes them from
+    # the child, terminating connections the parent is still using (the
+    # telegram plugin's on_startup DDL holds one). Detach and let the parent
+    # own its own sockets; this child builds a fresh pool on first use.
+    engine.dispose(close=False)
+    logger.info("Celery worker process: detached inherited DB connections")
 
     from backend.plugins.loader import discover_and_load_plugins, import_plugin_celery_tasks
     discover_and_load_plugins()

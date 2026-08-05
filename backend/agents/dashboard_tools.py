@@ -130,7 +130,7 @@ def _run_widget_query_on_plane(connection, sql: str, db_session_factory):
         table_map = plane_table_map(connection, db)
         if not table_map:
             return None  # no pipelines → nothing materialized → source
-        plane, scope = get_plane_for_connection(connection)
+        plane, scope = get_plane_for_connection(connection, db)
         plane_sql, _ = rewrite_table_refs(sql, table_map, qualifier_allowlist(connection))
 
         if isinstance(plane, LocalFilesystemDataPlane):

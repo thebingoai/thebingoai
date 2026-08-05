@@ -200,6 +200,7 @@ def _load_profile_if_missing(
     """Self-load the orchestrator AgentProfile if the caller didn't pass one."""
     if profile is not None or db_session_factory is None:
         return profile
+    _db = None
     try:
         _db = db_session_factory()
         from backend.models.agent_profile import AgentProfile as _AP
@@ -208,11 +209,15 @@ def _load_profile_if_missing(
             _AP.agent_type == "orchestrator",
             _AP.is_active.is_(True),
         ).first()
-        _db.close()
         return loaded
     except Exception as _exc:
+        # close() has to be in `finally`: the except below swallows the error, so
+        # a failing query would otherwise leak the checkout silently.
         logger.warning("%s: profile self-load failed: %s", log_prefix, _exc)
         return profile
+    finally:
+        if _db is not None:
+            _db.close()
 
 
 async def _render_orchestrator_prompt(
@@ -977,6 +982,10 @@ def _build_mesh_tools(context: AgentContext, db_session_factory: Optional[Callab
     registry = AgentRegistry()
     discovery = AgentDiscovery(redis_client=registry.redis)
 
+    # KNOWN LEAK: never closed, and can't be — the tool closures below capture
+    # `message_bus` and outlive this function. Fix is a session factory on
+    # AgentMessageBus. Dormant: needs AGENT_MESH_ENABLED=true, false everywhere.
+    # Same leak in agents/tool_registry.py.
     if db_session_factory:
         db = db_session_factory()
     else:

@@ -76,6 +76,18 @@ class DataPlane(Protocol):
         """Run *sql* inside *scope*. Table names are scope-relative."""
         ...
 
+    def read_table(self, scope: OwnerScope, table: str) -> QueryResult | None:
+        """Read all rows of a table the caller already knows by name.
+
+        None when the table does not exist. Distinct from `query()` on purpose:
+        `query()` takes arbitrary SQL, so a plane may have to discover its whole
+        namespace to resolve the identifiers in it — `BigQueryGCSPlane._rewrite_sql`
+        lists the entire dataset on every call. A caller holding an exact table
+        name must not pay for that, so implementations resolve the one name
+        directly and make no metadata round-trip.
+        """
+        ...
+
     def list_tables(
         self,
         scope: OwnerScope,

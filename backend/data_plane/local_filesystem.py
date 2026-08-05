@@ -238,6 +238,17 @@ class LocalFilesystemDataPlane:
             self._register_scope_views(conn, scope)
             return run_duckdb_query(conn, sql, params)
 
+    def read_table(self, scope: OwnerScope, table: str) -> QueryResult | None:
+        """Read one known table; None when it does not exist.
+
+        Local resolution is a stat of the scope directory, so unlike the
+        BigQuery plane there is nothing to save here — this keeps the two
+        planes' contract identical.
+        """
+        if not self.table_exists(scope, table):
+            return None
+        return self.query(scope, f'SELECT * FROM "{table}"')
+
     def list_tables(self, scope: OwnerScope, namespace: str | None = None) -> list[str]:
         scope_root = self._scope_root(scope)
         if not os.path.isdir(scope_root):

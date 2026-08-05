@@ -20,6 +20,12 @@ from .scope import OwnerScope
 
 logger = logging.getLogger(__name__)
 
+# How long a `list_tables` result is reused per scope. Short on purpose: the
+# listing feeds `_rewrite_sql`, so a stale entry means a table created by
+# another process (a pipeline run on a Celery worker) fails to be qualified
+# until it expires. Same-process creation invalidates eagerly.
+_LIST_TABLES_TTL_S = 30.0
+
 _PYFORMAT_RE = re.compile(r'%\((\w+)\)s')
 _ISO_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 _ISO_DATETIME_RE = re.compile(r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}')
@@ -106,6 +112,12 @@ class BigQueryGCSPlane:
         # keys that have already been registered. Skips redundant BQ metadata
         # calls when dlt drives many write_parquet batches into the same target.
         self._registered: set[tuple[str, str, str, str]] = set()
+        # Per-scope `list_tables` memo: {scope_path: (expires_at, tables)}.
+        # The listing is a fully paginated tables.list and was uncached, so
+        # every _rewrite_sql paid for it. The plane instance is long-lived
+        # (services.data_plane_service._bq_plane_cache), hence the TTL: a table
+        # materialised by a pipeline must become visible without a redeploy.
+        self._tables_memo: dict[str, tuple[float, list[str]]] = {}
 
     @property
     def bucket(self) -> str:
@@ -298,6 +310,7 @@ class BigQueryGCSPlane:
             )
         except NotFound:
             self._bq().create_table(table_ref)
+        self._invalidate_tables_memo(scope)
         logger.debug("Registered BQ external table %s", full_table_id)
 
     def put_raw_object(
@@ -340,10 +353,39 @@ class BigQueryGCSPlane:
         sql: str,
         params: dict[str, Any] | None = None,
     ) -> QueryResult:
+        return self._run_sql(self._rewrite_sql(scope, sql), params)
+
+    def read_table(self, scope: OwnerScope, table: str) -> QueryResult | None:
+        """Read one known table with zero metadata round-trips.
+
+        The widget serving path (`services.dashboard_cache.read_widget_data_plane`)
+        knows the exact `_dash_*` table name, yet going through `query()` cost two
+        live BigQuery metadata calls before the job even started: `table_exists`
+        does a `get_table`, and `_rewrite_sql` does a fully paginated
+        `tables.list` of the dataset — uncached, and scaling with dataset size.
+        At ~200-600ms each that is seconds of added dashboard-open latency per
+        widget, every one of them with the request's PG pool slot checked out.
+
+        The name is already fully determined by `_bq_table_name`, so qualify it
+        and let the query job itself be the existence check.
+        """
+        from google.cloud.exceptions import NotFound
+
+        full_table_id = f"{self._project}.{self._dataset}.{self._bq_table_name(scope, table)}"
+        try:
+            return self._run_sql(f"SELECT * FROM `{full_table_id}`")
+        except NotFound:
+            return None
+
+    def _run_sql(
+        self,
+        sql: str,
+        params: dict[str, Any] | None = None,
+    ) -> QueryResult:
+        """Execute already-qualified SQL. Callers own identifier resolution."""
         from google.cloud import bigquery
 
-        rewritten_sql = self._rewrite_sql(scope, sql)
-        bound_sql, bq_params = _pyformat_to_bq(rewritten_sql, params)
+        bound_sql, bq_params = _pyformat_to_bq(sql, params)
         job_config = bigquery.QueryJobConfig(query_parameters=bq_params or [])
         # Default dataset so a *bare* table reference resolves to this plane's
         # dataset. `_rewrite_sql` only fully-qualifies tables it knows from
@@ -444,6 +486,7 @@ class BigQueryGCSPlane:
             self._bq().update_table(view_table, fields=["view_query"])
         except NotFound:
             self._bq().create_table(view_table)
+        self._invalidate_tables_memo(scope)
         logger.info(
             "Registered dedup view %s over %s (unique_key=%s)",
             view_id, bronze_id, unique_key,
@@ -509,6 +552,7 @@ class BigQueryGCSPlane:
         if cluster_fields:
             native_table.clustering_fields = list(cluster_fields)
         self._bq().create_table(native_table, exists_ok=True)
+        self._invalidate_tables_memo(scope)
 
         # 3. (Re)register staging external table over the freshest `dt=` only.
         # No Hive partitioning — stage URI is anchored to a single dt directory.
@@ -585,6 +629,11 @@ class BigQueryGCSPlane:
         return [k for k in unique_key if k in available][:4]
 
     def list_tables(self, scope: OwnerScope, namespace: str | None = None) -> list[str]:
+        memo_key = scope.as_path()
+        cached = self._tables_memo.get(memo_key)
+        if cached is not None and cached[0] > time.time():
+            return list(cached[1])
+
         prefix = self._scope_bq_prefix(scope)
         tables = []
         for t in self._bq().list_tables(self._dataset):
@@ -597,7 +646,17 @@ class BigQueryGCSPlane:
                 if bare.endswith("_bronze") or bare.endswith("_stage"):
                     continue
                 tables.append(bare)
+        self._tables_memo[memo_key] = (time.time() + _LIST_TABLES_TTL_S, list(tables))
         return tables
+
+    def _invalidate_tables_memo(self, scope: OwnerScope) -> None:
+        """Drop the listing memo for *scope* after creating a table in it.
+
+        Without this a table registered inside the TTL window stays invisible to
+        `_rewrite_sql`, which would leave a freshly-materialised table name
+        unqualified and fail the next query against it.
+        """
+        self._tables_memo.pop(scope.as_path(), None)
 
     def drop_table(self, scope: OwnerScope, table: str) -> None:
         # Intentional no-op: Bingo's no-delete policy means the cloud plane

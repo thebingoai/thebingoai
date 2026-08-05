@@ -131,6 +131,7 @@ def _build_communication_tools(context: AgentContext) -> List:
 
     if not context.session_id:
         return []
+    # KNOWN LEAK, dormant — see _build_mesh_tools in orchestrator/graph.py.
     db = SessionLocal()
     registry = AgentRegistry()
     message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)

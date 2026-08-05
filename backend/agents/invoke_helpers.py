@@ -50,15 +50,21 @@ async def run_via_mesh_runtime(
         db = SessionLocal()
     message_bus = AgentMessageBus(db_session=db, redis_client=registry.redis)
 
-    runtime = AgentRuntime(
-        session_id=session_id,
-        agent_type=agent_type,
-        user_id=user_id,
-        context=context,
-        registry=registry,
-        message_bus=message_bus,
-    )
-    return await runtime.execute(message, tools, system_prompt)
+    # The session must outlive nothing here: the message bus is local to this
+    # call, so close it on the way out. Without this the checkout leaks on every
+    # mesh invocation and the pool drains.
+    try:
+        runtime = AgentRuntime(
+            session_id=session_id,
+            agent_type=agent_type,
+            user_id=user_id,
+            context=context,
+            registry=registry,
+            message_bus=message_bus,
+        )
+        return await runtime.execute(message, tools, system_prompt)
+    finally:
+        db.close()
 
 
 async def run_inline_react(

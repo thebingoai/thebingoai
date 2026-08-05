@@ -6,13 +6,15 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from backend.database.session import SessionLocal, DetachedReadSessionLocal
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.schemas.chat import ResolvedMention
+from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
+from backend.services.redis_lease import release_lease
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
@@ -665,6 +667,27 @@ async def _handle_chat_send(
         except Exception:
             pass
 
+    # One turn per *thread*, claimed before any of the expensive setup below
+    # (conversation resolve, context build, file processing, attachments).
+    #
+    # The endpoint's chat_tasks gate cannot cover this: it is socket-local, and
+    # turns are deliberately designed to outlive their socket. A client that
+    # drops mid-stream and resends after reconnecting arrives on a fresh socket
+    # with an empty set, and starts a second turn on a thread the first one is
+    # still writing to. thread_id is None only for a brand-new conversation,
+    # which has nothing to collide with.
+    turn_lock = f"chat:turn:{thread_id}" if thread_id else None
+    if turn_lock and not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+        await send({
+            "type": "chat.error",
+            "request_id": request_id,
+            "thread_id": thread_id,
+            "content": "A message is already being answered in this conversation.",
+            "error_code": "busy",
+        })
+        db.close()
+        return
+
     _credit_mgr = None
     try:
         # Resolve conversation and validate connections
@@ -674,6 +697,24 @@ async def _handle_chat_send(
         if conversation is None:
             return
         active_thread_id = conversation.thread_id
+
+        if turn_lock is None:
+            # This turn created the conversation, so there was no thread_id to
+            # claim above. Claim it now — a client that resends the *first*
+            # message of a conversation after a reconnect comes back carrying
+            # the thread_id this turn just created, and would otherwise sail
+            # straight past the gate.
+            turn_lock = f"chat:turn:{conversation.thread_id}"
+            if not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+                turn_lock = None  # someone else's lock — never release it
+                await send({
+                    "type": "chat.error",
+                    "request_id": request_id,
+                    "thread_id": conversation.thread_id,
+                    "content": "A message is already being answered in this conversation.",
+                    "error_code": "busy",
+                })
+                return
 
         # Build orchestrator context
         ctx = await build_orchestrator_context(
@@ -685,12 +726,8 @@ async def _handle_chat_send(
         )
 
         # Conversation history (fetched before saving the current user message)
+        # Already windowed and cut at the last context reset, in SQL.
         history = ConversationService.get_conversation_history(db, conversation.thread_id, user.id)
-        # Truncate at last context reset boundary
-        for i in range(len(history) - 1, -1, -1):
-            if history[i].source == "context_reset":
-                history = history[i + 1:]
-                break
 
         # Wait for any connection:N files still being profiled by Celery
         if not await _wait_for_file_processing(
@@ -871,7 +908,67 @@ async def _handle_chat_send(
                 redis_client.delete(f"streaming:{active_thread_id}")
             except Exception:
                 pass
+        # Release the turn lock, but only if we still own it. A turn that
+        # outran its 600s TTL must not delete the lock a *later* turn has since
+        # claimed on the same thread. release_lease compares and deletes in one
+        # Lua call — a GET-then-DELETE here would let that later turn claim the
+        # key in between and lose its lock to this one.
+        if turn_lock:
+            release_lease(turn_lock, request_id)
         db.close()
+
+
+# Chat turns are designed to outlive their socket (see the endpoint's finally),
+# so they must stay referenced after the endpoint frame is gone. The endpoint's
+# own set cannot do that: it is reachable only through the task's done-callback,
+# so set and task form a cycle that nothing else holds once the frame dies.
+#
+# In practice the loop anchors a task that has a wakeup registered with it — a
+# timer, a selector callback, an executor callback, or a ready handle — and a
+# chat turn awaiting an LLM call or DB work always has one. A task with *no*
+# such wakeup is collectable, and the cyclic collector does take it (CPython
+# prints "Task was destroyed but it is pending!"). This makes the guarantee
+# hold by construction rather than by that coincidence.
+_inflight_chat_tasks: set[asyncio.Task] = set()
+
+
+async def _close_quietly(ws: WebSocket) -> None:
+    try:
+        await ws.close(code=1011)
+    except Exception:
+        pass
+
+
+def _on_listener_done(task: asyncio.Task, ws: WebSocket, user_id: str) -> None:
+    """Close the socket if the Redis listener ever stops on its own.
+
+    `listen_redis` resubscribes forever, so finishing at all means it raised out
+    of its own retry loop. The socket would then stay open answering pings while
+    nothing published over Redis ever reaches it, and the client reconnects only
+    on close — so close it and let the frontend's existing backoff take over.
+    """
+    if task.cancelled():
+        return  # normal teardown from the endpoint's finally
+    exc = task.exception()
+    if exc is None:
+        return
+    logger.error("WS Redis listener died for user=%s: %r", user_id, exc)
+    asyncio.create_task(_close_quietly(ws))
+
+
+def _log_task_exception(task: asyncio.Task) -> None:
+    """Surface anything that escaped a chat.send task's own error handling.
+
+    `_handle_chat_send` catches `Exception` around its whole body, so reaching
+    here means the failure happened in that handler or in the `finally` — where
+    it was previously swallowed until GC printed "Task exception was never
+    retrieved", if at all.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("chat.send task failed: %r", exc, exc_info=exc)
 
 
 @router.websocket("/ws")
@@ -905,6 +1002,12 @@ async def websocket_endpoint(ws: WebSocket):
 
     # Start Redis listener as background task
     redis_task = asyncio.create_task(manager.listen_redis(user.id, ws))
+    redis_task.add_done_callback(lambda t: _on_listener_done(t, ws, user.id))
+
+    # The one-turn-per-socket gate. Scoped to this connection on purpose, so it
+    # dies with the frame; the strong reference that has to outlive the socket is
+    # _inflight_chat_tasks.
+    chat_tasks: set[asyncio.Task] = set()
 
     try:
         while True:
@@ -926,9 +1029,31 @@ async def websocket_endpoint(ws: WebSocket):
 
             elif msg_type == "chat.send":
                 request_id = data.get("request_id", "")
-                thread_id = data.get("thread_id") or None
-                message = data.get("message", "").strip()
-                connection_ids = data.get("connection_ids", [])
+                # Validate through the same model the REST path uses, so the
+                # 50k-char cap applies on both. Unvalidated, a socket frame runs
+                # to the websockets default of 16 MiB. This also coerces
+                # connection_ids to ints — they reach a SQL IN () clause.
+                #
+                # mentions stays out of this on purpose: the loop below *drops*
+                # invalid mentions with a warning, where the model would reject
+                # the whole message. file_ids is not a ChatRequest field.
+                try:
+                    _req = ChatRequest.model_validate({
+                        "message": data.get("message", ""),
+                        "connection_ids": data.get("connection_ids", []),
+                        "thread_id": data.get("thread_id") or None,
+                    })
+                except ValidationError as exc:
+                    await ws.send_text(json.dumps({
+                        "type": "chat.error",
+                        "request_id": request_id,
+                        "thread_id": data.get("thread_id") or "",
+                        "content": f"Invalid message: {exc.errors()[0]['msg']}",
+                    }))
+                    continue
+                thread_id = _req.thread_id
+                message = _req.message.strip()
+                connection_ids = _req.connection_ids
                 file_ids = data.get("file_ids", [])
                 raw_mentions = data.get("mentions") or []
                 mentions: list[ResolvedMention] = []
@@ -947,12 +1072,35 @@ async def websocket_endpoint(ws: WebSocket):
                     }))
                     continue
 
+                if chat_tasks:
+                    # The composer is disabled while a turn streams, so a second
+                    # send on the same socket is a duplicate or a scripted
+                    # client. Cheap short-circuit only — being socket-local it
+                    # cannot survive a reconnect, so it is not a concurrency
+                    # bound: _handle_chat_send claims a Redis lock on the thread
+                    # for that. Neither gate caps a client that opens N sockets
+                    # and starts N *new* conversations; that needs a per-user
+                    # cap, which does not exist yet.
+                    await ws.send_text(json.dumps({
+                        "type": "chat.error",
+                        "request_id": request_id,
+                        "thread_id": thread_id or "",
+                        "content": "A message is already being answered on this connection.",
+                        "error_code": "busy",
+                    }))
+                    continue
+
                 # Fire-and-forget so this loop stays responsive
-                asyncio.create_task(_handle_chat_send(
+                task = asyncio.create_task(_handle_chat_send(
                     ws, user, request_id, thread_id, message, connection_ids,
                     file_ids=file_ids,
                     mentions=mentions,
                 ))
+                chat_tasks.add(task)
+                _inflight_chat_tasks.add(task)
+                task.add_done_callback(chat_tasks.discard)
+                task.add_done_callback(_inflight_chat_tasks.discard)
+                task.add_done_callback(_log_task_exception)
 
             elif msg_type == "conversation.switch":
                 pass  # Frontend-only state change
@@ -1000,4 +1148,10 @@ async def websocket_endpoint(ws: WebSocket):
         logger.exception(f"WS error for user {user.id}: {e}")
     finally:
         redis_task.cancel()
+        # chat_tasks are deliberately NOT cancelled. Outliving the socket is the
+        # designed behaviour: the run finishes, persists the answer, and
+        # publishes chat.stream_complete over Redis, which the reconnected
+        # socket picks up (frontend useChatConversations.checkStreamingViaWs
+        # sends stream.check and waits for it). Cancelling here would discard a
+        # completed, already-charged turn on every wifi blip.
         manager.disconnect(user.id, ws)
