@@ -407,22 +407,37 @@ def test_the_slot_frees_once_the_turn_finishes(ws_client, monkeypatch):
     is stuck rejecting everything for the rest of its life."""
     client, ws_api = ws_client
     calls = []
+    finished = threading.Event()
 
     async def _quick_handler(_ws, _user, request_id, *_a, **_kw):
         calls.append(request_id)
 
+    # Synchronise on the task's own done-callback chain, not on a ping
+    # round-trip. A pong only proves the receive loop got that far; the turn task
+    # may not have been scheduled yet, and the callback that opens the gate runs
+    # later still. Racing that failed ~16% of runs — on `dev` exactly as much as
+    # here, so it was never a signal about this change.
+    #
+    # `_log_task_exception` is registered immediately before the gate-releasing
+    # callback, and callbacks queued on one task drain together, so seeing this
+    # fire means the release is queued ahead of anything the socket sends next.
     monkeypatch.setattr(ws_api, "_handle_chat_send", _quick_handler)
+    monkeypatch.setattr(ws_api, "_log_task_exception", lambda _t: finished.set())
 
     with client.websocket_connect("/ws?token=t") as sock:
         sock.send_json({"type": "chat.send", "request_id": "r1", "message": "first"})
-        sock.send_json({"type": "ping"})
-        assert sock.receive_json()["type"] == "pong"  # r1 has been dispatched
+        assert finished.wait(2.0), "the first turn never completed"
 
+        finished.clear()
         sock.send_json({"type": "chat.send", "request_id": "r2", "message": "second"})
         sock.send_json({"type": "ping"})
         assert sock.receive_json()["type"] == "pong", (
             "a second turn after the first finished must be accepted, not rejected"
         )
+        # r2 is dispatched fire-and-forget, so the pong says it was *accepted*,
+        # not that it has run. Asserting on `calls` without waiting for it is
+        # what the remaining flake was.
+        assert finished.wait(2.0), "the second turn was accepted but never ran"
 
     assert calls == ["r1", "r2"]
 

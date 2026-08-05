@@ -16,7 +16,7 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
-from backend.services.redis_lease import release_lease, renew_lease
+from backend.services.redis_lease import acquire_lease, release_lease, renew_lease
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
@@ -30,6 +30,11 @@ router = APIRouter(tags=["websocket"])
 # isn't one Redis round-trip per token.
 _TURN_LOCK_TTL_S = 600
 _LOCK_RENEW_EVERY_S = 60
+
+# Single-flight for the per-conversation summary write. Long enough to cover the
+# LLM call it guards, short enough that a killed pod cannot block the next turn's
+# summary for long.
+_SUMMARY_LEASE_TTL_S = 120
 
 
 async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
@@ -642,34 +647,58 @@ async def _postprocess_turn(
             "content": title,
         })
 
-    # Generate/update conversation summary
+    # Generate/update conversation summary, one turn at a time per conversation.
+    #
+    # `generate_or_update_summary` is a read-modify-write wrapped around an LLM
+    # call — SELECT the row, release the transaction, spend seconds generating,
+    # then INSERT or UPDATE. That was safe only because the thread lock made two
+    # turns on one conversation impossible; now that a turn starts as soon as
+    # `done` is out, two can reach this block together. Concurrently it is
+    # either a lost update (whichever commits last wins, which need not be the
+    # newer turn) or an IntegrityError, since conversation_id is UNIQUE and both
+    # would take the insert branch.
+    #
+    # The loser skips instead of waiting. Its turn is then missing from the
+    # summary until a later turn folds the history back in — a smaller loss than
+    # a stale summary overwriting a fresh one, and far smaller than a crashed
+    # post-process. `acquire_lease` fails open, so an unreachable Redis degrades
+    # to exactly the previous behaviour rather than dropping summaries entirely.
     if final_message:
-        try:
-            from backend.services.summary_service import SummaryService
-            summary = await SummaryService.generate_or_update_summary(
-                db, conversation.id, user_message, final_message
+        summary_key = f"chat:summary:{conversation.id}"
+        summary_token = acquire_lease(summary_key, _SUMMARY_LEASE_TTL_S)
+        if summary_token is None:
+            logger.info(
+                "conversation %s summary is being written by another turn; skipping",
+                conversation.id,
             )
-            token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
-            token_limit = SummaryService.get_token_limit()
-            await manager.send_to_user(user.id, {
-                "type": "chat.summary",
-                "request_id": request_id,
-                "thread_id": conversation.thread_id,
-                "content": {
-                    "text": summary.summary_text,
-                    "updated_at": summary.updated_at.isoformat(),
-                    "token_count": token_count,
-                    "token_limit": token_limit,
-                }
-            })
-        except Exception as e:
-            logger.warning(f"Summary generation failed: {e}")
+        else:
+            try:
+                from backend.services.summary_service import SummaryService
+                summary = await SummaryService.generate_or_update_summary(
+                    db, conversation.id, user_message, final_message
+                )
+                token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+                token_limit = SummaryService.get_token_limit()
+                await manager.send_to_user(user.id, {
+                    "type": "chat.summary",
+                    "request_id": request_id,
+                    "thread_id": conversation.thread_id,
+                    "content": {
+                        "text": summary.summary_text,
+                        "updated_at": summary.updated_at.isoformat(),
+                        "token_count": token_count,
+                        "token_limit": token_limit,
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"Summary generation failed: {e}")
+            finally:
+                release_lease(summary_key, summary_token)
 
-    # Notify all connected tabs that streaming finished (reaches reconnected WS)
-    await manager.send_to_user(user.id, {
-        "type": "chat.stream_complete",
-        "thread_id": active_thread_id,
-    })
+    # The chat.stream_complete broadcast used to live here. It moved into
+    # _handle_chat_send's finally so it can be gated on winning the streaming
+    # marker's compare-and-delete — unconditionally announcing "streaming
+    # finished" is wrong once a newer turn may already be streaming this thread.
 
     # Fire plugin hooks (non-blocking)
     if final_message:
@@ -953,9 +982,13 @@ async def _handle_chat_send(
         from backend.agents.profile_llm import resolve_published_llm
         user_provider, profile_temperature, profile_max_tokens = resolve_published_llm(ctx.profile)
 
-        # Set Redis streaming flag (TTL 5 min safety net)
+        # Set Redis streaming flag (TTL 5 min safety net). The value is this
+        # turn's ownership token, not `request_id`: a turn can now begin while
+        # the previous one post-processes, so the teardown has to tell whose
+        # marker it is looking at — and `request_id` arrives off the wire
+        # defaulting to "", which two turns can therefore share.
         streaming_key = f"streaming:{conversation.thread_id}"
-        redis_client.setex(streaming_key, 300, request_id)
+        redis_client.setex(streaming_key, 300, turn_token)
 
         # --- Credit context setup (bingo-credits plugin) ---
         _credit_mgr = None
@@ -1128,16 +1161,35 @@ async def _handle_chat_send(
         # raise, a lost lock. On the normal path this is a no-op: the gate was
         # already opened the moment the client saw `done`.
         _release_turn_gate()
-        # Clear streaming flag (may not exist if error occurred before streaming
-        # started). Deliberately still here rather than in _release_turn_gate:
-        # it drives `stream.check`, the reconnect path's "is my turn still
-        # running" probe, and clearing it early would tell a client that
-        # reconnects mid-post-process to stop waiting.
+
+        # The streaming marker describes the *thread*, not this turn's gates, so
+        # it stays here rather than moving into _release_turn_gate: it drives
+        # `stream.check`, the reconnect path's "is my turn still running" probe,
+        # and clearing it at `done` would tell a client reconnecting during our
+        # post-process to stop waiting.
+        #
+        # But it must be a compare-and-delete now that the next turn can start
+        # while we post-process. A blind DELETE here would clear *that* turn's
+        # marker, and a client reconnecting during it would read streaming=false
+        # and give up on a response still being generated.
+        #
+        # The completion broadcast rides the same atomic step for the mirrored
+        # reason: it carries only `thread_id`, and the reconnect path has no
+        # request_id to match against — it reconnected, it never saw one. So
+        # announcing completion while another turn streams would be taken as
+        # *that* turn finishing. Winning the compare-and-delete is exactly the
+        # proof that nobody else holds the thread.
         if active_thread_id:
             try:
-                redis_client.delete(f"streaming:{active_thread_id}")
+                if release_lease(
+                    f"streaming:{active_thread_id}", turn_token, client=redis_client,
+                ):
+                    await manager.send_to_user(user.id, {
+                        "type": "chat.stream_complete",
+                        "thread_id": active_thread_id,
+                    })
             except Exception:
-                pass
+                logger.warning("streaming teardown failed", exc_info=True)
         db.close()
 
 

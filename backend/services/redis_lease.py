@@ -127,22 +127,33 @@ def renew_lease(key: str, token: Optional[str], ttl: int) -> Optional[bool]:
         return None
 
 
-def release_lease(key: str, token: Optional[str]) -> None:
+def release_lease(key: str, token: Optional[str], client=None) -> bool:
     """Release *key* if this process still holds it. Safe to call with None or
     `UNGUARDED` — both mean there is nothing of ours to release.
+
+    Returns True only when the compare-and-delete actually removed *our* key.
+    Cleanup callers can ignore that; a caller with something conditional on
+    still being the owner — announcing the work finished, say — needs it, and
+    a GET followed by a DELETE could not answer it atomically.
+
+    `client` reuses a connection the caller already holds. Without one this
+    opens its own, which is fine for fire-and-forget cleanup and wasteful on a
+    path that is already connected.
 
     Never raises: the TTL is the real backstop, so a failed release is a log
     line rather than something worth unwinding a caller for.
     """
     if token is None or token == UNGUARDED:
-        return
+        return False
 
     try:
-        import redis as syncredis
+        if client is None:
+            import redis as syncredis
 
-        from backend.config import settings
+            from backend.config import settings
 
-        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
-        client.eval(_RELEASE_LUA, 1, key, token)
+            client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
+        return bool(client.eval(_RELEASE_LUA, 1, key, token))
     except Exception:
         logger.warning("Failed to release lease %s", key, exc_info=True)
+        return False
