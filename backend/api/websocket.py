@@ -188,15 +188,21 @@ async def _complete_turn(
     active_thread_id: str,
     orchestrator_errored: bool = False,
     lock_lost=None,
+    on_turn_visible=None,
 ) -> None:
     """Finish a turn after the orchestrator's `done`, in strict order:
-    persist → capture → charge → forward `done` → best-effort post-process.
+    persist → capture → charge → forward `done` → open the gates → post-process.
 
     Persist runs FIRST; its failure propagates *before* the charge, so a turn
     whose answer wasn't saved is never billed (the caller finalizes the credit
     context with the exception, which skips the charge). `done` is forwarded only
     after the charge lands, so the client's balance refresh reads the debited
     pool. Post-processing failures are swallowed — the turn is already complete.
+
+    `on_turn_visible` fires between those last two steps, which is the whole
+    point of the ordering: once `done` is out, the client re-enables its
+    composer, and every gate that would reject the next message has to be open
+    before the post-process LLM calls run.
     """
     # 1. Persist the answer + steps. Must succeed before charging.
     await _persist_turn(db, conversation, final_message, collected_steps)
@@ -242,7 +248,14 @@ async def _complete_turn(
     if pending_done_event is not None:
         await send(pending_done_event)
 
-    # 4. Best-effort post-processing; a failure here must not undo the charge.
+    # 4. The turn is complete as far as the client is concerned, so open the
+    #    busy gates before the post-process below spends two LLM calls on a
+    #    title and a summary. Nothing past this point writes an answer or
+    #    charges for one, which is all the gates protect.
+    if on_turn_visible is not None:
+        on_turn_visible()
+
+    # 5. Best-effort post-processing; a failure here must not undo the charge.
     try:
         await _postprocess_turn(
             db, conversation, is_new, user_message, final_message,
@@ -778,10 +791,15 @@ async def _handle_chat_send(
     connection_ids: list,
     file_ids: list = None,
     mentions: list = None,
+    on_turn_visible=None,
 ) -> None:
     """
     Handle a chat.send message over WebSocket.
     Mirrors the SSE streaming logic but sends JSON events over the WebSocket.
+
+    `on_turn_visible` opens the endpoint's one-turn-per-socket gate. It fires
+    when `done` reaches the client, not when this coroutine returns — see
+    `_release_turn_gate` below for why the difference matters.
     """
     from backend.agents import stream_orchestrator
     from backend.services.heartbeat_context import build_orchestrator_context
@@ -830,6 +848,43 @@ async def _handle_chat_send(
     lock_heartbeat = asyncio.create_task(
         _hold_turn_lock(lambda: turn_lock, turn_token, lock_lost)
     )
+
+    gate_released = False
+
+    def _release_turn_gate() -> None:
+        """Open both busy gates the moment the turn is user-visibly complete.
+
+        Everything the gates exist to protect — persisting the answer and
+        charging for it — has already happened by the time `done` is forwarded
+        (see `_complete_turn`'s strict ordering). What runs after is best-effort
+        title and summary generation: two LLM calls, several seconds, holding
+        nothing a second turn needs.
+
+        Releasing only at the end of the coroutine meant the client's composer
+        re-enabled on `done` while the server kept answering "busy" for the
+        length of those calls. Scoping questions land a user squarely in that
+        window, because the answer to one is short and arrives fast.
+
+        Idempotent: the normal path releases here, the `finally` covers every
+        path that never reaches `done`.
+        """
+        nonlocal turn_lock, gate_released
+        if gate_released:
+            return
+        gate_released = True
+        # Cancelled in the same step that drops the lock, so a renewer can never
+        # keep alive a thread a later turn owns.
+        lock_heartbeat.cancel()
+        if turn_lock:
+            # Owner-checked: a turn that outran its 600s TTL must not delete a
+            # lock a later turn has since claimed on the same thread.
+            release_lease(turn_lock, turn_token)
+            turn_lock = None  # released; the finally must not try again
+        if on_turn_visible is not None:
+            try:
+                on_turn_visible()
+            except Exception:  # pragma: no cover - a gate release must never raise
+                logger.exception("failed to open the socket turn gate")
 
     _credit_mgr = None
     try:
@@ -1056,6 +1111,7 @@ async def _handle_chat_send(
             collected_steps, collected_retry_succeeded, collected_judge_metadata,
             _credit_mgr, pending_done_event, send, request_id, user, active_thread_id,
             orchestrator_errored, lock_lost.is_set,
+            on_turn_visible=_release_turn_gate,
         )
         _credit_mgr = None
 
@@ -1068,22 +1124,20 @@ async def _handle_chat_send(
         logger.exception(f"chat.send error: {e}")
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:
-        # Scoped to the turn: cancelled here, in the same block that releases the
-        # lock, so a renewer can never keep alive a thread a later turn owns.
-        lock_heartbeat.cancel()
-        # Clear streaming flag (may not exist if error occurred before streaming started)
+        # Covers every path that never reached `done` — an early return, a
+        # raise, a lost lock. On the normal path this is a no-op: the gate was
+        # already opened the moment the client saw `done`.
+        _release_turn_gate()
+        # Clear streaming flag (may not exist if error occurred before streaming
+        # started). Deliberately still here rather than in _release_turn_gate:
+        # it drives `stream.check`, the reconnect path's "is my turn still
+        # running" probe, and clearing it early would tell a client that
+        # reconnects mid-post-process to stop waiting.
         if active_thread_id:
             try:
                 redis_client.delete(f"streaming:{active_thread_id}")
             except Exception:
                 pass
-        # Release the turn lock, but only if we still own it. A turn that
-        # outran its 600s TTL must not delete the lock a *later* turn has since
-        # claimed on the same thread. release_lease compares and deletes in one
-        # Lua call — a GET-then-DELETE here would let that later turn claim the
-        # key in between and lose its lock to this one.
-        if turn_lock:
-            release_lease(turn_lock, turn_token)
         db.close()
 
 
@@ -1173,10 +1227,17 @@ async def websocket_endpoint(ws: WebSocket):
     redis_task = asyncio.create_task(manager.listen_redis(user.id, ws))
     redis_task.add_done_callback(lambda t: _on_listener_done(t, ws, user.id))
 
-    # The one-turn-per-socket gate. Scoped to this connection on purpose, so it
-    # dies with the frame; the strong reference that has to outlive the socket is
-    # _inflight_chat_tasks.
+    # Two sets, deliberately not one. `chat_tasks` is a *lifetime* reference held
+    # for the whole task; `answering` is the one-turn-per-socket *gate*, and it
+    # empties earlier — the moment the turn is user-visibly complete, which is
+    # when `done` reaches the client, not when the coroutine returns. Gating on
+    # task liveness is what made the composer re-enable on `done` while the
+    # server still answered "busy" for the length of two post-turn LLM calls.
+    #
+    # Both are scoped to this connection on purpose, so they die with the frame;
+    # the strong reference that has to outlive the socket is _inflight_chat_tasks.
     chat_tasks: set[asyncio.Task] = set()
+    answering: set[str] = set()
 
     try:
         while True:
@@ -1241,7 +1302,7 @@ async def websocket_endpoint(ws: WebSocket):
                     }))
                     continue
 
-                if chat_tasks:
+                if answering:
                     # The composer is disabled while a turn streams, so a second
                     # send on the same socket is a duplicate or a scripted
                     # client. Cheap short-circuit only — being socket-local it
@@ -1259,17 +1320,31 @@ async def websocket_endpoint(ws: WebSocket):
                     }))
                     continue
 
+                # Generated, not the wire's request_id: that arrives as
+                # `data.get("request_id", "")` and defaults to empty, so two
+                # sends omitting it would share a key and the first to finish
+                # would open the gate on the second — the same defaulting bug
+                # the turn lock's token already had to fix.
+                slot_id = uuid.uuid4().hex
+                answering.add(slot_id)
+
                 # Fire-and-forget so this loop stays responsive
                 task = asyncio.create_task(_handle_chat_send(
                     ws, user, request_id, thread_id, message, connection_ids,
                     file_ids=file_ids,
                     mentions=mentions,
+                    on_turn_visible=lambda sid=slot_id: answering.discard(sid),
                 ))
                 chat_tasks.add(task)
                 _inflight_chat_tasks.add(task)
                 task.add_done_callback(chat_tasks.discard)
                 task.add_done_callback(_inflight_chat_tasks.discard)
                 task.add_done_callback(_log_task_exception)
+                # Backstop: every path that ends the task without ever reaching
+                # `done` — an early return, a raise, cancellation — has to open
+                # the gate too, or the socket wedges for good. discard() is
+                # idempotent, so the normal path releasing first is harmless.
+                task.add_done_callback(lambda _t, sid=slot_id: answering.discard(sid))
 
             elif msg_type == "conversation.switch":
                 pass  # Frontend-only state change

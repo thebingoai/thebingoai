@@ -168,6 +168,55 @@ def test_lock_released_when_turn_finishes():
     assert "chat:turn:t-1" in redis.deleted
 
 
+def test_the_gates_open_before_post_processing():
+    """`_complete_turn` order: persist → charge → `done` → open gates → post-process.
+
+    Everything the gates protect — the answer being written and billed — is done
+    by the time `done` goes out. What follows is best-effort title and summary
+    generation: two LLM calls, several seconds, holding nothing a second turn
+    needs. Keeping the gates shut across them is what made a quick reply after a
+    scoping question come back "A message is already being answered".
+    """
+    order = []
+
+    async def _send(payload):
+        order.append(f"send:{payload['type']}")
+
+    async def _persist(*_a, **_kw):
+        order.append("persist")
+
+    async def _charge(*_a, **_kw):
+        order.append("charge")
+
+    async def _postprocess(*_a, **_kw):
+        order.append("postprocess")
+
+    with patch.object(ws_mod, "_persist_turn", _persist), \
+         patch.object(ws_mod, "_finalize_credit_turn", _charge), \
+         patch.object(ws_mod, "_postprocess_turn", _postprocess):
+        asyncio.run(ws_mod._complete_turn(
+            db=None,
+            conversation=SimpleNamespace(id=1, thread_id="t-1"),
+            is_new=False,
+            user_message="q",
+            final_message="a",
+            collected_steps=[],
+            retry_succeeded=None,
+            judge_metadata=None,
+            credit_mgr=None,
+            pending_done_event={"type": "chat.done"},
+            send=_send,
+            request_id="req-1",
+            user=_FakeUser(),
+            active_thread_id="t-1",
+            on_turn_visible=lambda: order.append("gates_open"),
+        ))
+
+    assert order == [
+        "persist", "charge", "send:chat.done", "gates_open", "postprocess",
+    ], order
+
+
 def test_lock_released_when_turn_raises():
     redis = _FakeRedis()
 

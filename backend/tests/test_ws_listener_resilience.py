@@ -366,9 +366,45 @@ def test_a_second_send_on_one_socket_is_rejected(ws_client, monkeypatch):
     assert reply["request_id"] == "r2"
 
 
+def test_the_slot_frees_when_done_reaches_the_client(ws_client, monkeypatch):
+    """The gate opens on `done`, not when the task ends.
+
+    `_complete_turn` forwards `done` and *then* spends two LLM calls generating
+    a title and a summary. The client re-enables its composer on `done`, so
+    gating on task liveness left a multi-second window where the composer was
+    live and the server still answered "busy" — which is exactly where a user
+    answering a scoping question lands, since that reply is short and fast.
+    """
+    client, ws_api = ws_client
+    in_post_process = threading.Event()
+
+    async def _handler(_ws, _user, _request_id, *_a, on_turn_visible=None, **_kw):
+        on_turn_visible()  # `done` has reached the client
+        in_post_process.set()
+        await asyncio.sleep(1.0)  # stand-in for title + summary generation
+
+    monkeypatch.setattr(ws_api, "_handle_chat_send", _handler)
+
+    with client.websocket_connect("/ws?token=t") as sock:
+        sock.send_json({"type": "chat.send", "request_id": "r1", "message": "first"})
+        assert in_post_process.wait(2.0), "the first turn never reached post-process"
+
+        sock.send_json({"type": "chat.send", "request_id": "r2", "message": "second"})
+        # Same sequential-receive-loop trick as the rejection test above: if r2
+        # were rejected, chat.error would arrive ahead of the pong.
+        sock.send_json({"type": "ping"})
+        reply = sock.receive_json()
+
+    assert reply["type"] == "pong", (
+        f"a send after `done` must be accepted while post-process still runs, got {reply}"
+    )
+
+
 def test_the_slot_frees_once_the_turn_finishes(ws_client, monkeypatch):
-    """The done-callback must discard from the set, or the socket is stuck
-    rejecting everything for the rest of its life."""
+    """Backstop for every path that ends without ever reaching `done` — an early
+    return, a raise, cancellation. This handler ignores `on_turn_visible`
+    entirely, so only the done-callback can open the gate; without it the socket
+    is stuck rejecting everything for the rest of its life."""
     client, ws_api = ws_client
     calls = []
 
