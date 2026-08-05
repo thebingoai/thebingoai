@@ -11,6 +11,7 @@ Exposes 5 tools (consolidated from 9):
 
 from langchain_core.tools import tool
 from backend.agents.context import AgentContext
+from backend.database.session import end_read_transaction
 from backend.llm.factory import get_provider
 from backend.config import settings
 from typing import List, Optional, Callable
@@ -312,6 +313,11 @@ def build_skill_tools(
             ).first()
             if not skill:
                 return json.dumps({"success": False, "message": f"No active skill named '{skill_name}' found"})
+
+            # Only Postgres read here; below are two unbounded awaits (sandboxed
+            # user code, then an LLM pass). Rationale: heartbeat_context.py.
+            # skill.code / .secrets / .prompt_template survive the release.
+            end_read_transaction(db)
 
             # Handle instruction-only skills
             skill_type = skill.skill_type or "code"

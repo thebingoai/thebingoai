@@ -63,8 +63,11 @@ class BaseConnector(ABC):
         self._search_path = None
 
     @classmethod
-    def from_connection(cls, connection: "DatabaseConnection") -> "BaseConnector":
-        """Override for connectors that need non-standard construction (e.g., file-based)."""
+    def from_connection(cls, connection: "DatabaseConnection", db_session=None) -> "BaseConnector":
+        """Override for connectors that need non-standard construction (e.g., file-based).
+
+        ``db_session`` is the caller's open session — forward it, don't open one.
+        """
         raise NotImplementedError
 
     # ============================================================

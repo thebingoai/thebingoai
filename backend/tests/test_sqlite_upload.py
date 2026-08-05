@@ -52,7 +52,9 @@ class TestFactoryRegistration:
         connection.db_type = "sqlite"
 
         result = get_connector_for_connection(connection)
-        mock_from_conn.assert_called_once_with(connection)
+        # db_session is forwarded unconditionally so plane-backed connectors can
+        # reuse the caller's session instead of opening a second checkout.
+        mock_from_conn.assert_called_once_with(connection, db_session=None)
         assert result == mock_connector
 
 

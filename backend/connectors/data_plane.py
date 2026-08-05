@@ -27,9 +27,9 @@ class DataPlaneConnector:
         self._table_prefix = table_prefix
 
     @classmethod
-    def from_connection(cls, connection, table_prefix: str | None = None) -> "DataPlaneConnector":
+    def from_connection(cls, connection, table_prefix: str | None = None, db_session=None) -> "DataPlaneConnector":
         from backend.services.data_plane_service import get_plane_for_connection
-        plane, scope = get_plane_for_connection(connection)
+        plane, scope = get_plane_for_connection(connection, db_session)
         return cls(plane, scope, table_prefix)
 
     def test_connection(self) -> bool:

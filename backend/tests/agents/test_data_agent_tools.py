@@ -42,7 +42,9 @@ def _patch(monkeypatch, **overrides):
     )
     monkeypatch.setattr(
         "backend.services.data_plane_service.get_plane_for_connection",
-        overrides.get("get_plane", lambda c: (MagicMock(), MagicMock())),
+        # Takes the caller's session so it doesn't open a second checkout while
+        # the first is still held.
+        overrides.get("get_plane", lambda c, db=None: (MagicMock(), MagicMock())),
     )
     monkeypatch.setattr(
         "backend.services.data_plane_service.get_gcs_duckdb_reader",
@@ -82,7 +84,7 @@ def test_local_plane_cold_returns_none(monkeypatch):
     plane = MagicMock(spec=LocalFilesystemDataPlane)
     plane.table_exists.return_value = False
     scope = MagicMock()
-    _patch(monkeypatch, get_plane=lambda c: (plane, scope))
+    _patch(monkeypatch, get_plane=lambda c, db=None: (plane, scope))
 
     assert tools._serve_query_via_dataplane(_conn(), "SELECT 1 FROM orders", MagicMock()) is None
     plane.query.assert_not_called()
@@ -97,7 +99,7 @@ def test_local_plane_warm_runs_query(monkeypatch):
     qr = QueryResult(columns=["c"], rows=[(1,)], row_count=1, execution_time_ms=2.0)
     plane.query.return_value = qr
     scope = MagicMock()
-    _patch(monkeypatch, get_plane=lambda c: (plane, scope))
+    _patch(monkeypatch, get_plane=lambda c, db=None: (plane, scope))
 
     result = tools._serve_query_via_dataplane(_conn(), "SELECT 1 FROM orders", MagicMock())
     assert result is qr
@@ -110,7 +112,7 @@ def test_local_plane_query_exception_returns_none(monkeypatch):
     plane = MagicMock(spec=LocalFilesystemDataPlane)
     plane.table_exists.return_value = True
     plane.query.side_effect = RuntimeError("duckdb boom")
-    _patch(monkeypatch, get_plane=lambda c: (plane, MagicMock()))
+    _patch(monkeypatch, get_plane=lambda c, db=None: (plane, MagicMock()))
 
     assert tools._serve_query_via_dataplane(_conn(), "SELECT 1", MagicMock()) is None
 
@@ -120,7 +122,7 @@ def test_local_plane_query_exception_returns_none(monkeypatch):
 def test_gcs_reader_none_returns_none(monkeypatch):
     """Non-local plane + reader factory returns None → residency-locked → fall back."""
     plane = MagicMock()  # not a LocalFilesystemDataPlane
-    _patch(monkeypatch, get_plane=lambda c: (plane, MagicMock()), get_reader=lambda scope, db=None: None)
+    _patch(monkeypatch, get_plane=lambda c, db=None: (plane, MagicMock()), get_reader=lambda scope, db=None: None)
 
     assert tools._serve_query_via_dataplane(_conn(), "SELECT 1", MagicMock()) is None
 
@@ -134,7 +136,7 @@ def test_gcs_reader_runs_and_closes(monkeypatch):
     reader.query.return_value = qr
     _patch(
         monkeypatch,
-        get_plane=lambda c: (plane, MagicMock()),
+        get_plane=lambda c, db=None: (plane, MagicMock()),
         get_reader=lambda scope, db=None: reader,
     )
 
@@ -150,7 +152,7 @@ def test_gcs_reader_exception_returns_none_and_closes(monkeypatch):
     reader.query.side_effect = RuntimeError("gcs boom")
     _patch(
         monkeypatch,
-        get_plane=lambda c: (plane, MagicMock()),
+        get_plane=lambda c, db=None: (plane, MagicMock()),
         get_reader=lambda scope, db=None: reader,
     )
 
@@ -208,7 +210,10 @@ def test_execute_query_falls_back_to_connector_when_serve_returns_none(monkeypat
     cm = MagicMock()
     cm.__enter__.return_value = connector
     cm.__exit__.return_value = False
-    monkeypatch.setattr("backend.agents.data_agent.tools.get_connector_for_connection", lambda c: cm)
+    monkeypatch.setattr(
+        "backend.agents.data_agent.tools.get_connector_for_connection",
+        lambda c, db=None: cm,
+    )
 
     monkeypatch.setattr(
         "backend.agents.data_agent.tools._serve_query_via_dataplane",

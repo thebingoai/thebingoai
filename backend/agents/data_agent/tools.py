@@ -5,7 +5,7 @@ from datetime import date, datetime
 from uuid import UUID
 from backend.services.schema_discovery import load_schema_file
 from backend.connectors.factory import get_connector_for_connection
-from backend.database.session import SessionLocal
+from backend.database.session import SessionLocal, end_read_transaction
 from backend.models.database_connection import DatabaseConnection
 from backend.connectors.factory import get_connector_registration
 from backend.agents.context import AgentContext
@@ -82,7 +82,7 @@ def _serve_query_via_dataplane(connection, sql: str, db) -> Optional[Any]:
     except Exception:
         return None  # unparseable post-transpile SQL → live source
 
-    plane, scope = get_plane_for_connection(connection)
+    plane, scope = get_plane_for_connection(connection, db)
 
     if isinstance(plane, LocalFilesystemDataPlane):
         try:
@@ -92,6 +92,8 @@ def _serve_query_via_dataplane(connection, sql: str, db) -> Optional[Any]:
         if not tables or not all(plane.table_exists(scope, t) for t in tables):
             return None  # cold/missing plane data → live source
         try:
+            # Release before the Parquet scan (rationale: heartbeat_context.py).
+            end_read_transaction(db)
             return plane.query(scope, base_sql)
         except Exception as e:
             logger.warning("Local plane chat serve failed (%s) — falling back", e)
@@ -102,6 +104,8 @@ def _serve_query_via_dataplane(connection, sql: str, db) -> Optional[Any]:
         reader = get_gcs_duckdb_reader(scope, db)
         if reader is None:
             return None  # residency-locked / customer / no-HMAC → live source
+        # Release before the Parquet read over GCS (same reasoning).
+        end_read_transaction(db)
         return reader.query(scope, base_sql)
     except Exception as e:
         logger.warning("DuckDB-over-GCS chat serve failed (%s) — falling back", e)
@@ -267,7 +271,10 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             _t0 = time.perf_counter()
             result = _serve_query_via_dataplane(connection, sql, db)
             if result is None:
-                with get_connector_for_connection(connection) as connector:
+                with get_connector_for_connection(connection, db) as connector:
+                    # Constructing the connector is the last Postgres read here;
+                    # release before the query (rationale: heartbeat_context.py).
+                    end_read_transaction(db)
                     result = connector.execute_query(sql)
             _total_ms = (time.perf_counter() - _t0) * 1000
 
@@ -382,7 +389,9 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
 
             from backend.services.table_profiler import profile_table as _profile
 
-            with get_connector_for_connection(connection) as connector:
+            with get_connector_for_connection(connection, db) as connector:
+                # Profiling issues many source queries, none against Postgres.
+                end_read_transaction(db)
                 profile = _profile(
                     connector=connector,
                     table_name=table_name,

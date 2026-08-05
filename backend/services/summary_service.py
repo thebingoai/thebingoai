@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
+from backend.database.session import end_read_transaction
 from backend.models.conversation_summary import ConversationSummary
 from backend.config import settings
 
@@ -45,6 +46,10 @@ class SummaryService:
         provider = get_provider(provider_name, model=model)
 
         messages = [{"role": "user", "content": "\n\n".join(prompt_parts)}]
+        # Runs at the end of every chat turn on the caller's session; don't hold
+        # its transaction across the LLM call (rationale: heartbeat_context.py).
+        # `existing` survives the release, so the write below still persists.
+        end_read_transaction(db)
         raw = await provider.chat(messages, temperature=0.3, max_tokens=150)
         summary_text = raw.strip()[:500]
 
@@ -95,6 +100,8 @@ class SummaryService:
         provider = get_provider(provider_name, model=model)
 
         llm_messages = [{"role": "user", "content": prompt}]
+        # Transcript read is done; release before the LLM call (see above).
+        end_read_transaction(db)
         raw = await provider.chat(llm_messages, temperature=0.3, max_tokens=150)
         summary_text = raw.strip()[:500] or "Conversation in progress."
 

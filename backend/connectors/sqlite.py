@@ -78,7 +78,7 @@ class SqliteFileConnector:
             # Prefix scopes the plane's table list to this connection's tables.
             # NULL on journals written before prefixing existed — those wrote
             # bare table names, so they stay unfiltered.
-            return DataPlaneConnector.from_connection(connection, journal[0])
+            return DataPlaneConnector.from_connection(connection, journal[0], db_session=db_session)
 
         from backend.config import settings
         from backend.connectors._sqlite_cache import download_and_cache_sqlite_blob

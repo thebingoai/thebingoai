@@ -214,10 +214,17 @@ def _scope_chain(scope: OwnerScope, db) -> list[OwnerScope]:
     return chain
 
 
-def get_plane_for_connection(connection):
-    """Derive scope from *connection* and return (plane, scope)."""
+def get_plane_for_connection(connection, db=None):
+    """Derive scope from *connection* and return (plane, scope).
+
+    Pass ``db`` whenever the caller already holds a session. Without it
+    ``get_default_plane`` opens its own (``:74-76``) — a *second* checkout taken
+    while the caller still holds its first. Under pool pressure that thread then
+    waits ``db_pool_timeout`` for the second slot while pinning the first, which
+    is how contention becomes a pile-up rather than a queue.
+    """
     scope = OwnerScope.from_connection(connection)
-    plane = get_default_plane(scope)
+    plane = get_default_plane(scope, db)
     return plane, scope
 
 
