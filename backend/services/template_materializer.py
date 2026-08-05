@@ -348,7 +348,7 @@ def _build_sql_pipeline_templates(
         return []
 
     try:
-        connector = get_connector_for_connection(connection)
+        connector = get_connector_for_connection(connection, db)
     except Exception:
         logger.warning(
             "Cannot open connector for dynamic SQL templates (connection=%s, type=%s)",
@@ -508,7 +508,7 @@ def _apply_mysql_t1_schedule(new_pipelines: list[Pipeline], connection, db: Sess
         initial_dt = None
 
     try:
-        connector = get_connector_for_connection(connection)
+        connector = get_connector_for_connection(connection, db)
     except Exception:
         logger.warning(
             "MySQL schedule: cannot open connector for connection %s; skipping",

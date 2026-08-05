@@ -498,7 +498,7 @@ async def redetect_watermark(
         raise HTTPException(status_code=404, detail="Source connection missing")
     reg = get_connector_registration(conn.db_type)
     try:
-        with get_connector_for_connection(conn) as connector:
+        with get_connector_for_connection(conn, db) as connector:
             schema_obj = connector.get_table_schema(table, schema=None)
             cols = list(getattr(schema_obj, "columns", []) or [])
             picks = resolve_watermark(reg, connector, [table], {table: cols})

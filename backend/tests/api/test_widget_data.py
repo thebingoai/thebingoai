@@ -369,7 +369,7 @@ def test_refresh_widget_no_dashboard_falls_straight_to_source(monkeypatch):
 
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: fake_connector,
+        lambda conn, db=None: fake_connector,
     )
 
     def _transform(result, mapping):
@@ -405,7 +405,7 @@ def test_refresh_widget_source_db_fallback_when_plane_returns_none(monkeypatch):
 
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: fake_connector,
+        lambda conn, db=None: fake_connector,
     )
 
     def _transform(result, mapping):
@@ -580,7 +580,7 @@ def test_bulk_refresh_source_fallback_reuses_one_connector(monkeypatch):
 
     factory_calls = {"n": 0}
 
-    def _get_conn(conn):
+    def _get_conn(conn, db=None):
         factory_calls["n"] += 1
         return fake_connector
 
@@ -683,7 +683,7 @@ def test_bulk_refresh_does_not_retry_resolution_when_no_plane_exists(monkeypatch
     )
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: fake_connector,
+        lambda conn, db=None: fake_connector,
     )
 
     dashboard = SimpleNamespace(
@@ -721,7 +721,7 @@ def test_bulk_refresh_skips_plane_resolution_entirely_when_filtered(monkeypatch)
     )
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: fake_connector,
+        lambda conn, db=None: fake_connector,
     )
 
     dashboard = SimpleNamespace(
@@ -848,7 +848,7 @@ def test_bulk_refresh_applies_filters_and_skips_cache(monkeypatch):
         return FakeQueryResult(columns=["v"], rows=[(1,)], row_count=1)
     fake_connector.execute_query.side_effect = _exec
     monkeypatch.setattr(
-        "backend.connectors.factory.get_connector_for_connection", lambda c: fake_connector,
+        "backend.connectors.factory.get_connector_for_connection", lambda c, db=None: fake_connector,
     )
     monkeypatch.setattr(wd, "transform_widget_data", lambda r, m: {"value": 1})
 
@@ -882,7 +882,7 @@ def test_source_db_fallback_works_for_mysql_connection(monkeypatch):
 
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: fake_connector,
+        lambda conn, db=None: fake_connector,
     )
 
     def _transform(result, mapping):
@@ -925,7 +925,7 @@ def test_refresh_widget_postgres_source_repairs_ansi_quotes_for_mysql(monkeypatc
 
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: fake_connector,
+        lambda conn, db=None: fake_connector,
     )
     monkeypatch.setattr(wd, "transform_widget_data", lambda result, mapping: {"value": 7})
 
@@ -960,7 +960,7 @@ def test_refresh_widget_plane_backed_connector_reports_data_plane(monkeypatch):
 
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: FakePlaneConnector(),
+        lambda conn, db=None: FakePlaneConnector(),
     )
     monkeypatch.setattr(wd, "transform_widget_data", lambda result, mapping: {"value": 3})
 
@@ -1175,7 +1175,7 @@ def test_source_fallback_normalizes_the_native_attempt(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "backend.connectors.factory.get_connector_for_connection", lambda conn: _Recorder(),
+        "backend.connectors.factory.get_connector_for_connection", lambda conn, db=None: _Recorder(),
     )
     monkeypatch.setattr(wd, "transform_widget_data", lambda result, mapping: {"value": 1})
 

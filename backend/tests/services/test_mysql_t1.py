@@ -168,7 +168,7 @@ def test_apply_incremental_seeds_initial_value_with_default_lookback(monkeypatch
     cols = [{"name": "created_at", "type": "datetime"}, {"name": "id", "type": "int"}]
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: _fake_connector(cols),
+        lambda conn, db=None: _fake_connector(cols),
     )
     p = _pipe(["orders"])
     tm._apply_mysql_t1_schedule([p], SimpleNamespace(db_type="mysql", id=23), MagicMock())
@@ -194,7 +194,7 @@ def test_apply_incremental_no_initial_value_when_lookback_zero(monkeypatch):
     cols = [{"name": "created_at", "type": "datetime"}]
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: _fake_connector(cols),
+        lambda conn, db=None: _fake_connector(cols),
     )
     p = _pipe(["orders"])
     tm._apply_mysql_t1_schedule([p], SimpleNamespace(db_type="mysql", id=23), MagicMock())
@@ -214,7 +214,7 @@ def test_apply_incremental_custom_lookback_n_days(monkeypatch):
     cols = [{"name": "created_at", "type": "datetime"}]
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: _fake_connector(cols),
+        lambda conn, db=None: _fake_connector(cols),
     )
     p = _pipe(["orders"])
     tm._apply_mysql_t1_schedule([p], SimpleNamespace(db_type="mysql", id=23), MagicMock())
@@ -231,7 +231,7 @@ def test_apply_full_snapshot_when_no_date_col(monkeypatch):
     cols = [{"name": "id", "type": "int"}, {"name": "label", "type": "varchar"}]
     monkeypatch.setattr(
         "backend.connectors.factory.get_connector_for_connection",
-        lambda conn: _fake_connector(cols),
+        lambda conn, db=None: _fake_connector(cols),
     )
     p = _pipe(["lookup"], mode_initial="incremental")  # start as incremental to verify override
     tm._apply_mysql_t1_schedule([p], SimpleNamespace(db_type="mysql", id=1), MagicMock())
@@ -245,7 +245,7 @@ def test_apply_full_snapshot_when_no_date_col(monkeypatch):
 def test_apply_noop_for_non_mysql(monkeypatch):
     called = {"opened": False}
 
-    def _boom(conn):
+    def _boom(conn, db=None):
         called["opened"] = True
         return _fake_connector([])
 

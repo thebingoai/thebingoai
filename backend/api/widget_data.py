@@ -910,7 +910,7 @@ def _refresh_widget_sync(
 
     from backend.connectors.factory import get_connector_for_connection
 
-    connector = get_connector_for_connection(connection)
+    connector = get_connector_for_connection(connection, db)
 
     try:
         def _prepare(base_sql):
@@ -1308,7 +1308,7 @@ def _refresh_dashboard_widgets_sync(
 
             if connection_id not in connector_cache:
                 from backend.connectors.factory import get_connector_for_connection
-                connector_cache[connection_id] = get_connector_for_connection(connection)
+                connector_cache[connection_id] = get_connector_for_connection(connection, db)
             connector = connector_cache[connection_id]
 
             try:

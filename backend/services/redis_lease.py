@@ -39,6 +39,16 @@ end
 return 0
 """
 
+# Same ownership check, for holders that outlive their TTL. A blind EXPIRE would
+# push out whatever key happens to be there — including a *newer* holder's lease,
+# on our schedule rather than theirs.
+_RENEW_LUA = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('expire', KEYS[1], ARGV[2])
+end
+return 0
+"""
+
 
 def acquire_lease(key: str, ttl: int) -> Optional[str]:
     """Try to become the single flight for *key*.
@@ -65,6 +75,30 @@ def acquire_lease(key: str, ttl: int) -> Optional[str]:
         return UNGUARDED
 
     return token if held else None
+
+
+def renew_lease(key: str, token: Optional[str], ttl: int) -> None:
+    """Push *key*'s expiry back out to *ttl*, but only while we still hold it.
+
+    For holders whose work has no upper bound — a chat turn nothing times out —
+    where the alternative is a TTL long enough to cover the worst case, which is
+    also long enough to wedge the resource after a crash.
+
+    Never raises, for the same reason `release_lease` doesn't: a missed renewal
+    costs the lease, not the work.
+    """
+    if token is None or token == UNGUARDED:
+        return
+
+    try:
+        import redis as syncredis
+
+        from backend.config import settings
+
+        client = syncredis.from_url(settings.redis_url, decode_responses=True)
+        client.eval(_RENEW_LUA, 1, key, token, ttl)
+    except Exception:
+        logger.warning("Failed to renew lease %s", key, exc_info=True)
 
 
 def release_lease(key: str, token: Optional[str]) -> None:

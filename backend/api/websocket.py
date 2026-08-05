@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import time
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -14,13 +16,18 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
-from backend.services.redis_lease import release_lease
+from backend.services.redis_lease import release_lease, renew_lease
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
+
+# How often a streaming turn pushes its lock's expiry back out. Well under the
+# 600s TTL so a stall between events still has room to recover, and far enough
+# apart that a token-by-token stream isn't one Redis round-trip per token.
+_LOCK_RENEW_EVERY_S = 60
 
 
 async def _finalize_credit_turn(credit_mgr, retry_succeeded, orchestrator_errored=False) -> None:
@@ -676,8 +683,14 @@ async def _handle_chat_send(
     # with an empty set, and starts a second turn on a thread the first one is
     # still writing to. thread_id is None only for a brand-new conversation,
     # which has nothing to collide with.
+    # The token is generated, not the client's request_id: that arrives off the
+    # wire (`data.get("request_id", "")`) and defaults to empty, so two clients
+    # that merely omit the field would share a token and release each other's
+    # lock. request_id stays on the wire payload, where it belongs.
     turn_lock = f"chat:turn:{thread_id}" if thread_id else None
-    if turn_lock and not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+    turn_token = uuid.uuid4().hex
+    _lock_renewed_at = time.monotonic()
+    if turn_lock and not redis_client.set(turn_lock, turn_token, nx=True, ex=600):
         await send({
             "type": "chat.error",
             "request_id": request_id,
@@ -705,7 +718,7 @@ async def _handle_chat_send(
             # the thread_id this turn just created, and would otherwise sail
             # straight past the gate.
             turn_lock = f"chat:turn:{conversation.thread_id}"
-            if not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+            if not redis_client.set(turn_lock, turn_token, nx=True, ex=600):
                 turn_lock = None  # someone else's lock — never release it
                 await send({
                     "type": "chat.error",
@@ -841,6 +854,17 @@ async def _handle_chat_send(
             temperature=profile_temperature,
             max_tokens=profile_max_tokens,
         ):
+            # Keep the turn lock alive for as long as the turn actually runs.
+            # Nothing bounds a turn — the only asyncio.wait_for timeouts are
+            # per-skill and per-judge — so a long dashboard build can outlive the
+            # 600s TTL, and the moment it lapses a reconnect-resend claims the
+            # thread and runs a second turn against it concurrently, double-
+            # charging the user. Renewed off the event stream rather than by a
+            # background heartbeat, so it cannot outlive the turn it guards.
+            if turn_lock and time.monotonic() - _lock_renewed_at > _LOCK_RENEW_EVERY_S:
+                _lock_renewed_at = time.monotonic()
+                renew_lease(turn_lock, turn_token, 600)
+
             # Map SSE event type → WS event type
             event_type = event.get("type", "")
             ws_type = f"chat.{event_type}" if event_type else "chat.unknown"
@@ -914,7 +938,7 @@ async def _handle_chat_send(
         # Lua call — a GET-then-DELETE here would let that later turn claim the
         # key in between and lose its lock to this one.
         if turn_lock:
-            release_lease(turn_lock, request_id)
+            release_lease(turn_lock, turn_token)
         db.close()
 
 

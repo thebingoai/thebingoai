@@ -137,10 +137,25 @@ def test_lock_is_claimed_before_conversation_work():
 
     _run(redis, _record, request_id="req-1")
 
-    assert reached == ["req-1"]
+    assert reached and reached[0], "the lock was not held once real work started"
     key, value, nx, ex = redis.set_calls[0]
-    assert (key, value, nx) == ("chat:turn:t-1", "req-1", True)
+    assert (key, nx) == ("chat:turn:t-1", True)
     assert ex and ex > 0, "the lock needs a TTL or a crashed turn wedges the thread"
+
+
+def test_ownership_token_is_not_the_client_supplied_request_id():
+    """`request_id` comes straight off the wire (`data.get("request_id", "")`),
+    so it is not ours to trust as an ownership token — and it defaults to the
+    empty string, which means two clients that simply omit the field share a
+    token and can release each other's lock. Not adversarial; the default path.
+    """
+    redis = _FakeRedis()
+
+    _run(redis, _resolve_to_none, request_id="")
+
+    _key, token, _nx, _ex = redis.set_calls[0]
+    assert token, "an empty token lets any other tokenless turn release this lock"
+    assert token != "", "the lock must not inherit the client's blank request_id"
 
 
 def test_lock_released_when_turn_finishes():
@@ -193,7 +208,9 @@ def test_new_conversation_is_locked_once_its_thread_exists():
     _run(redis, _creates_thread, thread_id=None, request_id="req-1")
 
     assert redis.store.get("chat:turn:t-new") is None, "released at the end"
-    assert ("chat:turn:t-new", "req-1", True, 600) in redis.set_calls, (
+    assert [
+        (key, nx, ex) for key, _tok, nx, ex in redis.set_calls
+    ] == [("chat:turn:t-new", True, 600)], (
         "the freshly created thread must be locked for the rest of the turn"
     )
 

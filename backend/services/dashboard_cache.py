@@ -161,7 +161,7 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
             # stays the write target for the `_dash_*` cache below.
             src_scope = OwnerScope.from_connection(connection)
 
-            connector = get_connector_for_connection(connection)
+            connector = get_connector_for_connection(connection, db)
             try:
                 for widget in group_widgets:
                     w_id = widget["id"]

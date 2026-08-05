@@ -51,7 +51,7 @@ async def execute_sql_query(
 
     from backend.connectors.factory import get_connector_for_connection
 
-    connector = get_connector_for_connection(connection)
+    connector = get_connector_for_connection(connection, db)
 
     try:
         result = connector.execute_query(request.sql)

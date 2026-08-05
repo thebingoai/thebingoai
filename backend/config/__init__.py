@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # before a context reset. Still bounded — it concatenates across every
     # conversation of the day into one prompt.
     memory_history_max_messages: int = 500
+    # And the same reason `chat_history_max_chars` exists: 500 rows is 500 x 50k
+    # chars in the worst case. Wider than a chat turn's budget because a day's
+    # digest legitimately spans more conversations.
+    memory_history_max_chars: int = 400_000
 
     # Agent settings
     agent_recursion_limit: int = 100  # Max LangGraph ReAct loop steps per agent invocation

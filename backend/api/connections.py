@@ -813,7 +813,7 @@ def refresh_connection_schema(
         )
 
     try:
-        with get_connector_for_connection(connection) as connector:
+        with get_connector_for_connection(connection, db) as connector:
             schema_path = refresh_schema(
                 schema_key_for(connection),
                 connector,

@@ -11,16 +11,19 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.services.redis_lease import UNGUARDED, acquire_lease, release_lease
+from backend.services.redis_lease import (
+    UNGUARDED, acquire_lease, release_lease, renew_lease,
+)
 
 KEY = "bingo:test:lease"
 
 
 class _FakeRedis:
-    """SET NX EX + the release Lua, against a dict."""
+    """SET NX EX + the release/renew Lua, against a dict."""
 
     def __init__(self, initial=None, fail=False):
         self.store = dict(initial or {})
+        self.ttls: dict[str, int] = {}
         self.fail = fail
         self.evals: list[tuple] = []
 
@@ -30,14 +33,22 @@ class _FakeRedis:
         if nx and key in self.store:
             return None
         self.store[key] = value
+        self.ttls[key] = ex
         return True
 
-    def eval(self, script, numkeys, key, token):
+    def eval(self, script, numkeys, key, *argv):
+        # Both scripts are owner-checked, and both take the token as ARGV[1];
+        # renew passes the new TTL as ARGV[2]. Dispatch on what the script does
+        # rather than on argument count, so a rewritten script fails loudly.
+        token = argv[0]
         self.evals.append((key, token))
-        if self.store.get(key) == token:
+        if self.store.get(key) != token:
+            return 0
+        if "expire" in script:
+            self.ttls[key] = int(argv[1])
+        else:
             del self.store[key]
-            return 1
-        return 0
+        return 1
 
 
 def _with(client):
@@ -102,6 +113,49 @@ def test_release_is_a_noop_for_a_loser():
 
     assert r.store[KEY] == "winner"
     assert r.evals == [], "a loser must not even talk to redis"
+
+
+# ── renew is owner-checked too ──────────────────────────────────────────────
+
+def test_renew_extends_our_own_lease():
+    """Nothing bounds a chat turn, so one can outrun its TTL. Renewing keeps the
+    thread locked for as long as the turn it is guarding actually runs."""
+    r = _FakeRedis()
+    with _with(r):
+        token = acquire_lease(KEY, 600)
+        renew_lease(KEY, token, 600)
+
+    assert r.store[KEY] == token
+    assert r.ttls[KEY] == 600
+
+
+def test_renew_does_not_extend_someone_elses_lease():
+    """The bug a blind EXPIRE would reintroduce: our lease lapsed, a newer turn
+    claimed the key, and we keep pushing *their* expiry out on our schedule."""
+    r = _FakeRedis({KEY: "a-newer-turns-token"})
+    r.ttls[KEY] = 60
+    with _with(r):
+        renew_lease(KEY, "our-stale-token", 600)
+
+    assert r.ttls[KEY] == 60, "renewed a lease we no longer hold"
+
+
+def test_renew_is_a_noop_without_a_real_token():
+    r = _FakeRedis()
+    with _with(r):
+        renew_lease(KEY, None, 600)
+        renew_lease(KEY, UNGUARDED, 600)
+
+    assert r.evals == []
+
+
+def test_renew_never_raises_when_redis_dies():
+    class _DiesOnEval(_FakeRedis):
+        def eval(self, *a):
+            raise ConnectionError("redis down")
+
+    with _with(_DiesOnEval()):
+        renew_lease(KEY, "tok", 600)  # the TTL is still the backstop
 
 
 # ── fails open ──────────────────────────────────────────────────────────────
