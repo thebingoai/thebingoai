@@ -280,6 +280,21 @@ class BaseConnector(ABC):
             self._connection = self._create_connection(**kwargs)
         return self._connection
 
+    def _begin_schema_read(self, cursor) -> None:
+        """Hook: bound a catalog read before it runs. No-op by default.
+
+        Overridden where the engine can cap a statement per-transaction. The
+        catalog queries below look cheap but are not always: information_schema
+        views do per-column permission checks, so they degrade with catalog size
+        on databases with very many tables.
+        """
+
+    def _schema_cursor(self):
+        """Cursor for a catalog read, with any per-transaction bound applied."""
+        cursor = self._get_cursor(self._get_connection(), dict_mode=True)
+        self._begin_schema_read(cursor)
+        return cursor
+
     def get_schemas(self) -> List[str]:
         """
         Get list of schemas/databases (excluding system schemas).
@@ -287,8 +302,7 @@ class BaseConnector(ABC):
         Returns:
             List of schema names
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         cursor.execute("""
             SELECT schema_name
@@ -322,8 +336,7 @@ class BaseConnector(ABC):
         Returns:
             List of table names
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         if schema is None:
             schema = self._default_schema()
@@ -353,8 +366,7 @@ class BaseConnector(ABC):
         Returns:
             TableSchema with columns and row count
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         if schema is None:
             schema = self._default_schema()
@@ -444,8 +456,7 @@ class BaseConnector(ABC):
         Returns:
             List of dicts with 'from_column', 'to_table', 'to_column'
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         if schema is None:
             schema = self._default_schema()

@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # provider's context limit rejected the turn outright, bricking that user's
     # chat until they reset it — permanent conversations cannot be deleted.
     chat_history_max_messages: int = 100
+    # A row cap alone does not bound the prompt: ChatRequest allows 50k chars per
+    # message, so 100 rows is up to 5M chars — well past any context window. A BI
+    # chat gets pasted CSVs and log dumps, so this is reachable in ordinary use.
+    # Chars, not tokens, on purpose: no per-provider tokenizer to keep in sync,
+    # and the bound only has to be safe, not exact. ~4 chars/token.
+    chat_history_max_chars: int = 200_000
     # The daily memory generator summarises history instead of replaying it into
     # a turn, so it wants a wider window than a chat turn and keeps the messages
     # before a context reset. Still bounded — it concatenates across every

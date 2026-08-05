@@ -158,8 +158,26 @@ class ConversationService:
             .limit(max_messages)
             .all()
         )
-        rows.reverse()
-        return rows
+
+        # Second bound, on size. The row cap above does not bound the assembled
+        # prompt — ChatRequest permits 50k chars per message, so the window can
+        # still exceed any context window on its own. Walking newest-first drops
+        # the oldest messages, which is the same end the row cap trims from.
+        #
+        # Chars rather than tokens: no per-provider tokenizer to keep in sync,
+        # and the bound only needs to be safe, not exact. The newest message is
+        # always kept even if it alone busts the budget — returning nothing would
+        # break the turn just as surely as sending too much.
+        kept = []
+        used = 0
+        for row in rows:
+            used += len(row.content or "")
+            if used > settings.chat_history_max_chars and kept:
+                break
+            kept.append(row)
+
+        kept.reverse()
+        return kept
 
     @staticmethod
     def list_conversations(

@@ -87,16 +87,27 @@ class MemoryGenerator:
                 "insights": []
             }
 
-        # Build conversation text
+        # Build conversation text.
+        #
+        # memory_history_max_messages is one budget for the whole prompt, not a
+        # per-conversation allowance: spending it per conversation would let a
+        # busy day assemble list_conversations' 100 threads (plus the permanent
+        # one) x the full allowance into a single LLM call. daily_conversations
+        # inherits list_conversations' updated_at-desc ordering, so the budget
+        # goes to the most recently active threads first.
         conversation_texts = []
+        remaining = settings.memory_history_max_messages
         for conv in daily_conversations:
+            if remaining <= 0:
+                break
             messages = ConversationService.get_conversation_history(
                 db, conv.thread_id, user_id,
-                limit=settings.memory_history_max_messages,
+                limit=remaining,
                 # A context reset means "start this conversation fresh", not
                 # "this day did not happen" — the summary needs the whole record.
                 since_reset=False,
             )
+            remaining -= len(messages)
             conv_text = f"Conversation (ID: {conv.thread_id}):\n"
             for msg in messages:
                 conv_text += f"  {msg.role}: {msg.content}\n"

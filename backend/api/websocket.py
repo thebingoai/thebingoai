@@ -6,12 +6,13 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from backend.database.session import SessionLocal, DetachedReadSessionLocal
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
-from backend.schemas.chat import ResolvedMention
+from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
@@ -665,6 +666,27 @@ async def _handle_chat_send(
         except Exception:
             pass
 
+    # One turn per *thread*, claimed before any of the expensive setup below
+    # (conversation resolve, context build, file processing, attachments).
+    #
+    # The endpoint's chat_tasks gate cannot cover this: it is socket-local, and
+    # turns are deliberately designed to outlive their socket. A client that
+    # drops mid-stream and resends after reconnecting arrives on a fresh socket
+    # with an empty set, and starts a second turn on a thread the first one is
+    # still writing to. thread_id is None only for a brand-new conversation,
+    # which has nothing to collide with.
+    turn_lock = f"chat:turn:{thread_id}" if thread_id else None
+    if turn_lock and not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+        await send({
+            "type": "chat.error",
+            "request_id": request_id,
+            "thread_id": thread_id,
+            "content": "A message is already being answered in this conversation.",
+            "error_code": "busy",
+        })
+        db.close()
+        return
+
     _credit_mgr = None
     try:
         # Resolve conversation and validate connections
@@ -674,6 +696,24 @@ async def _handle_chat_send(
         if conversation is None:
             return
         active_thread_id = conversation.thread_id
+
+        if turn_lock is None:
+            # This turn created the conversation, so there was no thread_id to
+            # claim above. Claim it now — a client that resends the *first*
+            # message of a conversation after a reconnect comes back carrying
+            # the thread_id this turn just created, and would otherwise sail
+            # straight past the gate.
+            turn_lock = f"chat:turn:{conversation.thread_id}"
+            if not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+                turn_lock = None  # someone else's lock — never release it
+                await send({
+                    "type": "chat.error",
+                    "request_id": request_id,
+                    "thread_id": conversation.thread_id,
+                    "content": "A message is already being answered in this conversation.",
+                    "error_code": "busy",
+                })
+                return
 
         # Build orchestrator context
         ctx = await build_orchestrator_context(
@@ -867,6 +907,15 @@ async def _handle_chat_send(
                 redis_client.delete(f"streaming:{active_thread_id}")
             except Exception:
                 pass
+        # Release the turn lock, but only if we still own it. A turn that
+        # outran its 600s TTL must not delete the lock a *later* turn has since
+        # claimed on the same thread.
+        if turn_lock:
+            try:
+                if redis_client.get(turn_lock) == request_id:
+                    redis_client.delete(turn_lock)
+            except Exception:
+                pass
         db.close()
 
 
@@ -981,9 +1030,31 @@ async def websocket_endpoint(ws: WebSocket):
 
             elif msg_type == "chat.send":
                 request_id = data.get("request_id", "")
-                thread_id = data.get("thread_id") or None
-                message = data.get("message", "").strip()
-                connection_ids = data.get("connection_ids", [])
+                # Validate through the same model the REST path uses, so the
+                # 50k-char cap applies on both. Unvalidated, a socket frame runs
+                # to the websockets default of 16 MiB. This also coerces
+                # connection_ids to ints — they reach a SQL IN () clause.
+                #
+                # mentions stays out of this on purpose: the loop below *drops*
+                # invalid mentions with a warning, where the model would reject
+                # the whole message. file_ids is not a ChatRequest field.
+                try:
+                    _req = ChatRequest.model_validate({
+                        "message": data.get("message", ""),
+                        "connection_ids": data.get("connection_ids", []),
+                        "thread_id": data.get("thread_id") or None,
+                    })
+                except ValidationError as exc:
+                    await ws.send_text(json.dumps({
+                        "type": "chat.error",
+                        "request_id": request_id,
+                        "thread_id": data.get("thread_id") or "",
+                        "content": f"Invalid message: {exc.errors()[0]['msg']}",
+                    }))
+                    continue
+                thread_id = _req.thread_id
+                message = _req.message.strip()
+                connection_ids = _req.connection_ids
                 file_ids = data.get("file_ids", [])
                 raw_mentions = data.get("mentions") or []
                 mentions: list[ResolvedMention] = []
@@ -1005,9 +1076,12 @@ async def websocket_endpoint(ws: WebSocket):
                 if chat_tasks:
                     # The composer is disabled while a turn streams, so a second
                     # send on the same socket is a duplicate or a scripted
-                    # client. One turn per socket stops a single authenticated
-                    # connection from fanning out N orchestrator runs on the
-                    # pod's only event loop.
+                    # client. Cheap short-circuit only — being socket-local it
+                    # cannot survive a reconnect, so it is not a concurrency
+                    # bound: _handle_chat_send claims a Redis lock on the thread
+                    # for that. Neither gate caps a client that opens N sockets
+                    # and starts N *new* conversations; that needs a per-user
+                    # cap, which does not exist yet.
                     await ws.send_text(json.dumps({
                         "type": "chat.error",
                         "request_id": request_id,

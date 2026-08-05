@@ -60,16 +60,33 @@ def get_connector_for_connection(connection: DatabaseConnection, db_session=None
     Pass ``db_session`` when the caller already holds one. Plane-backed
     connectors resolve their DataPlane during construction, which needs a
     session; without one they open their own *while the caller still holds its
-    own*, doubling peak checkouts on every query. Every ``from_connection``
-    override accepts the argument so this can be passed unconditionally.
+    own*, doubling peak checkouts on every query. It is forwarded only to
+    overrides that declare it — see below.
     """
+    from inspect import signature
+
     db_type_key = connection.db_type.lower() if isinstance(connection.db_type, str) else connection.db_type
     reg = _CONNECTORS.get(db_type_key)
     if not reg:
         raise ValueError(f"No connector registered for type: {connection.db_type}")
 
     if 'from_connection' in vars(reg.connector_class):
-        return reg.connector_class.from_connection(connection, db_session=db_session)
+        from_connection = reg.connector_class.from_connection
+        # `db_session` is optional in the connector contract, not required.
+        # ConnectorRegistration only asks for a `from_connection` — a
+        # connector_class need not subclass BaseConnector — so an out-of-tree
+        # plugin may still carry the original single-argument signature, and
+        # passing it unconditionally raises TypeError on those.
+        #
+        # **kwargs counts as accepting it: that covers decorated overrides and
+        # test doubles (a MagicMock reports `(*args, **kwargs)`), which would
+        # otherwise silently lose the session the caller meant to hand down.
+        params = signature(from_connection).parameters
+        if 'db_session' in params or any(
+            p.kind is p.VAR_KEYWORD for p in params.values()
+        ):
+            return from_connection(connection, db_session=db_session)
+        return from_connection(connection)
 
     return reg.connector_class(
         host=connection.host,

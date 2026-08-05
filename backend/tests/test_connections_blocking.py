@@ -231,8 +231,12 @@ class _FakeCursor:
         self._count_result = count_result
         self._pending = None
         self.connection = _FakeConn()
+        self.executed: list[str] = []
 
     def execute(self, sql, _params=None):
+        self.executed.append(sql)
+        if sql.lstrip().upper().startswith("SET "):
+            return  # session/transaction settings answer nothing
         if "pg_class" in sql:
             self._pending = [self._reltuples]
             return
@@ -254,13 +258,28 @@ def _pg():
 
 def test_the_schema_path_is_capped_server_side():
     """execute_query issues `SET LOCAL statement_timeout`; the schema path never
-    did, so get_table_schema's 6 round-trips per table were unbounded on the
-    server. The connection-level default covers them."""
+    did, so its exact COUNT(*) fallback was unbounded on the server.
+
+    The cap is applied per-transaction, not as a connection-level default: a
+    `-c statement_timeout` startup option is refused outright by PgBouncer
+    ("unsupported startup parameter: options"), which would stop every
+    pooler-fronted source database from connecting at all.
+    """
     from backend.config import settings
 
     kwargs = _pg()._get_connect_kwargs()
+    assert "options" not in kwargs
 
-    assert kwargs["options"] == f"-c statement_timeout={settings.query_timeout_ms}"
+    cursor = _FakeCursor(reltuples=0, count_result=17)
+    conn = _pg()
+    conn._get_connection = lambda: object()
+    conn._get_cursor = lambda _c, dict_mode=False: cursor
+    conn._schema_cursor()
+
+    assert (
+        f"SET LOCAL statement_timeout = '{settings.query_timeout_ms}'"
+        in cursor.executed
+    )
 
 
 def test_row_count_uses_the_planner_estimate_and_never_scans():

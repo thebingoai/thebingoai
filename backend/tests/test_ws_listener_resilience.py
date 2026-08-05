@@ -447,3 +447,91 @@ def test_disconnecting_does_not_cancel_a_running_turn(ws_client, monkeypatch):
     assert outcome == ["completed"], (
         f"the turn must outlive the socket, got {outcome}"
     )
+
+
+# ---------------------------------------------------------------------------
+# chat.send payload validation (shared with the REST path)
+# ---------------------------------------------------------------------------
+
+
+def test_an_oversized_message_is_rejected(ws_client, monkeypatch):
+    """REST caps a message at ChatRequest's max_length; the socket used to read
+    the field raw, so a frame ran to the websockets default of 16 MiB."""
+    from backend.schemas.chat import ChatRequest
+
+    client, ws_api = ws_client
+    calls = []
+
+    async def _handler(*_a, **_kw):
+        calls.append(1)
+
+    monkeypatch.setattr(ws_api, "_handle_chat_send", _handler)
+
+    cap = next(
+        m.max_length
+        for m in ChatRequest.model_fields["message"].metadata
+        if hasattr(m, "max_length")
+    )
+
+    with client.websocket_connect("/ws?token=t") as sock:
+        sock.send_json({
+            "type": "chat.send", "request_id": "r1", "message": "x" * (cap + 1),
+        })
+        # Trailing ping so a *missing* rejection fails this test instead of
+        # hanging it — the receive loop is sequential, so a real rejection
+        # always arrives before the pong.
+        sock.send_json({"type": "ping"})
+        reply = sock.receive_json()
+
+    assert reply["type"] == "chat.error", f"oversized message was accepted, got {reply}"
+    assert reply["request_id"] == "r1"
+    assert not calls, "an oversized message must not reach the orchestrator"
+
+
+def test_non_integer_connection_ids_are_rejected(ws_client, monkeypatch):
+    """connection_ids reaches a SQL IN () clause — the socket used to forward it
+    unvalidated."""
+    client, ws_api = ws_client
+    calls = []
+
+    async def _handler(*_a, **_kw):
+        calls.append(1)
+
+    monkeypatch.setattr(ws_api, "_handle_chat_send", _handler)
+
+    with client.websocket_connect("/ws?token=t") as sock:
+        sock.send_json({
+            "type": "chat.send", "request_id": "r1", "message": "hi",
+            "connection_ids": ["not-an-int"],
+        })
+        sock.send_json({"type": "ping"})  # see the note above — fail, don't hang
+        reply = sock.receive_json()
+
+    assert reply["type"] == "chat.error", f"bad connection_ids accepted, got {reply}"
+    assert not calls
+
+
+def test_a_normal_message_still_passes(ws_client, monkeypatch):
+    """Guard against the validation rejecting valid traffic."""
+    client, ws_api = ws_client
+    seen = []
+    dispatched = threading.Event()
+
+    async def _handler(_ws, _user, request_id, thread_id, message, connection_ids, **_kw):
+        seen.append((request_id, thread_id, message, connection_ids))
+        dispatched.set()
+
+    monkeypatch.setattr(ws_api, "_handle_chat_send", _handler)
+
+    with client.websocket_connect("/ws?token=t") as sock:
+        sock.send_json({
+            "type": "chat.send", "request_id": "r1", "message": "  hi  ",
+            "thread_id": "t-1", "connection_ids": [1, "2"],
+        })
+        # The turn is dispatched fire-and-forget, so the pong can beat it —
+        # wait on the handler itself rather than racing it.
+        assert dispatched.wait(2.0), "a valid message was rejected"
+
+    assert seen == [("r1", "t-1", "hi", [1, 2])], (
+        "message must still be stripped and connection_ids coerced to ints"
+    )
