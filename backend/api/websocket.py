@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import time
 import uuid
 from typing import Optional
 
@@ -689,7 +688,6 @@ async def _handle_chat_send(
     # lock. request_id stays on the wire payload, where it belongs.
     turn_lock = f"chat:turn:{thread_id}" if thread_id else None
     turn_token = uuid.uuid4().hex
-    _lock_renewed_at = time.monotonic()
     if turn_lock and not redis_client.set(turn_lock, turn_token, nx=True, ex=600):
         await send({
             "type": "chat.error",
@@ -700,6 +698,24 @@ async def _handle_chat_send(
         })
         db.close()
         return
+
+    # Hold the lock on a timer, not on the event stream. A tool that runs longer
+    # than the TTL emits nothing between `on_tool_start` and `on_tool_end` — the
+    # orchestrator discards sub-agent tokens (graph.py) — and sub-agent tools are
+    # where the long turns are, so renewing off events would lapse exactly when
+    # it matters. Reads `turn_lock` from the enclosing scope because a turn that
+    # creates its conversation only claims one below, after the first tick.
+    lock_lost = False
+
+    async def _hold_turn_lock() -> None:
+        nonlocal lock_lost
+        while True:
+            await asyncio.sleep(_LOCK_RENEW_EVERY_S)
+            if turn_lock and not renew_lease(turn_lock, turn_token, 600):
+                lock_lost = True
+                return
+
+    lock_heartbeat = asyncio.create_task(_hold_turn_lock())
 
     _credit_mgr = None
     try:
@@ -854,16 +870,10 @@ async def _handle_chat_send(
             temperature=profile_temperature,
             max_tokens=profile_max_tokens,
         ):
-            # Keep the turn lock alive for as long as the turn actually runs.
-            # Nothing bounds a turn — the only asyncio.wait_for timeouts are
-            # per-skill and per-judge — so a long dashboard build can outlive the
-            # 600s TTL, and the moment it lapses a reconnect-resend claims the
-            # thread and runs a second turn against it concurrently, double-
-            # charging the user. Renewed off the event stream rather than by a
-            # background heartbeat, so it cannot outlive the turn it guards.
-            if turn_lock and time.monotonic() - _lock_renewed_at > _LOCK_RENEW_EVERY_S:
-                _lock_renewed_at = time.monotonic()
-                renew_lease(turn_lock, turn_token, 600)
+            # Stop as soon as the thread stops being ours — every further event
+            # costs tokens on an answer that is about to be discarded.
+            if lock_lost:
+                break
 
             # Map SSE event type → WS event type
             event_type = event.get("type", "")
@@ -905,6 +915,21 @@ async def _handle_chat_send(
             if event_type == "token":
                 final_message += event.get("content", "")
 
+        # Fence: a turn that lost its lock is no longer the only one writing to
+        # this thread. Finishing would persist a second answer into the same
+        # conversation and bill for it — the exact race the lock exists to
+        # prevent. Raising lands in the handler below, which finalizes the credit
+        # context with the exception, so nothing is charged.
+        if lock_lost:
+            logger.warning(
+                "chat turn %s lost its lock on thread %s; discarding the answer",
+                request_id, active_thread_id,
+            )
+            raise RuntimeError(
+                "A newer message took over this conversation, so this answer "
+                "was discarded. Please send it again."
+            )
+
         # Complete the turn in order: persist → charge → forward `done` →
         # post-process. Persist failure raises out of here BEFORE the charge, so
         # the handler below finalizes with the exception (no charge). _credit_mgr
@@ -926,6 +951,9 @@ async def _handle_chat_send(
         logger.exception(f"chat.send error: {e}")
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:
+        # Scoped to the turn: cancelled here, in the same block that releases the
+        # lock, so a renewer can never keep alive a thread a later turn owns.
+        lock_heartbeat.cancel()
         # Clear streaming flag (may not exist if error occurred before streaming started)
         if active_thread_id:
             try:

@@ -123,8 +123,9 @@ def test_renew_extends_our_own_lease():
     r = _FakeRedis()
     with _with(r):
         token = acquire_lease(KEY, 600)
-        renew_lease(KEY, token, 600)
+        still_ours = renew_lease(KEY, token, 600)
 
+    assert still_ours is True
     assert r.store[KEY] == token
     assert r.ttls[KEY] == 600
 
@@ -135,27 +136,30 @@ def test_renew_does_not_extend_someone_elses_lease():
     r = _FakeRedis({KEY: "a-newer-turns-token"})
     r.ttls[KEY] = 60
     with _with(r):
-        renew_lease(KEY, "our-stale-token", 600)
+        still_ours = renew_lease(KEY, "our-stale-token", 600)
 
+    assert still_ours is False, "the caller must learn it lost the lease"
     assert r.ttls[KEY] == 60, "renewed a lease we no longer hold"
 
 
 def test_renew_is_a_noop_without_a_real_token():
     r = _FakeRedis()
     with _with(r):
-        renew_lease(KEY, None, 600)
-        renew_lease(KEY, UNGUARDED, 600)
+        assert renew_lease(KEY, None, 600) is True
+        assert renew_lease(KEY, UNGUARDED, 600) is True
 
     assert r.evals == []
 
 
-def test_renew_never_raises_when_redis_dies():
+def test_renew_fails_open_when_redis_dies():
+    """Nothing else can have claimed the lease while Redis is unreachable, so
+    reporting a loss here would abandon live work for no gain."""
     class _DiesOnEval(_FakeRedis):
         def eval(self, *a):
             raise ConnectionError("redis down")
 
     with _with(_DiesOnEval()):
-        renew_lease(KEY, "tok", 600)  # the TTL is still the backstop
+        assert renew_lease(KEY, "tok", 600) is True
 
 
 # ── fails open ──────────────────────────────────────────────────────────────

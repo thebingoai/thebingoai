@@ -215,6 +215,49 @@ def test_new_conversation_is_locked_once_its_thread_exists():
     )
 
 
+# ── the lock is held for as long as the turn runs ───────────────────────────
+
+def test_the_lock_is_renewed_without_any_stream_events():
+    """The renewal must not ride the event stream.
+
+    `_run` never reaches the orchestrator — `_resolve_conversation` bails — so
+    this turn emits *zero* stream events. A renewal happening anyway is the
+    whole point: a tool that runs longer than the TTL emits nothing between
+    `on_tool_start` and `on_tool_end` (graph.py discards sub-agent tokens), and
+    an event-driven renewal would let the lock lapse mid-turn.
+    """
+    redis = _FakeRedis()
+    renewals = []
+
+    async def _slow_resolve(*args, **kwargs):
+        await asyncio.sleep(0.05)
+        return None, False
+
+    with patch.object(ws_mod, "_LOCK_RENEW_EVERY_S", 0.005), \
+         patch.object(ws_mod, "renew_lease",
+                      lambda key, token, ttl: renewals.append(key) or True):
+        _run(redis, _slow_resolve, request_id="req-1")
+
+    assert renewals, "the lock was never renewed during a turn with no events"
+
+
+def test_the_renewal_does_not_outlive_the_turn():
+    """Cancelled in the same `finally` that releases the lock — otherwise it
+    keeps a thread alive that a *later* turn now owns."""
+    redis = _FakeRedis()
+    renewals = []
+
+    with patch.object(ws_mod, "_LOCK_RENEW_EVERY_S", 0.005), \
+         patch.object(ws_mod, "renew_lease",
+                      lambda key, token, ttl: renewals.append(key) or True):
+        _run(redis, _resolve_to_none, request_id="req-1")
+        after_turn = len(renewals)
+        # Give a leaked heartbeat every chance to tick again.
+        asyncio.run(asyncio.sleep(0.05))
+
+    assert len(renewals) == after_turn, "the renewal task outlived its turn"
+
+
 def test_resend_after_reconnect_on_a_just_created_thread_is_rejected():
     """The reconnect case that a lock keyed only on the inbound thread_id misses."""
     redis = _FakeRedis({"chat:turn:t-new": "req-1"})  # first turn still running

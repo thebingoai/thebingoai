@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.config import settings
+from backend.memory.generator import MEMORY_GENERATION_PROMPT
 
 DAY = datetime(2026, 1, 1, 12, 0, 0)
 USER_ID = "user-1"
@@ -78,6 +79,59 @@ def _run(generator, conversations, per_conversation_messages):
         asyncio.run(generator.generate_daily_memory(object(), USER_ID, DAY))
 
     return limits, sum(min(per_conversation_messages, lim) for lim in limits)
+
+
+def _run_capturing_prompt(generator, conversations, messages_per_conv, chars_per_message):
+    """Same drive as `_run`, but returns the prompt actually handed to the LLM.
+
+    The row budget alone cannot bound that prompt — a row carries up to 50k
+    chars — so the assembled size is what has to be asserted on.
+    """
+    from backend.memory import generator as gen_mod
+
+    seen = {}
+
+    def _fake_history(db, thread_id, user_id, limit=None, since_reset=True):
+        n = min(messages_per_conv, limit)
+        return [
+            SimpleNamespace(role="user", content="x" * chars_per_message)
+            for _ in range(n)
+        ]
+
+    async def _fake_chat(messages):
+        seen["prompt"] = messages[0]["content"]
+        return '{"summary": "s", "common_questions": [], "common_tables": [], ' \
+               '"query_patterns": [], "corrections": [], "insights": []}'
+
+    generator.llm.chat = _fake_chat
+
+    with patch.object(gen_mod.ConversationService, "list_conversations",
+                      return_value=(conversations, False)), \
+         patch.object(gen_mod.ConversationService, "get_or_create_permanent_conversation",
+                      return_value=None), \
+         patch.object(gen_mod.ConversationService, "get_conversation_history",
+                      side_effect=_fake_history), \
+         patch.object(gen_mod.TokenTrackingService, "track_usage"):
+        asyncio.run(generator.generate_daily_memory(object(), USER_ID, DAY))
+
+    return seen["prompt"]
+
+
+def test_one_conversation_cannot_bust_the_char_budget(generator):
+    """The budget is checked at the top of the loop but spent after the whole
+    conversation is appended, so a single fat conversation goes in entire and
+    the check only stops the *next* one. Bound the assembly, not just the entry.
+    """
+    budget = settings.memory_history_max_chars
+    # 60 rows x 20k chars = 1.2M, but only 60 rows — the row budget (500) never
+    # trips, so nothing but the char budget is standing in the way.
+    prompt = _run_capturing_prompt(
+        generator, [_conv(0)], messages_per_conv=60, chars_per_message=20_000,
+    )
+
+    assert len(prompt) <= budget + len(MEMORY_GENERATION_PROMPT), (
+        f"assembled {len(prompt)} chars against a {budget} budget"
+    )
 
 
 def test_budget_is_global_not_per_conversation(generator):

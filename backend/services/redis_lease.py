@@ -77,18 +77,23 @@ def acquire_lease(key: str, ttl: int) -> Optional[str]:
     return token if held else None
 
 
-def renew_lease(key: str, token: Optional[str], ttl: int) -> None:
+def renew_lease(key: str, token: Optional[str], ttl: int) -> bool:
     """Push *key*'s expiry back out to *ttl*, but only while we still hold it.
 
     For holders whose work has no upper bound — a chat turn nothing times out —
     where the alternative is a TTL long enough to cover the worst case, which is
     also long enough to wedge the resource after a crash.
 
-    Never raises, for the same reason `release_lease` doesn't: a missed renewal
-    costs the lease, not the work.
+    Returns whether the lease is still ours. **False means someone else now owns
+    it**, so the caller's work is no longer exclusive and should stop rather than
+    finish alongside the new holder.
+
+    Never raises. An unreachable Redis returns True: nothing else can have taken
+    the lease while Redis is down either, so failing open here costs nothing,
+    where failing closed would abandon live work on a blip.
     """
     if token is None or token == UNGUARDED:
-        return
+        return True
 
     try:
         import redis as syncredis
@@ -96,9 +101,10 @@ def renew_lease(key: str, token: Optional[str], ttl: int) -> None:
         from backend.config import settings
 
         client = syncredis.from_url(settings.redis_url, decode_responses=True)
-        client.eval(_RENEW_LUA, 1, key, token, ttl)
+        return bool(client.eval(_RENEW_LUA, 1, key, token, ttl))
     except Exception:
         logger.warning("Failed to renew lease %s", key, exc_info=True)
+        return True
 
 
 def release_lease(key: str, token: Optional[str]) -> None:

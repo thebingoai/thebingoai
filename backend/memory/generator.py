@@ -112,9 +112,15 @@ class MemoryGenerator:
                 since_reset=False,
             )
             remaining -= len(messages)
+            # Spend the char budget *while* assembling, not after. Deducting at
+            # the end lets one fat conversation in whole and only stops the
+            # next, so the prompt overshoots by up to a full conversation.
             conv_text = f"Conversation (ID: {conv.thread_id}):\n"
             for msg in messages:
-                conv_text += f"  {msg.role}: {msg.content}\n"
+                line = f"  {msg.role}: {msg.content}\n"
+                if len(conv_text) + len(line) > remaining_chars:
+                    break
+                conv_text += line
             remaining_chars -= len(conv_text)
             conversation_texts.append(conv_text)
 
