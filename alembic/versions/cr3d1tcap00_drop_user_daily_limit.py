@@ -23,6 +23,11 @@ gone, not before. The removal is therefore split across two releases:
 Do not restore the drop here — add it as a new revision instead, so databases
 that already ran this one still upgrade cleanly.
 
+Emptying this revision does not, on its own, reach a database that ran it in
+its original form: that database is stamped ``cr3d1tcap00`` already, so alembic
+never re-runs it and the column stays gone. ``cr3d1tcap01`` is the successor
+that puts the column back where it is missing — read the two together.
+
 Revision ID: cr3d1tcap00
 Revises: w1dgc4p0001
 Create Date: 2026-08-04 00:00:00.000000
