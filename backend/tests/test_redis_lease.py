@@ -55,6 +55,34 @@ def _with(client):
     return patch("redis.from_url", return_value=client)
 
 
+# ── every call is bounded ───────────────────────────────────────────────────
+
+def test_every_lease_call_bounds_its_socket():
+    """redis-py defaults `socket_timeout` and `socket_connect_timeout` to None,
+    i.e. block until the OS gives up — minutes, on a blackholed host.
+
+    A holder that renews on a timer can only enforce a deadline if the renewal
+    itself returns. Unbounded, a hung `eval` parks the whole heartbeat: the
+    deadline is never evaluated, the lease is never declared lost, and the turn
+    finishes and bills on a thread another replica has already taken over.
+    """
+    seen = []
+
+    def _record(url, **kwargs):
+        seen.append(kwargs)
+        return _FakeRedis({KEY: "tok"})
+
+    with patch("redis.from_url", _record):
+        acquire_lease(KEY, 900)
+        renew_lease(KEY, "tok", 900)
+        release_lease(KEY, "tok")
+
+    assert len(seen) == 3, "expected acquire, renew and release to each connect"
+    for kwargs in seen:
+        assert kwargs.get("socket_timeout"), "unbounded read — can hang forever"
+        assert kwargs.get("socket_connect_timeout"), "unbounded connect"
+
+
 # ── exclusion ───────────────────────────────────────────────────────────────
 
 def test_only_one_replica_wins():

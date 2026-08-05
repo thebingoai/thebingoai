@@ -53,11 +53,24 @@ async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
     rather than just after.
     """
     last_confirmed = time.monotonic()
+
+    def _certainly_expired() -> bool:
+        return time.monotonic() - last_confirmed >= _TURN_LOCK_TTL_S - _LOCK_RENEW_EVERY_S
+
     while True:
         await asyncio.sleep(_LOCK_RENEW_EVERY_S)
         key = key_of()
         if not key:
             continue
+
+        # Judged *before* paying for another attempt as well as after. Attempts
+        # land every `_LOCK_RENEW_EVERY_S + attempt_cost`, so checking only on
+        # the way out lets detection land after the key has already expired —
+        # and a starved event loop stretches the sleep the same way. Redis is
+        # socket-bounded (redis_lease._SOCKET_BOUNDS), which keeps the cost
+        # small; this keeps it from mattering at all.
+        if _certainly_expired():
+            break
 
         state = renew_lease(key, token, _TURN_LOCK_TTL_S)
         if state is True:
@@ -66,13 +79,14 @@ async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
         if state is False:
             lost.set()
             return
-        if time.monotonic() - last_confirmed >= _TURN_LOCK_TTL_S - _LOCK_RENEW_EVERY_S:
-            logger.warning(
-                "turn lock %s unconfirmed for ~%ss; treating it as lost",
-                key, _TURN_LOCK_TTL_S - _LOCK_RENEW_EVERY_S,
-            )
-            lost.set()
-            return
+        if _certainly_expired():
+            break
+
+    logger.warning(
+        "turn lock %s unconfirmed for ~%ss; treating it as lost",
+        key_of(), _TURN_LOCK_TTL_S - _LOCK_RENEW_EVERY_S,
+    )
+    lost.set()
 
 
 async def _until_lock_lost(agen, lost: asyncio.Event):
@@ -80,8 +94,15 @@ async def _until_lock_lost(agen, lost: asyncio.Event):
 
     Checking a flag once per event cannot notice a loss *between* events, and a
     long-running tool is precisely a gap between events — so the wait has to
-    race the stream itself. Cancelling the pending `__anext__` is what actually
-    stops the tool: the CancelledError unwinds into whatever it is awaiting.
+    race the stream itself.
+
+    Cancelling the pending `__anext__` does **not** reliably stop the tool. The
+    long ones offload to a thread (`agents/dashboard_tools.py` uses
+    `asyncio.to_thread`), and a thread already running cannot be cancelled — so
+    the wait below can take as long as that query does. What this guarantees is
+    that nothing further is *consumed*, which is what the fencing downstream
+    relies on: the turn neither persists nor charges. Stopping the work itself
+    would need cancellation support inside the tools.
     """
     it = agen.__aiter__()
     lost_wait = asyncio.ensure_future(lost.wait())
@@ -96,9 +117,9 @@ async def _until_lock_lost(agen, lost: asyncio.Event):
                 # Wait for the cancellation to actually land before the `finally`
                 # calls aclose(). `cancel()` only *requests* it, so closing while
                 # the step is still unwinding raises "asynchronous generator is
-                # already running" — and the tool would keep running, which is
-                # the one thing this function exists to prevent. asyncio.wait
+                # already running", leaving the generator open. asyncio.wait
                 # never re-raises the task's exception, so no guard is needed.
+                # For a thread-offloaded tool this waits out the whole call.
                 await asyncio.wait({nxt})
                 return
             try:

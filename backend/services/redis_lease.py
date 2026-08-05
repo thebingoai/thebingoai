@@ -30,6 +30,17 @@ logger = logging.getLogger(__name__)
 # release" from "we hold a real lease".
 UNGUARDED = "__unguarded__"
 
+# redis-py defaults both of these to None — block until the OS gives up, which
+# on a blackholed host (SYN dropped, node wedged) is minutes.
+#
+# That is load-bearing for `renew_lease`, not a nicety. A holder renewing on a
+# timer can only enforce a deadline if the renewal *returns*; an unbounded eval
+# parks the whole heartbeat, so the deadline is never evaluated, the lease is
+# never declared lost, and the holder finishes work on a resource another
+# replica has already taken over. Bounded well under one renewal interval so a
+# slow attempt cannot push detection past the key's own expiry.
+_SOCKET_BOUNDS = {"socket_connect_timeout": 2, "socket_timeout": 3}
+
 # Release only what we still hold: once the TTL lapses the key belongs to
 # whoever took it next, and a blind DEL would evict their lease.
 _RELEASE_LUA = """
@@ -66,7 +77,7 @@ def acquire_lease(key: str, ttl: int) -> Optional[str]:
 
     token = uuid.uuid4().hex
     try:
-        client = syncredis.from_url(settings.redis_url, decode_responses=True)
+        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
         held = client.set(key, token, nx=True, ex=ttl)
     except Exception:
         logger.warning(
@@ -109,7 +120,7 @@ def renew_lease(key: str, token: Optional[str], ttl: int) -> Optional[bool]:
 
         from backend.config import settings
 
-        client = syncredis.from_url(settings.redis_url, decode_responses=True)
+        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
         return bool(client.eval(_RENEW_LUA, 1, key, token, ttl))
     except Exception:
         logger.warning("Failed to renew lease %s", key, exc_info=True)
@@ -131,7 +142,7 @@ def release_lease(key: str, token: Optional[str]) -> None:
 
         from backend.config import settings
 
-        client = syncredis.from_url(settings.redis_url, decode_responses=True)
+        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
         client.eval(_RELEASE_LUA, 1, key, token)
     except Exception:
         logger.warning("Failed to release lease %s", key, exc_info=True)

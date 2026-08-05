@@ -134,6 +134,24 @@ def test_one_conversation_cannot_bust_the_char_budget(generator):
     )
 
 
+def test_no_empty_conversation_stubs_once_the_budget_is_gone(generator):
+    """The header went in before any budget check, so a conversation with no
+    room left still contributed `Conversation (ID: …):` — pushing the budget
+    slightly negative and padding the prompt with stubs that say nothing."""
+    budget = settings.memory_history_max_chars
+    # One conversation eats the budget; the next 20 have nothing left to spend.
+    prompt = _run_capturing_prompt(
+        generator, [_conv(i) for i in range(21)],
+        messages_per_conv=30, chars_per_message=20_000,
+    )
+
+    # 30 x 20k = 600k per conversation against a 400k budget, so exactly one
+    # conversation fits. Every further header is a stub carrying no messages.
+    headers = prompt.count("Conversation (ID:")
+    assert headers == 1, f"{headers - 1} empty conversation headers in the prompt"
+    assert len(prompt) <= budget + len(MEMORY_GENERATION_PROMPT)
+
+
 def test_budget_is_global_not_per_conversation(generator):
     budget = settings.memory_history_max_messages
     conversations = [_conv(i) for i in range(101)]

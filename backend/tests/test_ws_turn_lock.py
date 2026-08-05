@@ -15,6 +15,7 @@ are driven with `asyncio.run`, matching test_ws_listener_resilience.py.
 
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -299,6 +300,45 @@ def test_a_confirmed_renewal_resets_the_deadline():
     """A flaky-but-reachable Redis must not kill long turns: every confirmed
     renewal restarts the clock."""
     assert _hold_for([True, None] * 40, ttl=0.05, every=0.01, run_for=0.3) is False
+
+
+def test_a_slow_renewal_cannot_push_detection_past_the_expiry():
+    """Bounding the socket is only half of it: the attempt still costs time, and
+    the deadline has to be judged *before* paying that cost again.
+
+    Attempts land every `every + attempt_cost`, so checking only after an
+    attempt returns means detection can land after the key has already expired —
+    the window where another replica owns the thread and this turn still
+    finishes and bills. Here: TTL 0.4, interval 0.05, deadline 0.35, attempts
+    costing 0.10. Checking only afterwards first trips at 0.45, i.e. 0.05s after
+    the key expired.
+    """
+    ttl, every, cost = 0.4, 0.05, 0.10
+    tripped_at = []
+
+    def _slow_unknown(*_a):
+        time.sleep(cost)  # a reachable-but-slow Redis, already socket-bounded
+        return None
+
+    async def _drive():
+        lost = asyncio.Event()
+        started = time.monotonic()
+        task = asyncio.create_task(ws_mod._hold_turn_lock(lambda: "k", "tok", lost))
+        try:
+            await asyncio.wait_for(lost.wait(), timeout=5)
+        finally:
+            task.cancel()
+        tripped_at.append(time.monotonic() - started)
+
+    with patch.object(ws_mod, "_LOCK_RENEW_EVERY_S", every), \
+         patch.object(ws_mod, "_TURN_LOCK_TTL_S", ttl), \
+         patch.object(ws_mod, "renew_lease", _slow_unknown):
+        asyncio.run(_drive())
+
+    assert tripped_at[0] < ttl, (
+        f"gave up at {tripped_at[0]:.3f}s, after the key expired at {ttl}s — "
+        "another holder owned the thread while this turn kept working"
+    )
 
 
 def test_a_confirmed_loss_ends_the_turn_at_once():

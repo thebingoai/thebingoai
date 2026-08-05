@@ -115,14 +115,23 @@ class MemoryGenerator:
             # Spend the char budget *while* assembling, not after. Deducting at
             # the end lets one fat conversation in whole and only stops the
             # next, so the prompt overshoots by up to a full conversation.
-            conv_text = f"Conversation (ID: {conv.thread_id}):\n"
+            header = f"Conversation (ID: {conv.thread_id}):\n"
+            lines = []
+            used = len(header)
             for msg in messages:
                 line = f"  {msg.role}: {msg.content}\n"
-                if len(conv_text) + len(line) > remaining_chars:
+                if used + len(line) > remaining_chars:
                     break
-                conv_text += line
-            remaining_chars -= len(conv_text)
-            conversation_texts.append(conv_text)
+                lines.append(line)
+                used += len(line)
+            if not lines:
+                # Nothing fits. Emitting the header alone would push the budget
+                # negative and pad the prompt with stubs that say nothing — and
+                # since the budget only shrinks, no later conversation fits
+                # either.
+                break
+            remaining_chars -= used
+            conversation_texts.append(header + "".join(lines))
 
         all_conversations = "\n\n".join(conversation_texts)
 
