@@ -912,15 +912,6 @@ _BACKFILL_LEASE_KEY = "bingo:template_backfill:lease"
 # paid twice. Add a renewal heartbeat only if that actually shows up in logs.
 _BACKFILL_LEASE_TTL = 900  # seconds
 
-# Release only what we still hold: once the TTL lapses the key belongs to
-# whoever took it next, and a blind DEL would evict their lease.
-_RELEASE_LEASE_LUA = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
-    return redis.call('del', KEYS[1])
-end
-return 0
-"""
-
 
 def run_startup_backfill() -> None:
     """Run the whole startup template backfill: every loaded plugin, then the
@@ -935,13 +926,8 @@ def run_startup_backfill() -> None:
     boot, and queueing would just recreate the pile-up.
 
     Redis rather than `pg_try_advisory_lock`, which is what this first shipped
-    with and is wrong here: `DATABASE_URL` points at a **transaction-mode**
-    pooler (Supabase :6543, DO :25061), where consecutive statements need not
-    land on the same server session. The acquire and the release can hit
-    different backends, so replicas both proceed *and* the lock leaks onto a
-    pooled connection that nothing will ever unlock. `database/session.py` names
-    exactly this constraint. `services/seed.py:142` still takes an advisory lock
-    on that engine and has the same latent bug.
+    with and does not hold on this deployment — see `services/redis_lease.py`
+    for the measured mechanism.
 
     Also cheaper: nothing holds a database connection for the duration, which
     matters against the managed PG's 25-connection cap.
@@ -953,25 +939,12 @@ def run_startup_backfill() -> None:
     lost — every failure path logs instead.
     """
     try:
-        import uuid
-
-        import redis as syncredis
-
-        from backend.config import settings
         from backend.database.session import SessionLocal
         from backend.plugins.loader import backfill_all_plugin_templates
+        from backend.services.redis_lease import acquire_lease, release_lease
 
-        token = uuid.uuid4().hex
-        try:
-            client = syncredis.from_url(settings.redis_url, decode_responses=True)
-            held = client.set(_BACKFILL_LEASE_KEY, token, nx=True, ex=_BACKFILL_LEASE_TTL)
-        except Exception:
-            logger.warning(
-                "Backfill lease unavailable, running without single-flight", exc_info=True,
-            )
-            client, held = None, True
-
-        if not held:
+        lease = acquire_lease(_BACKFILL_LEASE_KEY, _BACKFILL_LEASE_TTL)
+        if lease is None:
             logger.info("Template backfill already running on another replica, skipping")
             return
 
@@ -986,11 +959,6 @@ def run_startup_backfill() -> None:
                 except Exception:
                     logger.warning("Core-connector template backfill failed", exc_info=True)
         finally:
-            if client is not None:
-                try:
-                    client.eval(_RELEASE_LEASE_LUA, 1, _BACKFILL_LEASE_KEY, token)
-                except Exception:
-                    # Not worth retrying — the lease expires on its own.
-                    logger.warning("Failed to release backfill lease", exc_info=True)
+            release_lease(_BACKFILL_LEASE_KEY, lease)
     except Exception:
         logger.exception("Startup template backfill aborted")

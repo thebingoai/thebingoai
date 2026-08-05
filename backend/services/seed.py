@@ -93,6 +93,14 @@ def _repoint_widgets(db: Session, *, old_connection_id: int, new_connection_id: 
     db.commit()
 
 
+_SHARED_SAMPLE_LEASE_KEY = "bingo:shared_sample:lease"
+# ponytail: fixed TTL, no renewal. Covers provisioning plus the one-off Parquet
+# migration of the sample. If it lapses a second replica can start the same
+# idempotent work — wasteful, not corrupting. Add a heartbeat only if that
+# actually shows up in logs.
+_SHARED_SAMPLE_LEASE_TTL = 900  # seconds
+
+
 def ensure_shared_sample(db: Session) -> None:
     """Idempotently provision the ONE shared Airbnb sample: system org + sentinel
     user + a `sqlite` connection owned by SAMPLES_ORG_ID, migrated once to
@@ -104,11 +112,11 @@ def ensure_shared_sample(db: Session) -> None:
     if not os.path.isfile(SAMPLE_DB_PATH):
         return
 
-    from sqlalchemy import text
     from sqlalchemy.exc import IntegrityError
 
     from backend.models.organization import Organization
     from backend.models.user import User
+    from backend.services.redis_lease import acquire_lease, release_lease
 
     # 1. System "Samples" org (required so provision-on-miss can load it).
     #    Fixed-PK inserts race across replicas booting concurrently — absorb
@@ -133,14 +141,20 @@ def ensure_shared_sample(db: Session) -> None:
         except IntegrityError:
             db.rollback()
 
-    # Steps 3-8 run under a session-level advisory lock so exactly one replica
-    # provisions AND migrates: a transaction-scoped lock would be released by
-    # the first intermediate commit, letting concurrent replicas race
-    # migrate_connection (migration_journal.connection_id has no unique
-    # constraint). The lock lives on a dedicated raw connection because the
-    # pooled Session may switch underlying connections across commits.
-    lock_conn = db.get_bind().connect()
-    lock_conn.execute(text("SELECT pg_advisory_lock(hashtext('bingo_shared_sample'))"))
+    # Steps 3-8 run under a cross-replica lease so exactly one replica provisions
+    # AND migrates: migration_journal.connection_id has no unique constraint, so
+    # concurrent replicas racing migrate_connection duplicate the journal row and
+    # the materialization work.
+    #
+    # A Redis lease, not pg_advisory_lock — which is what this shipped with and
+    # does not hold on this deployment. See services/redis_lease.py: the lock
+    # rides a pooled server session that PgBouncer hands to the next client,
+    # who then inherits it and proceeds. Losers skip rather than wait:
+    # provisioning is idempotent and re-runs on the next boot anyway.
+    lease = acquire_lease(_SHARED_SAMPLE_LEASE_KEY, _SHARED_SAMPLE_LEASE_TTL)
+    if lease is None:
+        logger.info("Shared sample provisioning held by another replica, skipping")
+        return
     try:
         # 3. The single shared connection (idempotent by marker + sentinel
         #    scope). The re-check under the lock makes exactly one row win.
@@ -254,5 +268,4 @@ def ensure_shared_sample(db: Session) -> None:
             connection.id, result.status, result.new_dataplane_table, result.rows_migrated,
         )
     finally:
-        lock_conn.execute(text("SELECT pg_advisory_unlock(hashtext('bingo_shared_sample'))"))
-        lock_conn.close()
+        release_lease(_SHARED_SAMPLE_LEASE_KEY, lease)
