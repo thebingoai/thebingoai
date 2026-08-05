@@ -151,15 +151,37 @@ def test_renew_is_a_noop_without_a_real_token():
     assert r.evals == []
 
 
-def test_renew_fails_open_when_redis_dies():
-    """Nothing else can have claimed the lease while Redis is unreachable, so
-    reporting a loss here would abandon live work for no gain."""
+def test_renew_reports_unknown_when_redis_is_unreachable():
+    """Not "still ours" — *unknown*.
+
+    An exception here means this process lost contact with Redis, which says
+    nothing about the key. Other replicas may be reaching Redis perfectly well
+    and will acquire the moment our TTL lapses, so a caller told `True` keeps
+    working alongside a new owner. The caller has to see the difference and run
+    its own deadline off the last confirmed renewal.
+    """
     class _DiesOnEval(_FakeRedis):
         def eval(self, *a):
             raise ConnectionError("redis down")
 
     with _with(_DiesOnEval()):
-        assert renew_lease(KEY, "tok", 600) is True
+        assert renew_lease(KEY, "tok", 600) is None
+
+
+def test_the_three_renew_outcomes_are_distinguishable():
+    """A caller that tests `is not False` would pass on the old fail-open bug."""
+    class _DiesOnEval(_FakeRedis):
+        def eval(self, *a):
+            raise ConnectionError("redis down")
+
+    with _with(_FakeRedis({KEY: "ours"})):
+        confirmed = renew_lease(KEY, "ours", 600)
+    with _with(_FakeRedis({KEY: "someone-else"})):
+        lost = renew_lease(KEY, "ours", 600)
+    with _with(_DiesOnEval()):
+        unknown = renew_lease(KEY, "ours", 600)
+
+    assert (confirmed, lost, unknown) == (True, False, None)
 
 
 # ── fails open ──────────────────────────────────────────────────────────────

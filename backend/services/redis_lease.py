@@ -77,20 +77,29 @@ def acquire_lease(key: str, ttl: int) -> Optional[str]:
     return token if held else None
 
 
-def renew_lease(key: str, token: Optional[str], ttl: int) -> bool:
+def renew_lease(key: str, token: Optional[str], ttl: int) -> Optional[bool]:
     """Push *key*'s expiry back out to *ttl*, but only while we still hold it.
 
     For holders whose work has no upper bound — a chat turn nothing times out —
     where the alternative is a TTL long enough to cover the worst case, which is
     also long enough to wedge the resource after a crash.
 
-    Returns whether the lease is still ours. **False means someone else now owns
-    it**, so the caller's work is no longer exclusive and should stop rather than
-    finish alongside the new holder.
+    Three outcomes, and the caller must distinguish all three:
 
-    Never raises. An unreachable Redis returns True: nothing else can have taken
-    the lease while Redis is down either, so failing open here costs nothing,
-    where failing closed would abandon live work on a blip.
+    - ``True``  — confirmed still ours.
+    - ``False`` — confirmed lost. Someone else owns the key; the caller's work is
+      no longer exclusive and should stop rather than finish alongside them.
+    - ``None``  — **unknown**. Redis was unreachable *from this process*, which
+      says nothing about the key. A partition, a DNS blip or a local socket
+      exhaustion leaves every other replica talking to Redis quite happily, free
+      to acquire the moment our TTL lapses. Treating this as "still ours" is
+      what lets two holders run at once.
+
+    A caller that keeps working through ``None`` must therefore track when it
+    last got a ``True`` and give up before ``ttl`` elapses from that point —
+    past there the key has expired and anyone may hold it.
+
+    Never raises: an unreachable Redis is reported, not thrown.
     """
     if token is None or token == UNGUARDED:
         return True
@@ -104,7 +113,7 @@ def renew_lease(key: str, token: Optional[str], ttl: int) -> bool:
         return bool(client.eval(_RENEW_LUA, 1, key, token, ttl))
     except Exception:
         logger.warning("Failed to renew lease %s", key, exc_info=True)
-        return True
+        return None
 
 
 def release_lease(key: str, token: Optional[str]) -> None:

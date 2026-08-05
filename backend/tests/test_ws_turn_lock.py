@@ -241,6 +241,72 @@ def test_the_lock_is_renewed_without_any_stream_events():
     assert renewals, "the lock was never renewed during a turn with no events"
 
 
+def _hold_for(states, *, ttl, every, run_for, key="chat:turn:t-1"):
+    """Run `_hold_turn_lock` against a scripted `renew_lease`, return lost-ness.
+
+    `states` is what renew_lease reports in order; it repeats the last value
+    once exhausted.
+    """
+    seq = iter(states)
+    last = [states[-1]]
+
+    def _renew(*_a):
+        try:
+            last[0] = next(seq)
+        except StopIteration:
+            pass
+        return last[0]
+
+    async def _drive():
+        lost = asyncio.Event()
+        task = asyncio.create_task(ws_mod._hold_turn_lock(lambda: key, "tok", lost))
+        try:
+            await asyncio.sleep(run_for)
+        finally:
+            task.cancel()
+        return lost.is_set()
+
+    with patch.object(ws_mod, "_LOCK_RENEW_EVERY_S", every), \
+         patch.object(ws_mod, "_TURN_LOCK_TTL_S", ttl), \
+         patch.object(ws_mod, "renew_lease", _renew):
+        return asyncio.run(_drive())
+
+
+def test_an_unreachable_redis_does_not_end_the_turn_immediately():
+    """`renew_lease` returning None means *unknown*, not *lost*.
+
+    Failing closed on the first blip would kill live turns over a dropped
+    packet. The lease is still good until the TTL runs out measured from the
+    last renewal we actually got confirmed.
+    """
+    # TTL is long relative to the run, so the deadline is nowhere near.
+    assert _hold_for([None], ttl=10, every=0.01, run_for=0.06) is False, (
+        "a Redis blip must not abandon a live turn"
+    )
+
+
+def test_an_unreachable_redis_ends_the_turn_before_the_lease_expires():
+    """The other half, and the finding: we cannot work on an unconfirmed lease
+    forever. Redis unreachable *from here* says nothing about the key — another
+    replica may be reaching it fine and will acquire the moment our TTL lapses.
+    """
+    assert _hold_for([None], ttl=0.05, every=0.01, run_for=0.3) is True, (
+        "kept working on a lease that had certainly expired"
+    )
+
+
+def test_a_confirmed_renewal_resets_the_deadline():
+    """A flaky-but-reachable Redis must not kill long turns: every confirmed
+    renewal restarts the clock."""
+    assert _hold_for([True, None] * 40, ttl=0.05, every=0.01, run_for=0.3) is False
+
+
+def test_a_confirmed_loss_ends_the_turn_at_once():
+    """No deadline involved — False is Redis telling us the key is someone
+    else's now."""
+    assert _hold_for([False], ttl=10, every=0.01, run_for=0.05) is True
+
+
 def test_the_renewal_does_not_outlive_the_turn():
     """Cancelled in the same `finally` that releases the lock — otherwise it
     keeps a thread alive that a *later* turn now owns."""
@@ -256,6 +322,55 @@ def test_the_renewal_does_not_outlive_the_turn():
         asyncio.run(asyncio.sleep(0.05))
 
     assert len(renewals) == after_turn, "the renewal task outlived its turn"
+
+
+# ── consumption races the loss, it does not poll it ─────────────────────────
+
+def test_a_stalled_stream_still_stops_when_the_lock_is_lost():
+    """The finding: checking a flag per event cannot notice a loss *between*
+    events, and a long tool is exactly a gap between events — graph.py discards
+    sub-agent tokens, so nothing is emitted from `on_tool_start` until
+    `on_tool_end`. The wait has to race the stream itself.
+
+    Bounded by wait_for on purpose: a poll-per-event implementation does not
+    fail this test, it hangs forever on the stalled tool.
+    """
+    cancelled = []
+
+    async def _stalls_after_one():
+        yield {"type": "token", "content": "hi"}
+        try:
+            await asyncio.Future()  # a tool that never returns
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    async def _drive():
+        lost = asyncio.Event()
+        seen = []
+        async for event in ws_mod._until_lock_lost(_stalls_after_one(), lost):
+            seen.append(event)
+            lost.set()  # ownership goes while the next step is stalled
+        return seen
+
+    seen = asyncio.run(asyncio.wait_for(_drive(), timeout=2))
+
+    assert seen == [{"type": "token", "content": "hi"}]
+    assert cancelled == [True], "the stalled tool was left running"
+
+
+def test_a_stream_that_ends_normally_is_unaffected():
+    async def _three():
+        for i in range(3):
+            yield {"n": i}
+
+    async def _drive():
+        lost = asyncio.Event()
+        return [e async for e in ws_mod._until_lock_lost(_three(), lost)]
+
+    assert asyncio.run(asyncio.wait_for(_drive(), timeout=2)) == [
+        {"n": 0}, {"n": 1}, {"n": 2},
+    ]
 
 
 def test_resend_after_reconnect_on_a_just_created_thread_is_rejected():
