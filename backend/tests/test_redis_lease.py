@@ -11,16 +11,19 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.services.redis_lease import UNGUARDED, acquire_lease, release_lease
+from backend.services.redis_lease import (
+    UNGUARDED, acquire_lease, release_lease, renew_lease,
+)
 
 KEY = "bingo:test:lease"
 
 
 class _FakeRedis:
-    """SET NX EX + the release Lua, against a dict."""
+    """SET NX EX + the release/renew Lua, against a dict."""
 
     def __init__(self, initial=None, fail=False):
         self.store = dict(initial or {})
+        self.ttls: dict[str, int] = {}
         self.fail = fail
         self.evals: list[tuple] = []
 
@@ -30,18 +33,54 @@ class _FakeRedis:
         if nx and key in self.store:
             return None
         self.store[key] = value
+        self.ttls[key] = ex
         return True
 
-    def eval(self, script, numkeys, key, token):
+    def eval(self, script, numkeys, key, *argv):
+        # Both scripts are owner-checked, and both take the token as ARGV[1];
+        # renew passes the new TTL as ARGV[2]. Dispatch on what the script does
+        # rather than on argument count, so a rewritten script fails loudly.
+        token = argv[0]
         self.evals.append((key, token))
-        if self.store.get(key) == token:
+        if self.store.get(key) != token:
+            return 0
+        if "expire" in script:
+            self.ttls[key] = int(argv[1])
+        else:
             del self.store[key]
-            return 1
-        return 0
+        return 1
 
 
 def _with(client):
     return patch("redis.from_url", return_value=client)
+
+
+# ── every call is bounded ───────────────────────────────────────────────────
+
+def test_every_lease_call_bounds_its_socket():
+    """redis-py defaults `socket_timeout` and `socket_connect_timeout` to None,
+    i.e. block until the OS gives up — minutes, on a blackholed host.
+
+    A holder that renews on a timer can only enforce a deadline if the renewal
+    itself returns. Unbounded, a hung `eval` parks the whole heartbeat: the
+    deadline is never evaluated, the lease is never declared lost, and the turn
+    finishes and bills on a thread another replica has already taken over.
+    """
+    seen = []
+
+    def _record(url, **kwargs):
+        seen.append(kwargs)
+        return _FakeRedis({KEY: "tok"})
+
+    with patch("redis.from_url", _record):
+        acquire_lease(KEY, 900)
+        renew_lease(KEY, "tok", 900)
+        release_lease(KEY, "tok")
+
+    assert len(seen) == 3, "expected acquire, renew and release to each connect"
+    for kwargs in seen:
+        assert kwargs.get("socket_timeout"), "unbounded read — can hang forever"
+        assert kwargs.get("socket_connect_timeout"), "unbounded connect"
 
 
 # ── exclusion ───────────────────────────────────────────────────────────────
@@ -102,6 +141,75 @@ def test_release_is_a_noop_for_a_loser():
 
     assert r.store[KEY] == "winner"
     assert r.evals == [], "a loser must not even talk to redis"
+
+
+# ── renew is owner-checked too ──────────────────────────────────────────────
+
+def test_renew_extends_our_own_lease():
+    """Nothing bounds a chat turn, so one can outrun its TTL. Renewing keeps the
+    thread locked for as long as the turn it is guarding actually runs."""
+    r = _FakeRedis()
+    with _with(r):
+        token = acquire_lease(KEY, 600)
+        still_ours = renew_lease(KEY, token, 600)
+
+    assert still_ours is True
+    assert r.store[KEY] == token
+    assert r.ttls[KEY] == 600
+
+
+def test_renew_does_not_extend_someone_elses_lease():
+    """The bug a blind EXPIRE would reintroduce: our lease lapsed, a newer turn
+    claimed the key, and we keep pushing *their* expiry out on our schedule."""
+    r = _FakeRedis({KEY: "a-newer-turns-token"})
+    r.ttls[KEY] = 60
+    with _with(r):
+        still_ours = renew_lease(KEY, "our-stale-token", 600)
+
+    assert still_ours is False, "the caller must learn it lost the lease"
+    assert r.ttls[KEY] == 60, "renewed a lease we no longer hold"
+
+
+def test_renew_is_a_noop_without_a_real_token():
+    r = _FakeRedis()
+    with _with(r):
+        assert renew_lease(KEY, None, 600) is True
+        assert renew_lease(KEY, UNGUARDED, 600) is True
+
+    assert r.evals == []
+
+
+def test_renew_reports_unknown_when_redis_is_unreachable():
+    """Not "still ours" — *unknown*.
+
+    An exception here means this process lost contact with Redis, which says
+    nothing about the key. Other replicas may be reaching Redis perfectly well
+    and will acquire the moment our TTL lapses, so a caller told `True` keeps
+    working alongside a new owner. The caller has to see the difference and run
+    its own deadline off the last confirmed renewal.
+    """
+    class _DiesOnEval(_FakeRedis):
+        def eval(self, *a):
+            raise ConnectionError("redis down")
+
+    with _with(_DiesOnEval()):
+        assert renew_lease(KEY, "tok", 600) is None
+
+
+def test_the_three_renew_outcomes_are_distinguishable():
+    """A caller that tests `is not False` would pass on the old fail-open bug."""
+    class _DiesOnEval(_FakeRedis):
+        def eval(self, *a):
+            raise ConnectionError("redis down")
+
+    with _with(_FakeRedis({KEY: "ours"})):
+        confirmed = renew_lease(KEY, "ours", 600)
+    with _with(_FakeRedis({KEY: "someone-else"})):
+        lost = renew_lease(KEY, "ours", 600)
+    with _with(_DiesOnEval()):
+        unknown = renew_lease(KEY, "ours", 600)
+
+    assert (confirmed, lost, unknown) == (True, False, None)
 
 
 # ── fails open ──────────────────────────────────────────────────────────────

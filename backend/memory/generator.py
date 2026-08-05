@@ -95,10 +95,14 @@ class MemoryGenerator:
         # one) x the full allowance into a single LLM call. daily_conversations
         # inherits list_conversations' updated_at-desc ordering, so the budget
         # goes to the most recently active threads first.
+        # The row budget alone does not bound the prompt — a row can carry 50k
+        # chars — so spend a char budget alongside it, the same pairing
+        # get_conversation_history uses for a chat turn.
         conversation_texts = []
         remaining = settings.memory_history_max_messages
+        remaining_chars = settings.memory_history_max_chars
         for conv in daily_conversations:
-            if remaining <= 0:
+            if remaining <= 0 or remaining_chars <= 0:
                 break
             messages = ConversationService.get_conversation_history(
                 db, conv.thread_id, user_id,
@@ -108,10 +112,26 @@ class MemoryGenerator:
                 since_reset=False,
             )
             remaining -= len(messages)
-            conv_text = f"Conversation (ID: {conv.thread_id}):\n"
+            # Spend the char budget *while* assembling, not after. Deducting at
+            # the end lets one fat conversation in whole and only stops the
+            # next, so the prompt overshoots by up to a full conversation.
+            header = f"Conversation (ID: {conv.thread_id}):\n"
+            lines = []
+            used = len(header)
             for msg in messages:
-                conv_text += f"  {msg.role}: {msg.content}\n"
-            conversation_texts.append(conv_text)
+                line = f"  {msg.role}: {msg.content}\n"
+                if used + len(line) > remaining_chars:
+                    break
+                lines.append(line)
+                used += len(line)
+            if not lines:
+                # Nothing fits. Emitting the header alone would push the budget
+                # negative and pad the prompt with stubs that say nothing — and
+                # since the budget only shrinks, no later conversation fits
+                # either.
+                break
+            remaining_chars -= used
+            conversation_texts.append(header + "".join(lines))
 
         all_conversations = "\n\n".join(conversation_texts)
 

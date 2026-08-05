@@ -100,7 +100,7 @@ def profile_connection(self, connection_id: int):
         # whole batch (results were previously saved only at the very end).
         PARTIAL_SAVE_EVERY = 50
 
-        connector = get_connector_for_connection(connection)
+        connector = get_connector_for_connection(connection, db)
         try:
             for idx, (schema_name, table_name, table_data) in enumerate(tables_to_profile, 1):
                 # Update progress
@@ -235,7 +235,7 @@ def _discover_and_save_schema(db, connection):
         schema_key_for, augment_schema_with_pipelines,
     )
 
-    connector = get_connector_for_connection(connection)
+    connector = get_connector_for_connection(connection, db)
     try:
         schema_data = discover_schema(connector)
         schema_data = augment_schema_with_pipelines(schema_data, connection)

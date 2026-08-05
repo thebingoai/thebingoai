@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import time
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -14,7 +16,7 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
-from backend.services.redis_lease import release_lease
+from backend.services.redis_lease import release_lease, renew_lease
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
@@ -22,8 +24,120 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
+# How long a turn's claim on its thread survives without renewal, and how often
+# a live turn pushes that expiry back out. The interval is well under the TTL so
+# a stall has room to recover, and far enough apart that a token-by-token stream
+# isn't one Redis round-trip per token.
+_TURN_LOCK_TTL_S = 600
+_LOCK_RENEW_EVERY_S = 60
 
-async def _finalize_credit_turn(credit_mgr, retry_succeeded, orchestrator_errored=False) -> None:
+
+async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
+    """Keep a turn's lock alive until it is lost, or until cancelled.
+
+    Runs on its own timer rather than off the orchestrator's event stream: a
+    tool that outruns the TTL emits nothing between `on_tool_start` and
+    `on_tool_end` (graph.py discards sub-agent tokens), and sub-agent tools are
+    where the long turns are, so an event-driven renewal lapses exactly when it
+    matters.
+
+    `key_of` is a callable, not a string, because a turn that creates its own
+    conversation has no thread to claim until after the first tick.
+
+    The deadline is the point of the `None` branch. `renew_lease` returning
+    `None` means *this process* could not reach Redis, which says nothing about
+    the key — other replicas may be reaching it perfectly well and will acquire
+    the moment our TTL lapses. So unconfirmed renewals buy time, not certainty:
+    keep going only while the last *confirmed* renewal could still be covering
+    us, and stop a full interval early so we give up before the key can expire
+    rather than just after.
+    """
+    last_confirmed = time.monotonic()
+
+    def _certainly_expired() -> bool:
+        return time.monotonic() - last_confirmed >= _TURN_LOCK_TTL_S - _LOCK_RENEW_EVERY_S
+
+    while True:
+        await asyncio.sleep(_LOCK_RENEW_EVERY_S)
+        key = key_of()
+        if not key:
+            continue
+
+        # Judged *before* paying for another attempt as well as after. Attempts
+        # land every `_LOCK_RENEW_EVERY_S + attempt_cost`, so checking only on
+        # the way out lets detection land after the key has already expired —
+        # and a starved event loop stretches the sleep the same way. Redis is
+        # socket-bounded (redis_lease._SOCKET_BOUNDS), which keeps the cost
+        # small; this keeps it from mattering at all.
+        if _certainly_expired():
+            break
+
+        state = renew_lease(key, token, _TURN_LOCK_TTL_S)
+        if state is True:
+            last_confirmed = time.monotonic()
+            continue
+        if state is False:
+            lost.set()
+            return
+        if _certainly_expired():
+            break
+
+    logger.warning(
+        "turn lock %s unconfirmed for ~%ss; treating it as lost",
+        key_of(), _TURN_LOCK_TTL_S - _LOCK_RENEW_EVERY_S,
+    )
+    lost.set()
+
+
+async def _until_lock_lost(agen, lost: asyncio.Event):
+    """Yield from *agen*, stopping the moment *lost* is set.
+
+    Checking a flag once per event cannot notice a loss *between* events, and a
+    long-running tool is precisely a gap between events — so the wait has to
+    race the stream itself.
+
+    Cancelling the pending `__anext__` does **not** reliably stop the tool. The
+    long ones offload to a thread (`agents/dashboard_tools.py` uses
+    `asyncio.to_thread`), and a thread already running cannot be cancelled — so
+    the wait below can take as long as that query does. What this guarantees is
+    that nothing further is *consumed*, which is what the fencing downstream
+    relies on: the turn neither persists nor charges. Stopping the work itself
+    would need cancellation support inside the tools.
+    """
+    it = agen.__aiter__()
+    lost_wait = asyncio.ensure_future(lost.wait())
+    try:
+        while True:
+            nxt = asyncio.ensure_future(it.__anext__())
+            done, _pending = await asyncio.wait(
+                {nxt, lost_wait}, return_when=asyncio.FIRST_COMPLETED,
+            )
+            if nxt not in done:
+                nxt.cancel()
+                # Wait for the cancellation to actually land before the `finally`
+                # calls aclose(). `cancel()` only *requests* it, so closing while
+                # the step is still unwinding raises "asynchronous generator is
+                # already running", leaving the generator open. asyncio.wait
+                # never re-raises the task's exception, so no guard is needed.
+                # For a thread-offloaded tool this waits out the whole call.
+                await asyncio.wait({nxt})
+                return
+            try:
+                event = nxt.result()
+            except StopAsyncIteration:
+                return
+            yield event
+    finally:
+        lost_wait.cancel()
+        try:
+            await agen.aclose()
+        except Exception:
+            logger.warning("closing the orchestrator stream failed", exc_info=True)
+
+
+async def _finalize_credit_turn(
+    credit_mgr, retry_succeeded, orchestrator_errored=False, lock_lost=False,
+) -> None:
     """Close a turn's credit context: record usage + debit the org pool.
 
     Called after the answer is persisted and before `done` is forwarded, so the
@@ -44,7 +158,11 @@ async def _finalize_credit_turn(credit_mgr, retry_succeeded, orchestrator_errore
     websocket-specific ordering described above.
     """
     from backend.services.token_tracking_service import finalize_credit_turn
-    if orchestrator_errored:
+    if lock_lost:
+        # Its own reason, not orchestrator_errored: nothing failed, the answer is
+        # simply a duplicate of whatever the turn that owns the thread produced.
+        void_reason = "turn lost its thread lock"
+    elif orchestrator_errored:
         void_reason = "orchestrator reported failure"
     elif retry_succeeded is False:
         void_reason = "layer4_retry_failed"
@@ -69,6 +187,7 @@ async def _complete_turn(
     user: User,
     active_thread_id: str,
     orchestrator_errored: bool = False,
+    lock_lost=None,
 ) -> None:
     """Finish a turn after the orchestrator's `done`, in strict order:
     persist → capture → charge → forward `done` → best-effort post-process.
@@ -107,7 +226,19 @@ async def _complete_turn(
 
     # 3. Charge now that the answer is safe (voids first if the turn failed or
     #    the retry never resolved), then forward `done`.
-    await _finalize_credit_turn(credit_mgr, retry_succeeded, orchestrator_errored)
+    #
+    #    Ownership can lapse during the persist above. The answer is already
+    #    written by then, so aborting would leave the conversation half-done —
+    #    but billing for what is now a duplicate is still wrong. Keep the write,
+    #    drop the charge, and stay silent: the turn that owns the thread is the
+    #    one whose `done` and title the client should see.
+    lost_now = lock_lost is not None and lock_lost()
+    await _finalize_credit_turn(
+        credit_mgr, retry_succeeded, orchestrator_errored, lock_lost=lost_now,
+    )
+    if lost_now:
+        logger.warning("turn lost its lock during persist; answer kept, charge voided")
+        return
     if pending_done_event is not None:
         await send(pending_done_event)
 
@@ -676,8 +807,13 @@ async def _handle_chat_send(
     # with an empty set, and starts a second turn on a thread the first one is
     # still writing to. thread_id is None only for a brand-new conversation,
     # which has nothing to collide with.
+    # The token is generated, not the client's request_id: that arrives off the
+    # wire (`data.get("request_id", "")`) and defaults to empty, so two clients
+    # that merely omit the field would share a token and release each other's
+    # lock. request_id stays on the wire payload, where it belongs.
     turn_lock = f"chat:turn:{thread_id}" if thread_id else None
-    if turn_lock and not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+    turn_token = uuid.uuid4().hex
+    if turn_lock and not redis_client.set(turn_lock, turn_token, nx=True, ex=_TURN_LOCK_TTL_S):
         await send({
             "type": "chat.error",
             "request_id": request_id,
@@ -687,6 +823,13 @@ async def _handle_chat_send(
         })
         db.close()
         return
+
+    # `lambda: turn_lock` rather than the value: a turn that creates its own
+    # conversation has nothing to claim until _resolve_conversation returns.
+    lock_lost = asyncio.Event()
+    lock_heartbeat = asyncio.create_task(
+        _hold_turn_lock(lambda: turn_lock, turn_token, lock_lost)
+    )
 
     _credit_mgr = None
     try:
@@ -705,7 +848,7 @@ async def _handle_chat_send(
             # the thread_id this turn just created, and would otherwise sail
             # straight past the gate.
             turn_lock = f"chat:turn:{conversation.thread_id}"
-            if not redis_client.set(turn_lock, request_id, nx=True, ex=600):
+            if not redis_client.set(turn_lock, turn_token, nx=True, ex=_TURN_LOCK_TTL_S):
                 turn_lock = None  # someone else's lock — never release it
                 await send({
                     "type": "chat.error",
@@ -823,7 +966,9 @@ async def _handle_chat_send(
         pending_done_event = None
         orchestrator_errored = False
 
-        async for event in stream_orchestrator(
+        # Wrapped, not iterated directly: consumption has to race the loss so a
+        # stalled tool cannot keep running after the thread stops being ours.
+        async for event in _until_lock_lost(stream_orchestrator(
             message,
             ctx.agent_context,
             history=history,
@@ -840,7 +985,7 @@ async def _handle_chat_send(
             mentions=mentions or None,
             temperature=profile_temperature,
             max_tokens=profile_max_tokens,
-        ):
+        ), lock_lost):
             # Map SSE event type → WS event type
             event_type = event.get("type", "")
             ws_type = f"chat.{event_type}" if event_type else "chat.unknown"
@@ -881,6 +1026,27 @@ async def _handle_chat_send(
             if event_type == "token":
                 final_message += event.get("content", "")
 
+        # Fence: a turn that lost its lock is no longer the only one writing to
+        # this thread. Finishing would persist a second answer into the same
+        # conversation and bill for it — the exact race the lock exists to
+        # prevent.
+        #
+        # Silently: the turn that took the lock is already answering the user, so
+        # a chat.error next to that streaming answer would contradict it. The
+        # credit context has to be voided explicitly, though — a bare return
+        # leaks it, since only _complete_turn (on success) and the except handler
+        # (on failure) ever exit it.
+        if lock_lost.is_set():
+            logger.warning(
+                "chat turn %s lost its lock on thread %s; discarding the answer",
+                request_id, active_thread_id,
+            )
+            await _finalize_credit_turn(
+                _credit_mgr, collected_retry_succeeded, lock_lost=True,
+            )
+            _credit_mgr = None
+            return
+
         # Complete the turn in order: persist → charge → forward `done` →
         # post-process. Persist failure raises out of here BEFORE the charge, so
         # the handler below finalizes with the exception (no charge). _credit_mgr
@@ -889,7 +1055,7 @@ async def _handle_chat_send(
             db, conversation, is_new_conversation, message, final_message,
             collected_steps, collected_retry_succeeded, collected_judge_metadata,
             _credit_mgr, pending_done_event, send, request_id, user, active_thread_id,
-            orchestrator_errored,
+            orchestrator_errored, lock_lost.is_set,
         )
         _credit_mgr = None
 
@@ -902,6 +1068,9 @@ async def _handle_chat_send(
         logger.exception(f"chat.send error: {e}")
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:
+        # Scoped to the turn: cancelled here, in the same block that releases the
+        # lock, so a renewer can never keep alive a thread a later turn owns.
+        lock_heartbeat.cancel()
         # Clear streaming flag (may not exist if error occurred before streaming started)
         if active_thread_id:
             try:
@@ -914,7 +1083,7 @@ async def _handle_chat_send(
         # Lua call — a GET-then-DELETE here would let that later turn claim the
         # key in between and lose its lock to this one.
         if turn_lock:
-            release_lease(turn_lock, request_id)
+            release_lease(turn_lock, turn_token)
         db.close()
 
 
