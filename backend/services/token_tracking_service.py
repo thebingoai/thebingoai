@@ -1,7 +1,6 @@
 """Token usage tracking service."""
 
 import logging
-import os
 from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional
 
@@ -12,9 +11,6 @@ from backend.models.token_usage import TokenUsage, OperationType
 logger = logging.getLogger(__name__)
 credit_logger = logging.getLogger("credit")
 
-
-def _default_user_daily_credits() -> int:
-    return int(os.environ.get("DEFAULT_USER_DAILY_CREDITS", "180"))
 
 # Token pricing (per 1M tokens) - updated 2026
 TOKEN_PRICING = {

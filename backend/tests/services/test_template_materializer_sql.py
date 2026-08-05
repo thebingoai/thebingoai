@@ -254,7 +254,7 @@ def _patched_factory(
     fake_factory = _types.ModuleType("backend.connectors.factory")
 
     if open_raises:
-        def open_fn(_conn):
+        def open_fn(_conn, db=None):
             raise ConnectionError("simulated unreachable")
     else:
         connector = MagicMock()
@@ -270,7 +270,7 @@ def _patched_factory(
 
         connector.get_table_schema.side_effect = _schema_for
 
-        def open_fn(_conn):
+        def open_fn(_conn, db=None):
             return connector
 
     fake_factory.get_connector_for_connection = open_fn
@@ -484,9 +484,9 @@ def test_materialize_static_templates_still_win_when_present():
         opened = []
         original = factory.get_connector_for_connection
 
-        def spy(c):
+        def spy(c, db=None):
             opened.append(c)
-            return original(c)
+            return original(c, db)
 
         factory.get_connector_for_connection = spy
         new_p, _ = materializer.materialize_templates_for_connection(conn, reg, db)
@@ -735,7 +735,7 @@ def test_template_schema_failure_does_not_break_fan_out():
     connector.get_tables.return_value = ["users"]
     connector.get_table_schema.side_effect = RuntimeError("boom")
     connector.close = MagicMock()
-    fake_factory.get_connector_for_connection = lambda c: connector
+    fake_factory.get_connector_for_connection = lambda c, db=None: connector
     fake_factory._CONNECTORS = {}
 
     with patch.dict(sys.modules, {"backend.connectors.factory": fake_factory}):
@@ -827,7 +827,7 @@ def test_materialize_post_migration_creates_pipelines_and_stg_models():
         {"name": "id", "type": "integer", "nullable": False, "primary_key": True},
     ])
     connector.close = MagicMock()
-    fake_factory.get_connector_for_connection = lambda c: connector
+    fake_factory.get_connector_for_connection = lambda c, db=None: connector
 
     with patch.dict(sys.modules, {"backend.connectors.factory": fake_factory}):
         new_p, new_t = materializer.materialize_post_migration(conn, db)
@@ -971,7 +971,11 @@ def test_startup_backfill_takes_the_lease_then_releases_its_own_token():
     assert client.set.call_args.kwargs["ex"] == materializer._BACKFILL_LEASE_TTL
 
     # Release: compare-and-delete against the token we wrote, not a blind DEL.
-    assert client.eval.call_args.args[0] == materializer._RELEASE_LEASE_LUA
+    # The lease itself now lives in backend.services.redis_lease, shared with
+    # seed.py — this still asserts the behaviour, just not the inline copy.
+    from backend.services import redis_lease
+
+    assert client.eval.call_args.args[0] == redis_lease._RELEASE_LUA
     assert client.eval.call_args.args[-1] == token
 
 

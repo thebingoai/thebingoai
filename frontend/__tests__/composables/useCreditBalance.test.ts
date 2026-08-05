@@ -23,7 +23,6 @@ import { useCreditBalance } from '~/composables/useCreditBalance'
 
 function makeBalance(overrides = {}) {
   return {
-    daily_limit: 180,
     used_today: 0,
     remaining: 180,
     resets_at: '2026-04-11T00:00:00+00:00',
@@ -40,11 +39,10 @@ describe('useCreditBalance', () => {
   it('fetches balance on mount and exposes reactive fields', async () => {
     mockFetchWithRefresh.mockResolvedValue(makeBalance({ used_today: 40, remaining: 140 }))
 
-    const { dailyLimit, usedToday, remaining } = useCreditBalance()
+    const { usedToday, remaining } = useCreditBalance()
     await vi.waitUntil(() => mockFetchWithRefresh.mock.calls.length > 0)
 
     expect(mockFetchWithRefresh).toHaveBeenCalledWith('/api/credits/balance', { method: 'GET' })
-    expect(dailyLimit.value).toBe(180)
     expect(usedToday.value).toBe(40)
     expect(remaining.value).toBe(140)
   })

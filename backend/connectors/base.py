@@ -63,8 +63,11 @@ class BaseConnector(ABC):
         self._search_path = None
 
     @classmethod
-    def from_connection(cls, connection: "DatabaseConnection") -> "BaseConnector":
-        """Override for connectors that need non-standard construction (e.g., file-based)."""
+    def from_connection(cls, connection: "DatabaseConnection", db_session=None) -> "BaseConnector":
+        """Override for connectors that need non-standard construction (e.g., file-based).
+
+        ``db_session`` is the caller's open session — forward it, don't open one.
+        """
         raise NotImplementedError
 
     # ============================================================
@@ -277,6 +280,21 @@ class BaseConnector(ABC):
             self._connection = self._create_connection(**kwargs)
         return self._connection
 
+    def _begin_schema_read(self, cursor) -> None:
+        """Hook: bound a catalog read before it runs. No-op by default.
+
+        Overridden where the engine can cap a statement per-transaction. The
+        catalog queries below look cheap but are not always: information_schema
+        views do per-column permission checks, so they degrade with catalog size
+        on databases with very many tables.
+        """
+
+    def _schema_cursor(self):
+        """Cursor for a catalog read, with any per-transaction bound applied."""
+        cursor = self._get_cursor(self._get_connection(), dict_mode=True)
+        self._begin_schema_read(cursor)
+        return cursor
+
     def get_schemas(self) -> List[str]:
         """
         Get list of schemas/databases (excluding system schemas).
@@ -284,8 +302,7 @@ class BaseConnector(ABC):
         Returns:
             List of schema names
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         cursor.execute("""
             SELECT schema_name
@@ -319,8 +336,7 @@ class BaseConnector(ABC):
         Returns:
             List of table names
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         if schema is None:
             schema = self._default_schema()
@@ -350,8 +366,7 @@ class BaseConnector(ABC):
         Returns:
             TableSchema with columns and row count
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         if schema is None:
             schema = self._default_schema()
@@ -441,8 +456,7 @@ class BaseConnector(ABC):
         Returns:
             List of dicts with 'from_column', 'to_table', 'to_column'
         """
-        conn = self._get_connection()
-        cursor = self._get_cursor(conn, dict_mode=True)
+        cursor = self._schema_cursor()
 
         if schema is None:
             schema = self._default_schema()
@@ -475,7 +489,10 @@ class BaseConnector(ABC):
 
         Raises:
             ValueError: If query is not read-only (not SELECT)
-            Exception: If query execution fails
+            Exception: the driver's own exception, unwrapped. It used to be
+                re-raised as a bare Exception, which erased the class and made
+                error classification (retryable? permission? syntax?) impossible
+                downstream. Callers already prefix their own context.
         """
         from backend.config import settings
 
@@ -521,8 +538,6 @@ class BaseConnector(ABC):
                 rows = rows[:max_rows]
             execution_time_ms = (time.time() - start_time) * 1000
 
-            cursor.close()
-
             return QueryResult(
                 columns=columns,
                 rows=rows,
@@ -530,9 +545,21 @@ class BaseConnector(ABC):
                 execution_time_ms=execution_time_ms,
                 truncated=truncated,
             )
-        except Exception as e:
+        finally:
             cursor.close()
-            raise Exception(f"Query execution failed: {str(e)}")
+            # The connector outlives the query — dashboard_cache and
+            # profiling_tasks reuse one across N widgets/tables. Without this
+            # rollback a failure leaves the transaction ABORTED and every later
+            # query on the same connector dies with 25P02, so one bad widget
+            # poisons the rest of the dashboard. On the success path it ends the
+            # read transaction that SET TRANSACTION READ ONLY opened, which
+            # otherwise pins a customer-DB backend `idle in transaction`
+            # holding an MVCC snapshot (blocking VACUUM) for the connector's
+            # whole lifetime — minutes to hours during profiling.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     def close(self):
         """Close database connection if open."""

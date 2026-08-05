@@ -84,7 +84,7 @@ def wired(monkeypatch):
     )
     monkeypatch.setattr(
         chat_mod.ConversationService, "get_conversation_history",
-        staticmethod(lambda db, tid, uid: []),
+        staticmethod(lambda db, tid, uid, limit=None, since_reset=True: []),
     )
 
     import backend.services.heartbeat_context as hb

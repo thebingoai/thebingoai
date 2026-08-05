@@ -70,7 +70,7 @@ def refine_watermarks_task(connection_id: int, pipeline_ids: list[str]) -> dict:
             return {"status": "skipped", "reason": "no_single_table_pipelines"}
 
         try:
-            connector = get_connector_for_connection(connection)
+            connector = get_connector_for_connection(connection, db)
         except Exception:
             logger.warning(
                 "refine_watermarks_task: cannot open connector for connection %s",

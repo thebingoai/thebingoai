@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List
-from backend.database.session import get_db
+from backend.database.session import end_read_transaction, get_db
 from backend.auth.dependencies import get_current_user, forbid_viewer
 from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection, ProfilingStatus
@@ -113,7 +113,7 @@ router = APIRouter(prefix="/connections", tags=["connections"], dependencies=[De
 
 
 @router.post("", response_model=ConnectionResponse, status_code=status.HTTP_201_CREATED)
-async def create_connection(
+def create_connection(
     request: ConnectionCreate,
     force: bool = False,
     current_user: User = Depends(get_current_user),
@@ -335,7 +335,7 @@ async def create_connection(
 
 
 @router.get("", response_model=List[ConnectionResponse])
-async def list_connections(
+def list_connections(
     include_ephemeral: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -371,7 +371,7 @@ async def list_connections(
 
 
 @router.get("/org", response_model=List[ConnectionResponse])
-async def list_org_connections(
+def list_org_connections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -388,13 +388,13 @@ async def list_org_connections(
 
 
 @router.get("/types", response_model=list[ConnectorTypeResponse])
-async def get_connector_types():
+def get_connector_types():
     """Return metadata for all available database connector types."""
     return get_available_types()
 
 
 @router.get("/types/{type_id}/changelog")
-async def get_connector_changelog(type_id: str):
+def get_connector_changelog(type_id: str):
     """Return changelog for a connector type."""
     from backend.api.health import APP_VERSION
     from backend.plugins.loader import get_plugin_for_connector
@@ -433,7 +433,7 @@ async def get_connector_changelog(type_id: str):
 
 
 @router.post("/test-connection", response_model=ConnectionTestResponse)
-async def test_unsaved_connection(
+def test_unsaved_connection(
     request: ConnectionCreate,
     current_user: User = Depends(get_current_user)
 ):
@@ -457,7 +457,7 @@ async def test_unsaved_connection(
 
 
 @router.post("/test-connection-write", response_model=ConnectionTestResponse)
-async def test_unsaved_write_access(
+def test_unsaved_write_access(
     request: ConnectionCreate,
     current_user: User = Depends(get_current_user)
 ):
@@ -483,7 +483,7 @@ async def test_unsaved_write_access(
 
 
 @router.get("/{connection_id}", response_model=ConnectionResponse)
-async def get_connection(
+def get_connection(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -498,7 +498,7 @@ async def get_connection(
 
 
 @router.put("/{connection_id}", response_model=ConnectionResponse)
-async def update_connection(
+def update_connection(
     connection_id: str,
     request: ConnectionUpdate,
     current_user: User = Depends(get_current_user),
@@ -523,7 +523,7 @@ async def update_connection(
 
 
 @router.get("/{connection_id}/semantics")
-async def get_connection_semantics(
+def get_connection_semantics(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -542,7 +542,7 @@ async def get_connection_semantics(
 
 
 @router.put("/{connection_id}/semantics")
-async def update_connection_semantics(
+def update_connection_semantics(
     connection_id: str,
     request: SemanticLayerUpdate,
     current_user: User = Depends(get_current_user),
@@ -568,7 +568,7 @@ async def update_connection_semantics(
 
 
 @router.post("/{connection_id}/semantics/generate-descriptions", status_code=202)
-async def generate_connection_descriptions(
+def generate_connection_descriptions(
     connection_id: str,
     request: GenerateDescriptionsRequest,
     current_user: User = Depends(get_current_user),
@@ -609,7 +609,7 @@ async def generate_connection_descriptions(
 
 
 @router.get("/{connection_id}/semantics/generation-status")
-async def get_connection_generation_status(
+def get_connection_generation_status(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -624,7 +624,7 @@ async def get_connection_generation_status(
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_connection(
+def delete_connection(
     connection_id: str,
     cascade: bool = Query(False, description="If true, also delete dependent pipelines (and their run history)."),
     current_user: User = Depends(get_current_user),
@@ -693,7 +693,7 @@ async def delete_connection(
 
 
 @router.post("/{connection_id}/test", response_model=ConnectionTestResponse)
-async def test_connection(
+def test_connection(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -703,6 +703,12 @@ async def test_connection(
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    # Every read is done; what follows dials a customer database with a
+    # `source_connect_timeout_s` budget and a user-controlled host. Hold the
+    # transaction across that and each attempt pins a PgBouncer server slot for
+    # the full timeout — N clicks on a typo'd host = N slots held for 10s each.
+    end_read_transaction(db)
 
     reg = get_connector_registration(connection.db_type)
     if reg and reg.on_test:
@@ -732,7 +738,7 @@ async def test_connection(
 
 
 @router.post("/{connection_id}/test-write", response_model=ConnectionTestResponse)
-async def test_write_access(
+def test_write_access(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -742,6 +748,8 @@ async def test_write_access(
 
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
+
+    end_read_transaction(db)  # see test_connection: don't hold a slot across the dial
 
     try:
         connector = get_connector(
@@ -764,7 +772,7 @@ async def test_write_access(
 
 
 @router.post("/{connection_id}/refresh-schema", response_model=SchemaRefreshResponse)
-async def refresh_connection_schema(
+def refresh_connection_schema(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -781,6 +789,12 @@ async def refresh_connection_schema(
         raise HTTPException(status_code=404, detail="Connection not found")
 
     _governance_require_mutate_connection(current_user, connection)
+
+    # The longest-held slot in this module: a full schema walk is 6 round-trips
+    # per table against the customer's database, so a few hundred tables is tens
+    # of seconds. Nothing below reads the DB again until the commit, and
+    # `connection` stays attached and mutable across this.
+    end_read_transaction(db)
 
     reg = get_connector_registration(connection.db_type)
     if reg and reg.skip_schema_refresh:
@@ -799,7 +813,7 @@ async def refresh_connection_schema(
         )
 
     try:
-        with get_connector_for_connection(connection) as connector:
+        with get_connector_for_connection(connection, db) as connector:
             schema_path = refresh_schema(
                 schema_key_for(connection),
                 connector,
@@ -839,7 +853,7 @@ async def refresh_connection_schema(
 
 
 @router.get("/{connection_id}/schema", response_model=SchemaResponse)
-async def get_connection_schema(
+def get_connection_schema(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -870,7 +884,7 @@ async def get_connection_schema(
 
 
 @router.get("/{connection_id}/profiling-status")
-async def get_profiling_status(
+def get_profiling_status(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -891,7 +905,7 @@ async def get_profiling_status(
 
 
 @router.post("/{connection_id}/reprofile")
-async def reprofile_connection(
+def reprofile_connection(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -921,7 +935,7 @@ async def reprofile_connection(
 
 
 @router.get("/{connection_id}/context")
-async def get_connection_context(
+def get_connection_context(
     connection_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

@@ -41,6 +41,25 @@ class Settings(BaseSettings):
     rag_default_top_k: int = 5
     rag_context_score_threshold: float = 0.5
     rag_conversation_history_messages: int = 6
+    # Chat turns replay history into the prompt. Unbounded, this grew until the
+    # provider's context limit rejected the turn outright, bricking that user's
+    # chat until they reset it — permanent conversations cannot be deleted.
+    chat_history_max_messages: int = 100
+    # A row cap alone does not bound the prompt: ChatRequest allows 50k chars per
+    # message, so 100 rows is up to 5M chars — well past any context window. A BI
+    # chat gets pasted CSVs and log dumps, so this is reachable in ordinary use.
+    # Chars, not tokens, on purpose: no per-provider tokenizer to keep in sync,
+    # and the bound only has to be safe, not exact. ~4 chars/token.
+    chat_history_max_chars: int = 200_000
+    # The daily memory generator summarises history instead of replaying it into
+    # a turn, so it wants a wider window than a chat turn and keeps the messages
+    # before a context reset. Still bounded — it concatenates across every
+    # conversation of the day into one prompt.
+    memory_history_max_messages: int = 500
+    # And the same reason `chat_history_max_chars` exists: 500 rows is 500 x 50k
+    # chars in the worst case. Wider than a chat turn's budget because a day's
+    # digest legitimately spans more conversations.
+    memory_history_max_chars: int = 400_000
 
     # Agent settings
     agent_recursion_limit: int = 100  # Max LangGraph ReAct loop steps per agent invocation
@@ -59,6 +78,9 @@ class Settings(BaseSettings):
     database_url_direct: Optional[str] = None  # Direct connection for migrations (bypasses Supabase connection pooler)
     db_pool_size: int = 10      # client-side connections kept warm per process
     db_max_overflow: int = 20   # extra connections allowed beyond pool_size under burst
+    db_pool_timeout: int = 5    # seconds to wait for a free slot before raising TimeoutError
+    db_pool_trace: bool = False           # log pool pressure (see database/session.py)
+    db_pool_trace_slow_ms: int = 1000     # warn when a checkout is held at least this long
 
     # Schema storage
     schemas_dir: str = "data/schemas"

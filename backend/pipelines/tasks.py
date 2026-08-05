@@ -24,6 +24,21 @@ def _register_beat():
 _register_beat()
 
 
+def _queue_depth(queue: str) -> "int | str":
+    """Broker backlog for a queue name. Best-effort — never breaks the caller."""
+    try:
+        import redis as syncredis
+        from backend.config import settings
+
+        rc = syncredis.from_url(settings.celery_broker_url)
+        try:
+            return rc.llen(queue)
+        finally:
+            rc.close()
+    except Exception:
+        return "?"
+
+
 @shared_task(name="dispatch_pipelines")
 def dispatch_pipelines():
     """Beat dispatcher: runs every 60s, fires run_pipeline for due pipelines.
@@ -98,8 +113,15 @@ def dispatch_pipelines():
             except Exception as exc:
                 logger.error("dispatch_pipelines: failed for schedule %s: %s", sched.id, exc)
 
-        if dispatched:
-            logger.info("dispatch_pipelines: dispatched %d pipeline run(s)", dispatched)
+        # `dispatched` counts what we enqueued; `backlog` what nobody has picked
+        # up yet. A backlog that only ever grows means no worker is consuming the
+        # `pipelines` queue — the failure mode this task cannot otherwise detect,
+        # since .delay() succeeds whether or not a consumer exists.
+        backlog = _queue_depth("pipelines")
+        if dispatched or (isinstance(backlog, int) and backlog):
+            logger.info(
+                "dispatch_pipelines: dispatched=%d backlog=%s", dispatched, backlog
+            )
 
         db.commit()
 

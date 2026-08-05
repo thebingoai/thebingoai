@@ -161,7 +161,7 @@ def materialize_dashboard(dashboard_id: int) -> MaterializeResult:
             # stays the write target for the `_dash_*` cache below.
             src_scope = OwnerScope.from_connection(connection)
 
-            connector = get_connector_for_connection(connection)
+            connector = get_connector_for_connection(connection, db)
             try:
                 for widget in group_widgets:
                     w_id = widget["id"]
@@ -355,10 +355,15 @@ def read_widget_data_plane(
         return None
     table_name = f"_dash_{dashboard_id}__{_sanitize_widget_id(widget_id)}"
 
-    if not plane.table_exists(scope, table_name):
+    # read_table, not table_exists + query. The exact table name is already
+    # known, and on BigQuery those two calls cost two live metadata round-trips
+    # before the job starts — a get_table, then a fully paginated tables.list
+    # inside _rewrite_sql. At ~200-600ms each across a 20-widget dashboard that
+    # was seconds of open latency, all of it holding the request's pool slot.
+    result = plane.read_table(scope, table_name)
+    if result is None:
         return None
 
-    result = plane.query(scope, f'SELECT * FROM "{table_name}"')
     return {
         "columns": result.columns,
         "rows": result.rows,

@@ -34,13 +34,33 @@ class DummyConnector:
 
 
 class DummyConnectorWithFromConnection:
-    """Connector that implements from_connection classmethod."""
+    """Connector that implements from_connection classmethod.
+
+    Deliberately kept at the original single-argument signature: `db_session` is
+    an optional part of the connector contract, and out-of-tree plugins built
+    before it existed must keep working.
+    """
     def __init__(self, connection):
         self.connection = connection
 
     @classmethod
     def from_connection(cls, connection):
         return cls(connection)
+
+    def close(self):
+        pass
+
+
+class DummyConnectorAcceptingSession:
+    """Connector whose from_connection takes the caller's session, as every
+    in-tree connector does — it must actually receive it."""
+    def __init__(self, connection, db_session):
+        self.connection = connection
+        self.db_session = db_session
+
+    @classmethod
+    def from_connection(cls, connection, db_session=None):
+        return cls(connection, db_session)
 
     def close(self):
         pass
@@ -251,6 +271,63 @@ class TestConnectorFactory:
         connector = factory.get_connector_for_connection(mock_conn)
         assert isinstance(connector, DummyConnectorWithFromConnection)
         assert connector.connection is mock_conn
+
+    def test_from_connection_without_db_session_param_still_works(self):
+        """A single-argument from_connection must not be handed db_session —
+        passing it unconditionally raises TypeError on every out-of-tree plugin
+        written against the original signature."""
+        reg = ConnectorRegistration(
+            type_id="legacydb",
+            display_name="LegacyDB",
+            description="Pre-db_session plugin",
+            default_port=1234,
+            badge_variant="success",
+            connector_class=DummyConnectorWithFromConnection,
+        )
+        factory.register_connector(reg)
+
+        mock_conn = MagicMock()
+        mock_conn.db_type = "legacydb"
+
+        connector = factory.get_connector_for_connection(mock_conn, db_session=MagicMock())
+        assert isinstance(connector, DummyConnectorWithFromConnection)
+
+    def test_from_connection_receives_the_callers_session(self):
+        """The whole point of the parameter: a plane-backed connector that opens
+        its own session while the caller still holds one doubles peak pool
+        checkouts on every query."""
+        reg = ConnectorRegistration(
+            type_id="sessiondb",
+            display_name="SessionDB",
+            description="Accepts a session",
+            default_port=1234,
+            badge_variant="success",
+            connector_class=DummyConnectorAcceptingSession,
+        )
+        factory.register_connector(reg)
+
+        mock_conn = MagicMock()
+        mock_conn.db_type = "sessiondb"
+        session = MagicMock()
+
+        connector = factory.get_connector_for_connection(mock_conn, db_session=session)
+        assert connector.db_session is session
+
+    def test_from_connection_defaults_session_to_none(self):
+        reg = ConnectorRegistration(
+            type_id="sessiondb2",
+            display_name="SessionDB2",
+            description="Accepts a session",
+            default_port=1234,
+            badge_variant="success",
+            connector_class=DummyConnectorAcceptingSession,
+        )
+        factory.register_connector(reg)
+
+        mock_conn = MagicMock()
+        mock_conn.db_type = "sessiondb2"
+
+        assert factory.get_connector_for_connection(mock_conn).db_session is None
 
 
 # ===========================================================================

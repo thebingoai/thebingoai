@@ -4,9 +4,10 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.exc import IntegrityError
 from backend.auth.sso import validate_token as sso_validate_token
-from backend.database.session import get_db
+from backend.database.session import end_read_transaction, get_db
 from backend.models.user import User
 from backend.models.team_membership import TeamMembership, MemberRole
 from backend.config import settings
@@ -111,6 +112,8 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
     # Multi-workspace: an X-Workspace-Id header selects the active workspace
     # when the user is a member of it. In-memory only; no commit happens here.
     user.active_role = "member"
+    active_org = active_role = None
+    resolved_workspace = False
     if settings.enable_governance:
         try:
             from bingo_org_governance.deps import resolve_active_workspace
@@ -121,12 +124,35 @@ def _resolve_local_user(request: Request, db: Session, sso_user) -> User:
             active_org, active_role = resolve_active_workspace(
                 db, user=user, header_org_id=header_org,
             )
-            user.home_org_id = str(user.org_id) if user.org_id else None
-            if active_org and str(user.org_id) != str(active_org):
-                user.org_id = active_org
-            user.active_role = active_role
-            request.state.active_org_id = active_org
-            request.state.active_role = active_role
+            resolved_workspace = True
+
+    # Every DB read this dependency performs is done by here. Ending the
+    # transaction now is what stops each authenticated request from pinning a
+    # PgBouncer server slot for its whole wall-clock lifetime — including
+    # requests that go on to do nothing but LLM, Qdrant or GCS work.
+    end_read_transaction(db)
+
+    # Strictly after end_read_transaction: user.org_id is a mapped column
+    # deliberately overridden in memory and never persisted, so it must not be
+    # part of the commit above.
+    if resolved_workspace:
+        user.home_org_id = str(user.org_id) if user.org_id else None
+        if active_org and str(user.org_id) != str(active_org):
+            # set_committed_value, not a plain assignment. org_id is a mapped
+            # column, so `user.org_id = active_org` leaves the User dirty in a
+            # session the handler goes on to reuse — FastAPI caches get_db per
+            # request. The next db.commit() anywhere in that handler (e.g.
+            # api/memory.py's soul/preferences writes) then flushes the selected
+            # workspace over the user's *home* org, permanently.
+            #
+            # That is not just a stale column: resolve_active_workspace returns
+            # `_role_in(home_org) or "member"`, so a user whose home_org has been
+            # rewritten to someone else's org keeps a fallback 'member' role there
+            # even after their membership row is deleted.
+            set_committed_value(user, "org_id", active_org)
+        user.active_role = active_role
+        request.state.active_org_id = active_org
+        request.state.active_role = active_role
 
     return user
 

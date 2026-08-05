@@ -6,6 +6,7 @@ from backend.vectordb.qdrant import ensure_collection
 from backend.api import routes
 from backend.api.websocket import router as ws_router
 from backend.data_plane.errors import NoPlaneProvisionedError
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLTimeoutError
 from backend.logging_config import setup_logging
 from backend.api import health as health_module
 from backend.config import settings
@@ -126,6 +127,48 @@ async def _no_plane_provisioned_handler(_: Request, exc: NoPlaneProvisionedError
             "code": "no_data_plane",
             "scope_kind": exc.scope.kind,
             "scope_id": exc.scope.id,
+        },
+    )
+
+
+@app.exception_handler(SQLTimeoutError)
+async def _pool_exhausted_handler(_: Request, exc: SQLTimeoutError):
+    """Client-side pool checkout timed out (db_pool_timeout).
+
+    Shed the request instead of letting it surface as a 500 with a stack trace.
+    Nothing else in the backend catches this, so before it existed pool
+    exhaustion was indistinguishable from an application bug in the logs.
+    Retry-After is deliberately short: the pool frees up on the scale of a
+    request, not a deploy.
+    """
+    logger.warning("DB pool exhausted, shedding request: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        headers={"Retry-After": "2"},
+        content={
+            "detail": "Database is busy, please retry.",
+            "code": "db_pool_exhausted",
+        },
+    )
+
+
+@app.exception_handler(OperationalError)
+async def _db_unavailable_handler(_: Request, exc: OperationalError):
+    """Connection-level DB failure — the server side of the same problem.
+
+    When PgBouncer hits max_client_conn it refuses the connection outright,
+    which arrives as OperationalError rather than a checkout TimeoutError; same
+    incident, different layer. Logged at error with the traceback so a genuine
+    misconfiguration (bad credentials, missing database) is still diagnosable
+    rather than hidden behind a friendly retry message.
+    """
+    logger.error("Database unavailable, shedding request", exc_info=exc)
+    return JSONResponse(
+        status_code=503,
+        headers={"Retry-After": "5"},
+        content={
+            "detail": "Database is temporarily unavailable, please retry.",
+            "code": "db_unavailable",
         },
     )
 
