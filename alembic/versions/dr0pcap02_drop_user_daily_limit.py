@@ -22,6 +22,25 @@ indistinguishable from one that never drifted, but anything that skipped that
 repair — a restored snapshot, a manual stamp — would make an unconditional
 drop fail with "column does not exist", and an unconditional re-add fail with
 "column already exists".
+
+Rollback policy — what downgrade() does and does not give back:
+
+  * It restores the column's *definition*: INTEGER NOT NULL DEFAULT 180,
+    matching t4n5o6p7q8r9_add_credit_system_tables.
+  * It does NOT restore per-user values. Every row comes back at the default.
+    The column has been write-only since spending moved to the org credit pool
+    (backend/services/org_credit_pool.py), so nothing reads those numbers and
+    nothing behaves differently for having lost them. Restoring them would mean
+    keeping a backup of a column no code consults; we accept the loss instead.
+  * ADD COLUMN IF NOT EXISTS skips an existing column without inspecting it, so
+    a database carrying a hand-altered daily_limit — different type, nullable —
+    keeps its own version rather than being normalised. That is deliberate: a
+    migration should not silently rewrite a column it did not create. Anything
+    in that state needs manual repair, and backend/tests/test_alembic/
+    test_drop_daily_limit.py pins the definition this migration expects.
+
+Restoring the per-user cap as a feature would need a new migration plus new
+code; this downgrade only exists to unblock a rollback of the schema.
 """
 
 from alembic import op
