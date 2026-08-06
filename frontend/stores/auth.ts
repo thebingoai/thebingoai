@@ -431,6 +431,11 @@ export const useAuthStore = defineStore('auth', {
       dashboardStore.$resetAll()
       disconnect()
       clearHandlers()
+      // Credit balance lives in useState, which is per-app rather than
+      // per-component, so it outlives the session unless cleared here. Without
+      // this the next account on the same tab reads the previous workspace's
+      // balance until its own fetch returns, and indefinitely if that fails.
+      clearCreditState()
 
       this.user = null
       this.token = null

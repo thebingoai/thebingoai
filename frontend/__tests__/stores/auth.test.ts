@@ -20,6 +20,8 @@ vi.stubGlobal('window', { location: { origin: 'http://localhost:3000' } })
 vi.stubGlobal('useChatStore', () => ({ reset: vi.fn() }))
 vi.stubGlobal('useDashboardStore', () => ({ $resetAll: vi.fn() }))
 vi.stubGlobal('useWebSocket', () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }))
+const clearCreditStateMock = vi.fn()
+vi.stubGlobal('clearCreditState', clearCreditStateMock)
 
 const { trackEventMock } = vi.hoisted(() => ({ trackEventMock: vi.fn() }))
 vi.mock('~/utils/analytics', () => ({ trackEvent: trackEventMock }))
@@ -31,6 +33,7 @@ describe('auth store', () => {
     setActivePinia(createPinia())
     for (const key of Object.keys(storage)) delete storage[key]
     vi.mocked($fetch).mockReset()
+    clearCreditStateMock.mockReset()
   })
 
   // ── Initial state ──────────────────────────────────────────────────
@@ -141,6 +144,30 @@ describe('auth store', () => {
     )
     expect(store.token).toBeNull()
     expect(store.user).toBeNull()
+  })
+
+  it('logout() clears credit state so the next account cannot read this one\'s balance', async () => {
+    // Credit balance lives in useState, which is per-app rather than
+    // per-component — nothing else in the teardown reaches it.
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    store.token = 'at'
+    store.refreshToken = 'rt'
+    await store.logout()
+    expect(clearCreditStateMock).toHaveBeenCalled()
+  })
+
+  it('clears credit state even when the logout request fails', async () => {
+    // The session is torn down locally regardless, so the reset must not be
+    // stranded behind a network error.
+    vi.mocked($fetch).mockRejectedValueOnce(new Error('offline'))
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso' }
+    store.token = 'at'
+    store.refreshToken = 'rt'
+    await store.logout()
+    expect(clearCreditStateMock).toHaveBeenCalled()
   })
 
   // ── deleteAccount ─────────────────────────────────────────────────
