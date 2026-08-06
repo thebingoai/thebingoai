@@ -160,6 +160,33 @@ def test_oversized_raster_is_rejected_before_decode(monkeypatch):
     assert result["base64_data"].startswith("data:image/png;base64,")
 
 
+def test_engine_gives_libpq_a_deadline():
+    """A hung pre-ping must not be able to freeze the worker.
+
+    pool_pre_ping only helps if the ping can fail. libpq has no read deadline,
+    so on a half-open socket its SELECT 1 blocks for the OS TCP retransmit
+    timeout — minutes, synchronously, on the asyncio loop. With
+    UVICORN_WORKERS=1 that takes /health down with it and the liveness probe
+    kills the pod (2026-07-23, 84s; 2026-08-06, 323s). Keepalives are the only
+    deadline in play, so their absence is the regression worth catching.
+    """
+    from backend.database.session import CONNECT_ARGS as args
+    from backend.database.session import engine
+
+    assert args.get("keepalives") == 1, "TCP keepalives are what bound the hang"
+    assert args.get("connect_timeout"), "libpq would otherwise wait indefinitely"
+
+    # Detection budget: idle, then count probes at interval. Anything beyond a
+    # readiness period or two and the pod is out of the load balancer with the
+    # loop still wedged.
+    budget = args["keepalives_idle"] + args["keepalives_interval"] * args["keepalives_count"]
+    assert budget <= 60, f"dead peer takes {budget}s to surface"
+
+    # Connections must not outlive the pooler's own idle reaping, or a checkout
+    # inherits a socket only the client still believes in.
+    assert engine.pool._recycle <= 600
+
+
 def test_pool_exhaustion_sheds_as_503():
     """QueuePool timeout must become a 503 + Retry-After, never a 500.
 

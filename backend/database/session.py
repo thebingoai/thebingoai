@@ -11,6 +11,28 @@ from backend.config import settings
 # (40 concurrent users -> minutes-long request queues, ROLLBACKs stuck >100s).
 # Double-pooling is safe because the ORM relies on no session state
 # (no server-side prepared statements, SET vars, or advisory locks).
+# pool_pre_ping only protects against a dead connection if the ping itself can
+# fail. libpq has no read deadline of its own, so on a half-open socket its
+# SELECT 1 blocks for the OS TCP retransmit timeout — minutes. That is not a
+# slow query anyone can see: it is a synchronous call on the asyncio loop, and
+# with UVICORN_WORKERS=1 it freezes the entire worker, /health included, until
+# the liveness probe kills the pod (2026-07-23, 84s; 2026-08-06, 323s, both
+# lost in-flight chat turns). Keepalives give the kernel a deadline the driver
+# does not have: ~10s idle then 3 probes at 5s, so a dead peer surfaces in ~25s
+# as an ordinary connection error, which pre-ping already handles by discarding
+# the connection and opening a new one.
+#
+# A module constant rather than an inline literal: create_engine captures
+# connect_args in a closure, so this is the only way the settings stay
+# readable — by a test, and by anyone debugging a stall.
+CONNECT_ARGS = {
+    "connect_timeout": settings.db_connect_timeout,
+    "keepalives": 1,
+    "keepalives_idle": 10,
+    "keepalives_interval": 5,
+    "keepalives_count": 3,
+}
+
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
@@ -21,7 +43,11 @@ engine = create_engine(
     # which turns contention into a pile-up. Fail fast and let the 503 handler
     # in main.py shed load instead.
     pool_timeout=settings.db_pool_timeout,
-    pool_recycle=1800,
+    # 1800s outlived the pooler: connections idled long enough to be reaped on
+    # the far side while the client still believed in them, and the next
+    # checkout inherited a half-open socket. 300s recycles well inside that.
+    pool_recycle=300,
+    connect_args=CONNECT_ARGS,
     echo=settings.log_level == "DEBUG",
 )
 
