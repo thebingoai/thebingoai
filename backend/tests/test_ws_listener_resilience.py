@@ -378,8 +378,8 @@ def test_the_slot_frees_when_done_reaches_the_client(ws_client, monkeypatch):
     client, ws_api = ws_client
     in_post_process = threading.Event()
 
-    async def _handler(_ws, _user, _request_id, *_a, on_turn_visible=None, **_kw):
-        on_turn_visible()  # `done` has reached the client
+    async def _handler(_ws, _user, _request_id, *_a, on_gate_open=None, **_kw):
+        on_gate_open()  # `done` has reached the client
         in_post_process.set()
         await asyncio.sleep(1.0)  # stand-in for title + summary generation
 

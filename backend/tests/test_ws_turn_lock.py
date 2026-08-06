@@ -37,6 +37,7 @@ class _FakeRedis:
         self.store = dict(initial or {})
         self.deleted: list[str] = []
         self.set_calls: list[tuple] = []
+        self.published: list[tuple] = []
 
     def eval(self, script, numkeys, key, token):
         if self.store.get(key) != token:
@@ -61,6 +62,13 @@ class _FakeRedis:
 
     def setex(self, key, ttl, value):
         self.store[key] = value
+
+    def publish(self, channel, payload):
+        # Completion is published, not written to local sockets. Without this
+        # the teardown raises AttributeError into its own except and the tests
+        # would pass while announcing nothing.
+        self.published.append((channel, payload))
+        return 1
 
     def exists(self, key):
         return 1 if key in self.store else 0
@@ -192,6 +200,10 @@ def test_the_gates_open_before_post_processing():
     async def _postprocess(*_a, **_kw):
         order.append("postprocess")
 
+    async def _open_gates():
+        # Async because the real one publishes and tears down Redis state.
+        order.append("gates_open")
+
     with patch.object(ws_mod, "_persist_turn", _persist), \
          patch.object(ws_mod, "_finalize_credit_turn", _charge), \
          patch.object(ws_mod, "_postprocess_turn", _postprocess):
@@ -210,7 +222,7 @@ def test_the_gates_open_before_post_processing():
             request_id="req-1",
             user=_FakeUser(),
             active_thread_id="t-1",
-            on_turn_visible=lambda: order.append("gates_open"),
+            on_turn_visible=_open_gates,
         ))
 
     assert order == [
@@ -236,10 +248,13 @@ def _run_with_marker(redis, marker_of, sent_to_user):
         redis.store["streaming:t-1"] = marker_of(redis.set_calls[0][1])
         return None, False
 
-    async def _capture(_user_id, payload):
+    # Sync: completion is *published* to the user's Redis channel, not written
+    # to this process's sockets, so a reconnect landing on another replica still
+    # receives it.
+    def _capture(_user_id, payload):
         sent_to_user.append(payload)
 
-    with patch.object(ws_mod.manager, "send_to_user", _capture):
+    with patch.object(ws_mod.manager, "publish_to_user_sync", _capture):
         _run(redis, _plant, request_id="req-1")
 
 
@@ -285,6 +300,33 @@ def test_a_finished_turn_stays_silent_while_a_newer_turn_streams():
     assert sent == [], (
         "announced completion for a thread another turn is still streaming"
     )
+
+
+def test_a_lock_redis_would_not_confirm_is_retried_at_teardown():
+    """Opening the gate on an *unconfirmed* release is worse than not opening it.
+
+    `release_lease` reports False when Redis is unreachable — the key is still
+    there. Forgetting the lock at that point drops the only reference left to
+    retry with, so the socket gate opens and every following message is refused
+    anyway, now by the thread lock, for the remainder of its 600s TTL.
+    """
+    redis = _FakeRedis()
+    attempts = []
+    real_eval = _FakeRedis.eval
+
+    def _first_eval_times_out(self, script, numkeys, key, token):
+        attempts.append(key)
+        if len(attempts) == 1:
+            raise TimeoutError("redis unreachable")  # release_lease -> False
+        return real_eval(self, script, numkeys, key, token)
+
+    with patch.object(_FakeRedis, "eval", _first_eval_times_out):
+        _run(redis, _resolve_to_none, request_id="req-1")
+
+    assert attempts.count("chat:turn:t-1") == 2, (
+        f"an unconfirmed release was never retried: {attempts}"
+    )
+    assert "chat:turn:t-1" not in redis.store, "the thread stayed locked"
 
 
 def test_only_one_turn_writes_the_conversation_summary_at_a_time():

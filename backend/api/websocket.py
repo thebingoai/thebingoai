@@ -253,12 +253,12 @@ async def _complete_turn(
     if pending_done_event is not None:
         await send(pending_done_event)
 
-    # 4. The turn is complete as far as the client is concerned, so open the
-    #    busy gates before the post-process below spends two LLM calls on a
+    # 4. The turn is complete as far as the client is concerned, so end its
+    #    exclusivity before the post-process below spends two LLM calls on a
     #    title and a summary. Nothing past this point writes an answer or
     #    charges for one, which is all the gates protect.
     if on_turn_visible is not None:
-        on_turn_visible()
+        await on_turn_visible()
 
     # 5. Best-effort post-processing; a failure here must not undo the charge.
     try:
@@ -820,14 +820,14 @@ async def _handle_chat_send(
     connection_ids: list,
     file_ids: list = None,
     mentions: list = None,
-    on_turn_visible=None,
+    on_gate_open=None,
 ) -> None:
     """
     Handle a chat.send message over WebSocket.
     Mirrors the SSE streaming logic but sends JSON events over the WebSocket.
 
-    `on_turn_visible` opens the endpoint's one-turn-per-socket gate. It fires
-    when `done` reaches the client, not when this coroutine returns — see
+    `on_gate_open` opens the endpoint's one-turn-per-socket gate. It fires when
+    `done` reaches the client, not when this coroutine returns — see
     `_release_turn_gate` below for why the difference matters.
     """
     from backend.agents import stream_orchestrator
@@ -880,8 +880,43 @@ async def _handle_chat_send(
 
     gate_released = False
 
-    def _release_turn_gate() -> None:
-        """Open both busy gates the moment the turn is user-visibly complete.
+    async def _end_streaming_state() -> None:
+        """Clear this turn's streaming marker and announce it — if still ours.
+
+        Compare-and-delete, because a newer turn may already have claimed the
+        thread: a blind DELETE would evict *its* marker, and a client that
+        reconnects then reads streaming=false and gives up on a response still
+        being generated.
+
+        The broadcast rides the same atomic step. `chat.stream_complete` carries
+        only `thread_id` — the reconnect path has no request_id to match on, it
+        reconnected and never saw one — so announcing completion while another
+        turn streams is read as *that* turn finishing. Winning the
+        compare-and-delete is exactly the proof that nobody else holds the
+        thread.
+
+        Published rather than sent to this process's sockets. A reconnect is
+        free to land on any replica and `send_to_user` only walks the local
+        connection table, so on more than one pod the event could miss the very
+        socket waiting for it. That was equally true before this event moved
+        here — but reaching a reconnected client is the entire reason it exists.
+        """
+        if not active_thread_id:
+            return
+        try:
+            if not release_lease(
+                f"streaming:{active_thread_id}", turn_token, client=redis_client,
+            ):
+                return
+            manager.publish_to_user_sync(user.id, {
+                "type": "chat.stream_complete",
+                "thread_id": active_thread_id,
+            })
+        except Exception:
+            logger.warning("streaming teardown failed", exc_info=True)
+
+    async def _release_turn_gate() -> None:
+        """End the turn's exclusivity the moment it is user-visibly complete.
 
         Everything the gates exist to protect — persisting the answer and
         charging for it — has already happened by the time `done` is forwarded
@@ -894,6 +929,13 @@ async def _handle_chat_send(
         length of those calls. Scoping questions land a user squarely in that
         window, because the answer to one is short and arrives fast.
 
+        The streaming marker ends here too rather than at teardown. It is what
+        `stream.check` answers, so holding it through post-process told a tab
+        opening `/chat?id=<thread>` that a response was still coming — blank
+        assistant placeholder, composer disabled — while the tab that sent the
+        message had its composer back at `done`. Nothing is still coming: the
+        answer was persisted before `done` went out.
+
         Idempotent: the normal path releases here, the `finally` covers every
         path that never reaches `done`.
         """
@@ -901,17 +943,32 @@ async def _handle_chat_send(
         if gate_released:
             return
         gate_released = True
+
         # Cancelled in the same step that drops the lock, so a renewer can never
         # keep alive a thread a later turn owns.
         lock_heartbeat.cancel()
+
         if turn_lock:
-            # Owner-checked: a turn that outran its 600s TTL must not delete a
-            # lock a later turn has since claimed on the same thread.
-            release_lease(turn_lock, turn_token)
-            turn_lock = None  # released; the finally must not try again
-        if on_turn_visible is not None:
+            # Forget the lock only once Redis has *confirmed* it is gone. An
+            # unreachable Redis returns False, and clearing `turn_lock` anyway
+            # would leave the key alive for the rest of its 600s TTL with
+            # nothing left holding a reference to retry — the socket gate would
+            # open and every following message would still be refused, now by
+            # the thread lock instead of the socket one. Leaving it set hands
+            # the retry to the `finally`.
+            if release_lease(turn_lock, turn_token, client=redis_client):
+                turn_lock = None
+            else:
+                logger.warning(
+                    "turn lock %s not confirmed released; retrying at teardown",
+                    turn_lock,
+                )
+
+        await _end_streaming_state()
+
+        if on_gate_open is not None:
             try:
-                on_turn_visible()
+                on_gate_open()
             except Exception:  # pragma: no cover - a gate release must never raise
                 logger.exception("failed to open the socket turn gate")
 
@@ -1158,38 +1215,18 @@ async def _handle_chat_send(
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:
         # Covers every path that never reached `done` — an early return, a
-        # raise, a lost lock. On the normal path this is a no-op: the gate was
-        # already opened the moment the client saw `done`.
-        _release_turn_gate()
+        # raise, a lost lock. On the normal path this is a no-op: everything was
+        # released the moment the client saw `done`.
+        await _release_turn_gate()
 
-        # The streaming marker describes the *thread*, not this turn's gates, so
-        # it stays here rather than moving into _release_turn_gate: it drives
-        # `stream.check`, the reconnect path's "is my turn still running" probe,
-        # and clearing it at `done` would tell a client reconnecting during our
-        # post-process to stop waiting.
-        #
-        # But it must be a compare-and-delete now that the next turn can start
-        # while we post-process. A blind DELETE here would clear *that* turn's
-        # marker, and a client reconnecting during it would read streaming=false
-        # and give up on a response still being generated.
-        #
-        # The completion broadcast rides the same atomic step for the mirrored
-        # reason: it carries only `thread_id`, and the reconnect path has no
-        # request_id to match against — it reconnected, it never saw one. So
-        # announcing completion while another turn streams would be taken as
-        # *that* turn finishing. Winning the compare-and-delete is exactly the
-        # proof that nobody else holds the thread.
-        if active_thread_id:
-            try:
-                if release_lease(
-                    f"streaming:{active_thread_id}", turn_token, client=redis_client,
-                ):
-                    await manager.send_to_user(user.id, {
-                        "type": "chat.stream_complete",
-                        "thread_id": active_thread_id,
-                    })
-            except Exception:
-                logger.warning("streaming teardown failed", exc_info=True)
+        # Second attempt at the thread lock. `_release_turn_gate` leaves
+        # `turn_lock` set when Redis did not confirm the delete, precisely so
+        # there is something here to retry — otherwise an unreachable Redis
+        # wedges the thread for the remainder of a 600s TTL. The streaming
+        # marker needs no equivalent: its own 300s TTL is the backstop, and it
+        # blocks nothing meanwhile.
+        if turn_lock:
+            release_lease(turn_lock, turn_token, client=redis_client)
         db.close()
 
 
@@ -1385,7 +1422,7 @@ async def websocket_endpoint(ws: WebSocket):
                     ws, user, request_id, thread_id, message, connection_ids,
                     file_ids=file_ids,
                     mentions=mentions,
-                    on_turn_visible=lambda sid=slot_id: answering.discard(sid),
+                    on_gate_open=lambda sid=slot_id: answering.discard(sid),
                 ))
                 chat_tasks.add(task)
                 _inflight_chat_tasks.add(task)
