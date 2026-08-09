@@ -229,6 +229,7 @@ class Settings(BaseSettings):
     orchestrator_lean_tools: bool = False  # ≤10 primary tools + manage meta-tool + @-mention scope
     dashboard_scoping_questions: bool = True  # ask audience/grain/time-range/metrics before building a dashboard
     template_backfill_on_startup: bool = True  # plugin-template framework: backfill existing connections at boot
+    chat_export_enabled: bool = False  # "Data Export" (CSV/Excel) button on chat query results
 
     # LLM data-privacy floor (env LLM_METADATA_ONLY). True (default) forces
     # metadata-only on EVERY Org — real cell values never reach the LLM,

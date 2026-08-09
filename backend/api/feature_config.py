@@ -22,6 +22,7 @@ async def get_config():
     telegram_enabled = "bingo-telegram" in loaded
     return {
         "governance_enabled": settings.enable_governance,
+        "chat_export_enabled": settings.chat_export_enabled,
         "credits_enabled": credits_enabled,
         "admin_enabled": admin_enabled,
         "telegram_enabled": telegram_enabled,
