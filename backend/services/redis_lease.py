@@ -39,7 +39,7 @@ UNGUARDED = "__unguarded__"
 # never declared lost, and the holder finishes work on a resource another
 # replica has already taken over. Bounded well under one renewal interval so a
 # slow attempt cannot push detection past the key's own expiry.
-_SOCKET_BOUNDS = {"socket_connect_timeout": 2, "socket_timeout": 3}
+SOCKET_BOUNDS = {"socket_connect_timeout": 2, "socket_timeout": 3}
 
 # Release only what we still hold: once the TTL lapses the key belongs to
 # whoever took it next, and a blind DEL would evict their lease.
@@ -77,7 +77,7 @@ def acquire_lease(key: str, ttl: int) -> Optional[str]:
 
     token = uuid.uuid4().hex
     try:
-        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
+        client = syncredis.from_url(settings.redis_url, decode_responses=True, **SOCKET_BOUNDS)
         held = client.set(key, token, nx=True, ex=ttl)
     except Exception:
         logger.warning(
@@ -120,29 +120,57 @@ def renew_lease(key: str, token: Optional[str], ttl: int) -> Optional[bool]:
 
         from backend.config import settings
 
-        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
+        client = syncredis.from_url(settings.redis_url, decode_responses=True, **SOCKET_BOUNDS)
         return bool(client.eval(_RENEW_LUA, 1, key, token, ttl))
     except Exception:
         logger.warning("Failed to renew lease %s", key, exc_info=True)
         return None
 
 
-def release_lease(key: str, token: Optional[str]) -> None:
+def release_lease(key: str, token: Optional[str], client=None) -> Optional[bool]:
     """Release *key* if this process still holds it. Safe to call with None or
     `UNGUARDED` — both mean there is nothing of ours to release.
+
+    Same three outcomes as `renew_lease`, and for the same reason:
+
+    - ``True``  — the compare-and-delete removed *our* key. It is gone.
+    - ``False`` — the key is not ours: it lapsed, or a later holder owns it.
+      Nothing of ours is left behind, so there is nothing to retry.
+    - ``None``  — **unknown**. Redis was unreachable from this process, which
+      says nothing about the key. It may well still be there, still ours, and
+      still holding whatever it guards for the rest of its TTL.
+
+    Collapsing the last two into False loses the only distinction a caller can
+    act on. A gate that reopens on False is right when the lock is provably not
+    ours and wrong when it is merely unconfirmed — there it hands the resource
+    back while the key still refuses everyone, which is the failure the lock
+    exists to prevent, now dressed as its own release path.
+
+    Cleanup callers can ignore the result entirely; a caller with something
+    conditional on still being the owner — announcing the work finished, say —
+    needs True specifically, and a GET followed by a DELETE could not answer it
+    atomically.
+
+    `client` reuses a connection the caller already holds. Without one this
+    opens its own, which is fine for fire-and-forget cleanup and wasteful on a
+    path that is already connected. Note that a supplied client brings its own
+    socket timeouts: pass one bounded by `SOCKET_BOUNDS` or tighter, or the
+    deadline documented at the top of this module is not in force.
 
     Never raises: the TTL is the real backstop, so a failed release is a log
     line rather than something worth unwinding a caller for.
     """
     if token is None or token == UNGUARDED:
-        return
+        return False
 
     try:
-        import redis as syncredis
+        if client is None:
+            import redis as syncredis
 
-        from backend.config import settings
+            from backend.config import settings
 
-        client = syncredis.from_url(settings.redis_url, decode_responses=True, **_SOCKET_BOUNDS)
-        client.eval(_RELEASE_LUA, 1, key, token)
+            client = syncredis.from_url(settings.redis_url, decode_responses=True, **SOCKET_BOUNDS)
+        return bool(client.eval(_RELEASE_LUA, 1, key, token))
     except Exception:
         logger.warning("Failed to release lease %s", key, exc_info=True)
+        return None
