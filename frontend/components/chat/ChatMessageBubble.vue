@@ -119,7 +119,7 @@
           </svg>
           <span class="font-medium text-gray-600 dark:text-neutral-300">{{ displayLabel(f.label) }}</span>
           <span>· {{ f.row_count }}×{{ f.col_count }}</span>
-          <UiDropdown :items="exportItems(f)" align="left">
+          <UiDropdown v-if="isChatExportEnabled" :items="exportItems(f)" align="left">
             <template #trigger>
               <button
                 :disabled="downloadingRef === f.result_ref"
@@ -305,6 +305,12 @@ watch(
 onUnmounted(() => { if (elapsedTimer) clearInterval(elapsedTimer) })
 
 // ── Query result download (CSV / Excel) ─────────────────────
+// Off unless CHAT_EXPORT_ENABLED=true on the backend. `=== true` (not truthiness)
+// because `config` is null until /api/config resolves — keeps the button from
+// flashing in on load.
+const { config: featureConfig } = useFeatureConfig()
+const isChatExportEnabled = computed(() => featureConfig.value?.chat_export_enabled === true)
+
 const downloadingRef = ref<string | null>(null)
 
 const exportItems = (f: QueryFile) => [
