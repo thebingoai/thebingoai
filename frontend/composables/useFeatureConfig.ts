@@ -5,6 +5,7 @@ interface ProviderConfig {
 
 interface FeatureConfig {
   governance_enabled: boolean
+  chat_export_enabled: boolean
   credits_enabled: boolean
   admin_enabled: boolean
   telegram_enabled: boolean
