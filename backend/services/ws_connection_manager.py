@@ -115,12 +115,20 @@ class ConnectionManager:
         Synchronous Redis publish for use in Celery workers.
         Publishes to the user's Pub/Sub channel so all connected WebSocket
         listeners (across any worker/process) receive the message.
+
+        Socket-bounded because a Celery worker is no longer the only caller:
+        websocket.py's gate release publishes `chat.stream_complete` from the
+        event loop, where an unbounded connect blocks every other request on the
+        pod for as long as the OS takes to give up on an unreachable host.
         """
         import redis as syncredis
         from backend.config import settings
+        from backend.services.redis_lease import SOCKET_BOUNDS
 
         channel = f"{_CHANNEL_PREFIX}{user_id}"
-        client = syncredis.from_url(settings.redis_url, decode_responses=True)
+        client = syncredis.from_url(
+            settings.redis_url, decode_responses=True, **SOCKET_BOUNDS,
+        )
         try:
             client.publish(channel, json.dumps(message))
         finally:

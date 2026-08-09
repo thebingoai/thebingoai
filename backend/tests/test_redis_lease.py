@@ -212,6 +212,28 @@ def test_the_three_renew_outcomes_are_distinguishable():
     assert (confirmed, lost, unknown) == (True, False, None)
 
 
+def test_the_three_release_outcomes_are_distinguishable():
+    """Release has the same three answers as renew, and callers act on them.
+
+    Collapsing "not ours" and "could not reach Redis" into a single False is
+    what let websocket.py's turn gate reopen while its own thread lock was
+    still alive and unconfirmed — the gate says free, the lock says busy, and
+    every message on that thread is refused until the TTL lapses.
+    """
+    class _DiesOnEval(_FakeRedis):
+        def eval(self, *a):
+            raise ConnectionError("redis down")
+
+    with _with(_FakeRedis({KEY: "ours"})):
+        released = release_lease(KEY, "ours")
+    with _with(_FakeRedis({KEY: "someone-else"})):
+        not_ours = release_lease(KEY, "ours")
+    with _with(_DiesOnEval()):
+        unknown = release_lease(KEY, "ours")
+
+    assert (released, not_ours, unknown) == (True, False, None)
+
+
 # ── fails open ──────────────────────────────────────────────────────────────
 
 def test_unreachable_redis_lets_the_caller_proceed():
