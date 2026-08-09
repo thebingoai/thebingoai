@@ -115,12 +115,35 @@ _cron_module = _types.ModuleType("backend.utils.cron")
 from datetime import datetime as _dt
 _cron_module.compute_next_run = MagicMock(return_value=_dt(2026, 1, 1, 2, 0, 0))
 
-sys.modules["backend.models.pipeline"] = _pipeline_module
-sys.modules["backend.models.transforms"] = _transforms_module
-sys.modules["backend.pipelines.runner"] = _runner_module
-sys.modules["backend.connectors.sql_dlt"] = _sql_dlt_module
-sys.modules["backend.services.watermark_classifier"] = _watermark_module
-sys.modules["backend.utils.cron"] = _cron_module
+# template_materializer resolves these at its own import (its lines 33-36)…
+_IMPORT_STUBS = {
+    "backend.models.pipeline": _pipeline_module,
+    "backend.models.transforms": _transforms_module,
+    "backend.pipelines.runner": _runner_module,
+}
+# …and these only when a test calls it, because it imports them inside its
+# functions (sql_dlt at line 221, watermark_classifier at 461, cron at 491).
+_RUNTIME_STUBS = {
+    "backend.connectors.sql_dlt": _sql_dlt_module,
+    "backend.services.watermark_classifier": _watermark_module,
+    "backend.utils.cron": _cron_module,
+}
+
+
+@pytest.fixture(autouse=True)
+def _runtime_stubs():
+    """Hold the call-time stubs for the duration of one test, and no longer.
+
+    They cannot live in sys.modules past this module's import. pytest imports
+    every test file during collection, before any test runs, so a lingering
+    stub of backend.services.watermark_classifier / backend.utils.cron makes
+    tests/services/test_watermark_classifier.py and tests/utils/test_cron.py
+    fail to collect with "cannot import name ... (unknown location)". A
+    function-scoped fixture only exists during the run phase, so collection
+    sees the real modules.
+    """
+    with patch.dict(sys.modules, _RUNTIME_STUBS):
+        yield
 
 
 # Load plugins.base for real dataclasses.
@@ -149,7 +172,10 @@ def _load_materializer():
     return module
 
 
-materializer = _load_materializer()
+# Both sets must be present while the materializer executes; neither may
+# outlive this line, or the stubs leak into every later test module.
+with patch.dict(sys.modules, {**_IMPORT_STUBS, **_RUNTIME_STUBS}):
+    materializer = _load_materializer()
 
 
 # ── Fixtures / helpers ────────────────────────────────────────────────────

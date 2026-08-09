@@ -1,5 +1,6 @@
 """Tests for the cron_dispatcher helper."""
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 import sys
@@ -8,7 +9,7 @@ import sys
 import importlib.util
 spec = importlib.util.spec_from_file_location(
     "cron_dispatcher",
-    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/tasks/cron_dispatcher.py"
+    Path(__file__).resolve().parents[2] / "tasks" / "cron_dispatcher.py",
 )
 cron_dispatcher = importlib.util.module_from_spec(spec)
 sys.modules["cron_dispatcher"] = cron_dispatcher

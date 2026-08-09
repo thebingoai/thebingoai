@@ -1,4 +1,5 @@
 """Tests for resource_lifecycle cascade handlers."""
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 import sys
@@ -7,16 +8,16 @@ import importlib.util
 # Import resource_lifecycle directly to avoid importing models
 spec = importlib.util.spec_from_file_location(
     "resource_lifecycle",
-    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/services/resource_lifecycle.py"
+    Path(__file__).resolve().parents[2] / "services" / "resource_lifecycle.py",
 )
 resource_lifecycle = importlib.util.module_from_spec(spec)
 sys.modules["resource_lifecycle"] = resource_lifecycle
 
-# Mock the imports that resource_lifecycle needs
-sys.modules['backend.models.pipeline'] = MagicMock()
-sys.modules['backend.data_plane.scope'] = MagicMock()
-sys.modules['backend.services.data_plane_service'] = MagicMock()
-
+# No module-level sys.modules stubs. resource_lifecycle imports its dependencies
+# inside its functions, so exec_module needs nothing, and the one test that
+# reaches those imports supplies them itself via patch.dict. Assigning them here
+# left MagicMocks in sys.modules for the rest of the session — every later test
+# that touched backend.services.data_plane_service got the mock.
 spec.loader.exec_module(resource_lifecycle)
 
 delete_pipeline = resource_lifecycle.delete_pipeline
