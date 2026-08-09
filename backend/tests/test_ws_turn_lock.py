@@ -329,20 +329,28 @@ def test_a_lock_redis_would_not_confirm_is_retried_at_teardown():
     assert "chat:turn:t-1" not in redis.store, "the thread stayed locked"
 
 
-def test_only_one_turn_writes_the_conversation_summary_at_a_time():
+def test_turns_write_the_conversation_summary_one_after_another():
     """The other shared write that opening the gates early exposed.
 
     `generate_or_update_summary` is SELECT -> release txn -> LLM call ->
     INSERT/UPDATE, with a UNIQUE on conversation_id. Run concurrently that is
     either a lost update — whichever commits last wins, which need not be the
     newer turn — or an IntegrityError, since both would take the insert branch.
+
+    Serialised, not deduplicated: both turns must land. The update is
+    incremental — it prompts with the stored summary plus this turn's two
+    messages and never reads the message history — so a turn that gives up its
+    slot is not deferred to a later one, it is gone, and the conversation is
+    summarised as if it never happened. The second turn queues and then folds
+    itself into what the first one wrote.
     """
     redis = _FakeRedis()
-    entered = []
+    calls = []
 
     async def _slow_generate(_db, conversation_id, *_a, **_kw):
-        entered.append(conversation_id)
+        calls.append(("enter", conversation_id))
         await asyncio.sleep(0.05)  # the LLM call, where the two would overlap
+        calls.append(("exit", conversation_id))
         return SimpleNamespace(summary_text="s", updated_at=datetime(2026, 8, 5))
 
     async def _noop(*_a, **_kw):
@@ -365,11 +373,14 @@ def test_only_one_turn_writes_the_conversation_summary_at_a_time():
          patch.object(ss.SummaryService, "estimate_conversation_tokens", lambda *_a: 0), \
          patch.object(ss.SummaryService, "get_token_limit", lambda: 100), \
          patch.object(ws_mod.manager, "send_to_user", _noop), \
-         patch.object(ws_mod, "_fire_chat_response_plugins", _noop):
+         patch.object(ws_mod, "_fire_chat_response_plugins", _noop), \
+         patch.object(ws_mod, "_SUMMARY_POLL_EVERY_S", 0.01):
         asyncio.run(_two_turns_post_processing_at_once())
 
-    assert entered == [7], (
-        f"both turns wrote the summary concurrently: {entered}"
+    # Interleaved would read enter, enter, exit, exit — the overlap the lease
+    # exists to prevent. A dropped turn would be one pair, not two.
+    assert [step for step, _ in calls] == ["enter", "exit", "enter", "exit"], (
+        f"the two summary writes were not serialised: {calls}"
     )
 
 

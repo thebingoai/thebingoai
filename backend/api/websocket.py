@@ -16,7 +16,9 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
-from backend.services.redis_lease import acquire_lease, release_lease, renew_lease
+from backend.services.redis_lease import (
+    SOCKET_BOUNDS, acquire_lease, release_lease, renew_lease,
+)
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
@@ -35,6 +37,16 @@ _LOCK_RENEW_EVERY_S = 60
 # LLM call it guards, short enough that a killed pod cannot block the next turn's
 # summary for long.
 _SUMMARY_LEASE_TTL_S = 120
+
+# How long a contending turn waits for that lease before giving up, and how often
+# it retries. The write it is queueing behind is one 150-token LLM call, so the
+# wait is generous by an order of magnitude and still well inside the TTL — past
+# that the holder is wedged rather than slow, and waiting out its full TTL would
+# pile turns up behind a lease nobody is going to release. Polled at the scale of
+# the thing being waited on: each attempt is its own Redis round trip, and
+# sub-second precision on a multi-second LLM call buys nothing.
+_SUMMARY_WAIT_S = 30
+_SUMMARY_POLL_EVERY_S = 1.0
 
 
 async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
@@ -72,7 +84,7 @@ async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
         # land every `_LOCK_RENEW_EVERY_S + attempt_cost`, so checking only on
         # the way out lets detection land after the key has already expired —
         # and a starved event loop stretches the sleep the same way. Redis is
-        # socket-bounded (redis_lease._SOCKET_BOUNDS), which keeps the cost
+        # socket-bounded (redis_lease.SOCKET_BOUNDS), which keeps the cost
         # small; this keeps it from mattering at all.
         if _certainly_expired():
             break
@@ -658,18 +670,35 @@ async def _postprocess_turn(
     # newer turn) or an IntegrityError, since conversation_id is UNIQUE and both
     # would take the insert branch.
     #
-    # The loser skips instead of waiting. Its turn is then missing from the
-    # summary until a later turn folds the history back in — a smaller loss than
-    # a stale summary overwriting a fresh one, and far smaller than a crashed
-    # post-process. `acquire_lease` fails open, so an unreachable Redis degrades
-    # to exactly the previous behaviour rather than dropping summaries entirely.
+    # The loser waits for the lease rather than skipping. Skipping looks cheap —
+    # the summary is best-effort and nothing is gated on it — but this update is
+    # incremental, not a rebuild: `generate_or_update_summary` prompts with the
+    # stored summary plus *this turn's* two messages and never reads the message
+    # history. A skipped turn is therefore not deferred to a later one, it is
+    # gone, and the conversation is permanently summarised as if it never
+    # happened.
+    #
+    # Waiting costs nothing user-visible. The turn gate opened back at `done`,
+    # so by here the composer is live and the next turn may already be running;
+    # this coroutine is holding nothing but its own post-process. And the wait
+    # is what makes the chain correct — the winner commits before releasing, so
+    # the loser's own SELECT then picks up a summary that already includes the
+    # other turn, and folds itself in on top.
+    #
+    # `acquire_lease` fails open, so an unreachable Redis returns UNGUARDED on
+    # the first attempt and never enters the loop.
     if final_message:
         summary_key = f"chat:summary:{conversation.id}"
         summary_token = acquire_lease(summary_key, _SUMMARY_LEASE_TTL_S)
+        summary_deadline = time.monotonic() + _SUMMARY_WAIT_S
+        while summary_token is None and time.monotonic() < summary_deadline:
+            await asyncio.sleep(_SUMMARY_POLL_EVERY_S)
+            summary_token = acquire_lease(summary_key, _SUMMARY_LEASE_TTL_S)
         if summary_token is None:
-            logger.info(
-                "conversation %s summary is being written by another turn; skipping",
-                conversation.id,
+            logger.warning(
+                "conversation %s summary still locked after %ss; this turn is "
+                "dropped from the summary",
+                conversation.id, _SUMMARY_WAIT_S,
             )
         else:
             try:
@@ -835,7 +864,20 @@ async def _handle_chat_send(
     from backend.services import chat_file_service
 
     import redis as sync_redis
-    redis_client = sync_redis.from_url(settings.redis_url, decode_responses=True)
+
+    # Bounded, and for the same reason the database connection is: every call on
+    # this client is a synchronous round trip made from the event loop, so an
+    # unreachable Redis blocks the whole worker rather than one turn. redis-py
+    # defaults both timeouts to None — on a blackholed host that is minutes.
+    #
+    # Passing this client into `release_lease` is what makes it load-bearing
+    # here. That module bounds the client it opens for itself, but a caller
+    # supplying its own replaces those bounds with whatever it brought, so an
+    # unbounded client silently opts the gate release out of the protection
+    # redis_lease's docstring describes.
+    redis_client = sync_redis.from_url(
+        settings.redis_url, decode_responses=True, **SOCKET_BOUNDS,
+    )
     db: Session = DetachedReadSessionLocal()
     active_thread_id: Optional[str] = thread_id  # tracks actual thread_id for cleanup
 
@@ -949,20 +991,33 @@ async def _handle_chat_send(
         lock_heartbeat.cancel()
 
         if turn_lock:
-            # Forget the lock only once Redis has *confirmed* it is gone. An
-            # unreachable Redis returns False, and clearing `turn_lock` anyway
-            # would leave the key alive for the rest of its 600s TTL with
-            # nothing left holding a reference to retry — the socket gate would
-            # open and every following message would still be refused, now by
-            # the thread lock instead of the socket one. Leaving it set hands
-            # the retry to the `finally`.
-            if release_lease(turn_lock, turn_token, client=redis_client):
-                turn_lock = None
-            else:
+            # Only `None` — Redis unreachable — is worth carrying forward. Then
+            # the key may still be there, still ours, for the rest of its 600s
+            # TTL, and dropping the reference would leave nothing to retry with:
+            # the socket gate opens and every following message is refused
+            # anyway, by the thread lock instead of the socket one. Leaving
+            # `turn_lock` set hands the retry to the `finally`.
+            #
+            # `False` is a confirmed answer, not a failure — the key lapsed, or
+            # a later turn owns it. Either way nothing of ours is left behind,
+            # so retrying it at teardown is a Redis round trip that can only
+            # ever return False again.
+            #
+            # The gate opens in all three cases. An unreachable Redis is not
+            # something this turn can wait out — a retry here goes to the same
+            # unreachable host, costs the client the socket-timeout budget on
+            # the one path this whole function exists to make fast, and still
+            # cannot delete a key it cannot reach.
+            released = release_lease(turn_lock, turn_token, client=redis_client)
+            if released is None:
                 logger.warning(
-                    "turn lock %s not confirmed released; retrying at teardown",
+                    "turn lock %s unconfirmed (redis unreachable); retrying at "
+                    "teardown, and messages on this thread may be refused until "
+                    "it clears or its TTL lapses",
                     turn_lock,
                 )
+            else:
+                turn_lock = None
 
         await _end_streaming_state()
 
