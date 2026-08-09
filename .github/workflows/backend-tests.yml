@@ -1,0 +1,79 @@
+name: backend tests
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine   # same image as docker/local/docker-compose.postgres.yml
+        env:
+          POSTGRES_DB: thebingo_test
+          POSTGRES_USER: thebingo_user
+          POSTGRES_PASSWORD: thebingo_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U thebingo_user -d thebingo_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Two throwaway databases, deliberately not one. The alembic tests drive
+      # real upgrade/downgrade against DATABASE_URL, while the ORM fixture in
+      # backend/tests/conftest.py calls create_all on TEST_DATABASE_URL. Point
+      # both at the same database and they fight over the schema.
+      #
+      # Note for humans running the suite locally: DATABASE_URL is rewritten by
+      # those migration tests. Never point it at your dev database — you will
+      # end up stamped at whatever revision the branch under test carries.
+      DATABASE_URL: postgresql://thebingo_user:thebingo_password@localhost:5432/thebingo_alembic
+      DATABASE_URL_DIRECT: postgresql://thebingo_user:thebingo_password@localhost:5432/thebingo_alembic
+      TEST_DATABASE_URL: postgresql://thebingo_user:thebingo_password@localhost:5432/thebingo_test
+      # Not secrets. This repo is public and these logs are world-readable, so
+      # nothing real may ever appear here — a test needing a genuine credential
+      # takes it from GitHub Secrets, which are masked.
+      DB_ENCRYPTION_KEY: 3jRZ8kLmNoPqRsTuVwXyZaBcDeFgHiJkLmNoPqRsTuU=
+      BINGO_ENCRYPTION_KEY: 3jRZ8kLmNoPqRsTuVwXyZaBcDeFgHiJkLmNoPqRsTuU=
+      OPENAI_API_KEY: not-a-real-key
+      ANTHROPIC_API_KEY: not-a-real-key
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/1
+      CELERY_RESULT_URL: redis://localhost:6379/2
+      QDRANT_URL: http://localhost:6333
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'   # matches the runtime image
+          cache: pip
+
+      - name: Install dependencies
+        # -c constraints.txt is load-bearing: unpinned resolution has failed
+        # intermittently with pip ResolutionTooDeep as PyPI drifts.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+
+      - name: Create the alembic scratch database
+        run: PGPASSWORD=thebingo_password createdb -h localhost -U thebingo_user thebingo_alembic
+
+      - name: Migrate it to head
+        # Mirrors the production startup command, and gives the migration tests
+        # the head they expect to walk back from. alembic.ini is a relative
+        # path in those tests, so this must run from the repo root.
+        run: alembic upgrade head
+
+      - name: Run the suite
+        # Failures listed in backend/tests/known_failures.txt are xfail (see
+        # backend/tests/conftest.py). Red here means a NEW failure.
+        run: pytest backend/tests -q --timeout=120

@@ -2,6 +2,7 @@
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.0.0
+pytest-timeout>=2.0.0  # a hung test must fail the run, not sit until CI's own limit
 httpx>=0.26.0,<0.28
 
 # For mocking

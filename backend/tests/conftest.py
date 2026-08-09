@@ -1,5 +1,7 @@
 import os
 import uuid
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -12,6 +14,38 @@ from backend.database.session import get_db
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.models.dashboard import Dashboard
+
+
+# ── known failures ──────────────────────────────────────────────────────────
+
+_KNOWN_FAILURES = Path(__file__).with_name("known_failures.txt")
+
+
+def pytest_collection_modifyitems(items):
+    """Mark the pre-existing failures xfail so CI can gate on *new* ones.
+
+    The suite is not green and fixing it is separate work. Without this, CI
+    would be red on every PR and would therefore tell nobody anything. With it,
+    red means a test that used to pass has stopped — which is the only signal
+    worth blocking a merge on.
+
+    Non-strict on purpose: fixing a listed test reports XPASS rather than
+    breaking everyone else's build. Delete its line when you fix it.
+    """
+    if not _KNOWN_FAILURES.exists():
+        return
+    known = {
+        line.strip()
+        for line in _KNOWN_FAILURES.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    if not known:
+        return
+    for item in items:
+        if item.nodeid in known:
+            item.add_marker(
+                pytest.mark.xfail(reason="listed in known_failures.txt", strict=False)
+            )
 
 
 @pytest.fixture(scope="session")

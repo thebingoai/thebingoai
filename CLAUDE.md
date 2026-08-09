@@ -131,6 +131,30 @@ uvicorn backend.main:app --reload
 celery -A backend.tasks.upload_tasks worker --loglevel=info
 ```
 
+### Running the tests
+
+```bash
+pytest backend/tests -q
+```
+
+CI runs the same command on every PR against a throwaway Postgres — see
+`.github/workflows/backend-tests.yml`. Three things to know:
+
+- **Never point `DATABASE_URL` at your dev database when running the suite.** The
+  tests in `backend/tests/test_alembic/` drive real `alembic upgrade`/`downgrade`
+  against it and leave it stamped at the branch's head. That is why a local stack
+  can stop booting after a branch switch. Use a scratch database.
+- The suite is not green. 72 pre-existing failures are listed in
+  `backend/tests/known_failures.txt` and marked xfail, so CI gates on *new*
+  failures. Fix one and it reports XPASS — delete its line in the same PR. Never
+  add a line to excuse a regression.
+- **A test must not leave `sys.modules` entries replaced.** pytest imports every
+  test file during collection, before any test runs, so a stub installed at module
+  import is live while every other file is imported — which silently breaks any of
+  them that import the real module. Stub inside a function-scoped fixture with
+  `patch.dict(sys.modules, ...)`; see `backend/tests/services/test_template_materializer_sql.py`
+  for the split between import-time and call-time stubs.
+
 ## Architecture
 
 ### Multi-Provider LLM System
