@@ -13,24 +13,46 @@ from backend.config import settings
 # (no server-side prepared statements, SET vars, or advisory locks).
 # pool_pre_ping only protects against a dead connection if the ping itself can
 # fail. libpq has no read deadline of its own, so on a half-open socket its
-# SELECT 1 blocks for the OS TCP retransmit timeout — minutes. That is not a
-# slow query anyone can see: it is a synchronous call on the asyncio loop, and
-# with UVICORN_WORKERS=1 it freezes the entire worker, /health included, until
-# the liveness probe kills the pod (2026-07-23, 84s; 2026-08-06, 323s, both
-# lost in-flight chat turns). Keepalives give the kernel a deadline the driver
-# does not have: ~10s idle then 3 probes at 5s, so a dead peer surfaces in ~25s
-# as an ordinary connection error, which pre-ping already handles by discarding
-# the connection and opening a new one.
+# SELECT 1 blocks for the OS TCP timeout — minutes. That is not a slow query
+# anyone can see: it is a synchronous call on the asyncio loop, and with
+# UVICORN_WORKERS=1 it freezes the entire worker, /health included, until the
+# liveness probe kills the pod (2026-07-23, 84s; 2026-08-06, 323s, both lost
+# in-flight chat turns).
+#
+# Two different kernel timers are involved, and only one of them is keepalives:
+#
+#   Idle in the pool. Nothing in flight, so the keepalive timer runs: ~10s idle
+#   then 3 probes at 5s. A peer reaped on the far side is torn down in ~25s,
+#   long before anyone checks the connection out, so pre-ping fails fast and
+#   discards it. This is the common case and keepalives cover it.
+#
+#   Dead with data outstanding. Once SELECT 1 is transmitted the connection is
+#   no longer idle, so the keepalive timer never fires — retransmission governs,
+#   and on Linux that runs to tcp_retries2, ~15 minutes. Keepalives are not a
+#   deadline here at all, which is exactly the frame both incidents hung in
+#   (323s is a retransmission backoff, not a 25s keepalive budget).
+#
+# tcp_user_timeout is the second timer: it bounds how long transmitted data may
+# stay unacknowledged before the kernel aborts the connection, so it covers the
+# case keepalives structurally cannot. Held equal to the keepalive budget so the
+# two cannot drift apart. It does not threaten a legitimately slow query — a
+# client waiting on a reply has nothing unacknowledged outstanding.
 #
 # A module constant rather than an inline literal: create_engine captures
 # connect_args in a closure, so this is the only way the settings stay
 # readable — by a test, and by anyone debugging a stall.
+_KEEPALIVE_IDLE_S = 10
+_KEEPALIVE_INTERVAL_S = 5
+_KEEPALIVE_COUNT = 3
+_DEAD_PEER_BUDGET_S = _KEEPALIVE_IDLE_S + _KEEPALIVE_INTERVAL_S * _KEEPALIVE_COUNT
+
 CONNECT_ARGS = {
     "connect_timeout": settings.db_connect_timeout,
     "keepalives": 1,
-    "keepalives_idle": 10,
-    "keepalives_interval": 5,
-    "keepalives_count": 3,
+    "keepalives_idle": _KEEPALIVE_IDLE_S,
+    "keepalives_interval": _KEEPALIVE_INTERVAL_S,
+    "keepalives_count": _KEEPALIVE_COUNT,
+    "tcp_user_timeout": _DEAD_PEER_BUDGET_S * 1000,  # libpq wants milliseconds
 }
 
 engine = create_engine(
