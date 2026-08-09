@@ -63,7 +63,7 @@ async def health_detailed() -> dict:
     return {"status": overall, "checks": checks}
 
 
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"
 
 
 async def app_info() -> dict:
