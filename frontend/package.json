@@ -4,7 +4,7 @@
   "homepage": "https://thebingo.ai",
   "repository": "https://github.com/thebingoai/thebingoai",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "private": true,
   "type": "module",
   "scripts": {
