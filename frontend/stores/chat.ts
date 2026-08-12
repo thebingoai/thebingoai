@@ -30,6 +30,7 @@ export interface Message {
   loop_detected?: boolean
   briefing_id?: number | null
   query_files?: QueryFile[]  // downloadable datasets produced by this turn's queries
+  chart_specs?: ChartRef[] | null
 }
 
 export interface QueryFile {
@@ -38,6 +39,10 @@ export interface QueryFile {
   row_count: number
   col_count: number
 }
+
+export type ChartRef =
+  | { kind: 'adhoc'; widget: Record<string, any>; connection_id: number }
+  | { kind: 'dashboard_widget'; dashboard_id: number; widget_id: string }
 
 export interface ThinkingStep {
   step: string

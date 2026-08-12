@@ -178,7 +178,7 @@ async def chat(
 
         # Save assistant message
         ConversationService.add_message(
-            db, conversation.id, "assistant", result["message"]
+            db, conversation.id, "assistant", result["message"], chart_specs=result.get("chart_specs")
         )
     except Exception as e:
         if _credit_mgr is not None:
@@ -241,7 +241,8 @@ async def chat(
         message=result["message"],
         sql_queries=metadata.get("sql_queries", []),
         results=metadata.get("results", []),
-        success=result.get("success", False)
+        success=result.get("success", False),
+        chart_specs=result.get("chart_specs")
     )
 
 

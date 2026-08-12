@@ -770,6 +770,9 @@ def build_orchestrator_tools(
     from backend.agents.orchestrator.schedule_briefing_tool import build_schedule_briefing_tool
     tools.extend(build_schedule_briefing_tool(context, db_session_factory))
 
+    from backend.agents.orchestrator.chat_chart_tools import build_chat_chart_tools
+    tools.extend(build_chat_chart_tools(context, db_session_factory))
+
     return tools
 
 
@@ -1224,6 +1227,28 @@ def _dashboard_tool_succeeded(messages: list) -> bool:
     return False
 
 
+def _extract_chart_specs_from_messages(messages: list, user_id: str) -> Optional[list]:
+    """Non-streaming counterpart of stream_orchestrator's collected_steps scan.
+
+    Same tool_call_id -> name mapping trick as _dashboard_tool_succeeded, then
+    delegates to resolve_chart_specs_from_tool_results for the actual chart_ref
+    resolution (which is what keeps row data out of the LLM's view).
+    """
+    from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
+
+    tool_name_by_id: dict = {}
+    tool_results: list = []
+    for msg in messages:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tool_name_by_id[tc.get("id", "")] = tc.get("name")
+        elif isinstance(msg, ToolMessage):
+            name = tool_name_by_id.get(getattr(msg, "tool_call_id", ""))
+            if name:
+                tool_results.append((name, msg.content))
+    return resolve_chart_specs_from_tool_results(tool_results, user_id)
+
+
 async def run_orchestrator(
     user_question: str,
     context: AgentContext,
@@ -1318,12 +1343,15 @@ async def run_orchestrator(
         if settings.judge_highlight_enabled and final_answer:
             final_answer = _apply_highlights(final_answer, highlighted_text)
 
+        chart_specs = _extract_chart_specs_from_messages(result.get("messages", []), context.user_id)
+
         return {
             "success": True,
             "message": final_answer or "Query completed successfully",
             "thread_id": context.thread_id,
             "retry_succeeded": retry_succeeded,
             "judge_metadata": judge_metadata,
+            "chart_specs": chart_specs,
         }
 
     except Exception as e:
@@ -1668,6 +1696,12 @@ async def stream_orchestrator(
             len(collected_steps),
             _ttft_logged,
         )
+        from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
+        chart_tool_results = [
+            (s["tool_name"], s.get("content", {}).get("result"))
+            for s in collected_steps if s.get("step_type") == "tool_result"
+        ]
+        chart_specs = resolve_chart_specs_from_tool_results(chart_tool_results, context.user_id)
         yield {
             "type": "done",
             "content": "Orchestrator completed",
@@ -1676,6 +1710,7 @@ async def stream_orchestrator(
             "retry_succeeded": retry_succeeded,
             "judge_metadata": judge_metadata,
             "total_ms": _stream_total_ms,
+            "chart_specs": chart_specs,
         }
 
     except LoopDetectedError as e:

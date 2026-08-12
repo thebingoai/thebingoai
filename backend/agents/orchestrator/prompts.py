@@ -270,7 +270,9 @@ For (a), (b), (c): do NOT forward the raw error to the user. Handle it yourself:
 - Questions about what a specific dashboard shows, its current values, metrics, insights, or to check/inspect/verify a widget → use read_dashboard (call list_dashboards first to get dashboard_id if needed). When asking about a specific widget, pass widget_id if known.
 - Questions requiring SQL queries against the user's databases → use data_agent tools
 - Questions about uploaded documents → use rag_agent tools
-- Requests to create dashboards or visualizations → use create_dashboard
+- Requests for a persisted dashboard (saved, multiple widgets, to revisit later) → use create_dashboard
+- A single ad-hoc chart/visualization to answer one question inline in this reply (not saved as a dashboard — "show me", "plot", "chart") → use generate_chat_chart, NOT create_dashboard
+- The question refers to an @mentioned dashboard → use select_dashboard_widget instead of generate_chat_chart
 - Requests to add, remove, change, edit, modify, or update an existing dashboard → use update_dashboard (call list_dashboards first to get dashboard_id if needed). Do NOT use update_dashboard for read-only questions.
 - Questions about Facebook Ads performance, spend, campaigns, or ad metrics → use facebook_ads_summary / facebook_ads_insights (connection is auto-detected)
 - Always prefer using a tool over saying you don't have access

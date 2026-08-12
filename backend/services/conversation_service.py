@@ -78,6 +78,7 @@ class ConversationService:
         role: str,
         content: str,
         attachments: Optional[list] = None,
+        chart_specs: Optional[list] = None,
     ) -> Message:
         """Add a message to a conversation."""
         message = Message(
@@ -85,6 +86,7 @@ class ConversationService:
             role=role,
             content=content,
             attachments=attachments,
+            chart_specs=chart_specs,
         )
 
         db.add(message)
