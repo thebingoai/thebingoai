@@ -16,7 +16,9 @@ from backend.models.user import User
 from backend.models.database_connection import DatabaseConnection
 from backend.schemas.chat import ChatRequest, ResolvedMention
 from backend.services.conversation_service import ConversationService
-from backend.services.redis_lease import release_lease, renew_lease
+from backend.services.redis_lease import (
+    SOCKET_BOUNDS, acquire_lease, release_lease, renew_lease,
+)
 from backend.services.ws_connection_manager import manager
 from backend.config import settings
 
@@ -30,6 +32,21 @@ router = APIRouter(tags=["websocket"])
 # isn't one Redis round-trip per token.
 _TURN_LOCK_TTL_S = 600
 _LOCK_RENEW_EVERY_S = 60
+
+# Single-flight for the per-conversation summary write. Long enough to cover the
+# LLM call it guards, short enough that a killed pod cannot block the next turn's
+# summary for long.
+_SUMMARY_LEASE_TTL_S = 120
+
+# How long a contending turn waits for that lease before giving up, and how often
+# it retries. The write it is queueing behind is one 150-token LLM call, so the
+# wait is generous by an order of magnitude and still well inside the TTL — past
+# that the holder is wedged rather than slow, and waiting out its full TTL would
+# pile turns up behind a lease nobody is going to release. Polled at the scale of
+# the thing being waited on: each attempt is its own Redis round trip, and
+# sub-second precision on a multi-second LLM call buys nothing.
+_SUMMARY_WAIT_S = 30
+_SUMMARY_POLL_EVERY_S = 1.0
 
 
 async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
@@ -67,7 +84,7 @@ async def _hold_turn_lock(key_of, token: str, lost: asyncio.Event) -> None:
         # land every `_LOCK_RENEW_EVERY_S + attempt_cost`, so checking only on
         # the way out lets detection land after the key has already expired —
         # and a starved event loop stretches the sleep the same way. Redis is
-        # socket-bounded (redis_lease._SOCKET_BOUNDS), which keeps the cost
+        # socket-bounded (redis_lease.SOCKET_BOUNDS), which keeps the cost
         # small; this keeps it from mattering at all.
         if _certainly_expired():
             break
@@ -188,15 +205,21 @@ async def _complete_turn(
     active_thread_id: str,
     orchestrator_errored: bool = False,
     lock_lost=None,
+    on_turn_visible=None,
 ) -> None:
     """Finish a turn after the orchestrator's `done`, in strict order:
-    persist → capture → charge → forward `done` → best-effort post-process.
+    persist → capture → charge → forward `done` → open the gates → post-process.
 
     Persist runs FIRST; its failure propagates *before* the charge, so a turn
     whose answer wasn't saved is never billed (the caller finalizes the credit
     context with the exception, which skips the charge). `done` is forwarded only
     after the charge lands, so the client's balance refresh reads the debited
     pool. Post-processing failures are swallowed — the turn is already complete.
+
+    `on_turn_visible` fires between those last two steps, which is the whole
+    point of the ordering: once `done` is out, the client re-enables its
+    composer, and every gate that would reject the next message has to be open
+    before the post-process LLM calls run.
     """
     # 1. Persist the answer + steps. Must succeed before charging.
     await _persist_turn(db, conversation, final_message, collected_steps)
@@ -242,7 +265,14 @@ async def _complete_turn(
     if pending_done_event is not None:
         await send(pending_done_event)
 
-    # 4. Best-effort post-processing; a failure here must not undo the charge.
+    # 4. The turn is complete as far as the client is concerned, so end its
+    #    exclusivity before the post-process below spends two LLM calls on a
+    #    title and a summary. Nothing past this point writes an answer or
+    #    charges for one, which is all the gates protect.
+    if on_turn_visible is not None:
+        await on_turn_visible()
+
+    # 5. Best-effort post-processing; a failure here must not undo the charge.
     try:
         await _postprocess_turn(
             db, conversation, is_new, user_message, final_message,
@@ -629,34 +659,75 @@ async def _postprocess_turn(
             "content": title,
         })
 
-    # Generate/update conversation summary
+    # Generate/update conversation summary, one turn at a time per conversation.
+    #
+    # `generate_or_update_summary` is a read-modify-write wrapped around an LLM
+    # call — SELECT the row, release the transaction, spend seconds generating,
+    # then INSERT or UPDATE. That was safe only because the thread lock made two
+    # turns on one conversation impossible; now that a turn starts as soon as
+    # `done` is out, two can reach this block together. Concurrently it is
+    # either a lost update (whichever commits last wins, which need not be the
+    # newer turn) or an IntegrityError, since conversation_id is UNIQUE and both
+    # would take the insert branch.
+    #
+    # The loser waits for the lease rather than skipping. Skipping looks cheap —
+    # the summary is best-effort and nothing is gated on it — but this update is
+    # incremental, not a rebuild: `generate_or_update_summary` prompts with the
+    # stored summary plus *this turn's* two messages and never reads the message
+    # history. A skipped turn is therefore not deferred to a later one, it is
+    # gone, and the conversation is permanently summarised as if it never
+    # happened.
+    #
+    # Waiting costs nothing user-visible. The turn gate opened back at `done`,
+    # so by here the composer is live and the next turn may already be running;
+    # this coroutine is holding nothing but its own post-process. And the wait
+    # is what makes the chain correct — the winner commits before releasing, so
+    # the loser's own SELECT then picks up a summary that already includes the
+    # other turn, and folds itself in on top.
+    #
+    # `acquire_lease` fails open, so an unreachable Redis returns UNGUARDED on
+    # the first attempt and never enters the loop.
     if final_message:
-        try:
-            from backend.services.summary_service import SummaryService
-            summary = await SummaryService.generate_or_update_summary(
-                db, conversation.id, user_message, final_message
+        summary_key = f"chat:summary:{conversation.id}"
+        summary_token = acquire_lease(summary_key, _SUMMARY_LEASE_TTL_S)
+        summary_deadline = time.monotonic() + _SUMMARY_WAIT_S
+        while summary_token is None and time.monotonic() < summary_deadline:
+            await asyncio.sleep(_SUMMARY_POLL_EVERY_S)
+            summary_token = acquire_lease(summary_key, _SUMMARY_LEASE_TTL_S)
+        if summary_token is None:
+            logger.warning(
+                "conversation %s summary still locked after %ss; this turn is "
+                "dropped from the summary",
+                conversation.id, _SUMMARY_WAIT_S,
             )
-            token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
-            token_limit = SummaryService.get_token_limit()
-            await manager.send_to_user(user.id, {
-                "type": "chat.summary",
-                "request_id": request_id,
-                "thread_id": conversation.thread_id,
-                "content": {
-                    "text": summary.summary_text,
-                    "updated_at": summary.updated_at.isoformat(),
-                    "token_count": token_count,
-                    "token_limit": token_limit,
-                }
-            })
-        except Exception as e:
-            logger.warning(f"Summary generation failed: {e}")
+        else:
+            try:
+                from backend.services.summary_service import SummaryService
+                summary = await SummaryService.generate_or_update_summary(
+                    db, conversation.id, user_message, final_message
+                )
+                token_count = SummaryService.estimate_conversation_tokens(db, conversation.id)
+                token_limit = SummaryService.get_token_limit()
+                await manager.send_to_user(user.id, {
+                    "type": "chat.summary",
+                    "request_id": request_id,
+                    "thread_id": conversation.thread_id,
+                    "content": {
+                        "text": summary.summary_text,
+                        "updated_at": summary.updated_at.isoformat(),
+                        "token_count": token_count,
+                        "token_limit": token_limit,
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"Summary generation failed: {e}")
+            finally:
+                release_lease(summary_key, summary_token)
 
-    # Notify all connected tabs that streaming finished (reaches reconnected WS)
-    await manager.send_to_user(user.id, {
-        "type": "chat.stream_complete",
-        "thread_id": active_thread_id,
-    })
+    # The chat.stream_complete broadcast used to live here. It moved into
+    # _handle_chat_send's finally so it can be gated on winning the streaming
+    # marker's compare-and-delete — unconditionally announcing "streaming
+    # finished" is wrong once a newer turn may already be streaming this thread.
 
     # Fire plugin hooks (non-blocking)
     if final_message:
@@ -778,17 +849,35 @@ async def _handle_chat_send(
     connection_ids: list,
     file_ids: list = None,
     mentions: list = None,
+    on_gate_open=None,
 ) -> None:
     """
     Handle a chat.send message over WebSocket.
     Mirrors the SSE streaming logic but sends JSON events over the WebSocket.
+
+    `on_gate_open` opens the endpoint's one-turn-per-socket gate. It fires when
+    `done` reaches the client, not when this coroutine returns — see
+    `_release_turn_gate` below for why the difference matters.
     """
     from backend.agents import stream_orchestrator
     from backend.services.heartbeat_context import build_orchestrator_context
     from backend.services import chat_file_service
 
     import redis as sync_redis
-    redis_client = sync_redis.from_url(settings.redis_url, decode_responses=True)
+
+    # Bounded, and for the same reason the database connection is: every call on
+    # this client is a synchronous round trip made from the event loop, so an
+    # unreachable Redis blocks the whole worker rather than one turn. redis-py
+    # defaults both timeouts to None — on a blackholed host that is minutes.
+    #
+    # Passing this client into `release_lease` is what makes it load-bearing
+    # here. That module bounds the client it opens for itself, but a caller
+    # supplying its own replaces those bounds with whatever it brought, so an
+    # unbounded client silently opts the gate release out of the protection
+    # redis_lease's docstring describes.
+    redis_client = sync_redis.from_url(
+        settings.redis_url, decode_responses=True, **SOCKET_BOUNDS,
+    )
     db: Session = DetachedReadSessionLocal()
     active_thread_id: Optional[str] = thread_id  # tracks actual thread_id for cleanup
 
@@ -830,6 +919,113 @@ async def _handle_chat_send(
     lock_heartbeat = asyncio.create_task(
         _hold_turn_lock(lambda: turn_lock, turn_token, lock_lost)
     )
+
+    gate_released = False
+
+    async def _end_streaming_state() -> None:
+        """Clear this turn's streaming marker and announce it — if still ours.
+
+        Compare-and-delete, because a newer turn may already have claimed the
+        thread: a blind DELETE would evict *its* marker, and a client that
+        reconnects then reads streaming=false and gives up on a response still
+        being generated.
+
+        The broadcast rides the same atomic step. `chat.stream_complete` carries
+        only `thread_id` — the reconnect path has no request_id to match on, it
+        reconnected and never saw one — so announcing completion while another
+        turn streams is read as *that* turn finishing. Winning the
+        compare-and-delete is exactly the proof that nobody else holds the
+        thread.
+
+        Published rather than sent to this process's sockets. A reconnect is
+        free to land on any replica and `send_to_user` only walks the local
+        connection table, so on more than one pod the event could miss the very
+        socket waiting for it. That was equally true before this event moved
+        here — but reaching a reconnected client is the entire reason it exists.
+        """
+        if not active_thread_id:
+            return
+        try:
+            if not release_lease(
+                f"streaming:{active_thread_id}", turn_token, client=redis_client,
+            ):
+                return
+            manager.publish_to_user_sync(user.id, {
+                "type": "chat.stream_complete",
+                "thread_id": active_thread_id,
+            })
+        except Exception:
+            logger.warning("streaming teardown failed", exc_info=True)
+
+    async def _release_turn_gate() -> None:
+        """End the turn's exclusivity the moment it is user-visibly complete.
+
+        Everything the gates exist to protect — persisting the answer and
+        charging for it — has already happened by the time `done` is forwarded
+        (see `_complete_turn`'s strict ordering). What runs after is best-effort
+        title and summary generation: two LLM calls, several seconds, holding
+        nothing a second turn needs.
+
+        Releasing only at the end of the coroutine meant the client's composer
+        re-enabled on `done` while the server kept answering "busy" for the
+        length of those calls. Scoping questions land a user squarely in that
+        window, because the answer to one is short and arrives fast.
+
+        The streaming marker ends here too rather than at teardown. It is what
+        `stream.check` answers, so holding it through post-process told a tab
+        opening `/chat?id=<thread>` that a response was still coming — blank
+        assistant placeholder, composer disabled — while the tab that sent the
+        message had its composer back at `done`. Nothing is still coming: the
+        answer was persisted before `done` went out.
+
+        Idempotent: the normal path releases here, the `finally` covers every
+        path that never reaches `done`.
+        """
+        nonlocal turn_lock, gate_released
+        if gate_released:
+            return
+        gate_released = True
+
+        # Cancelled in the same step that drops the lock, so a renewer can never
+        # keep alive a thread a later turn owns.
+        lock_heartbeat.cancel()
+
+        if turn_lock:
+            # Only `None` — Redis unreachable — is worth carrying forward. Then
+            # the key may still be there, still ours, for the rest of its 600s
+            # TTL, and dropping the reference would leave nothing to retry with:
+            # the socket gate opens and every following message is refused
+            # anyway, by the thread lock instead of the socket one. Leaving
+            # `turn_lock` set hands the retry to the `finally`.
+            #
+            # `False` is a confirmed answer, not a failure — the key lapsed, or
+            # a later turn owns it. Either way nothing of ours is left behind,
+            # so retrying it at teardown is a Redis round trip that can only
+            # ever return False again.
+            #
+            # The gate opens in all three cases. An unreachable Redis is not
+            # something this turn can wait out — a retry here goes to the same
+            # unreachable host, costs the client the socket-timeout budget on
+            # the one path this whole function exists to make fast, and still
+            # cannot delete a key it cannot reach.
+            released = release_lease(turn_lock, turn_token, client=redis_client)
+            if released is None:
+                logger.warning(
+                    "turn lock %s unconfirmed (redis unreachable); retrying at "
+                    "teardown, and messages on this thread may be refused until "
+                    "it clears or its TTL lapses",
+                    turn_lock,
+                )
+            else:
+                turn_lock = None
+
+        await _end_streaming_state()
+
+        if on_gate_open is not None:
+            try:
+                on_gate_open()
+            except Exception:  # pragma: no cover - a gate release must never raise
+                logger.exception("failed to open the socket turn gate")
 
     _credit_mgr = None
     try:
@@ -898,9 +1094,13 @@ async def _handle_chat_send(
         from backend.agents.profile_llm import resolve_published_llm
         user_provider, profile_temperature, profile_max_tokens = resolve_published_llm(ctx.profile)
 
-        # Set Redis streaming flag (TTL 5 min safety net)
+        # Set Redis streaming flag (TTL 5 min safety net). The value is this
+        # turn's ownership token, not `request_id`: a turn can now begin while
+        # the previous one post-processes, so the teardown has to tell whose
+        # marker it is looking at — and `request_id` arrives off the wire
+        # defaulting to "", which two turns can therefore share.
         streaming_key = f"streaming:{conversation.thread_id}"
-        redis_client.setex(streaming_key, 300, request_id)
+        redis_client.setex(streaming_key, 300, turn_token)
 
         # --- Credit context setup (bingo-credits plugin) ---
         _credit_mgr = None
@@ -1056,6 +1256,7 @@ async def _handle_chat_send(
             collected_steps, collected_retry_succeeded, collected_judge_metadata,
             _credit_mgr, pending_done_event, send, request_id, user, active_thread_id,
             orchestrator_errored, lock_lost.is_set,
+            on_turn_visible=_release_turn_gate,
         )
         _credit_mgr = None
 
@@ -1068,22 +1269,19 @@ async def _handle_chat_send(
         logger.exception(f"chat.send error: {e}")
         await send({"type": "chat.error", "request_id": request_id, "thread_id": thread_id or "", "content": str(e)})
     finally:
-        # Scoped to the turn: cancelled here, in the same block that releases the
-        # lock, so a renewer can never keep alive a thread a later turn owns.
-        lock_heartbeat.cancel()
-        # Clear streaming flag (may not exist if error occurred before streaming started)
-        if active_thread_id:
-            try:
-                redis_client.delete(f"streaming:{active_thread_id}")
-            except Exception:
-                pass
-        # Release the turn lock, but only if we still own it. A turn that
-        # outran its 600s TTL must not delete the lock a *later* turn has since
-        # claimed on the same thread. release_lease compares and deletes in one
-        # Lua call — a GET-then-DELETE here would let that later turn claim the
-        # key in between and lose its lock to this one.
+        # Covers every path that never reached `done` — an early return, a
+        # raise, a lost lock. On the normal path this is a no-op: everything was
+        # released the moment the client saw `done`.
+        await _release_turn_gate()
+
+        # Second attempt at the thread lock. `_release_turn_gate` leaves
+        # `turn_lock` set when Redis did not confirm the delete, precisely so
+        # there is something here to retry — otherwise an unreachable Redis
+        # wedges the thread for the remainder of a 600s TTL. The streaming
+        # marker needs no equivalent: its own 300s TTL is the backstop, and it
+        # blocks nothing meanwhile.
         if turn_lock:
-            release_lease(turn_lock, turn_token)
+            release_lease(turn_lock, turn_token, client=redis_client)
         db.close()
 
 
@@ -1173,10 +1371,17 @@ async def websocket_endpoint(ws: WebSocket):
     redis_task = asyncio.create_task(manager.listen_redis(user.id, ws))
     redis_task.add_done_callback(lambda t: _on_listener_done(t, ws, user.id))
 
-    # The one-turn-per-socket gate. Scoped to this connection on purpose, so it
-    # dies with the frame; the strong reference that has to outlive the socket is
-    # _inflight_chat_tasks.
+    # Two sets, deliberately not one. `chat_tasks` is a *lifetime* reference held
+    # for the whole task; `answering` is the one-turn-per-socket *gate*, and it
+    # empties earlier — the moment the turn is user-visibly complete, which is
+    # when `done` reaches the client, not when the coroutine returns. Gating on
+    # task liveness is what made the composer re-enable on `done` while the
+    # server still answered "busy" for the length of two post-turn LLM calls.
+    #
+    # Both are scoped to this connection on purpose, so they die with the frame;
+    # the strong reference that has to outlive the socket is _inflight_chat_tasks.
     chat_tasks: set[asyncio.Task] = set()
+    answering: set[str] = set()
 
     try:
         while True:
@@ -1241,7 +1446,7 @@ async def websocket_endpoint(ws: WebSocket):
                     }))
                     continue
 
-                if chat_tasks:
+                if answering:
                     # The composer is disabled while a turn streams, so a second
                     # send on the same socket is a duplicate or a scripted
                     # client. Cheap short-circuit only — being socket-local it
@@ -1259,17 +1464,31 @@ async def websocket_endpoint(ws: WebSocket):
                     }))
                     continue
 
+                # Generated, not the wire's request_id: that arrives as
+                # `data.get("request_id", "")` and defaults to empty, so two
+                # sends omitting it would share a key and the first to finish
+                # would open the gate on the second — the same defaulting bug
+                # the turn lock's token already had to fix.
+                slot_id = uuid.uuid4().hex
+                answering.add(slot_id)
+
                 # Fire-and-forget so this loop stays responsive
                 task = asyncio.create_task(_handle_chat_send(
                     ws, user, request_id, thread_id, message, connection_ids,
                     file_ids=file_ids,
                     mentions=mentions,
+                    on_gate_open=lambda sid=slot_id: answering.discard(sid),
                 ))
                 chat_tasks.add(task)
                 _inflight_chat_tasks.add(task)
                 task.add_done_callback(chat_tasks.discard)
                 task.add_done_callback(_inflight_chat_tasks.discard)
                 task.add_done_callback(_log_task_exception)
+                # Backstop: every path that ends the task without ever reaching
+                # `done` — an early return, a raise, cancellation — has to open
+                # the gate too, or the socket wedges for good. discard() is
+                # idempotent, so the normal path releasing first is harmless.
+                task.add_done_callback(lambda _t, sid=slot_id: answering.discard(sid))
 
             elif msg_type == "conversation.switch":
                 pass  # Frontend-only state change

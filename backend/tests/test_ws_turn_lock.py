@@ -16,6 +16,7 @@ are driven with `asyncio.run`, matching test_ws_listener_resilience.py.
 import asyncio
 import json
 import time
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -36,6 +37,7 @@ class _FakeRedis:
         self.store = dict(initial or {})
         self.deleted: list[str] = []
         self.set_calls: list[tuple] = []
+        self.published: list[tuple] = []
 
     def eval(self, script, numkeys, key, token):
         if self.store.get(key) != token:
@@ -60,6 +62,13 @@ class _FakeRedis:
 
     def setex(self, key, ttl, value):
         self.store[key] = value
+
+    def publish(self, channel, payload):
+        # Completion is published, not written to local sockets. Without this
+        # the teardown raises AttributeError into its own except and the tests
+        # would pass while announcing nothing.
+        self.published.append((channel, payload))
+        return 1
 
     def exists(self, key):
         return 1 if key in self.store else 0
@@ -166,6 +175,213 @@ def test_lock_released_when_turn_finishes():
 
     assert "chat:turn:t-1" not in redis.store
     assert "chat:turn:t-1" in redis.deleted
+
+
+def test_the_gates_open_before_post_processing():
+    """`_complete_turn` order: persist → charge → `done` → open gates → post-process.
+
+    Everything the gates protect — the answer being written and billed — is done
+    by the time `done` goes out. What follows is best-effort title and summary
+    generation: two LLM calls, several seconds, holding nothing a second turn
+    needs. Keeping the gates shut across them is what made a quick reply after a
+    scoping question come back "A message is already being answered".
+    """
+    order = []
+
+    async def _send(payload):
+        order.append(f"send:{payload['type']}")
+
+    async def _persist(*_a, **_kw):
+        order.append("persist")
+
+    async def _charge(*_a, **_kw):
+        order.append("charge")
+
+    async def _postprocess(*_a, **_kw):
+        order.append("postprocess")
+
+    async def _open_gates():
+        # Async because the real one publishes and tears down Redis state.
+        order.append("gates_open")
+
+    with patch.object(ws_mod, "_persist_turn", _persist), \
+         patch.object(ws_mod, "_finalize_credit_turn", _charge), \
+         patch.object(ws_mod, "_postprocess_turn", _postprocess):
+        asyncio.run(ws_mod._complete_turn(
+            db=None,
+            conversation=SimpleNamespace(id=1, thread_id="t-1"),
+            is_new=False,
+            user_message="q",
+            final_message="a",
+            collected_steps=[],
+            retry_succeeded=None,
+            judge_metadata=None,
+            credit_mgr=None,
+            pending_done_event={"type": "chat.done"},
+            send=_send,
+            request_id="req-1",
+            user=_FakeUser(),
+            active_thread_id="t-1",
+            on_turn_visible=_open_gates,
+        ))
+
+    assert order == [
+        "persist", "charge", "send:chat.done", "gates_open", "postprocess",
+    ], order
+
+
+# ── the streaming marker belongs to the turn that set it ────────────────────
+#
+# Opening the gates at `done` means the next turn can be streaming while this
+# one post-processes. Everything the teardown touches is therefore shared, and
+# has to be owner-checked.
+
+def _run_with_marker(redis, marker_of, sent_to_user):
+    """Drive a turn whose thread already carries a streaming marker.
+
+    The real `setex` happens deep inside the turn, well past where these stubs
+    bail, so the marker is planted from the resolve stub instead. By then the
+    turn lock's SET NX is recorded, and its token *is* this turn's token — which
+    is exactly what the teardown compares against.
+    """
+    async def _plant(*_a, **_kw):
+        redis.store["streaming:t-1"] = marker_of(redis.set_calls[0][1])
+        return None, False
+
+    # Sync: completion is *published* to the user's Redis channel, not written
+    # to this process's sockets, so a reconnect landing on another replica still
+    # receives it.
+    def _capture(_user_id, payload):
+        sent_to_user.append(payload)
+
+    with patch.object(ws_mod.manager, "publish_to_user_sync", _capture):
+        _run(redis, _plant, request_id="req-1")
+
+
+def test_a_finished_turn_clears_and_announces_a_marker_it_still_owns():
+    """The ordinary case: nobody else took the thread, so tear down and say so."""
+    redis, sent = _FakeRedis(), []
+
+    _run_with_marker(redis, lambda my_token: my_token, sent)
+
+    assert "streaming:t-1" not in redis.store, "the turn left its own marker behind"
+    assert [p["type"] for p in sent] == ["chat.stream_complete"]
+    assert sent[0]["thread_id"] == "t-1"
+
+
+def test_a_finished_turn_leaves_a_newer_turns_streaming_marker_alone():
+    """Turn A post-processes while turn B claims the thread.
+
+    A blind DELETE in A's teardown evicts B's marker, and a client that
+    reconnects during B then reads streaming=false from `stream.check` and gives
+    up on a response that is still coming.
+    """
+    redis, sent = _FakeRedis(), []
+
+    _run_with_marker(redis, lambda _my_token: "turn-B-token", sent)
+
+    assert redis.store.get("streaming:t-1") == "turn-B-token", (
+        "the finishing turn deleted a marker it no longer owned"
+    )
+
+
+def test_a_finished_turn_stays_silent_while_a_newer_turn_streams():
+    """`chat.stream_complete` carries only `thread_id`.
+
+    The reconnect path cannot filter it any further — it reconnected, so it
+    never saw a request_id to match against. Announcing completion while a newer
+    turn streams is therefore read as *that* turn finishing: the client reloads
+    early and unsubscribes, losing the response still being generated.
+    """
+    redis, sent = _FakeRedis(), []
+
+    _run_with_marker(redis, lambda _my_token: "turn-B-token", sent)
+
+    assert sent == [], (
+        "announced completion for a thread another turn is still streaming"
+    )
+
+
+def test_a_lock_redis_would_not_confirm_is_retried_at_teardown():
+    """Opening the gate on an *unconfirmed* release is worse than not opening it.
+
+    `release_lease` reports False when Redis is unreachable — the key is still
+    there. Forgetting the lock at that point drops the only reference left to
+    retry with, so the socket gate opens and every following message is refused
+    anyway, now by the thread lock, for the remainder of its 600s TTL.
+    """
+    redis = _FakeRedis()
+    attempts = []
+    real_eval = _FakeRedis.eval
+
+    def _first_eval_times_out(self, script, numkeys, key, token):
+        attempts.append(key)
+        if len(attempts) == 1:
+            raise TimeoutError("redis unreachable")  # release_lease -> False
+        return real_eval(self, script, numkeys, key, token)
+
+    with patch.object(_FakeRedis, "eval", _first_eval_times_out):
+        _run(redis, _resolve_to_none, request_id="req-1")
+
+    assert attempts.count("chat:turn:t-1") == 2, (
+        f"an unconfirmed release was never retried: {attempts}"
+    )
+    assert "chat:turn:t-1" not in redis.store, "the thread stayed locked"
+
+
+def test_turns_write_the_conversation_summary_one_after_another():
+    """The other shared write that opening the gates early exposed.
+
+    `generate_or_update_summary` is SELECT -> release txn -> LLM call ->
+    INSERT/UPDATE, with a UNIQUE on conversation_id. Run concurrently that is
+    either a lost update — whichever commits last wins, which need not be the
+    newer turn — or an IntegrityError, since both would take the insert branch.
+
+    Serialised, not deduplicated: both turns must land. The update is
+    incremental — it prompts with the stored summary plus this turn's two
+    messages and never reads the message history — so a turn that gives up its
+    slot is not deferred to a later one, it is gone, and the conversation is
+    summarised as if it never happened. The second turn queues and then folds
+    itself into what the first one wrote.
+    """
+    redis = _FakeRedis()
+    calls = []
+
+    async def _slow_generate(_db, conversation_id, *_a, **_kw):
+        calls.append(("enter", conversation_id))
+        await asyncio.sleep(0.05)  # the LLM call, where the two would overlap
+        calls.append(("exit", conversation_id))
+        return SimpleNamespace(summary_text="s", updated_at=datetime(2026, 8, 5))
+
+    async def _noop(*_a, **_kw):
+        pass
+
+    from backend.services import summary_service as ss
+
+    async def _two_turns_post_processing_at_once():
+        conv = SimpleNamespace(id=7, thread_id="t-1")
+        await asyncio.gather(*[
+            ws_mod._postprocess_turn(
+                None, conv, False, "q", "a", [], _noop, f"req-{i}",
+                _FakeUser(), "t-1",
+            )
+            for i in (1, 2)
+        ])
+
+    with patch("redis.from_url", return_value=redis), \
+         patch.object(ss.SummaryService, "generate_or_update_summary", _slow_generate), \
+         patch.object(ss.SummaryService, "estimate_conversation_tokens", lambda *_a: 0), \
+         patch.object(ss.SummaryService, "get_token_limit", lambda: 100), \
+         patch.object(ws_mod.manager, "send_to_user", _noop), \
+         patch.object(ws_mod, "_fire_chat_response_plugins", _noop), \
+         patch.object(ws_mod, "_SUMMARY_POLL_EVERY_S", 0.01):
+        asyncio.run(_two_turns_post_processing_at_once())
+
+    # Interleaved would read enter, enter, exit, exit — the overlap the lease
+    # exists to prevent. A dropped turn would be one pair, not two.
+    assert [step for step, _ in calls] == ["enter", "exit", "enter", "exit"], (
+        f"the two summary writes were not serialised: {calls}"
+    )
 
 
 def test_lock_released_when_turn_raises():

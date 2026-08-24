@@ -160,6 +160,45 @@ def test_oversized_raster_is_rejected_before_decode(monkeypatch):
     assert result["base64_data"].startswith("data:image/png;base64,")
 
 
+def test_engine_gives_libpq_a_deadline():
+    """A hung pre-ping must not be able to freeze the worker.
+
+    pool_pre_ping only helps if the ping can fail. libpq has no read deadline,
+    so on a half-open socket its SELECT 1 blocks for the OS TCP timeout —
+    minutes, synchronously, on the asyncio loop. With UVICORN_WORKERS=1 that
+    takes /health down with it and the liveness probe kills the pod
+    (2026-07-23, 84s; 2026-08-06, 323s).
+
+    Both kernel timers are asserted because they cover different halves and
+    neither is sufficient alone: keepalives fire only while the connection is
+    idle, and tcp_user_timeout only once data is outstanding. Dropping either
+    leaves a way for a dead peer to hang the loop for minutes.
+    """
+    from backend.database.session import CONNECT_ARGS as args
+    from backend.database.session import engine
+
+    assert args.get("keepalives") == 1, "nothing bounds a peer that dies while idle"
+    assert args.get("connect_timeout"), "libpq would otherwise wait indefinitely"
+
+    # Detection budget: idle, then count probes at interval. Anything beyond a
+    # readiness period or two and the pod is out of the load balancer with the
+    # loop still wedged.
+    budget = args["keepalives_idle"] + args["keepalives_interval"] * args["keepalives_count"]
+    assert budget <= 60, f"dead peer takes {budget}s to surface"
+
+    # The frame both incidents actually hung in: SELECT 1 already transmitted,
+    # so the connection is not idle and keepalives never run. Without this the
+    # kernel retransmits to tcp_retries2 — ~15 minutes.
+    assert args.get("tcp_user_timeout"), "a blackholed pre-ping has no deadline"
+    assert args["tcp_user_timeout"] == budget * 1000, (
+        "the two deadlines have drifted; libpq takes milliseconds"
+    )
+
+    # Connections must not outlive the pooler's own idle reaping, or a checkout
+    # inherits a socket only the client still believes in.
+    assert engine.pool._recycle <= 600
+
+
 def test_pool_exhaustion_sheds_as_503():
     """QueuePool timeout must become a 503 + Retry-After, never a 500.
 

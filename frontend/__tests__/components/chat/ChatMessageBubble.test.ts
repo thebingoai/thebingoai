@@ -20,6 +20,13 @@ vi.stubGlobal('useApi', () => ({ skills: { respondToSuggestion: vi.fn() }, fetch
 vi.stubGlobal('useMentions', () => ({ resolvedMentions: { value: new Map() } }))
 vi.stubGlobal('navigateTo', vi.fn())
 
+// The "Data Export" dropdown is gated on chat_export_enabled (off in production
+// defaults). Stub it on so the export tests below exercise the real behaviour;
+// the off case is covered explicitly at the end of that describe.
+const stubChatExport = (enabled: boolean) =>
+  vi.stubGlobal('useFeatureConfig', () => ({ config: ref({ chat_export_enabled: enabled }) }))
+stubChatExport(true)
+
 // Stub Pinia chat store used by the bubble (matches plan + protects against explicit import paths)
 vi.mock('~/stores/chat', () => ({
   useChatStore: () => ({ isStreaming: false, messages: [], skillSuggestions: [] }),
@@ -402,6 +409,28 @@ describe('ChatMessageBubble — query result download', () => {
     await openExport(wrapper)
     expect(buttonByText(wrapper, 'CSV')).toBeTruthy()
     expect(buttonByText(wrapper, 'Excel')).toBeTruthy()
+  })
+
+  it('hides the Data Export trigger when chat_export_enabled is off, keeping the file row', () => {
+    stubChatExport(false)
+    try {
+      const wrapper = mountBubble(withFiles())
+      expect(exportTrigger(wrapper)).toBeUndefined()
+      // The dataset label + row×col line still renders — only the export button goes.
+      expect(wrapper.text()).toContain('Sales')
+      expect(wrapper.text()).toContain('3×2')
+    } finally {
+      stubChatExport(true)
+    }
+  })
+
+  it('hides the Data Export trigger while /api/config is still unresolved', () => {
+    vi.stubGlobal('useFeatureConfig', () => ({ config: ref(null) }))
+    try {
+      expect(exportTrigger(mountBubble(withFiles()))).toBeUndefined()
+    } finally {
+      stubChatExport(true)
+    }
   })
 })
 

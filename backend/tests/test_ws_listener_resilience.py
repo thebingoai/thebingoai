@@ -366,27 +366,78 @@ def test_a_second_send_on_one_socket_is_rejected(ws_client, monkeypatch):
     assert reply["request_id"] == "r2"
 
 
+def test_the_slot_frees_when_done_reaches_the_client(ws_client, monkeypatch):
+    """The gate opens on `done`, not when the task ends.
+
+    `_complete_turn` forwards `done` and *then* spends two LLM calls generating
+    a title and a summary. The client re-enables its composer on `done`, so
+    gating on task liveness left a multi-second window where the composer was
+    live and the server still answered "busy" — which is exactly where a user
+    answering a scoping question lands, since that reply is short and fast.
+    """
+    client, ws_api = ws_client
+    in_post_process = threading.Event()
+
+    async def _handler(_ws, _user, _request_id, *_a, on_gate_open=None, **_kw):
+        on_gate_open()  # `done` has reached the client
+        in_post_process.set()
+        await asyncio.sleep(1.0)  # stand-in for title + summary generation
+
+    monkeypatch.setattr(ws_api, "_handle_chat_send", _handler)
+
+    with client.websocket_connect("/ws?token=t") as sock:
+        sock.send_json({"type": "chat.send", "request_id": "r1", "message": "first"})
+        assert in_post_process.wait(2.0), "the first turn never reached post-process"
+
+        sock.send_json({"type": "chat.send", "request_id": "r2", "message": "second"})
+        # Same sequential-receive-loop trick as the rejection test above: if r2
+        # were rejected, chat.error would arrive ahead of the pong.
+        sock.send_json({"type": "ping"})
+        reply = sock.receive_json()
+
+    assert reply["type"] == "pong", (
+        f"a send after `done` must be accepted while post-process still runs, got {reply}"
+    )
+
+
 def test_the_slot_frees_once_the_turn_finishes(ws_client, monkeypatch):
-    """The done-callback must discard from the set, or the socket is stuck
-    rejecting everything for the rest of its life."""
+    """Backstop for every path that ends without ever reaching `done` — an early
+    return, a raise, cancellation. This handler ignores `on_turn_visible`
+    entirely, so only the done-callback can open the gate; without it the socket
+    is stuck rejecting everything for the rest of its life."""
     client, ws_api = ws_client
     calls = []
+    finished = threading.Event()
 
     async def _quick_handler(_ws, _user, request_id, *_a, **_kw):
         calls.append(request_id)
 
+    # Synchronise on the task's own done-callback chain, not on a ping
+    # round-trip. A pong only proves the receive loop got that far; the turn task
+    # may not have been scheduled yet, and the callback that opens the gate runs
+    # later still. Racing that failed ~16% of runs — on `dev` exactly as much as
+    # here, so it was never a signal about this change.
+    #
+    # `_log_task_exception` is registered immediately before the gate-releasing
+    # callback, and callbacks queued on one task drain together, so seeing this
+    # fire means the release is queued ahead of anything the socket sends next.
     monkeypatch.setattr(ws_api, "_handle_chat_send", _quick_handler)
+    monkeypatch.setattr(ws_api, "_log_task_exception", lambda _t: finished.set())
 
     with client.websocket_connect("/ws?token=t") as sock:
         sock.send_json({"type": "chat.send", "request_id": "r1", "message": "first"})
-        sock.send_json({"type": "ping"})
-        assert sock.receive_json()["type"] == "pong"  # r1 has been dispatched
+        assert finished.wait(2.0), "the first turn never completed"
 
+        finished.clear()
         sock.send_json({"type": "chat.send", "request_id": "r2", "message": "second"})
         sock.send_json({"type": "ping"})
         assert sock.receive_json()["type"] == "pong", (
             "a second turn after the first finished must be accepted, not rejected"
         )
+        # r2 is dispatched fire-and-forget, so the pong says it was *accepted*,
+        # not that it has run. Asserting on `calls` without waiting for it is
+        # what the remaining flake was.
+        assert finished.wait(2.0), "the second turn was accepted but never ran"
 
     assert calls == ["r1", "r2"]
 

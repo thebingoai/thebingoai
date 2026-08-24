@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     db_pool_size: int = 10      # client-side connections kept warm per process
     db_max_overflow: int = 20   # extra connections allowed beyond pool_size under burst
     db_pool_timeout: int = 5    # seconds to wait for a free slot before raising TimeoutError
+    db_connect_timeout: int = 5 # seconds libpq waits to establish a connection (see database/session.py)
     db_pool_trace: bool = False           # log pool pressure (see database/session.py)
     db_pool_trace_slow_ms: int = 1000     # warn when a checkout is held at least this long
 
@@ -228,6 +229,7 @@ class Settings(BaseSettings):
     orchestrator_lean_tools: bool = False  # ≤10 primary tools + manage meta-tool + @-mention scope
     dashboard_scoping_questions: bool = True  # ask audience/grain/time-range/metrics before building a dashboard
     template_backfill_on_startup: bool = True  # plugin-template framework: backfill existing connections at boot
+    chat_export_enabled: bool = False  # "Data Export" (CSV/Excel) button on chat query results
 
     # LLM data-privacy floor (env LLM_METADATA_ONLY). True (default) forces
     # metadata-only on EVERY Org — real cell values never reach the LLM,
