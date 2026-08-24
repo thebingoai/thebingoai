@@ -50,6 +50,9 @@ jobs:
       QDRANT_URL: http://localhost:6333
       # Makes a stale or mismatched known_failures.txt fail the run.
       BINGO_STRICT_BASELINE: '1'
+      # Wide enough that the short summary keeps the `- ExcType: msg` suffix;
+      # at 80 columns a long node id crowds it out and the types are unreadable.
+      COLUMNS: '300'
 
     steps:
       - uses: actions/checkout@v4
@@ -107,4 +110,6 @@ jobs:
       - name: Run the suite
         # Failures listed in backend/tests/known_failures.txt are xfail (see
         # backend/tests/conftest.py). Red here means a NEW failure.
-        run: pytest backend/tests -q --timeout=120
+        # -rfX: list failures with their exception type, and any listed test
+        # that now passes (XPASS) so its line can be deleted.
+        run: pytest backend/tests -q -rfX --timeout=120
