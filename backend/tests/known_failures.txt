@@ -1,84 +1,90 @@
 # Failures that predate the CI gate.
 #
+# Format: one entry per line, `<pytest node id> :: <ExceptionType>`.
+#
 # Listed here they are marked xfail (see pytest_collection_modifyitems in
 # conftest.py), so CI gates on "no NEW failures" rather than demanding a suite
 # that is not yet green. Red in CI means a test that used to pass has stopped.
 #
-# Fix one? It reports XPASS. Delete its line in the same PR.
-# Add one? Don't. A new line here is a regression being hidden.
+# The exception type is checked too: a listed test that starts failing a
+# different way is a new failure wearing an old node id, and fails the run.
+# So does an entry that no longer matches any collected test. Both checks are
+# on only when BINGO_STRICT_BASELINE=1, which CI sets.
 #
-# Recorded against a live Postgres, matching .github/workflows/backend-tests.yml
-# (72 failed, 1449 passed, 2 skipped). Running without a database gives a
-# different, larger set — the DB-backed tests skip or error instead.
-backend/tests/agents/test_data_agent_tools.py::test_execute_query_falls_back_to_connector_when_serve_returns_none
-backend/tests/agents/test_migration_0rch5c0pe01.py::test_exactly_one_alembic_head
-backend/tests/agents/test_widget_builders.py::test_kpi_full_config_and_trend_mapping
-backend/tests/agents/test_widget_query_plane.py::test_local_plane_served_without_reader
-backend/tests/agents/test_widget_query_plane.py::test_plane_error_falls_back_to_source
-backend/tests/agents/test_widget_query_plane.py::test_reads_plane_and_rewrites_table_refs
-backend/tests/api/test_credits_balance.py::test_balance_includes_org_breakdown
-backend/tests/api/test_credits_balance.py::test_community_org_user_is_unlimited_not_workspace
-backend/tests/api/test_credits_balance.py::test_drained_org_pool_clamps_remaining_to_zero
-backend/tests/api/test_credits_balance.py::test_funded_org_pool_remaining_is_workspace_total
-backend/tests/api/test_credits_balance.py::test_no_org_reports_unlimited
-backend/tests/api/test_credits_balance.py::test_used_today_does_not_reduce_workspace_remaining
-backend/tests/api/test_credits_buy.py::test_buy_10k_adds_to_topup
-backend/tests/api/test_heartbeat_jobs_kind.py::test_trigger_run_briefing_kind_dispatches_briefing_task
-backend/tests/api/test_heartbeat_jobs_kind.py::test_trigger_run_chat_kind_dispatches_orchestrator
-backend/tests/api/test_refresh_visibility.py::test_list_and_detail_both_carry_bulk_flag
-backend/tests/api/test_serve_widget_dataplane.py::test_503_after_first_ingest_done_when_plane_missing
-backend/tests/api/test_shared_sample.py::test_chat_accepts_shared_sample_connection
-backend/tests/api/test_shared_sample.py::test_chat_rejects_foreign_connection
-backend/tests/api/test_shared_sample.py::test_sql_query_reaches_shared_sample_by_id
-backend/tests/api/test_shared_sample.py::test_sql_query_reaches_shared_sample_by_uuid
-backend/tests/data_plane/test_data_plane_service.py::test_non_default_row_ignored
-backend/tests/data_plane/test_data_plane_service.py::test_team_falls_back_to_org_plane
-backend/tests/data_plane/test_data_plane_service.py::test_user_falls_back_to_org_plane
-backend/tests/data_plane/test_data_plane_service.py::test_user_plane_wins_over_org
-backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_error_attaches_newest_failed_run
-backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_errors_are_partitioned_per_pipeline
-backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_no_qualifying_run_leaves_node_unattributed
-backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_skips_non_failed_and_null_error_runs
-backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_success_node_is_never_attributed
-backend/tests/lineage/test_attach_errors.py::test_attach_errors_is_per_model_not_broadcast
-backend/tests/services/test_resource_lifecycle.py::test_delete_pipeline_drops_table
-backend/tests/services/test_template_materializer_sql.py::test_materialize_for_postgres_connection_creates_n_pipelines
-backend/tests/services/test_template_materializer_sql.py::test_materialize_post_migration_creates_pipelines_and_stg_models
-backend/tests/services/test_template_materializer_sql.py::test_materialize_postgres_creates_pipeline_and_stg_pair_per_table
-backend/tests/services/test_template_materializer_sql.py::test_template_falls_back_to_date_column_heuristic
-backend/tests/services/test_template_materializer_sql.py::test_template_picks_partition_key_for_mysql
-backend/tests/services/test_template_materializer_sql.py::test_template_picks_partition_key_for_postgres
-backend/tests/services/test_widget_result_cache.py::test_cache_key_none_when_flag_off
-backend/tests/services/test_widget_result_cache.py::test_cache_key_none_without_widget_identity
-backend/tests/services/test_widget_result_cache.py::test_cache_key_ttl_filtered_vs_unfiltered
-backend/tests/services/test_widget_result_cache.py::test_source_results_never_cached
-backend/tests/tasks/test_watermark_tasks.py::test_demotes_incremental_to_full_when_llm_returns_none
-backend/tests/tasks/test_watermark_tasks.py::test_no_change_when_llm_matches_current
-backend/tests/tasks/test_watermark_tasks.py::test_promotes_full_to_incremental_when_llm_finds_cursor
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_get_returns_profile_fields
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_bumps_version_on_first_edit_after_publish
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_does_not_bump_when_already_drafting
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_does_not_bump_when_never_published
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_renders_identity_when_identity_field_changes
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_renders_user_context_when_context_field_changes
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_skips_rendering_for_soul_only
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_updates_soul
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_publish_sets_published_version
-backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_publish_sets_snapshot
-backend/tests/test_agent_profile.py::TestRenderIdentityText::test_defaults_to_bingo_when_no_name
-backend/tests/test_agent_profile.py::TestRenderIdentityText::test_renders_name_into_identity_text
-backend/tests/test_agent_profile.py::TestRenderIdentityText::test_renders_pronouns
-backend/tests/test_agent_profile.py::TestRenderIdentityText::test_renders_tagline
-backend/tests/test_alembic/test_backfill_briefing_kind.py::test_backfill_promotes_dashboard_analysis_jobs
-backend/tests/test_boot_safety.py::test_missing_internal_env_raises[internal_bq_dataset-INTERNAL_BQ_DATASET]
-backend/tests/test_boot_safety.py::test_missing_internal_env_raises[internal_gcs_bucket-INTERNAL_GCS_BUCKET]
-backend/tests/test_config_data_agent_budget.py::test_env_example_documents_budget
-backend/tests/test_connector_types.py::TestGetAvailableTypes::test_all_types_have_version
-backend/tests/test_connector_types.py::TestGetAvailableTypes::test_core_connectors_use_app_version
-backend/tests/test_feature_config.py::TestGetConfig::test_admin_disabled_without_bingo_admin
-backend/tests/test_feature_config.py::TestGetConfig::test_admin_enabled_when_bingo_admin_loaded
-backend/tests/test_feature_config.py::TestGetConfig::test_response_contains_all_expected_keys
-backend/tests/test_feature_config.py::TestGetConfig::test_telegram_disabled_when_plugin_not_loaded
-backend/tests/test_feature_config.py::TestGetConfig::test_telegram_disabled_with_other_plugins_loaded
-backend/tests/test_feature_config.py::TestGetConfig::test_telegram_enabled_when_plugin_loaded
-backend/tests/test_sqlite_connector.py::TestFromConnectionDataPlaneReroute::test_reroutes_to_dataplane_when_migrated
+# Fix one? It reports XPASS. Delete its line in the same PR.
+# Add one? Don't. A new line here is a regression being hidden, and CI rejects
+# any line this file gains relative to the base branch.
+# Never edit a line to match a new failure — that is the same thing, spelled
+# differently.
+#
+# Recorded against a live Postgres, matching .github/workflows/backend-tests.yml.
+# Running without a database gives a different, larger set — the DB-backed tests
+# skip or error instead.
+backend/tests/agents/test_data_agent_tools.py::test_execute_query_falls_back_to_connector_when_serve_returns_none :: AssertionError
+backend/tests/agents/test_migration_0rch5c0pe01.py::test_exactly_one_alembic_head :: AssertionError
+backend/tests/agents/test_widget_builders.py::test_kpi_full_config_and_trend_mapping :: AssertionError
+backend/tests/agents/test_widget_query_plane.py::test_local_plane_served_without_reader :: AssertionError
+backend/tests/agents/test_widget_query_plane.py::test_plane_error_falls_back_to_source :: AssertionError
+backend/tests/agents/test_widget_query_plane.py::test_reads_plane_and_rewrites_table_refs :: AssertionError
+backend/tests/api/test_credits_balance.py::test_balance_includes_org_breakdown :: ProgrammingError
+backend/tests/api/test_credits_balance.py::test_community_org_user_is_unlimited_not_workspace :: ProgrammingError
+backend/tests/api/test_credits_balance.py::test_drained_org_pool_clamps_remaining_to_zero :: ProgrammingError
+backend/tests/api/test_credits_balance.py::test_funded_org_pool_remaining_is_workspace_total :: ProgrammingError
+backend/tests/api/test_credits_balance.py::test_no_org_reports_unlimited :: ProgrammingError
+backend/tests/api/test_credits_balance.py::test_used_today_does_not_reduce_workspace_remaining :: ProgrammingError
+backend/tests/api/test_credits_buy.py::test_buy_10k_adds_to_topup :: ProgrammingError
+backend/tests/api/test_heartbeat_jobs_kind.py::test_trigger_run_briefing_kind_dispatches_briefing_task :: OperationalError
+backend/tests/api/test_heartbeat_jobs_kind.py::test_trigger_run_chat_kind_dispatches_orchestrator :: OperationalError
+backend/tests/api/test_refresh_visibility.py::test_list_and_detail_both_carry_bulk_flag :: AttributeError
+backend/tests/api/test_shared_sample.py::test_chat_accepts_shared_sample_connection :: InternalError
+backend/tests/api/test_shared_sample.py::test_chat_rejects_foreign_connection :: InternalError
+backend/tests/api/test_shared_sample.py::test_sql_query_reaches_shared_sample_by_id :: TypeError
+backend/tests/api/test_shared_sample.py::test_sql_query_reaches_shared_sample_by_uuid :: TypeError
+backend/tests/data_plane/test_data_plane_service.py::test_non_default_row_ignored :: AttributeError
+backend/tests/data_plane/test_data_plane_service.py::test_team_falls_back_to_org_plane :: AttributeError
+backend/tests/data_plane/test_data_plane_service.py::test_user_falls_back_to_org_plane :: AttributeError
+backend/tests/data_plane/test_data_plane_service.py::test_user_plane_wins_over_org :: AttributeError
+backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_error_attaches_newest_failed_run :: IntegrityError
+backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_errors_are_partitioned_per_pipeline :: IntegrityError
+backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_no_qualifying_run_leaves_node_unattributed :: IntegrityError
+backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_skips_non_failed_and_null_error_runs :: IntegrityError
+backend/tests/integration/test_attach_errors_pipeline.py::test_pipeline_success_node_is_never_attributed :: IntegrityError
+backend/tests/services/test_template_materializer_sql.py::test_materialize_for_postgres_connection_creates_n_pipelines :: AssertionError
+backend/tests/services/test_template_materializer_sql.py::test_materialize_post_migration_creates_pipelines_and_stg_models :: AssertionError
+backend/tests/services/test_template_materializer_sql.py::test_materialize_postgres_creates_pipeline_and_stg_pair_per_table :: AssertionError
+backend/tests/services/test_template_materializer_sql.py::test_template_falls_back_to_date_column_heuristic :: AssertionError
+backend/tests/services/test_template_materializer_sql.py::test_template_picks_partition_key_for_mysql :: AssertionError
+backend/tests/services/test_template_materializer_sql.py::test_template_picks_partition_key_for_postgres :: AssertionError
+backend/tests/services/test_widget_result_cache.py::test_cache_key_none_when_flag_off :: TypeError
+backend/tests/services/test_widget_result_cache.py::test_cache_key_none_without_widget_identity :: TypeError
+backend/tests/services/test_widget_result_cache.py::test_cache_key_ttl_filtered_vs_unfiltered :: TypeError
+backend/tests/services/test_widget_result_cache.py::test_source_results_never_cached :: AssertionError
+backend/tests/tasks/test_watermark_tasks.py::test_demotes_incremental_to_full_when_llm_returns_none :: KeyError
+backend/tests/tasks/test_watermark_tasks.py::test_no_change_when_llm_matches_current :: AssertionError
+backend/tests/tasks/test_watermark_tasks.py::test_promotes_full_to_incremental_when_llm_finds_cursor :: KeyError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_get_returns_profile_fields :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_bumps_version_on_first_edit_after_publish :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_does_not_bump_when_already_drafting :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_does_not_bump_when_never_published :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_renders_identity_when_identity_field_changes :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_renders_user_context_when_context_field_changes :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_skips_rendering_for_soul_only :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_patch_updates_soul :: ValidationError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_publish_sets_published_version :: TypeError
+backend/tests/test_agent_profile.py::TestAgentProfileAPI::test_publish_sets_snapshot :: TypeError
+backend/tests/test_agent_profile.py::TestRenderIdentityText::test_defaults_to_bingo_when_no_name :: TypeError
+backend/tests/test_agent_profile.py::TestRenderIdentityText::test_renders_name_into_identity_text :: TypeError
+backend/tests/test_agent_profile.py::TestRenderIdentityText::test_renders_pronouns :: TypeError
+backend/tests/test_agent_profile.py::TestRenderIdentityText::test_renders_tagline :: TypeError
+backend/tests/test_alembic/test_backfill_briefing_kind.py::test_backfill_promotes_dashboard_analysis_jobs :: AssertionError
+backend/tests/test_boot_safety.py::test_missing_internal_env_raises[internal_bq_dataset-INTERNAL_BQ_DATASET] :: Failed
+backend/tests/test_boot_safety.py::test_missing_internal_env_raises[internal_gcs_bucket-INTERNAL_GCS_BUCKET] :: Failed
+backend/tests/test_connector_types.py::TestGetAvailableTypes::test_all_types_have_version :: AssertionError
+backend/tests/test_connector_types.py::TestGetAvailableTypes::test_core_connectors_use_app_version :: AssertionError
+backend/tests/test_feature_config.py::TestGetConfig::test_admin_disabled_without_bingo_admin :: AttributeError
+backend/tests/test_feature_config.py::TestGetConfig::test_admin_enabled_when_bingo_admin_loaded :: AttributeError
+backend/tests/test_feature_config.py::TestGetConfig::test_response_contains_all_expected_keys :: AttributeError
+backend/tests/test_feature_config.py::TestGetConfig::test_telegram_disabled_when_plugin_not_loaded :: AttributeError
+backend/tests/test_feature_config.py::TestGetConfig::test_telegram_disabled_with_other_plugins_loaded :: AttributeError
+backend/tests/test_feature_config.py::TestGetConfig::test_telegram_enabled_when_plugin_loaded :: AttributeError
+backend/tests/test_sqlite_connector.py::TestFromConnectionDataPlaneReroute::test_reroutes_to_dataplane_when_migrated :: AssertionError

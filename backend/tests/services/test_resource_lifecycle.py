@@ -34,27 +34,35 @@ def _make_pipeline(pipeline_id="p1", target_table="fb_ads", scope_kind="org", sc
     return p
 
 
-def test_delete_pipeline_drops_table():
+def test_delete_pipeline_preserves_dataplane_table():
+    """Bingo's no-delete policy: the metadata row goes, the table stays.
+
+    See delete_pipeline's docstring — the DataPlane table (BQ external table +
+    GCS parquet, or the local parquet directory) is deliberately left in place
+    for the operator to reclaim. The plane is left reachable here on purpose:
+    asserting it was never consulted is what makes preservation observable.
+    """
     db = MagicMock()
     pipeline = _make_pipeline()
     db.query.return_value.filter.return_value.first.return_value = pipeline
 
     mock_plane = MagicMock()
-    mock_plane.table_exists.return_value = True
+    data_plane_service = MagicMock(get_default_plane=MagicMock(return_value=mock_plane))
 
     # Mock the imports that delete_pipeline calls
     with patch.dict(sys.modules, {
         'backend.models.pipeline': MagicMock(),
         'backend.data_plane.scope': MagicMock(OwnerScope=MagicMock()),
-        'backend.services.data_plane_service': MagicMock(get_default_plane=MagicMock(return_value=mock_plane)),
+        'backend.services.data_plane_service': data_plane_service,
         'backend.config': MagicMock(settings=MagicMock(redis_url='redis://localhost')),
     }):
         with patch("redis.from_url") as mock_redis:
             mock_redis.return_value = MagicMock()
             delete_pipeline("p1", db)
 
-    mock_plane.drop_table.assert_called_once()
     db.delete.assert_called_once_with(pipeline)
+    data_plane_service.get_default_plane.assert_not_called()
+    mock_plane.drop_table.assert_not_called()
 
 
 def test_delete_pipeline_not_found_raises():

@@ -48,9 +48,40 @@ jobs:
       CELERY_BROKER_URL: redis://localhost:6379/1
       CELERY_RESULT_URL: redis://localhost:6379/2
       QDRANT_URL: http://localhost:6333
+      # Makes a stale or mismatched known_failures.txt fail the run.
+      BINGO_STRICT_BASELINE: '1'
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the baseline-growth check below needs the base branch
+
+      - name: No new known failures
+        # backend/tests/known_failures.txt may only shrink. A new line is a
+        # regression being excused instead of fixed.
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          # Compare node-id sets, not raw lines: reformatting or reordering the
+          # file is not the same thing as excusing another failure.
+          ids() {
+            git show "$1:backend/tests/known_failures.txt" 2>/dev/null \
+              | grep -v '^[[:space:]]*#' \
+              | sed 's/ :: .*//' \
+              | awk 'NF' | sort -u
+          }
+          if ! git cat-file -e "origin/${{ github.base_ref }}:backend/tests/known_failures.txt" 2>/dev/null; then
+            echo "Base branch has no baseline yet — it is being introduced here. Nothing to compare."
+            exit 0
+          fi
+          ids "origin/${{ github.base_ref }}" > /tmp/kf_base.txt
+          ids HEAD > /tmp/kf_head.txt
+          added=$(comm -13 /tmp/kf_base.txt /tmp/kf_head.txt)
+          if [ -n "$added" ]; then
+            echo "::error::known_failures.txt gained an entry. Fix the test instead:"
+            echo "$added"
+            exit 1
+          fi
 
       - uses: actions/setup-python@v5
         with:

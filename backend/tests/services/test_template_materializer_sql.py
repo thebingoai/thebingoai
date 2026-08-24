@@ -146,19 +146,15 @@ def _runtime_stubs():
         yield
 
 
-# Load plugins.base for real dataclasses.
-sys.modules.pop("backend.plugins.base", None)
+# Load plugins.base for real dataclasses. Its sys.modules entry is scoped along
+# with the stubs below: left installed, every later importer of
+# backend.plugins.base got this by-path duplicate whose dataclasses fail
+# identity checks against the real module.
 _spec_base = importlib.util.spec_from_file_location(
     "backend.plugins.base",
     os.path.join(_BACKEND_DIR, "plugins", "base.py"),
 )
 _base = importlib.util.module_from_spec(_spec_base)
-sys.modules["backend.plugins.base"] = _base
-_spec_base.loader.exec_module(_base)
-
-ConnectorRegistration = _base.ConnectorRegistration
-PipelineTemplate = _base.PipelineTemplate
-TransformTemplate = _base.TransformTemplate
 
 
 def _load_materializer():
@@ -172,10 +168,17 @@ def _load_materializer():
     return module
 
 
-# Both sets must be present while the materializer executes; neither may
-# outlive this line, or the stubs leak into every later test module.
-with patch.dict(sys.modules, {**_IMPORT_STUBS, **_RUNTIME_STUBS}):
+# All three sets must be present while plugins.base and the materializer
+# execute; none may outlive this block, or the stubs leak into every later test
+# module.
+with patch.dict(sys.modules, {**_IMPORT_STUBS, **_RUNTIME_STUBS,
+                              "backend.plugins.base": _base}):
+    _spec_base.loader.exec_module(_base)
     materializer = _load_materializer()
+
+ConnectorRegistration = _base.ConnectorRegistration
+PipelineTemplate = _base.PipelineTemplate
+TransformTemplate = _base.TransformTemplate
 
 
 # ── Fixtures / helpers ────────────────────────────────────────────────────
