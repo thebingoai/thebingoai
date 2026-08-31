@@ -135,8 +135,10 @@ def test_list_and_detail_both_carry_bulk_flag(db, seeded, monkeypatch):
     import backend.api.dashboards as dashboards_api
     monkeypatch.setattr(dashboards_api, "_bulk_widget_loading_for", lambda user: True)
 
-    listed = dashboards_api.list_dashboards(db, seeded["member"])
+    listed = dashboards_api.list_dashboards(db=db, current_user=seeded["member"])
     assert listed and all(d.bulk_widget_loading is True for d in listed)
 
-    detail = dashboards_api.get_dashboard(seeded["dashboard"].id, db, seeded["member"])
+    detail = dashboards_api.get_dashboard(
+        seeded["dashboard"].id, db=db, current_user=seeded["member"]
+    )
     assert detail.bulk_widget_loading is True
