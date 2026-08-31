@@ -159,26 +159,23 @@ class TestDashboardToResponse:
 class TestListDashboards:
     """Tests for list_dashboards endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_returns_all_dashboards_for_user(self, dashboard_db, test_user):
+    def test_returns_all_dashboards_for_user(self, dashboard_db, test_user):
         _make_dashboard(dashboard_db, test_user.id, title="D1")
         _make_dashboard(dashboard_db, test_user.id, title="D2")
         _make_dashboard(dashboard_db, test_user.id, title="D3")
 
-        result = await list_dashboards(db=dashboard_db, current_user=test_user)
+        result = list_dashboards(db=dashboard_db, current_user=test_user)
 
         assert len(result) == 3
         titles = {r.title for r in result}
         assert titles == {"D1", "D2", "D3"}
 
-    @pytest.mark.asyncio
-    async def test_empty_list_when_no_dashboards(self, dashboard_db, test_user):
-        result = await list_dashboards(db=dashboard_db, current_user=test_user)
+    def test_empty_list_when_no_dashboards(self, dashboard_db, test_user):
+        result = list_dashboards(db=dashboard_db, current_user=test_user)
 
         assert result == []
 
-    @pytest.mark.asyncio
-    async def test_user_isolation(self, dashboard_db, test_user):
+    def test_user_isolation(self, dashboard_db, test_user):
         """Each user should only see their own dashboards."""
         other_user = User(id="user-2", email="other@example.com", auth_provider="sso")
         dashboard_db.add(other_user)
@@ -187,8 +184,8 @@ class TestListDashboards:
         _make_dashboard(dashboard_db, test_user.id, title="Mine")
         _make_dashboard(dashboard_db, other_user.id, title="Theirs")
 
-        mine = await list_dashboards(db=dashboard_db, current_user=test_user)
-        theirs = await list_dashboards(db=dashboard_db, current_user=other_user)
+        mine = list_dashboards(db=dashboard_db, current_user=test_user)
+        theirs = list_dashboards(db=dashboard_db, current_user=other_user)
 
         assert len(mine) == 1
         assert mine[0].title == "Mine"
@@ -203,24 +200,21 @@ class TestListDashboards:
 class TestGetDashboard:
     """Tests for get_dashboard endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_found(self, dashboard_db, test_user):
+    def test_found(self, dashboard_db, test_user):
         d = _make_dashboard(dashboard_db, test_user.id, title="Found Me")
 
-        result = await get_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
+        result = get_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
 
         assert result.id == d.id
         assert result.title == "Found Me"
 
-    @pytest.mark.asyncio
-    async def test_not_found_invalid_id(self, dashboard_db, test_user):
+    def test_not_found_invalid_id(self, dashboard_db, test_user):
         with pytest.raises(HTTPException) as exc_info:
-            await get_dashboard(dashboard_id=99999, db=dashboard_db, current_user=test_user)
+            get_dashboard(dashboard_id=99999, db=dashboard_db, current_user=test_user)
 
         assert exc_info.value.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_wrong_user_returns_404(self, dashboard_db, test_user):
+    def test_wrong_user_returns_404(self, dashboard_db, test_user):
         other_user = User(id="user-other", email="other2@example.com", auth_provider="sso")
         dashboard_db.add(other_user)
         dashboard_db.commit()
@@ -228,7 +222,7 @@ class TestGetDashboard:
         d = _make_dashboard(dashboard_db, other_user.id, title="Not Yours")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
+            get_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
 
         assert exc_info.value.status_code == 404
 
@@ -240,48 +234,43 @@ class TestGetDashboard:
 class TestCreateDashboard:
     """Tests for create_dashboard endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_basic_create_title_only(self, dashboard_db, test_user):
+    def test_basic_create_title_only(self, dashboard_db, test_user):
         payload = DashboardCreate(title="New Dashboard")
 
-        result = await create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
+        result = create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
 
         assert result.title == "New Dashboard"
         assert result.description is None
         assert result.widgets == []
 
-    @pytest.mark.asyncio
-    async def test_create_with_widgets(self, dashboard_db, test_user):
+    def test_create_with_widgets(self, dashboard_db, test_user):
         widgets = [{"type": "chart", "query": "SELECT 1"}, {"type": "kpi"}]
         payload = DashboardCreate(title="With Widgets", widgets=widgets)
 
-        result = await create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
+        result = create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
 
         assert result.widgets == widgets
 
-    @pytest.mark.asyncio
-    async def test_no_description_is_none(self, dashboard_db, test_user):
+    def test_no_description_is_none(self, dashboard_db, test_user):
         payload = DashboardCreate(title="No Desc")
 
-        result = await create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
+        result = create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
 
         assert result.description is None
 
-    @pytest.mark.asyncio
-    async def test_assigns_correct_user_id(self, dashboard_db, test_user):
+    def test_assigns_correct_user_id(self, dashboard_db, test_user):
         payload = DashboardCreate(title="User Check")
 
-        await create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
+        create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
 
         row = dashboard_db.query(Dashboard).filter(Dashboard.title == "User Check").first()
         assert row is not None
         assert row.user_id == test_user.id
 
-    @pytest.mark.asyncio
-    async def test_auto_generates_integer_id(self, dashboard_db, test_user):
+    def test_auto_generates_integer_id(self, dashboard_db, test_user):
         payload = DashboardCreate(title="Auto ID")
 
-        result = await create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
+        result = create_dashboard(payload=payload, db=dashboard_db, current_user=test_user)
 
         assert isinstance(result.id, int)
         assert result.id > 0
@@ -294,63 +283,58 @@ class TestCreateDashboard:
 class TestUpdateDashboard:
     """Tests for update_dashboard endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_update_title_only(self, dashboard_db, test_user):
+    def test_update_title_only(self, dashboard_db, test_user):
         d = _make_dashboard(dashboard_db, test_user.id, title="Old Title", description="Keep")
 
         payload = DashboardUpdate(title="New Title")
-        result = await update_dashboard(
+        result = update_dashboard(
             dashboard_id=d.id, payload=payload, db=dashboard_db, current_user=test_user,
         )
 
         assert result.title == "New Title"
         assert result.description == "Keep"
 
-    @pytest.mark.asyncio
-    async def test_update_description_only(self, dashboard_db, test_user):
+    def test_update_description_only(self, dashboard_db, test_user):
         d = _make_dashboard(dashboard_db, test_user.id, title="Keep Title")
 
         payload = DashboardUpdate(description="New Desc")
-        result = await update_dashboard(
+        result = update_dashboard(
             dashboard_id=d.id, payload=payload, db=dashboard_db, current_user=test_user,
         )
 
         assert result.title == "Keep Title"
         assert result.description == "New Desc"
 
-    @pytest.mark.asyncio
-    async def test_update_widgets_only(self, dashboard_db, test_user):
+    def test_update_widgets_only(self, dashboard_db, test_user):
         d = _make_dashboard(dashboard_db, test_user.id, title="W", widgets=[{"old": True}])
 
         new_widgets = [{"new": True}, {"also_new": True}]
         payload = DashboardUpdate(widgets=new_widgets)
-        result = await update_dashboard(
+        result = update_dashboard(
             dashboard_id=d.id, payload=payload, db=dashboard_db, current_user=test_user,
         )
 
         assert result.widgets == new_widgets
         assert result.title == "W"
 
-    @pytest.mark.asyncio
-    async def test_not_found_returns_404(self, dashboard_db, test_user):
+    def test_not_found_returns_404(self, dashboard_db, test_user):
         payload = DashboardUpdate(title="Ghost")
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_dashboard(
+            update_dashboard(
                 dashboard_id=99999, payload=payload, db=dashboard_db, current_user=test_user,
             )
 
         assert exc_info.value.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_update_all_fields(self, dashboard_db, test_user):
+    def test_update_all_fields(self, dashboard_db, test_user):
         d = _make_dashboard(
             dashboard_db, test_user.id,
             title="Old", description="Old Desc", widgets=[{"v": 1}],
         )
 
         payload = DashboardUpdate(title="New", description="New Desc", widgets=[{"v": 2}])
-        result = await update_dashboard(
+        result = update_dashboard(
             dashboard_id=d.id, payload=payload, db=dashboard_db, current_user=test_user,
         )
 
@@ -366,24 +350,21 @@ class TestUpdateDashboard:
 class TestDeleteDashboard:
     """Tests for delete_dashboard endpoint."""
 
-    @pytest.mark.asyncio
-    async def test_success_removes_from_db(self, dashboard_db, test_user):
+    def test_success_removes_from_db(self, dashboard_db, test_user):
         d = _make_dashboard(dashboard_db, test_user.id, title="Delete Me")
         dashboard_id = d.id
 
-        await delete_dashboard(dashboard_id=dashboard_id, db=dashboard_db, current_user=test_user)
+        delete_dashboard(dashboard_id=dashboard_id, db=dashboard_db, current_user=test_user)
 
         assert dashboard_db.query(Dashboard).filter(Dashboard.id == dashboard_id).first() is None
 
-    @pytest.mark.asyncio
-    async def test_not_found_returns_404(self, dashboard_db, test_user):
+    def test_not_found_returns_404(self, dashboard_db, test_user):
         with pytest.raises(HTTPException) as exc_info:
-            await delete_dashboard(dashboard_id=99999, db=dashboard_db, current_user=test_user)
+            delete_dashboard(dashboard_id=99999, db=dashboard_db, current_user=test_user)
 
         assert exc_info.value.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_wrong_user_returns_404(self, dashboard_db, test_user):
+    def test_wrong_user_returns_404(self, dashboard_db, test_user):
         other_user = User(id="user-del-other", email="del-other@example.com", auth_provider="sso")
         dashboard_db.add(other_user)
         dashboard_db.commit()
@@ -391,17 +372,16 @@ class TestDeleteDashboard:
         d = _make_dashboard(dashboard_db, other_user.id, title="Not Yours To Delete")
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
+            delete_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
 
         assert exc_info.value.status_code == 404
         # Dashboard should still exist
         assert dashboard_db.query(Dashboard).filter(Dashboard.id == d.id).first() is not None
 
-    @pytest.mark.asyncio
-    async def test_returns_none(self, dashboard_db, test_user):
+    def test_returns_none(self, dashboard_db, test_user):
         """delete_dashboard should return None (204 no content)."""
         d = _make_dashboard(dashboard_db, test_user.id, title="Return None")
 
-        result = await delete_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
+        result = delete_dashboard(dashboard_id=d.id, db=dashboard_db, current_user=test_user)
 
         assert result is None

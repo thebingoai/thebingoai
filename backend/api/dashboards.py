@@ -279,7 +279,7 @@ def _dashboard_to_response(
 
 
 @router.get("", response_model=List[DashboardResponse])
-async def list_dashboards(
+def list_dashboards(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -309,7 +309,7 @@ async def list_dashboards(
 
 
 @router.get("/{dashboard_id}", response_model=DashboardResponse)
-async def get_dashboard(
+def get_dashboard(
     dashboard_id: int,
     skeleton: bool = False,
     db: Session = Depends(get_db),
@@ -343,7 +343,7 @@ async def get_dashboard(
 
 
 @router.post("", response_model=DashboardResponse, status_code=status.HTTP_201_CREATED)
-async def create_dashboard(
+def create_dashboard(
     payload: DashboardCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -386,7 +386,7 @@ async def create_dashboard(
 
 
 @router.put("/{dashboard_id}", response_model=DashboardResponse)
-async def update_dashboard(
+def update_dashboard(
     dashboard_id: int,
     payload: DashboardUpdate,
     db: Session = Depends(get_db),
@@ -426,7 +426,7 @@ async def update_dashboard(
 
 
 @router.delete("/{dashboard_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_dashboard(
+def delete_dashboard(
     dashboard_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
