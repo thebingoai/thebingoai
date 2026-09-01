@@ -33,6 +33,10 @@ const CREDIT_STATE_DEFAULTS = {
   'credit:scope': 'workspace',
 } as const
 
+// Bumped on every clear. A fetch that started under an older generation belongs to
+// a session that is gone, so its response must not write back into the shared refs.
+let generation = 0
+
 /**
  * Reset every `credit:*` key to its initial value.
  *
@@ -43,6 +47,7 @@ const CREDIT_STATE_DEFAULTS = {
  * indefinitely if that request fails.
  */
 export function clearCreditState(): void {
+  generation++
   for (const [key, value] of Object.entries(CREDIT_STATE_DEFAULTS)) {
     useState(key, () => value).value = value
   }
@@ -70,21 +75,27 @@ export const useCreditBalance = () => {
   const isExhausted = computed(() => !isUnlimited.value && remaining.value <= 0)
 
   async function fetchBalance(): Promise<void> {
+    // Snapshot before the await; anything the session boundary invalidates is dropped
+    // on the way back, including the `loading` reset — a stale response must not clear
+    // the flag belonging to the new session's own in-flight fetch.
+    const g = generation
     loading.value = true
     error.value = null
     try {
       const data = await fetchWithRefresh<BalanceResponse>('/api/credits/balance', {
         method: 'GET',
       })
+      if (g !== generation) return
       usedToday.value = data.used_today
       remaining.value = data.remaining
       resetsAt.value = data.resets_at
       orgExhausted.value = data.org_exhausted ?? false
       balanceScope.value = data.balance_scope ?? 'workspace'
     } catch (err: any) {
+      if (g !== generation) return
       error.value = err?.message ?? 'Failed to fetch credit balance'
     } finally {
-      loading.value = false
+      if (g === generation) loading.value = false
     }
   }
 

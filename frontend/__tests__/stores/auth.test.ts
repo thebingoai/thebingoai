@@ -16,24 +16,35 @@ vi.stubGlobal('localStorage', {
 // Stub window.location.origin for redirect_base_url
 vi.stubGlobal('window', { location: { origin: 'http://localhost:3000' } })
 
-// Auth store's logout() uses auto-imported composables — stub them globally
-vi.stubGlobal('useChatStore', () => ({ reset: vi.fn() }))
-vi.stubGlobal('useDashboardStore', () => ({ $resetAll: vi.fn() }))
-vi.stubGlobal('useWebSocket', () => ({ disconnect: vi.fn(), clearHandlers: vi.fn() }))
+// Auth store's _clearLocalSession() uses auto-imported composables — stub them
+// globally. The teardown mocks are shared rather than fresh-per-call so tests can
+// assert that adopting a new identity actually tore the previous one down.
+const chatResetMock = vi.fn()
+const dashboardResetMock = vi.fn()
+const disconnectMock = vi.fn()
+const clearHandlersMock = vi.fn()
 const clearCreditStateMock = vi.fn()
+vi.stubGlobal('useChatStore', () => ({ reset: chatResetMock }))
+vi.stubGlobal('useDashboardStore', () => ({ $resetAll: dashboardResetMock }))
+vi.stubGlobal('useWebSocket', () => ({ disconnect: disconnectMock, clearHandlers: clearHandlersMock }))
 vi.stubGlobal('clearCreditState', clearCreditStateMock)
+// The real workspace store, so the localStorage side of setActive() is exercised too.
+vi.stubGlobal('useWorkspaceStore', () => useWorkspaceStore())
 
 const { trackEventMock } = vi.hoisted(() => ({ trackEventMock: vi.fn() }))
 vi.mock('~/utils/analytics', () => ({ trackEvent: trackEventMock }))
 
 import { useAuthStore } from '~/stores/auth'
+import { useWorkspaceStore } from '~/stores/workspace'
 
 describe('auth store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     for (const key of Object.keys(storage)) delete storage[key]
     vi.mocked($fetch).mockReset()
-    clearCreditStateMock.mockReset()
+    for (const m of [chatResetMock, dashboardResetMock, disconnectMock, clearHandlersMock, clearCreditStateMock]) {
+      m.mockReset()
+    }
   })
 
   // ── Initial state ──────────────────────────────────────────────────
@@ -168,6 +179,101 @@ describe('auth store', () => {
     store.refreshToken = 'rt'
     await store.logout()
     expect(clearCreditStateMock).toHaveBeenCalled()
+  })
+
+  // ── Account boundary ───────────────────────────────────────────────
+  //
+  // /login carries no auth middleware and /auth/success is explicitly whitelisted
+  // for authenticated users, so both are reachable while account A is still signed
+  // in. Installing B's tokens without tearing A down leaves `isAuthenticated` true
+  // throughout, and the websocket plugin watches only that boolean — so A's socket,
+  // authenticated at connect time, would carry B's traffic.
+
+  it('login() tears down the previous session before installing the new tokens', async () => {
+    vi.mocked($fetch)
+      .mockResolvedValueOnce({ access_token: 'b-at', refresh_token: 'b-rt' })  // /sso-api/auth/login
+      .mockResolvedValueOnce({ id: 'b', email: 'b@example.com' })              // /api/auth/me
+    const store = useAuthStore()
+    store.authConfig = { provider: 'sso', publishable_key: 'pk' }
+    store.token = 'a-at'
+    store.refreshToken = 'a-rt'
+    store.user = { id: 'a' } as any
+
+    await store.login({ email: 'b@example.com', password: 'pw' })
+
+    expect(disconnectMock).toHaveBeenCalled()
+    expect(chatResetMock).toHaveBeenCalled()
+    expect(dashboardResetMock).toHaveBeenCalled()
+    expect(clearCreditStateMock).toHaveBeenCalled()
+    expect(store.token).toBe('b-at')
+    expect(store.user).toEqual({ id: 'b', email: 'b@example.com' })
+  })
+
+  it('handleOAuthSuccess() tears down the previous session before installing the new tokens', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({ id: 'b', email: 'b@example.com' })  // /api/auth/me
+    const store = useAuthStore()
+    store.token = 'a-at'
+    store.refreshToken = 'a-rt'
+    store.user = { id: 'a' } as any
+
+    await store.handleOAuthSuccess('b-at', 'b-rt', false)
+
+    expect(disconnectMock).toHaveBeenCalled()
+    expect(chatResetMock).toHaveBeenCalled()
+    expect(clearCreditStateMock).toHaveBeenCalled()
+    expect(store.token).toBe('b-at')
+    expect(store.user).toEqual({ id: 'b', email: 'b@example.com' })
+  })
+
+  it('_clearLocalSession() drops the active workspace and its persisted id', () => {
+    const workspace = useWorkspaceStore()
+    workspace.setWorkspaces([{ org_id: 'org-a', org_name: 'A', role: 'viewer', is_home: true }])
+    workspace.setActive('org-a')
+    expect(storage['bingo.activeWorkspace']).toBe('org-a')
+
+    useAuthStore()._clearLocalSession()
+
+    expect(workspace.activeOrgId).toBeNull()
+    expect(workspace.workspaces).toEqual([])
+    expect(storage['bingo.activeWorkspace']).toBeUndefined()
+  })
+
+  it('logout() clears local state before the revoke request settles', async () => {
+    // A hung /api/auth/logout must not strand the user in a signed-in session, and a
+    // slow one must not land after another account signed in on this tab.
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => { release = () => resolve() })
+    vi.mocked($fetch).mockReturnValueOnce(pending as any)
+
+    const store = useAuthStore()
+    store.token = 'a-at'
+    store.refreshToken = 'a-rt'
+    store.user = { id: 'a' } as any
+
+    const done = store.logout()
+    await Promise.resolve()
+
+    expect(store.token).toBeNull()
+    expect(store.user).toBeNull()
+    expect(clearCreditStateMock).toHaveBeenCalled()
+    expect(storage['auth_token']).toBeUndefined()
+
+    release()
+    await done
+  })
+
+  it('logout() still revokes with the tokens captured before the teardown', async () => {
+    vi.mocked($fetch).mockResolvedValueOnce({})
+    const store = useAuthStore()
+    store.token = 'a-at'
+    store.refreshToken = 'a-rt'
+
+    await store.logout()
+
+    expect($fetch).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({
+      headers: { Authorization: 'Bearer a-at' },
+      body: { refresh_token: 'a-rt' },
+    }))
   })
 
   // ── deleteAccount ─────────────────────────────────────────────────

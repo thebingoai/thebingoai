@@ -86,6 +86,55 @@ describe('credit state at the auth boundary', () => {
     expect(useCreditBalance().error.value).toBeNull()
   })
 
+  it('drops a response that started before the session boundary', async () => {
+    // Alice's balance request is still in flight when she logs out. Its response
+    // must not land in the shared refs afterwards.
+    let release!: (v: any) => void
+    mockFetchWithRefresh.mockReturnValueOnce(new Promise((resolve) => { release = resolve }))
+
+    const inFlight = useCreditBalance().refresh()
+    clearCreditState()
+    release(ALICE)
+    await inFlight
+
+    const next = useCreditBalance()
+    expect(next.remaining.value).toBe(180)
+    expect(next.usedToday.value).toBe(0)
+    // The stale response must not clear a loading flag it no longer owns.
+    expect(next.loading.value).toBe(false)
+  })
+
+  it('does not let a late response overwrite the next account\'s balance', async () => {
+    let releaseAlice!: (v: any) => void
+    mockFetchWithRefresh.mockReturnValueOnce(new Promise((resolve) => { releaseAlice = resolve }))
+    const alice = useCreditBalance().refresh()
+
+    clearCreditState()
+
+    mockFetchWithRefresh.mockResolvedValueOnce({ ...ALICE, remaining: 10, used_today: 3 })
+    await useCreditBalance().refresh()
+    expect(useCreditBalance().remaining.value).toBe(10)
+
+    // Alice's request finally returns — after Bob's already settled.
+    releaseAlice(ALICE)
+    await alice
+
+    expect(useCreditBalance().remaining.value).toBe(10)
+    expect(useCreditBalance().usedToday.value).toBe(3)
+  })
+
+  it('leaves an in-flight error from a dead session behind', async () => {
+    let rejectAlice!: (e: any) => void
+    mockFetchWithRefresh.mockReturnValueOnce(new Promise((_, reject) => { rejectAlice = reject }))
+    const alice = useCreditBalance().refresh()
+
+    clearCreditState()
+    rejectAlice(new Error('network down'))
+    await alice
+
+    expect(useCreditBalance().error.value).toBeNull()
+  })
+
   it('is safe to call before any credit state exists', () => {
     // Logout can run on a session that never loaded a balance.
     expect(() => clearCreditState()).not.toThrow()
