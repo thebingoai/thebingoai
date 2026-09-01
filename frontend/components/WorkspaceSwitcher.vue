@@ -39,18 +39,7 @@ const activeName = computed(() => {
 
 onMounted(async () => {
   store.hydrate()
-  const ws = await api.governance.listWorkspaces()
-  store.setWorkspaces(ws)
-  // A persisted org from a previous account leaves `activeRole` null and pins the
-  // switcher to a workspace this user has no membership in — drop it and fall through
-  // to the home fallback below.
-  if (store.activeOrgId && !ws.some((w) => w.org_id === store.activeOrgId)) {
-    store.setActive(null)
-  }
-  if (!store.activeOrgId) {
-    const home = ws.find((w) => w.is_home) || ws[0]
-    if (home) store.setActive(home.org_id)
-  }
+  store.reconcile(await api.governance.listWorkspaces())
 })
 
 async function select(orgId: string) {

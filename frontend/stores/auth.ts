@@ -425,7 +425,7 @@ export const useAuthStore = defineStore('auth', {
 
     // Tear down all client-side session state (stores, websocket, tokens,
     // localStorage). Does NOT call the SSO logout endpoint — used both by logout()
-    // (after it blacklists the refresh token) and by _adoptSession() to wipe a stale
+    // (before its best-effort revoke request) and by _adoptSession() to wipe a stale
     // session before adopting a new account.
     _clearLocalSession() {
       const chatStore = useChatStore()
