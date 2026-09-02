@@ -149,8 +149,9 @@ const sections = computed<Section[]>(() => {
     { id: 'agent', name: 'Agent', group: 'Workspace', order: 5 },
     { id: 'connections', name: 'Connections', group: 'Workspace', order: 10 },
     { id: 'channels', name: 'Channels', group: 'Workspace', order: 20 },
-    { id: 'skills', name: 'Skills', group: 'Workspace', order: 30 },
-    { id: 'memory', name: 'Memory', group: 'Workspace', order: 40 },
+    // Hidden from the nav — the Skills and Memory features are intact, uncomment to restore.
+    // { id: 'skills', name: 'Skills', group: 'Workspace', order: 30 },
+    // { id: 'memory', name: 'Memory', group: 'Workspace', order: 40 },
     { id: 'jobs', name: 'Jobs', group: 'Workspace', order: 50 },
     { id: 'profile', name: 'Profile', group: 'Account', order: 10 },
     {
