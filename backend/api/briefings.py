@@ -167,9 +167,13 @@ async def get_dashboard_widget(
     db: Session = Depends(get_db),
 ):
     """Return a single widget by its string id for embedding in a briefing."""
-    dashboard = db.query(Dashboard).filter(
-        Dashboard.id == dashboard_id,
-        Dashboard.user_id == current_user.id,
+    # Read scope must match GET /dashboards/{id} — a chat chart embed points at a
+    # dashboard the user reached through the org-wide list, so owner-only here
+    # 404s the embed for every non-owner who can legitimately read it.
+    from backend.api.dashboards import _dashboard_visible_to
+
+    dashboard = _dashboard_visible_to(
+        db.query(Dashboard).filter(Dashboard.id == dashboard_id), current_user, db,
     ).first()
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")

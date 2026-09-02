@@ -62,3 +62,15 @@ def test_mixed_list_renders_all_three_types_and_one_routing_bias_section():
     assert "@connection mentioned" in block
     assert "@notion_page mentioned" in block
     assert "Mentions never go through `manage`." in block
+
+
+def test_dashboard_routing_bias_names_the_chart_tool():
+    """The bias block is appended to every prompt path, so if it lists only the
+    read/update/analyze verbs it overrides the tool guide and a "show me a chart
+    of @dash" request routes away from select_dashboard_widget."""
+    block = render_mentions_block([
+        ResolvedMention(type="dashboard", id=42, name="q4-revenue", display_name="Q4 Revenue"),
+    ])
+    assert "select_dashboard_widget" in block
+    # Still the right verb for non-chart intents.
+    assert "analyze_dashboard" in block

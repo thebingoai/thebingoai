@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
 
 // useWidgetData is called by BriefingWidgetEmbed with ref(null) before the
@@ -12,14 +12,16 @@ vi.mock('~/composables/useApi', () => ({
     dashboards: { refreshWidget: mockRefreshWidget },
   }),
 }))
+const store = {
+  refreshingWidgets: {},
+  widgetSeq: {},
+  activeFilters: [] as any[],
+  bulkWidgetLoading: false,
+  currentDashboardId: null as number | null,
+  setWidgetSourceData: vi.fn(),
+}
 vi.mock('~/stores/dashboard', () => ({
-  useDashboardStore: () => ({
-    refreshingWidgets: {},
-    widgetSeq: {},
-    activeFilters: [],
-    bulkWidgetLoading: false,
-    currentDashboardId: null,
-  }),
+  useDashboardStore: () => store,
 }))
 vi.mock('~/utils/widgetMerge', () => ({
   mergeRefreshedConfig: (a: any) => a,
@@ -81,5 +83,55 @@ describe('useWidgetData null-safety', () => {
       expect.objectContaining({ widget_id: 'w1' }),
       expect.anything(),
     )
+  })
+})
+
+// An embed (chat chart, briefing) renders a widget belonging to a dashboard the
+// store is NOT on — on /chat the store is reset entirely. Deriving dashboard_id
+// from the store sent `undefined` (losing the DataPlane/cache/serving path) or,
+// worse, another dashboard's active filters.
+describe('useWidgetData dashboard scoping', () => {
+  const liveWidget = () => ref<any>({
+    id: 'w1',
+    dataSource: { connectionId: 1, sql: 'select 1', mapping: {} },
+    widget: { config: {} },
+  })
+
+  const payload = () => mockRefreshWidget.mock.calls.at(-1)![0]
+
+  beforeEach(() => {
+    mockRefreshWidget.mockClear()
+    store.activeFilters = []
+    store.currentDashboardId = null
+  })
+
+  it('sends the embed dashboard id even when the store has none', async () => {
+    const { refresh } = useWidgetData(liveWidget(), false, { dashboardId: 42 })
+    await refresh()
+    expect(payload().dashboard_id).toBe(42)
+  })
+
+  it('falls back to the store id on the dashboard page', async () => {
+    store.currentDashboardId = 7
+    const { refresh } = useWidgetData(liveWidget(), false)
+    await refresh()
+    expect(payload().dashboard_id).toBe(7)
+  })
+
+  it('never sends another dashboard\'s filters to an embed', async () => {
+    store.currentDashboardId = 7
+    store.activeFilters = [{ column: 'created_at', operator: 'gte', value: '2026-01-01' }]
+    const { refresh } = useWidgetData(liveWidget(), false, { dashboardId: 42 })
+    await refresh()
+    expect(payload().dashboard_id).toBe(42)
+    expect(payload().filters).toBeUndefined()
+  })
+
+  it('still sends filters when the embed IS the open dashboard', async () => {
+    store.currentDashboardId = 42
+    store.activeFilters = [{ column: 'created_at', operator: 'gte', value: '2026-01-01' }]
+    const { refresh } = useWidgetData(liveWidget(), false, { dashboardId: 42 })
+    await refresh()
+    expect(payload().filters).toHaveLength(1)
   })
 })

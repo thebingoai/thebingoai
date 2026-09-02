@@ -1227,15 +1227,14 @@ def _dashboard_tool_succeeded(messages: list) -> bool:
     return False
 
 
-def _extract_chart_specs_from_messages(messages: list, user_id: str) -> Optional[list]:
-    """Non-streaming counterpart of stream_orchestrator's collected_steps scan.
+def _tool_results_from_messages(messages: list) -> list:
+    """[(tool_name, result), ...] for every tool call in `messages`, in call order.
 
-    Same tool_call_id -> name mapping trick as _dashboard_tool_succeeded, then
-    delegates to resolve_chart_specs_from_tool_results for the actual chart_ref
-    resolution (which is what keeps row data out of the LLM's view).
+    Non-streaming counterpart of stream_orchestrator's collected_steps scan; same
+    tool_call_id -> name mapping trick as _dashboard_tool_succeeded. Feeds
+    resolve_chart_specs_from_tool_results, which does the chart_ref resolution
+    that keeps row data out of the LLM's view.
     """
-    from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
-
     tool_name_by_id: dict = {}
     tool_results: list = []
     for msg in messages:
@@ -1246,7 +1245,7 @@ def _extract_chart_specs_from_messages(messages: list, user_id: str) -> Optional
             name = tool_name_by_id.get(getattr(msg, "tool_call_id", ""))
             if name:
                 tool_results.append((name, msg.content))
-    return resolve_chart_specs_from_tool_results(tool_results, user_id)
+    return tool_results
 
 
 async def run_orchestrator(
@@ -1323,6 +1322,7 @@ async def run_orchestrator(
         retry_succeeded: Optional[bool] = None
         judge_metadata: Optional[Dict[str, Any]] = None
         highlighted_text: Optional[str] = None
+        retry_steps: List[Dict[str, Any]] = []
         # Skip the judge retry when a dashboard tool already succeeded this turn.
         # The judge sees only the final prose; if a created dashboard reads like a
         # description it flags "unresolved" and the retry re-invokes the whole
@@ -1332,7 +1332,7 @@ async def run_orchestrator(
             verdict = await judge_response(user_question, final_answer)
             if not verdict.resolved:
                 logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
-                final_answer, retry_succeeded, judge_metadata, _retry_steps = await _run_judge_retry(
+                final_answer, retry_succeeded, judge_metadata, retry_steps = await _run_judge_retry(
                     user_question, final_answer, verdict, orchestrator, messages,
                     callbacks=callbacks,
                 )
@@ -1343,7 +1343,16 @@ async def run_orchestrator(
         if settings.judge_highlight_enabled and final_answer:
             final_answer = _apply_highlights(final_answer, highlighted_text)
 
-        chart_specs = _extract_chart_specs_from_messages(result.get("messages", []), context.user_id)
+        # The retry can create or replace the chart, so the trail it produced is
+        # part of the final answer — resolve over both halves, mirroring the
+        # streaming path's append of retry_steps to collected_steps.
+        from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
+        tool_results = _tool_results_from_messages(result.get("messages", []))
+        tool_results += [
+            (step["tool_name"], step.get("content", {}).get("result"))
+            for step in retry_steps if step.get("step_type") == "tool_result"
+        ]
+        chart_specs = resolve_chart_specs_from_tool_results(tool_results, context.user_id)
 
         return {
             "success": True,

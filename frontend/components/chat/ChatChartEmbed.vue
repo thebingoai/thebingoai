@@ -3,7 +3,7 @@
     class="rounded-lg border border-neutral-100 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-4"
     :style="{ height: heightPx + 'px' }"
   >
-    <DashboardWidget :widget="chartRef.widget" :auto-refresh="false" />
+    <DashboardWidget :widget="chartRef.widget" :auto-refresh="false" :edit-mode="false" />
   </div>
 </template>
 

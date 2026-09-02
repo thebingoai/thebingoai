@@ -76,11 +76,16 @@ def test_old_identities_are_texts_ordered_longest_first():
 
 
 def test_snapshot_matches_the_current_defaults():
-    """A stale snapshot silently writes the wrong text to every seeded row."""
+    """A stale snapshot silently writes the wrong text to every seeded row.
+
+    `tools` is no longer asserted here: chrtr0ut01 supersedes this revision for
+    that section (chat-chart routing), and its own guard holds the equality.
+    Historical revisions keep their frozen literal — same split
+    test_migration_d0cst0ry0a1b.py made once w1dgc4p0001 took over dashboard_agent.
+    """
     from backend.agents.profile_defaults import DEFAULTS
 
     assert _literal("_NEW_IDENTITY") == DEFAULTS["orchestrator"]["identity"]
-    assert _literal("_NEW_TOOLS") == DEFAULTS["orchestrator"]["tools"]
 
 
 def test_snapshot_carries_the_new_rules():
@@ -295,7 +300,7 @@ def test_exactly_one_alembic_head():
     cfg.set_main_option("script_location", str(root / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
     # Single-head guard; update the expected value whenever a revision is added.
-    assert list(heads) == ["w1dgc4p0001"], heads
+    assert list(heads) == ["chrtr0ut01"], heads
 
 
 def test_the_previous_head_is_still_reachable():

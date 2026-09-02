@@ -14,6 +14,9 @@ widget (config + data) server-side via query_result_store and returns only a
 lean confirmation + opaque chart_ref. The orchestrator resolves chart_ref to
 the full widget after the LLM turn ends (see resolve_chart_specs_from_tool_results
 below), mirroring how execute_query already keeps row data out of LLM context.
+The SQL-repair path is covered too: this tool passes allow_row_sampling=False,
+so the repair prompt _execute_widget_sql builds carries schema + error only,
+never sampled rows (dashboards still sample unless metadata_only_llm is on).
 """
 from __future__ import annotations
 
@@ -59,13 +62,39 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
                 {column, label, aggregation?} for the metric(s) — do NOT
                 repeat labelColumn inside datasetColumns). Category charts
                 MUST aggregate — GROUP BY in the SQL, or set "aggregation" on
-                each datasetColumns entry.
+                each datasetColumns entry. "aggregation" values are lowercase:
+                sum|avg|count|countDistinct|min|max|first|last ("SUM" is NOT
+                recognised).
+
+                Breakdown / "stack by" / "split by" a second dimension: set
+                "breakdownColumn" to that column — it splits the FIRST metric
+                into one series per distinct value. A second dimension in the
+                SQL does NOTHING on its own; without breakdownColumn every
+                category collapses into a single series. Add
+                "options": {"stacked": "standard"} for a stacked chart, or
+                "percentage" for 100%-stacked; omit for grouped bars / multi
+                line. (sliceLabel is a pie-only label option — it is NOT a
+                breakdown.)
+                Example: {"type": "chart", "chartType": "bar",
+                "connectionId": 8, "sql": "SELECT quarter, category, revenue
+                FROM sales", "labelColumn": "quarter",
+                "breakdownColumn": "category", "datasetColumns": [{"column":
+                "revenue", "label": "Revenue", "aggregation": "sum"}],
+                "options": {"stacked": "standard"}}
+
+                Time buckets: set "dateGranularity" (year|quarter|month|week|
+                day|hour, or hour_of_day|day_of_week|month_of_year for
+                seasonality) to bucket a timestamp labelColumn — the backend
+                buckets and aggregates in Python, so the SQL can return raw
+                timestamp/category/metric rows with no DATE_TRUNC and no pivot.
 
                 Scatter/bubble charts (point-based, NOT labelColumn/
                 datasetColumns): provide "xMetricColumn" and "yMetricColumn"
-                (the two metric columns from the SQL). Bubble additionally
-                requires "sizeMetricColumn". Optional "labelColumn" groups
-                points into one series per distinct value.
+                (the two metric columns from the SQL), optionally
+                "xAggregation"/"yAggregation" (same lowercase enum) to collapse
+                repeated x values. Bubble additionally requires
+                "sizeMetricColumn". Optional "labelColumn" groups points into
+                one series per distinct value.
                 Example: {"type": "chart", "chartType": "bubble",
                 "connectionId": 8, "sql": "SELECT price, minimum_nights,
                 number_of_reviews FROM listings",
@@ -83,10 +112,19 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
                 For type="kpi" also provide: "label", "valueColumn",
                 "aggregation"?, "prefix"?, "suffix"?.
 
+        When the user asks to CHANGE a chart you just rendered ("make it
+        stacked", "use a line chart", "break it down by region"), call this tool
+        again with the adjusted widget. The earlier chart is frozen — never
+        describe it as if it had the new shape.
+
         Returns:
-            JSON {"success": true, "chart_ref": "<id>", "title": ..., "chart_type": ...}
-            on success. The chart renders from server-side state — do not
-            describe the data values yourself, they are not visible to you.
+            JSON {"success": true, "chart_ref": "<id>", "title": ...,
+            "chart_type": ...} on success, plus "series_count" (int) and
+            "stacked" (bool) for type="chart". The chart renders from server-side state — do not describe
+            the data values yourself, they are not visible to you. Do check
+            series_count: 1 means the chart has a single series, so it is NOT
+            broken down by anything and NOT visually stacked, whatever the
+            options say.
             JSON {"success": false, "message": "..."} on failure — fall back
             to a normal text answer.
         """
@@ -98,17 +136,31 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
             return json.dumps({"success": False, "message": "connectionId missing or not accessible"})
 
         from backend.agents.dashboard_agent.widget_specs.widgets import build_widgets
-        from backend.agents.dashboard_tools import _execute_widget_sql
+        from backend.agents.dashboard_tools import _execute_widget_sql, _verify_widgets
 
         hydrated = build_widgets([widget])
         if not hydrated or "widget" not in hydrated[0]:
             return json.dumps({"success": False, "message": f"unsupported widget type: {widget.get('type')}"})
 
+        # Same pre-execution gate create_dashboard runs (unaggregated category
+        # charts, unbounded scatter/bubble, dataSource shape). Without it a SQL
+        # shape rejected for a dashboard still executes through chat. The
+        # dashboard-level rules inside are no-ops for a single widget.
+        violations = _verify_widgets(hydrated, None)
+        if violations:
+            return json.dumps({
+                "success": False,
+                "violations": violations,
+                "message": "Validation failed — see violations. Fix the widget and call generate_chat_chart again.",
+            })
+
         # Deep-copy before mutation — _execute_widget_sql merges query rows
         # into widget.config in-place; the original `widget` arg is still held
         # in the agent's message history (same rationale as create_dashboard).
         w = copy.deepcopy(hydrated[0])
-        error = await _execute_widget_sql(w, db_session_factory, user_id=context.user_id)
+        error = await _execute_widget_sql(
+            w, db_session_factory, user_id=context.user_id, allow_row_sampling=False,
+        )
         if error:
             return json.dumps({"success": False, "message": error})
 
@@ -116,12 +168,24 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
         store_query_result(chart_ref, context.user_id, {"widget": w, "connection_id": connection_id}, ttl=3600)
 
         wconf = w.get("widget", {}).get("config", {})
-        return json.dumps({
+        widget_type = w.get("widget", {}).get("type")
+        result = {
             "success": True,
             "chart_ref": chart_ref,
             "title": wconf.get("title") or wconf.get("label"),
-            "chart_type": w.get("widget", {}).get("type"),
-        })
+            "chart_type": widget_type,
+        }
+        if widget_type == "chart":
+            # A count and a flag, never values — enough for the reply to state what
+            # the chart actually shows (a one-series "stacked by category" claim is
+            # the failure this exists to stop) without putting row data in front of
+            # the LLM. Only charts have series; a kpi would always report 0.
+            datasets = ((wconf.get("data") or {}).get("datasets")) or []
+            result["series_count"] = len(datasets)
+            result["stacked"] = (wconf.get("options") or {}).get("stacked") in (
+                True, "standard", "percentage",
+            )
+        return json.dumps(result)
 
     @tool
     def select_dashboard_widget(dashboard_id: int, question: str) -> str:
@@ -139,16 +203,25 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
         Returns:
             JSON {"success": true, "dashboard_id": ..., "widget_id": ..., "title": ...}
             or {"success": false, "message": "..."} if the dashboard has no
-            chartable widgets or isn't accessible.
+            chartable widgets, no widget matches the question, or it isn't
+            accessible. On failure fall back to generate_chat_chart (or a plain
+            text answer) — never guess a widget.
         """
+        from backend.api.dashboards import _dashboard_visible_to
         from backend.models.dashboard import Dashboard
+        from backend.models.user import User
 
         db = db_session_factory()
         try:
-            dashboard = db.query(Dashboard).filter(
-                Dashboard.id == dashboard_id,
-                Dashboard.user_id == context.user_id,
-            ).first()
+            # Same read scope as GET /dashboards/{id} — the mention picker is fed
+            # by that endpoint, so an org-readable dashboard the user can mention
+            # must also be selectable here.
+            user = db.query(User).filter(User.id == context.user_id).first()
+            query = db.query(Dashboard).filter(Dashboard.id == dashboard_id)
+            dashboard = (
+                _dashboard_visible_to(query, user, db).first() if user is not None
+                else query.filter(Dashboard.user_id == context.user_id).first()
+            )
             if not dashboard:
                 return json.dumps({"success": False, "message": "dashboard not found or not accessible"})
 
@@ -160,6 +233,11 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
                 return json.dumps({"success": False, "message": "dashboard has no chartable widgets"})
 
             best = _best_title_match(candidates, question)
+            if best is None:
+                return json.dumps({
+                    "success": False,
+                    "message": "no widget on this dashboard matches the question",
+                })
             wconf = best.get("widget", {}).get("config", {})
             return json.dumps({
                 "success": True,
@@ -173,14 +251,16 @@ def build_chat_chart_tools(context: AgentContext, db_session_factory: Callable) 
     return [generate_chat_chart, select_dashboard_widget]
 
 
-def _best_title_match(widgets: list[dict], question: str) -> dict:
+def _best_title_match(widgets: list[dict], question: str) -> Optional[dict]:
     """Pick the widget whose title/label shares the most word tokens with `question`.
 
-    Falls back to the first widget when nothing overlaps — the dashboard is
-    already scoped by the @mention, so any widget is a reasonable default.
+    Returns None when nothing overlaps. Falling back to widgets[0] instead would
+    make the answer depend on dashboard layout order and hand the user a valid-
+    looking chart of the wrong metric — a no-match the caller can recover from is
+    strictly better.
     """
     q_tokens = {t for t in _tokenize(question) if len(t) > 2}
-    best, best_score = widgets[0], -1
+    best, best_score = None, 0
     for w in widgets:
         wconf = w.get("widget", {}).get("config", {})
         title = wconf.get("title") or wconf.get("label") or ""

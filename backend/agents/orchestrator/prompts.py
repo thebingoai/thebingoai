@@ -30,6 +30,8 @@ _LEAN_ROUTING_RULE = """## Routing rule
 - Edit an existing dashboard         → update_dashboard (call manage(domain="dashboard", action="list") first if you need the dashboard_id)
 - Read a dashboard / its widgets     → read_dashboard
 - Insights or summary of a dashboard → analyze_dashboard
+- One ad-hoc chart inline in this reply (not saved) → generate_chat_chart
+- Chart question about an @mentioned dashboard      → select_dashboard_widget
 - Notion page content                → read_notion_pages (plugin, when present); else rag_agent
 - Other knowledge / uploaded docs    → rag_agent
 - Save user-stated facts             → save_memory
@@ -93,6 +95,8 @@ def render_mentions_block(mentions: "Optional[List[ResolvedMention]]") -> str:
         "- @dashboard mentioned   → use the dashboard verb that matches user intent",
         "                            (read_dashboard / update_dashboard / analyze_dashboard),",
         "                            passing `dashboard_id`.",
+        "                            Asking to SEE a chart of it (show / plot / chart / trend)",
+        "                            → select_dashboard_widget, NOT generate_chat_chart.",
         "- @connection mentioned  → call `data_agent`, pass `connection_ids`.",
         "- @notion_page mentioned → call `read_notion_pages(connection_id=…, page_ids=[…])`,",
         "                            passing the exact page_id shown above (do NOT omit page_ids —",
