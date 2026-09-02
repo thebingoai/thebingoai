@@ -17,7 +17,7 @@ class KpiWidget(BaseWidget):
         "- `valueColumn`* (string): SQL column holding the value\n"
         "- `aggregation` (sum|avg|count|countDistinct|min|max|first|last): "
         "ALWAYS set explicitly to match the KPI's purpose (sum, avg, countDistinct, last, ...); "
-        "if omitted, the backend falls back to the first row's value\n"
+        "raw-row SQL (no GROUP BY / aggregate function) without it is rejected before save\n"
         "- `prefix`/`suffix` (string), `compactNumbers`/`roundValue` (bool), `decimalPlaces` (number)\n"
         "- `comparison` (object), `progressVisual` (bar|circle|none)\n"
         "- trend: `autoTrend` (bool), `periodLabel`, `trendDateColumn`, `trendValueColumn`\n"

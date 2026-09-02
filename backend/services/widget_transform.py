@@ -154,6 +154,13 @@ def _period_ranges(period_label: str, reference: date) -> Tuple[date, date, date
     return today, today, today, today
 
 
+#: Every method _aggregate_values distinguishes. Anything else takes its trailing
+#: "first" branch, so the KPI paths that accept stored / LLM input check here.
+KPI_AGGREGATIONS = frozenset(
+    {"sum", "avg", "count", "countDistinct", "min", "max", "first", "last"}
+)
+
+
 def _aggregate_values(values: List[Any], aggregation: str) -> Optional[float]:
     """Aggregate a list of values using the given method."""
     if not values:
@@ -526,8 +533,9 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
 
     # Aggregate value across all rows.
     aggregation = mapping.get("aggregation")
-    if aggregation is None:
-        # Absent (or stored null) aggregation. A multi-row result almost never
+    if aggregation not in KPI_AGGREGATIONS:
+        # Absent, stored null, or a method _aggregate_values doesn't know (its
+        # trailing branch is "first"). A multi-row result almost never
         # means "show row 0" — that reading is what makes a 15k-row KPI render a
         # single cell. Single-row results are identical under either reading, so
         # they keep "first" and their meaning is unchanged. Deliberately narrower

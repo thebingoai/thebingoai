@@ -388,6 +388,7 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
     and can patch specific widgets in a single retry.
     """
     from backend.agents.orchestrator.dashboard_widget_verifier import verify_dashboard_widgets
+    from backend.services.widget_transform import KPI_AGGREGATIONS
 
     violations: list[dict] = []
 
@@ -463,6 +464,9 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
                     "message": ds_error,
                     "fix_hint": "Fix the dataSource shape per the create_dashboard schema.",
                 })
+                # The guards below read dataSource keys: on a non-dict they crash,
+                # on a missing sql they pile on noise. Shape errors first.
+                continue
 
             # Aggregation guard for category charts. A bar/pie/line/area/doughnut
             # without GROUP BY, an aggregate fn, or `aggregation` on every
@@ -489,6 +493,23 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
                         "`SELECT role, left FROM t WHERE left=1`) are rejected."
                     ),
                 })
+
+            # An aggregation the transform doesn't know is treated as absent
+            # (see transform_kpi), so the intent behind e.g. "average" is lost
+            # silently. Reject it whatever the SQL shape.
+            if wcfg["type"] == "kpi":
+                _kpi_agg = (widget["dataSource"].get("mapping") or {}).get("aggregation")
+                if _kpi_agg is not None and _kpi_agg not in KPI_AGGREGATIONS:
+                    violations.append({
+                        "widget_id": wid,
+                        "code": "kpi_invalid_aggregation",
+                        "message": (
+                            f"KPI '{cfg_title_for(wcfg, wid)}' has "
+                            f"mapping.aggregation={_kpi_agg!r}, which is not a "
+                            "supported method."
+                        ),
+                        "fix_hint": f"Use one of {'|'.join(sorted(KPI_AGGREGATIONS))}.",
+                    })
 
             # Aggregation guard for KPIs. A KPI collapses the result to one
             # number: with neither SQL aggregation nor mapping.aggregation the

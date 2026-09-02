@@ -35,12 +35,20 @@ def _dimension_applies_to_sources(
                     "sources %s", column, dim_sources, widget_sources,
                 )
             return applies
-    # Context provided but column is not a known dimension → the filter cannot be
-    # bound to this widget, so drop it. The caller only reaches this branch with a
-    # non-None data_context, so there is no "no context" case to fall back to.
+    # Not a declared dimension. The context still lists columns per source —
+    # connection contexts as `tables[t].columns` (dict), dashboard contexts as
+    # `sources[t].columns` (list), the same pair _pick_target_scope reads. A
+    # column one of this widget's sources exposes binds here, so the filter is
+    # kept: dropping it would answer a filtered request with unfiltered rows.
+    # A column none of them exposes cannot bind and is dropped — injecting it
+    # anyway is the "400 Unrecognized name" on every widget fixed in 3433c24.
+    tables_meta = data_context.get("tables") or data_context.get("sources") or {}
+    for src in widget_sources:
+        if column in ((tables_meta.get(src) or {}).get("columns") or ()):
+            return True
     logger.warning(
-        "Filter on %r dropped: not a dimension in the dashboard data_context "
-        "(known: %s)", column, sorted(dimensions),
+        "Filter on %r dropped: not a dimension (known: %s) and none of widget "
+        "sources %s expose it", column, sorted(dimensions), widget_sources,
     )
     return False
 

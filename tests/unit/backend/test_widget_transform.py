@@ -264,6 +264,14 @@ class TestTransformKpi:
         out = transform_kpi(result, {"valueColumn": "total", "aggregation": None})
         assert out["value"] == 300
 
+    def test_unknown_aggregation_is_treated_as_absent(self):
+        """`_aggregate_values` answers "first" for anything it doesn't know, so a
+        stored `"average"` would re-create the row-0 headline. Unknown values
+        take the same multi-row default as an absent one."""
+        result = _qr(["total"], [(100,), (200,)])
+        out = transform_kpi(result, {"valueColumn": "total", "aggregation": "average"})
+        assert out["value"] == 300
+
 
 # ---------------------------------------------------------------------------
 # TestTransformTable

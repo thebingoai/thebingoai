@@ -516,6 +516,26 @@ def test_kpi_guard_ignores_non_kpi_widgets():
     assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
 
 
+def test_kpi_guard_rejects_an_unknown_aggregation():
+    """Any truthy aggregation used to pass the guard, but the transform treats
+    a method it doesn't know as absent — the stated intent is lost silently."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT d, v AS total_revenue_usd FROM t", aggregation="average")
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_invalid_aggregation" in codes, codes
+    assert "kpi_not_aggregated" not in codes, codes
+
+
+def test_guards_skip_a_malformed_data_source():
+    """A non-dict dataSource is reported once as invalid_dataSource; the
+    aggregation guards must not then call .get() on it and crash."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT 1 AS total_revenue_usd")
+    w["dataSource"] = "SELECT 1 AS total_revenue_usd"
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert codes == ["invalid_dataSource"], codes
+
+
 # --------------------------------------------------------------------------- #
 # Dialect hints for db_type='dataset' (CSV/Excel via bingo-csv-connector)
 # --------------------------------------------------------------------------- #

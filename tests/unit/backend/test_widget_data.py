@@ -733,16 +733,43 @@ class TestFilterNeverSilentlyDropped:
     endpoint answered 200 with the full unfiltered result and no error.
     """
 
-    def test_dimension_gate_drops_unknown_column(self):
+    def test_dimension_gate_binds_undeclared_columns_by_source_columns(self):
+        """A declared dimension is gated by its `sources`. An undeclared column
+        is gated by the column lists the context carries per source: kept when
+        one of the widget's sources exposes it (dropping it would serve
+        unfiltered rows as filtered), dropped when none does (injecting it
+        would 400 on every widget — 3433c24)."""
         from backend.api.widget_data import _dimension_applies_to_sources
 
-        ctx = {"dimensions": {"session_date": {"column": "session_date",
-                                               "sources": ["csv_261"]}}}
+        ctx = {
+            "dimensions": {"session_date": {"column": "session_date",
+                                            "sources": ["csv_261"]}},
+            "sources": {"csv_261": {"columns": ["session_date", "session_minutes"]}},
+        }
         assert _dimension_applies_to_sources("session_date", ctx, ["csv_261"]) is True
-        # Not a dimension at all → cannot bind to this widget.
-        assert _dimension_applies_to_sources("zzz_nope", ctx, ["csv_261"]) is False
         # Known dimension, but it lives on a table this widget doesn't read.
         assert _dimension_applies_to_sources("session_date", ctx, ["other_tbl"]) is False
+        # Undeclared, but this widget's source has the column → binds.
+        assert _dimension_applies_to_sources("session_minutes", ctx, ["csv_261"]) is True
+        # Undeclared and no source of this widget exposes it → cannot bind.
+        assert _dimension_applies_to_sources("zzz_nope", ctx, ["csv_261"]) is False
+
+        # Through inject_filters with widget_sources populated, as the frontend
+        # sends it: the undeclared-but-present filter reaches the SQL, the
+        # unbindable one is dropped. (Quoting is dialect-specific; the bound
+        # params are the drop-vs-inject signal.)
+        sql, params = inject_filters(
+            "SELECT session_date, session_minutes FROM csv_261",
+            [FilterParam(column="session_minutes", op="gte", value=30)],
+            data_context=ctx, widget_sources=["csv_261"],
+        )
+        assert "WHERE" in sql.upper() and params == {"_f0": 30}
+        sql, params = inject_filters(
+            "SELECT session_date, session_minutes FROM csv_261",
+            [FilterParam(column="zzz_nope", op="gte", value=30)],
+            data_context=ctx, widget_sources=["csv_261"],
+        )
+        assert "WHERE" not in sql.upper() and params == {}
 
     def test_pick_target_scope_reads_dashboard_context_sources(self):
         """Dashboard contexts expose `sources[t].columns` as a list; connection
