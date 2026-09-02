@@ -147,11 +147,7 @@ export const useAuthStore = defineStore('auth', {
             body: credentials,
           }
         )
-        this.token = data.access_token
-        this.refreshToken = data.refresh_token
-        this._isFirstLogin = data.is_first_login ?? false
-        this._persistTokens()
-        await this.fetchUser()
+        await this._adoptSession(data.access_token, data.refresh_token, data.is_first_login)
         trackEvent('login', { method: 'password' })
         return { success: true }
       } catch (error: any) {
@@ -188,11 +184,7 @@ export const useAuthStore = defineStore('auth', {
     // ─── SSO OAuth callback ─────────────────────────────────────
 
     async handleOAuthSuccess(accessToken: string, refreshToken: string, isFirstLogin?: boolean) {
-      this.token = accessToken
-      this.refreshToken = refreshToken
-      this._isFirstLogin = isFirstLogin ?? false
-      this._persistTokens()
-      await this.fetchUser()
+      await this._adoptSession(accessToken, refreshToken, isFirstLogin)
       trackEvent(this._isFirstLogin ? 'sign_up' : 'login', { method: 'google' })
     },
 
@@ -212,15 +204,7 @@ export const useAuthStore = defineStore('auth', {
             body: { token },
           }
         )
-        // Drop any prior session before installing the new account's tokens, so a
-        // stale token (e.g. an account still logged in this browser) can't shadow the
-        // freshly-verified user.
-        this._clearLocalSession()
-        this.token = data.access_token
-        this.refreshToken = data.refresh_token
-        this._isFirstLogin = data.is_first_login ?? false
-        this._persistTokens()
-        await this.fetchUser()
+        await this._adoptSession(data.access_token, data.refresh_token, data.is_first_login)
         trackEvent('login', { method: 'password' })
         return { success: true }
       } catch (error: any) {
@@ -389,19 +373,26 @@ export const useAuthStore = defineStore('auth', {
       if (this.token || this.user) {
         trackEvent('logout')
       }
-      if (this.token && this.refreshToken) {
+      const token = this.token
+      const refreshToken = this.refreshToken
+
+      // Clear before the await, not after: a hung /api/auth/logout would otherwise
+      // leave the user signed in with no way out, and a slow one could land after
+      // another account signed in on this tab and wipe that session instead.
+      this._clearLocalSession()
+
+      if (token && refreshToken) {
         try {
           await $fetch('/api/auth/logout', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${this.token}` },
-            body: { refresh_token: this.refreshToken },
+            headers: { Authorization: `Bearer ${token}` },
+            body: { refresh_token: refreshToken },
+            timeout: 15_000,
           })
         } catch {
-          // Ignore logout errors
+          // Best effort — the local session is already gone.
         }
       }
-
-      this._clearLocalSession()
     },
 
     // ─── Delete account ─────────────────────────────────────────
@@ -418,19 +409,44 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    // Adopt a new identity. Always tears down the prior session first: /login and
+    // /auth/success are both reachable while already authenticated, and installing
+    // B's tokens over A's still-populated user leaves `isAuthenticated` true — so the
+    // websocket plugin's watcher never fires and B keeps talking over the socket the
+    // backend authenticated as A.
+    async _adoptSession(accessToken: string, refreshToken: string, isFirstLogin?: boolean) {
+      this._clearLocalSession()
+      this.token = accessToken
+      this.refreshToken = refreshToken
+      this._isFirstLogin = isFirstLogin ?? false
+      this._persistTokens()
+      await this.fetchUser()
+    },
+
     // Tear down all client-side session state (stores, websocket, tokens,
     // localStorage). Does NOT call the SSO logout endpoint — used both by logout()
-    // (after it blacklists the refresh token) and by verifyEmail() to wipe a stale
+    // (before its best-effort revoke request) and by _adoptSession() to wipe a stale
     // session before adopting a new account.
     _clearLocalSession() {
       const chatStore = useChatStore()
       const dashboardStore = useDashboardStore()
+      const workspaceStore = useWorkspaceStore()
       const { disconnect, clearHandlers } = useWebSocket()
 
       chatStore.reset()
       dashboardStore.$resetAll()
+      // Active org and its role outlive the session otherwise. A stale org that is
+      // absent from the next account's list leaves `activeRole` null, which makes
+      // `isViewer` false and un-hides the workspace-admin settings sections.
+      workspaceStore.setActive(null)   // also removes `bingo.activeWorkspace`
+      workspaceStore.setWorkspaces([])
       disconnect()
       clearHandlers()
+      // Credit balance lives in useState, which is per-app rather than
+      // per-component, so it outlives the session unless cleared here. Without
+      // this the next account on the same tab reads the previous workspace's
+      // balance until its own fetch returns, and indefinitely if that fails.
+      clearCreditState()
 
       this.user = null
       this.token = null
