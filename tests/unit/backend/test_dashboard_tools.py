@@ -537,6 +537,62 @@ class TestExecuteWidgetSql:
         assert widget["widget"]["config"]["value"] == 42
         mock_connector.close.assert_called_once()
 
+    async def _run_capture_transform(self, mapping, row_count):
+        """Drive _execute_widget_sql with `resolved` pre-populated (skips the
+        connection lookup + feature-flag DB reads) and return the QueryResult
+        that reached transform_widget_data."""
+        widget = self._make_widget()
+        widget["dataSource"]["mapping"] = mapping
+        widget["widget"]["type"] = mapping["type"]
+
+        result = MagicMock()
+        result.row_count = row_count
+        result.rows = [(i,) for i in range(row_count)]
+        result.truncated = False
+
+        connection = _make_mock_connection()
+        connector = MagicMock()
+        factory, _ = _make_db_session_factory(connection)
+        seen = {}
+
+        def _fake_transform(res, _mapping):
+            seen["row_count"] = res.row_count
+            seen["rows"] = len(res.rows)
+            return {"value": 1}
+
+        with (
+            patch("backend.agents.dashboard_tools._run_widget_query", return_value=result),
+            patch("backend.services.widget_transform.transform_widget_data", side_effect=_fake_transform),
+        ):
+            await _execute_widget_sql(
+                widget, factory, resolved={1: (connection, connector, "postgres")},
+            )
+        return seen
+
+    @pytest.mark.asyncio
+    async def test_kpi_is_not_row_capped_before_transform(self):
+        """A KPI collapses to one number, so capping rows before the transform
+        bakes a partial aggregate: dashboard 116 stored 14,323,587.45 against a
+        live 16,062,395.44 because only the first 5000 rows were summed."""
+        from backend.agents.dashboard_tools import MAX_WIDGET_RESULT_ROWS
+
+        over = MAX_WIDGET_RESULT_ROWS + 1000
+        seen = await self._run_capture_transform({"type": "kpi", "valueColumn": "v"}, over)
+        assert seen["rows"] == over
+        assert seen["row_count"] == over
+
+    @pytest.mark.asyncio
+    async def test_chart_is_still_row_capped_before_transform(self):
+        """Charts keep the cap — their config embeds one entry per row, and the
+        payload is persisted as JSONB and shipped to the browser."""
+        from backend.agents.dashboard_tools import MAX_WIDGET_RESULT_ROWS
+
+        over = MAX_WIDGET_RESULT_ROWS + 1000
+        mapping = {"type": "chart", "labelColumn": "l", "datasetColumns": [{"column": "v"}]}
+        seen = await self._run_capture_transform(mapping, over)
+        assert seen["rows"] == MAX_WIDGET_RESULT_ROWS
+        assert seen["row_count"] == MAX_WIDGET_RESULT_ROWS
+
     @pytest.mark.asyncio
     async def test_no_data_source_returns_early(self):
         widget = _valid_widget()  # no dataSource key

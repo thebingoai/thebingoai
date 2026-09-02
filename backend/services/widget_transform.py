@@ -525,31 +525,29 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
         return {"value": None}
 
     # Aggregate value across all rows.
-    # Default "first" (first-row value) for backward compatibility: existing/agent
-    # mappings without an explicit aggregation must not silently change meaning.
-    # New/edited KPIs persist an explicit aggregation (e.g. "sum") from the editor.
-    aggregation = mapping.get("aggregation", "first")
-    all_numeric = [
-        v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
-        if isinstance(v, (int, float))
-    ]
+    aggregation = mapping.get("aggregation")
+    if aggregation is None:
+        # Absent (or stored null) aggregation. A multi-row result almost never
+        # means "show row 0" — that reading is what makes a 15k-row KPI render a
+        # single cell. Single-row results are identical under either reading, so
+        # they keep "first" and their meaning is unchanged. Deliberately narrower
+        # than the blanket sum-default reverted in 5dbd4e7.
+        aggregation = "sum" if len(result.rows) > 1 else "first"
 
-    if not all_numeric:
+    # Delegate the ladder to _aggregate_values — the same helper the trend path
+    # and transform_chart use. It is the only implementation that covers
+    # countDistinct, which the editor and the agent params_doc both offer.
+    # Non-null (not numeric-only) values mirror widgetTransform.ts, so the
+    # editor's optimistic recompute and the server agree on text columns too.
+    values = [
+        v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
+        if v is not None
+    ]
+    value = _aggregate_values(values, aggregation)
+    if value is None:
+        # No non-null values, or none numeric for this aggregation — keep the
+        # pre-existing "show row 0" behaviour for text-valued KPIs.
         value = _to_json_safe(result.rows[0][value_idx])
-    elif aggregation == "sum":
-        value = sum(all_numeric)
-    elif aggregation == "avg":
-        value = round(sum(all_numeric) / len(all_numeric), 2)
-    elif aggregation == "count":
-        value = len(all_numeric)
-    elif aggregation == "min":
-        value = min(all_numeric)
-    elif aggregation == "max":
-        value = max(all_numeric)
-    elif aggregation == "last":
-        value = all_numeric[-1]
-    else:  # "first" or unrecognized
-        value = all_numeric[0]
 
     config: Dict[str, Any] = {"value": value}
 

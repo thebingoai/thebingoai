@@ -213,14 +213,56 @@ class TestTransformKpi:
         assert out["trend"]["direction"] == "neutral"
         assert out["trend"]["value"] == "N/A"
 
-    def test_value_defaults_to_first_row(self):
+    def test_multi_row_without_aggregation_sums(self):
         # Sparkline is computed frontend-side (widgetTransform.ts), not by transform_kpi.
-        # Here we pin the backend contract: with no explicit aggregation the headline
-        # value falls back to the first row (backward compatibility).
+        # Here we pin the backend contract: with no explicit aggregation a MULTI-row
+        # result is summed. Showing row 0 is what made a 15k-row KPI render one cell.
         result = _qr(["total", "spark"], [(100, 10), (200, 20), (300, 30)])
         mapping = {"valueColumn": "total", "sparklineYColumn": "spark"}
         out = transform_kpi(result, mapping)
+        assert out["value"] == 600
+
+    def test_single_row_without_aggregation_keeps_first(self):
+        """The multi-row rule is deliberately narrow: one row means one reading,
+        so single-row KPIs are untouched (the blanket sum-default was reverted
+        in 5dbd4e7 precisely because it reinterpreted these)."""
+        result = _qr(["total"], [(100,)])
+        out = transform_kpi(result, {"valueColumn": "total"})
         assert out["value"] == 100
+
+    def test_explicit_first_is_never_overridden(self):
+        """An author who chose "first" gets row 0 even on a multi-row result."""
+        result = _qr(["total"], [(100,), (200,), (300,)])
+        out = transform_kpi(result, {"valueColumn": "total", "aggregation": "first"})
+        assert out["value"] == 100
+
+    def test_count_distinct_is_implemented(self):
+        """countDistinct is offered by the editor and the agent params_doc; before
+        delegating to _aggregate_values it fell through to row 0."""
+        result = _qr(["plan"], [(10,), (20,), (10,), (20,), (30,)])
+        out = transform_kpi(result, {"valueColumn": "plan", "aggregation": "countDistinct"})
+        assert out["value"] == 3
+
+    def test_count_counts_non_null_values_of_any_type(self):
+        """Delegating to _aggregate_values changes `count` from numeric-only to
+        every non-null cell — the same rule the frontend transform applies."""
+        result = _qr(["label"], [("a",), ("b",), (None,), ("c",)])
+        out = transform_kpi(result, {"valueColumn": "label", "aggregation": "count"})
+        assert out["value"] == 3
+
+    def test_non_numeric_column_falls_back_to_first_row(self):
+        """A text column summed has no numeric values — keep showing row 0
+        rather than rendering nothing."""
+        result = _qr(["name"], [("alpha",), ("beta",)])
+        out = transform_kpi(result, {"valueColumn": "name", "aggregation": "sum"})
+        assert out["value"] == "alpha"
+
+    def test_null_aggregation_is_treated_as_absent(self):
+        """Mappings can persist an explicit null; it must not be read as an
+        unrecognized aggregation (which would mean row 0)."""
+        result = _qr(["total"], [(100,), (200,)])
+        out = transform_kpi(result, {"valueColumn": "total", "aggregation": None})
+        assert out["value"] == 300
 
 
 # ---------------------------------------------------------------------------

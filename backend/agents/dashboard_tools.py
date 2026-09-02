@@ -487,6 +487,29 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
                     ),
                 })
 
+            # Aggregation guard for KPIs. A KPI collapses the result to one
+            # number: with neither SQL aggregation nor mapping.aggregation the
+            # transform falls back to an arbitrary single row, so a 15k-row
+            # scan renders as row 0's value. Reject pre-execution like the
+            # chart rule above.
+            if wcfg["type"] == "kpi" and not _is_aggregated_sql(
+                widget["dataSource"].get("sql") or ""
+            ) and not (widget["dataSource"].get("mapping") or {}).get("aggregation"):
+                violations.append({
+                    "widget_id": wid,
+                    "code": "kpi_not_aggregated",
+                    "message": (
+                        f"KPI '{cfg_title_for(wcfg, wid)}' has no GROUP BY, no "
+                        "aggregate function, and no mapping.aggregation — the "
+                        "headline would be an arbitrary single row."
+                    ),
+                    "fix_hint": (
+                        "Either aggregate in SQL (SELECT SUM(...)/COUNT(*)) or "
+                        "set mapping.aggregation "
+                        "(sum|avg|count|countDistinct|min|max|last)."
+                    ),
+                })
+
             # Boundedness guard for scatter/bubble. Raw-row scatter SQL without
             # GROUP BY/aggregates and without LIMIT can return the whole table —
             # slow and unreadable (discrete metrics render as solid bands).
@@ -790,7 +813,11 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
 
         try:
             result = await asyncio.to_thread(_run_widget_query, connection, normalized_sql, db_session_factory, connector)
-            result = _cap_widget_rows(result, widget_id)
+            # KPI collapses to a single number, so keeping every row costs
+            # nothing and the bake matches the (uncapped) serve path. Charts
+            # and tables still cap — their config embeds one entry per row.
+            if (mapping or {}).get("type") != "kpi":
+                result = _cap_widget_rows(result, widget_id)
             config = transform_widget_data(result, mapping)
             widget["widget"]["config"].update(config)
             # Persist so the serve path (api/widget_data) gets the fixed SQL too,
@@ -851,7 +878,11 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
         fixed_sql = normalize_sql_for(fixed_sql, dialect)
         try:
             result = await asyncio.to_thread(_run_widget_query, connection, fixed_sql, db_session_factory, connector)
-            result = _cap_widget_rows(result, widget_id)
+            # KPI collapses to a single number, so keeping every row costs
+            # nothing and the bake matches the (uncapped) serve path. Charts
+            # and tables still cap — their config embeds one entry per row.
+            if (mapping or {}).get("type") != "kpi":
+                result = _cap_widget_rows(result, widget_id)
             config = transform_widget_data(result, mapping)
             widget["widget"]["config"].update(config)
             # Persist the fixed SQL back to the widget's dataSource

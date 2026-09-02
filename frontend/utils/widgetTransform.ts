@@ -344,7 +344,9 @@ function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): 
   if (!result.rows.length) throw new Error('Query returned no rows — cannot build KPI widget')
 
   const firstRow = result.rows[0]
-  const aggregation = (mapping.aggregation as string) ?? 'first'
+  // Mirror transform_kpi: an absent aggregation on a multi-row result means
+  // sum, not row 0. Single-row results are identical either way.
+  const aggregation = (mapping.aggregation as string) ?? (result.rows.length > 1 ? 'sum' : 'first')
   const allColValues = result.rows.map(row => toJsonSafe(row[valueIdx])).filter(v => v != null)
   const value = aggregation === 'first'
     ? toJsonSafe(firstRow[valueIdx])

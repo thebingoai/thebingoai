@@ -330,7 +330,10 @@ def test_lean_dashboard_verifies_and_lays_out():
 
     lean = [{"type": "filter", "controls": [{"type": "dropdown", "label": "R", "key": "r", "column": "r"}]}]
     for i in range(4):
-        lean.append({"type": "kpi", "label": f"M{i}", "valueColumn": "v", "connectionId": 1, "sql": "SELECT 1 AS v"})
+        # aggregation is explicit: the kpi_not_aggregated gate requires either
+        # aggregating SQL or an explicit aggregation on every KPI.
+        lean.append({"type": "kpi", "label": f"M{i}", "valueColumn": "v", "aggregation": "sum",
+                     "connectionId": 1, "sql": "SELECT 1 AS v"})
     lean += [
         {"type": "chart", "chartType": "bar", "labelColumn": "r",
          "datasetColumns": [{"column": "v", "label": "V", "aggregation": "sum"}],
@@ -437,6 +440,60 @@ def test_aggregation_guard_fires_for_each_category_type():
         w = _chart_widget(ct, "SELECT region, sales FROM t", [{"column": "sales", "label": "S"}])
         v = _verify_widgets([w], None)
         assert any(x.get("code") == "chart_not_aggregated" for x in v), (ct, v)
+
+
+# --------------------------------------------------------------------------- #
+# Aggregation guard (_verify_widgets -> kpi_not_aggregated)
+# --------------------------------------------------------------------------- #
+
+def _kpi_widget(sql, aggregation=None, label="Total Revenue"):
+    """Build a KPI widget in the SHAPE the agent emits after build_widgets
+    hydration. `aggregation=None` reproduces the omission `_pick` allows."""
+    mapping = {"type": "kpi", "valueColumn": "total_revenue_usd"}
+    if aggregation is not None:
+        mapping["aggregation"] = aggregation
+    return {
+        "id": "kpi_1",
+        "position": {"x": 0, "y": 0, "w": 3, "h": 2},
+        "widget": {"type": "kpi", "config": {"label": label}},
+        "dataSource": {"connectionId": 1, "sql": sql, "mapping": mapping},
+    }
+
+
+def test_kpi_guard_rejects_raw_rows_without_aggregation():
+    """Reproduces the reported bug: a 15k-row raw SELECT with no
+    mapping.aggregation renders row 0 as the headline."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget(
+        "SELECT c.sale_date, c.revenue_usd AS total_revenue_usd FROM csv_162 c ORDER BY c.sale_date"
+    )
+    v = _verify_widgets([w], None)
+    assert any(x.get("code") == "kpi_not_aggregated" for x in v), v
+
+
+def test_kpi_guard_passes_with_explicit_aggregation():
+    """Escape hatch: raw rows are fine when the transform is told how to
+    collapse them."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget(
+        "SELECT c.sale_date, c.revenue_usd AS total_revenue_usd FROM csv_162 c",
+        aggregation="sum",
+    )
+    assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
+
+
+def test_kpi_guard_passes_aggregated_sql():
+    """SQL that already collapses to one row needs no mapping.aggregation."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT SUM(c.revenue_usd) AS total_revenue_usd FROM csv_162 c")
+    assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
+
+
+def test_kpi_guard_ignores_non_kpi_widgets():
+    """The rule keys off widget.type — a chart must not collect it."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _chart_widget("bar", "SELECT region, sales FROM t", [{"column": "sales", "label": "S"}])
+    assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
 
 
 # --------------------------------------------------------------------------- #

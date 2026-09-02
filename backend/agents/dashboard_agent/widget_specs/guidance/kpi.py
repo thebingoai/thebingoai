@@ -24,7 +24,7 @@ SELECT COUNT(*) AS total_count
 FROM orders o
 LEFT JOIN payments p ON o.id = p.order_id
 ```
-Mapping: `{"type": "kpi", "valueColumn": "total_count"}`
+Mapping: `{"type": "kpi", "valueColumn": "total_count", "aggregation": "sum"}`
 
 **KPI with autoTrend — simple last-2-rows comparison:**
 ```sql
@@ -57,7 +57,8 @@ SELECT
   pct_change
 FROM summary_view
 ```
-Mapping: `{"type": "kpi", "valueColumn": "current_value", "trendValueColumn": "pct_change"}`
+Mapping: `{"type": "kpi", "valueColumn": "current_value", "aggregation": "first", "trendValueColumn": "pct_change"}`
+- The SQL returns a single pre-computed row, so `aggregation: "first"` states that intent explicitly. Every KPI needs either an aggregating SQL (GROUP BY / SUM / COUNT) or an explicit `aggregation` — omitting both is rejected before the dashboard is saved.
 
 ### Best Practices
 

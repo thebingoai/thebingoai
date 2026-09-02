@@ -102,6 +102,22 @@ describe('transformWidgetData — kpi', () => {
     expect(out.value).toBe(42)
   })
 
+  it('sums a multi-row result when no aggregation is set', () => {
+    // Mirrors transform_kpi: row 0 is almost never the intended headline for a
+    // multi-row result, and the client must not disagree with the next refresh.
+    const result = makeResult(['total'], [[100], [200], [300]])
+    const mapping = { type: 'kpi', valueColumn: 'total' }
+    const out = transformWidgetData(result, mapping)
+    expect(out.value).toBe(600)
+  })
+
+  it('honours an explicit first on a multi-row result', () => {
+    const result = makeResult(['total'], [[100], [200], [300]])
+    const mapping = { type: 'kpi', valueColumn: 'total', aggregation: 'first' }
+    const out = transformWidgetData(result, mapping)
+    expect(out.value).toBe(100)
+  })
+
   it('computes autoTrend with 2+ rows (last-two-rows fallback)', () => {
     const result = makeResult(['sales'], [[80], [100]])
     const mapping = { type: 'kpi', valueColumn: 'sales', autoTrend: true }
