@@ -151,6 +151,32 @@ class TestInjectFilters:
         assert '"other"' in result_sql
 
 
+class TestWidgetRefreshRequestSchema:
+
+    def test_numeric_widget_id_coerced_to_str(self):
+        # Agent-generated dashboards store numeric widget ids (e.g. 9329);
+        # the refresh body must accept them, not 422.
+        request = WidgetRefreshRequest(
+            connection_id=1, sql="SELECT 1", mapping={"type": "bar"}, widget_id=9329,
+        )
+        assert request.widget_id == "9329"
+
+    def test_widget_id_none_stays_none(self):
+        request = WidgetRefreshRequest(
+            connection_id=1, sql="SELECT 1", mapping={"type": "bar"},
+        )
+        assert request.widget_id is None
+
+    @pytest.mark.parametrize("bad", [True, 9.5, ["w1"], {"id": 1}])
+    def test_non_int_non_str_widget_id_rejected(self, bad):
+        # Only real ints coerce; bools/floats/containers still 422.
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            WidgetRefreshRequest(
+                connection_id=1, sql="SELECT 1", mapping={"type": "bar"}, widget_id=bad,
+            )
+
+
 # ---------------------------------------------------------------------------
 # TestRefreshWidget — mock db, connector, transform
 # ---------------------------------------------------------------------------

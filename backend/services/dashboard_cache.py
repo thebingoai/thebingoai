@@ -22,9 +22,9 @@ class MaterializeResult:
     widget_errors: dict
 
 
-def _sanitize_widget_id(widget_id: str) -> str:
-    """Convert a widget ID to a safe table name."""
-    name = re.sub(r"[^a-z0-9_]", "_", widget_id.lower())
+def _sanitize_widget_id(widget_id: str | int) -> str:
+    """Convert a widget ID (str or numeric) to a safe table name."""
+    name = re.sub(r"[^a-z0-9_]", "_", str(widget_id).lower())
     name = re.sub(r"_+", "_", name).strip("_")
     if not name or name[0].isdigit():
         name = f"w_{name}"
