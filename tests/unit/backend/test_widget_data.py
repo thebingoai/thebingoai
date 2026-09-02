@@ -723,3 +723,76 @@ class TestSuggestFix:
         assert hasattr(response, "explanation")
         assert isinstance(response.suggested_sql, str)
         assert isinstance(response.explanation, str)
+
+
+class TestFilterNeverSilentlyDropped:
+    """A filter that cannot be applied must surface, never render as unfiltered rows.
+
+    Regression cover for the dashboard-filter bug: a filter naming a column the
+    widget SQL can't reach used to be retried with the filter stripped, so the
+    endpoint answered 200 with the full unfiltered result and no error.
+    """
+
+    def test_dimension_gate_drops_unknown_column(self):
+        from backend.api.widget_data import _dimension_applies_to_sources
+
+        ctx = {"dimensions": {"session_date": {"column": "session_date",
+                                               "sources": ["csv_261"]}}}
+        assert _dimension_applies_to_sources("session_date", ctx, ["csv_261"]) is True
+        # Not a dimension at all → cannot bind to this widget.
+        assert _dimension_applies_to_sources("zzz_nope", ctx, ["csv_261"]) is False
+        # Known dimension, but it lives on a table this widget doesn't read.
+        assert _dimension_applies_to_sources("session_date", ctx, ["other_tbl"]) is False
+
+    def test_pick_target_scope_reads_dashboard_context_sources(self):
+        """Dashboard contexts expose `sources[t].columns` as a list; connection
+        contexts expose `tables[t].columns` as a dict. Both must resolve."""
+        from backend.api.widget_data import _pick_target_scope
+
+        class _T:
+            def __init__(self, name):
+                self.name = name
+
+        scopes = [("outer", [_T("csv_261")]), ("inner", [_T("csv_261")])]
+
+        dashboard_ctx = {"sources": {"csv_261": {"columns": ["session_minutes",
+                                                            "session_date"]}}}
+        assert _pick_target_scope(scopes, {"session_date"}, dashboard_ctx) == "inner"
+        assert _pick_target_scope(scopes, {"zzz_nope"}, dashboard_ctx) is None
+
+        connection_ctx = {"tables": {"csv_261": {"columns": {"session_date": {"type": "DATE"}}}}}
+        assert _pick_target_scope(scopes, {"session_date"}, connection_ctx) == "inner"
+
+        # No context at all → keep the old "innermost real-table scope" behaviour.
+        assert _pick_target_scope(scopes, {"anything"}, None) == "inner"
+
+    @pytest.mark.asyncio
+    async def test_failed_filtered_query_raises_instead_of_serving_unfiltered(self):
+        """Every retry keeps the filter on, so an unappliable filter 500s rather
+        than silently returning the unfiltered rows."""
+        connection = MagicMock(id=1, db_type="postgres", user_id="user-1",
+                               org_id=None, owner_scope_kind="user",
+                               owner_scope_id="user-1")
+        connector = MagicMock()
+        connector.serves_from_plane = False
+        connector.execute_query.side_effect = Exception('column "zzz_nope" does not exist')
+
+        request = WidgetRefreshRequest(
+            connection_id=1, sql="SELECT count(*) AS n FROM orders",
+            mapping={"type": "kpi", "valueColumn": "n"},
+            filters=[FilterParam(column="zzz_nope", op="gte", value="2099-01-01")],
+        )
+
+        with patch("backend.connectors.factory.get_connector_for_connection",
+                   return_value=connector):
+            with pytest.raises(HTTPException) as exc:
+                await refresh_widget(request, _mock_user(), _mock_db(connection))
+
+        assert exc.value.status_code == 500
+        # Every attempt carried bound filter params; an unfiltered retry would
+        # have called through with params=None.
+        assert connector.execute_query.call_count > 0
+        assert all(
+            call.kwargs.get("params") is not None
+            for call in connector.execute_query.call_args_list
+        ), "a retry dropped the filter instead of failing"

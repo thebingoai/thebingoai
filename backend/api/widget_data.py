@@ -28,10 +28,21 @@ def _dimension_applies_to_sources(
         if dim_data.get("column") == column:
             dim_sources = dim_data.get("sources", [])
             # Check if any of the widget's sources overlap with the dimension's sources
-            return bool(set(dim_sources) & set(widget_sources))
-    # Context provided but column not found → filter doesn't apply to this widget.
-    # Only fall back to True when no data_context at all (backward compat).
-    return data_context is None
+            applies = bool(set(dim_sources) & set(widget_sources))
+            if not applies:
+                logger.warning(
+                    "Filter on %r dropped: dimension sources %s do not overlap widget "
+                    "sources %s", column, dim_sources, widget_sources,
+                )
+            return applies
+    # Context provided but column is not a known dimension → the filter cannot be
+    # bound to this widget, so drop it. The caller only reaches this branch with a
+    # non-None data_context, so there is no "no context" case to fall back to.
+    logger.warning(
+        "Filter on %r dropped: not a dimension in the dashboard data_context "
+        "(known: %s)", column, sorted(dimensions),
+    )
+    return False
 
 
 _OP_MAP = {
@@ -289,10 +300,12 @@ def _pick_target_scope(
 ):
     """Pick the innermost scope whose real tables collectively cover every filter column.
 
-    Coverage is judged via *data_context.tables[table].columns* when available
-    (the same dict the dashboard agent consumes). If no context is provided,
-    falls back to "innermost scope that has any real table" — good enough for
-    the bounds-CTE case and won't worsen behaviour for simple queries.
+    Coverage is judged from the context's per-table column lists. Two shapes ship:
+    connection contexts use `tables[name].columns` (a dict keyed by column), and
+    dashboard contexts built by the agent use `sources[name].columns` (a plain
+    list of names) — `_lookup_column_type` handles the same pair. If neither is
+    present, falls back to "innermost scope that has any real table" — good enough
+    for the bounds-CTE case and won't worsen behaviour for simple queries.
     """
     if not candidate_scopes:
         return None
@@ -300,7 +313,7 @@ def _pick_target_scope(
     # Innermost first: scope.traverse() yields parents before children, so reverse.
     ordered = list(reversed(candidate_scopes))
 
-    tables_meta = (data_context or {}).get("tables") or {}
+    tables_meta = (data_context or {}).get("tables") or (data_context or {}).get("sources") or {}
 
     def covers(real_tables) -> bool:
         if not tables_meta:
@@ -309,7 +322,8 @@ def _pick_target_scope(
         for tbl in real_tables:
             tbl_name = tbl.name
             cols = ((tables_meta.get(tbl_name) or {}).get("columns") or {})
-            available_cols.update(cols.keys())
+            # dict (connection context) → keys; list (dashboard context) → values.
+            available_cols.update(cols.keys() if isinstance(cols, dict) else cols)
         return filter_columns.issubset(available_cols)
 
     for scope, real_tables in ordered:
@@ -951,11 +965,12 @@ def _refresh_widget_sync(
                 result = connector.execute_query(sql, params=params)
         else:
             # Stored widget SQL is normally in the connection's native dialect
-            # (agent-generated). Try it as-is with the filter first; fall back to
-            # unfiltered (when the filter can't be applied — e.g. ambiguous column
-            # in a joined query) and to a BigQuery→source transpile (legacy SQL).
-            # Order ensures a native widget with a bad filter renders unfiltered
-            # and never reaches transpile (which would corrupt native DATE_TRUNC).
+            # (agent-generated). Try it as-is first, then a BigQuery→source
+            # transpile (legacy SQL). Native-first ensures a native widget never
+            # reaches transpile (which would corrupt native DATE_TRUNC). A filter
+            # that can't be applied — ambiguous column in a joined query, unknown
+            # column — is an error, not a cue to render unfiltered rows as if
+            # they answered the request.
             from backend.utils.sql_refs import transpile_to_engine
             db_type = (getattr(connection, "db_type", "") or "postgres").lower()
             target = {"postgres": "postgres", "postgresql": "postgres",
@@ -980,8 +995,11 @@ def _refresh_widget_sync(
                 s, p = (_prepare(base) if with_filter else (base, None))
                 return connector.execute_query(s, params=p)
 
-            plans = [(None, True), (None, False), ("bigquery", True),
-                     ("bigquery", False), ("postgres", True), ("postgres", False)]
+            # Retries vary the *dialect* only. Never retry with the filter
+            # dropped: that answers a different question than the caller asked
+            # and returns it as a success, so a filter that fails to inject
+            # silently serves unfiltered rows.
+            plans = [(None, True), ("bigquery", True), ("postgres", True)]
             if not request.filters:
                 plans = [(None, False), ("bigquery", False), ("postgres", False)]
             first_err = None
@@ -992,6 +1010,10 @@ def _refresh_widget_sync(
                     result = _attempt(tr, wf)
                     break
                 except Exception as e:
+                    logger.warning(
+                        "Widget query attempt failed (transpile=%s, filtered=%s): %s",
+                        tr, wf, e,
+                    )
                     first_err = first_err or e
             else:
                 raise first_err
@@ -1368,8 +1390,9 @@ def _refresh_dashboard_widgets_sync(
                         s, p = (_prepare_bulk(base) if with_filter else (base, None))
                         return connector.execute_query(s, params=p)
 
-                    plans = [(None, True), (None, False), ("bigquery", True),
-                             ("bigquery", False), ("postgres", True), ("postgres", False)]
+                    # Dialect-only retries — see refresh_widget: dropping the
+                    # filter on retry would serve unfiltered rows as a success.
+                    plans = [(None, True), ("bigquery", True), ("postgres", True)]
                     if not filters:
                         plans = [(None, False), ("bigquery", False), ("postgres", False)]
                     first_err = None
@@ -1380,6 +1403,10 @@ def _refresh_dashboard_widgets_sync(
                             result = _attempt_bulk(_tr, _wf)
                             break
                         except Exception as e:
+                            logger.warning(
+                                "Bulk widget query attempt failed (transpile=%s, "
+                                "filtered=%s): %s", _tr, _wf, e,
+                            )
                             first_err = first_err or e
                     else:
                         raise first_err
