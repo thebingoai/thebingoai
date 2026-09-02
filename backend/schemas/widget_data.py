@@ -21,7 +21,10 @@ class WidgetRefreshRequest(BaseModel):
     @classmethod
     def _coerce_widget_id(cls, v):
         # Agent-generated dashboards store numeric widget ids; accept them.
-        return str(v) if v is not None else None
+        # Everything else falls through to normal str validation.
+        if isinstance(v, int) and not isinstance(v, bool):
+            return str(v)
+        return v
 
 
 class WidgetRefreshResponse(BaseModel):

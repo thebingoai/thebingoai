@@ -59,13 +59,13 @@ def wiring():
          patch("backend.connectors.factory.get_connector_registration", return_value=None), \
          patch("backend.services.dashboard_cache._is_pipeline_output_widget", return_value=False), \
          patch("backend.services.widget_result_cache.bump_generation"):
-        yield plane, reader
+        yield plane, reader, dashboard
 
 
 def test_duckdb_warm_reads_under_the_connection_scope(wiring):
     from backend.services.dashboard_cache import materialize_dashboard
 
-    plane, reader = wiring
+    plane, reader, _dashboard = wiring
     result = materialize_dashboard(7)
 
     assert result.widgets_succeeded == 1, result.widget_errors
@@ -78,7 +78,7 @@ def test_cache_table_is_written_under_the_dashboard_org_scope(wiring):
     read path resolves `_dash_*` against."""
     from backend.services.dashboard_cache import materialize_dashboard
 
-    plane, reader = wiring
+    plane, reader, _dashboard = wiring
     materialize_dashboard(7)
 
     plane.write_parquet.assert_called_once()
@@ -91,7 +91,7 @@ def test_source_connector_is_used_when_duckdb_read_fails(wiring):
     """A DuckDB miss must not fail the widget — it falls back to the source."""
     from backend.services.dashboard_cache import materialize_dashboard
 
-    plane, reader = wiring
+    plane, reader, _dashboard = wiring
     reader.query.side_effect = RuntimeError("no such table")
 
     with patch("backend.connectors.factory.get_connector_for_connection") as get_conn:
@@ -102,3 +102,21 @@ def test_source_connector_is_used_when_duckdb_read_fails(wiring):
 
     assert result.widgets_succeeded == 1, result.widget_errors
     plane.write_parquet.assert_called_once()
+
+
+def test_numeric_widget_id_materializes(wiring):
+    """Agent-generated dashboards store numeric widget ids — the sanitizer
+    must stringify them, not crash on int.lower()."""
+    from backend.services.dashboard_cache import materialize_dashboard
+
+    plane, reader, dashboard = wiring
+    dashboard.widgets = [
+        {"id": 9329, "dataSource": {"connectionId": 3, "sql": "SELECT 1 FROM orders"}},
+    ]
+
+    result = materialize_dashboard(7)
+
+    assert result.widgets_succeeded == 1, result.widget_errors
+    plane.write_parquet.assert_called_once()
+    _scope, table_name, _arrow = plane.write_parquet.call_args[0]
+    assert table_name == "_dash_7__w_9329"
