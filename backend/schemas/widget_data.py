@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, Dict, List, Optional
 
 
@@ -16,6 +16,12 @@ class WidgetRefreshRequest(BaseModel):
     dashboard_id: Optional[int] = None        # For dimension-aware filter injection
     widget_id: Optional[str] = None           # For DataPlane cache reads
     widget_sources: Optional[List[str]] = None  # Sources this widget uses (from data_context)
+
+    @field_validator("widget_id", mode="before")
+    @classmethod
+    def _coerce_widget_id(cls, v):
+        # Agent-generated dashboards store numeric widget ids; accept them.
+        return str(v) if v is not None else None
 
 
 class WidgetRefreshResponse(BaseModel):
