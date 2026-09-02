@@ -28,5 +28,18 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
     setWorkspaces(ws: Workspace[]) { this.workspaces = ws },
+    // Adopt a freshly-fetched workspace list. A persisted org the account has no
+    // membership in — a stale id left by a previous session on this tab — leaves
+    // `activeRole` null, which makes `isViewer` false and un-hides the
+    // workspace-admin settings sections. Drop it, then fall back to the home
+    // workspace.
+    reconcile(ws: Workspace[]) {
+      this.setWorkspaces(ws)
+      if (this.activeOrgId && !ws.some(w => w.org_id === this.activeOrgId)) this.setActive(null)
+      if (!this.activeOrgId) {
+        const home = ws.find(w => w.is_home) || ws[0]
+        if (home) this.setActive(home.org_id)
+      }
+    },
   },
 })

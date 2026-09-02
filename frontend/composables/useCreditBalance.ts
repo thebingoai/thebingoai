@@ -13,43 +13,89 @@ interface BalanceResponse {
   balance_scope?: 'workspace' | 'unlimited'
 }
 
+/**
+ * Initial value for every `credit:*` key, in one place so `clearCreditState`
+ * cannot drift from the declarations below. Adding a key here is enough to have
+ * it reset at the auth boundary.
+ *
+ * `remaining` starts at 180 — a leftover from the retired per-user daily cap,
+ * kept because it is what the app has always rendered before the first fetch
+ * returns. Starting at 0 would make `isExhausted` true on a cold load and flash
+ * the "out of credits" state at every user.
+ */
+const CREDIT_STATE_DEFAULTS = {
+  'credit:usedToday': 0,
+  'credit:remaining': 180,
+  'credit:resetsAt': '',
+  'credit:loading': false,
+  'credit:error': null,
+  'credit:orgExhausted': false,
+  'credit:scope': 'workspace',
+} as const
+
+// Bumped on every clear. A fetch that started under an older generation belongs to
+// a session that is gone, so its response must not write back into the shared refs.
+let generation = 0
+
+/**
+ * Reset every `credit:*` key to its initial value.
+ *
+ * These live in `useState`, which is per-app rather than per-component, so
+ * nothing clears them when a session ends. Called from the auth store's
+ * `_clearLocalSession()`: without it the next account signed in on the same tab
+ * reads the previous workspace's balance until `fetchBalance()` returns — and
+ * indefinitely if that request fails.
+ */
+export function clearCreditState(): void {
+  generation++
+  for (const [key, value] of Object.entries(CREDIT_STATE_DEFAULTS)) {
+    useState(key, () => value).value = value
+  }
+}
+
 export const useCreditBalance = () => {
   const { fetchWithRefresh } = useApi()
 
   // Shared state across all useCreditBalance() instances (Nuxt useState)
-  const usedToday = useState<number>('credit:usedToday', () => 0)
-  const remaining = useState<number>('credit:remaining', () => 180)
-  const resetsAt = useState<string>('credit:resetsAt', () => '')
-  const loading = useState<boolean>('credit:loading', () => false)
-  const error = useState<string | null>('credit:error', () => null)
+  const usedToday = useState<number>('credit:usedToday', () => CREDIT_STATE_DEFAULTS['credit:usedToday'])
+  const remaining = useState<number>('credit:remaining', () => CREDIT_STATE_DEFAULTS['credit:remaining'])
+  const resetsAt = useState<string>('credit:resetsAt', () => CREDIT_STATE_DEFAULTS['credit:resetsAt'])
+  const loading = useState<boolean>('credit:loading', () => CREDIT_STATE_DEFAULTS['credit:loading'])
+  const error = useState<string | null>('credit:error', () => CREDIT_STATE_DEFAULTS['credit:error'])
   // Workspace (org) credit pool drained — lets the banner show a
   // workspace-specific message instead of "resets at midnight".
-  const orgExhausted = useState<boolean>('credit:orgExhausted', () => false)
+  const orgExhausted = useState<boolean>('credit:orgExhausted', () => CREDIT_STATE_DEFAULTS['credit:orgExhausted'])
   // "workspace" → `remaining` is the org pool total and gates spending.
   // "unlimited" → no org pool; nothing gates the user, so the number is not a
   // real cap and the chat UI hides it.
-  const balanceScope = useState<'workspace' | 'unlimited'>('credit:scope', () => 'workspace')
+  const balanceScope = useState<'workspace' | 'unlimited'>('credit:scope', () => CREDIT_STATE_DEFAULTS['credit:scope'])
 
   const isUnlimited = computed(() => balanceScope.value === 'unlimited')
   // Never "exhausted" when unlimited — there is no cap to hit.
   const isExhausted = computed(() => !isUnlimited.value && remaining.value <= 0)
 
   async function fetchBalance(): Promise<void> {
+    // Snapshot before the await; anything the session boundary invalidates is dropped
+    // on the way back, including the `loading` reset — a stale response must not clear
+    // the flag belonging to the new session's own in-flight fetch.
+    const g = generation
     loading.value = true
     error.value = null
     try {
       const data = await fetchWithRefresh<BalanceResponse>('/api/credits/balance', {
         method: 'GET',
       })
+      if (g !== generation) return
       usedToday.value = data.used_today
       remaining.value = data.remaining
       resetsAt.value = data.resets_at
       orgExhausted.value = data.org_exhausted ?? false
       balanceScope.value = data.balance_scope ?? 'workspace'
     } catch (err: any) {
+      if (g !== generation) return
       error.value = err?.message ?? 'Failed to fetch credit balance'
     } finally {
-      loading.value = false
+      if (g === generation) loading.value = false
     }
   }
 

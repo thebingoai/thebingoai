@@ -39,12 +39,7 @@ const activeName = computed(() => {
 
 onMounted(async () => {
   store.hydrate()
-  const ws = await api.governance.listWorkspaces()
-  store.setWorkspaces(ws)
-  if (!store.activeOrgId) {
-    const home = ws.find((w) => w.is_home) || ws[0]
-    if (home) store.setActive(home.org_id)
-  }
+  store.reconcile(await api.governance.listWorkspaces())
 })
 
 async function select(orgId: string) {
