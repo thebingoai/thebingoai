@@ -489,6 +489,26 @@ def test_kpi_guard_passes_aggregated_sql():
     assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
 
 
+def test_kpi_guard_survives_a_label_less_widget():
+    """A KPI whose config has neither label nor title must yield a violation,
+    not an IndexError from cfg_title_for's empty-content fallback."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT d, v AS total_revenue_usd FROM t")
+    w["widget"]["config"] = {}
+    v = _verify_widgets([w], None)
+    assert any(x.get("code") == "kpi_not_aggregated" for x in v), v
+
+
+def test_chart_guard_survives_a_title_less_widget():
+    """Same latent crash on the pre-existing chart rule: a bar chart with only
+    a `type` in its config used to raise instead of reporting."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _chart_widget("bar", "SELECT region, sales FROM t", [{"column": "sales", "label": "S"}])
+    w["widget"]["config"] = {"type": "bar"}
+    v = _verify_widgets([w], None)
+    assert any(x.get("code") == "chart_not_aggregated" for x in v), v
+
+
 def test_kpi_guard_ignores_non_kpi_widgets():
     """The rule keys off widget.type — a chart must not collect it."""
     from backend.agents.dashboard_tools import _verify_widgets

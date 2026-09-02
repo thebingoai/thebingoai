@@ -356,10 +356,13 @@ def cfg_title_for(wcfg: dict, fallback: str) -> str:
     if not isinstance(wcfg, dict):
         return fallback
     cfg = wcfg.get("config") or {}
+    # `"".splitlines()` is `[]`, so indexing it raised IndexError for any widget
+    # with no title, no label and no content — turning a violation into a crash.
+    lines = (cfg.get("content") or "").splitlines()
     return (
         cfg.get("title")
         or cfg.get("label")
-        or cfg.get("content", "").splitlines()[0][:40]
+        or (lines[0][:40] if lines else "")
         or fallback
     )
 
