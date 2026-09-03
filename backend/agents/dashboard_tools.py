@@ -344,10 +344,30 @@ _GROUP_BY_RE = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
 
 
 def _is_aggregated_sql(sql: str) -> bool:
-    """True if SQL already aggregates (GROUP BY or an aggregate fn)."""
+    """True if SQL already aggregates (GROUP BY or a non-window aggregate fn).
+
+    Parsed, not pattern-matched, for one reason: `SUM(x) OVER ()` is a window
+    function. It matches the aggregate regex but returns one row per input row,
+    each holding the same total, so a KPI over it clears the guard without an
+    explicit aggregation and then gets summed again — a row-count-fold
+    over-report. The regexes stay as the fallback for SQL the parser rejects.
+    """
     if not isinstance(sql, str) or not sql.strip():
         return False
-    return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        ast = sqlglot.parse_one(sql)
+    except Exception:
+        return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
+    if ast is None:
+        return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
+    if ast.find(exp.Group):
+        return True
+    return any(
+        not isinstance(fn.parent, exp.Window) for fn in ast.find_all(exp.AggFunc)
+    )
 
 
 def cfg_title_for(wcfg: dict, fallback: str) -> str:
@@ -525,7 +545,8 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
                     "message": (
                         f"KPI '{cfg_title_for(wcfg, wid)}' has no GROUP BY, no "
                         "aggregate function, and no mapping.aggregation — the "
-                        "headline would be an arbitrary single row."
+                        "headline would be computed over raw rows the query "
+                        "engine may have capped, so it can silently under-report."
                     ),
                     "fix_hint": (
                         "Either aggregate in SQL (SELECT SUM(...)/COUNT(*)) or "
@@ -837,9 +858,10 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
 
         try:
             result = await asyncio.to_thread(_run_widget_query, connection, normalized_sql, db_session_factory, connector)
-            # KPI collapses to a single number, so keeping every row costs
-            # nothing and the bake matches the (uncapped) serve path. Charts
-            # and tables still cap — their config embeds one entry per row.
+            # KPI collapses to a single number, so a second local cut here
+            # would only hide the engine's own `truncated` flag from
+            # transform_kpi, which refuses to aggregate a truncated result.
+            # Charts and tables still cap — their config embeds one entry per row.
             if (mapping or {}).get("type") != "kpi":
                 result = _cap_widget_rows(result, widget_id)
             config = transform_widget_data(result, mapping)
@@ -902,9 +924,10 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
         fixed_sql = normalize_sql_for(fixed_sql, dialect)
         try:
             result = await asyncio.to_thread(_run_widget_query, connection, fixed_sql, db_session_factory, connector)
-            # KPI collapses to a single number, so keeping every row costs
-            # nothing and the bake matches the (uncapped) serve path. Charts
-            # and tables still cap — their config embeds one entry per row.
+            # KPI collapses to a single number, so a second local cut here
+            # would only hide the engine's own `truncated` flag from
+            # transform_kpi, which refuses to aggregate a truncated result.
+            # Charts and tables still cap — their config embeds one entry per row.
             if (mapping or {}).get("type") != "kpi":
                 result = _cap_widget_rows(result, widget_id)
             config = transform_widget_data(result, mapping)

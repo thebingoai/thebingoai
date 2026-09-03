@@ -193,3 +193,40 @@ describe('openDashboard bulk gating', () => {
     expect(refreshAllMock).not.toHaveBeenCalled()
   })
 })
+
+describe('refreshAllWidgets (per-widget failures)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    refreshAllMock.mockReset()
+    getDashboardMock.mockReset()
+  })
+
+  it('records a per-widget error instead of only logging it', async () => {
+    // The bulk endpoint reports failures per widget. The per-widget watcher is
+    // off while bulk loading is on, so a console.error was the only trace: the
+    // widget kept painting its previous value under its previous timestamp.
+    const store = setup([makeSqlWidget('w-1')])
+    refreshAllMock.mockResolvedValueOnce({
+      widgets: { 'w-1': { error: 'relation "orders" does not exist' } },
+    })
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBe('relation "orders" does not exist')
+    expect((store.currentWidgets[0].widget.config as any).value).toBe(1) // untouched
+    expect(store.currentWidgets[0].dataSource!.lastRefreshedAt).toBeUndefined()
+  })
+
+  it('clears a recorded error once the widget refreshes successfully', async () => {
+    const store = setup([makeSqlWidget('w-1')])
+    store.widgetErrors['w-1'] = 'boom'
+    refreshAllMock.mockResolvedValueOnce({
+      widgets: { 'w-1': { config: { value: 42 }, refreshed_at: 'now', served_from: 'source' } },
+    })
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBeUndefined()
+    expect((store.currentWidgets[0].widget.config as any).value).toBe(42)
+  })
+})

@@ -419,3 +419,52 @@ def test_serve_no_pipeline_no_rewrite_cold(monkeypatch, plane, scope, current_us
     monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (plane, scope))
     req = _request("SELECT region FROM csv_1")
     assert _serve_widget_via_dataplane(req, None, current_user, db_with_connection) is None
+
+
+def test_filter_injects_inside_the_aggregate_over_a_materialized_table(monkeypatch, plane, scope, current_user):
+    """The plane path rewrites `csv_1` → `acme__csv_1` BEFORE injecting filters,
+    while the dashboard context still describes `csv_1`. Untranslated, the scope
+    picker finds no columns for any table in the rewritten AST, concludes no
+    scope covers the filter and every filtered read on a pipeline-backed
+    connection degrades to the subquery wrap — which, over an aggregate, filters
+    on a column the outer projection doesn't carry."""
+    plane.write_parquet(scope, "acme__csv_1", pa.table({
+        "region": pa.array(["EMEA", "EMEA", "APAC"]),
+        "amount": pa.array([10, 5, 7], type=pa.int64()),
+    }))
+
+    db = MagicMock()
+    chain = db.query.return_value.filter.return_value
+    chain.order_by.return_value = chain
+    chain.first.return_value = SimpleNamespace(id=1, user_id="u1", org_id=None)
+    chain.all.return_value = [
+        SimpleNamespace(extraction_config={"tables": ["csv_1"]}, target_table="acme__csv_1"),
+    ]
+    monkeypatch.setattr(dps, "get_plane_for_connection", lambda c: (plane, scope))
+
+    import backend.api.widget_data as wd
+
+    def _boom(*a, **k):
+        raise AssertionError("fell back to the subquery wrap instead of the AST path")
+
+    monkeypatch.setattr(wd, "_wrap_subquery_fallback", _boom)
+
+    dashboard = SimpleNamespace(
+        id=7,
+        data_context={
+            "sources": {"csv_1": {"columns": ["region", "amount"]}},
+            "dimensions": {"region": {"column": "region", "sources": ["csv_1"]}},
+        },
+    )
+    req = WidgetRefreshRequest(
+        connection_id=1,
+        sql="SELECT SUM(amount) AS total FROM csv_1",
+        mapping={"type": "table", "columnConfig": [{"column": "total"}]},
+        filters=[FilterParam(column="region", op="eq", value="EMEA")],
+        widget_id="w1",
+        dashboard_id=7,
+    )
+    resp = _serve_widget_via_dataplane(req, dashboard, current_user, db)
+
+    assert resp is not None
+    assert resp.config["rows"] == [{"total": 15}]  # 10 + 5, APAC excluded

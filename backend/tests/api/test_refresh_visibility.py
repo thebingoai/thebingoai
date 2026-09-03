@@ -13,6 +13,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 from fastapi import HTTPException
 from sqlalchemy import create_engine, JSON, LargeBinary
 from sqlalchemy.orm import sessionmaker
@@ -142,3 +145,67 @@ def test_list_and_detail_both_carry_bulk_flag(db, seeded, monkeypatch):
         seeded["dashboard"].id, db=db, current_user=seeded["member"]
     )
     assert detail.bulk_widget_loading is True
+
+
+# ── refresh_widget (single endpoint) on a shared dashboard ───────────────────
+
+def _shared_setup(db, seeded, monkeypatch):
+    """Make org-2's viewer a reader of org-1, and give org-1 a connection."""
+    from backend.models.database_connection import DatabaseConnection
+    import backend.api.dashboards as dashboards_api
+
+    conn = DatabaseConnection(
+        id=77, user_id="u-owner", org_id="org-1", name="host db",
+        db_type="postgres", host="h", port=5432, database="d", username="u",
+    )
+    conn._encrypted_password = "x"
+    db.add(conn)
+    db.commit()
+    monkeypatch.setattr(
+        dashboards_api, "_readable_org_ids", lambda _db, user: {"org-1", "org-2"},
+    )
+    monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
+    monkeypatch.setattr(
+        wd, "_read_widget_from_cache",
+        lambda dash_id, wid, org_id, user_id, plane=None: None,
+    )
+    monkeypatch.setattr(wd, "transform_widget_data", lambda r, m: {"rows": []})
+
+    connector = MagicMock()
+    connector.serves_from_plane = False
+    connector.execute_query.return_value = SimpleNamespace(
+        columns=["v"], rows=[(1,)], row_count=1, execution_time_ms=1.0, truncated=False,
+    )
+    monkeypatch.setattr(
+        "backend.connectors.factory.get_connector_for_connection",
+        lambda c, db=None: connector,
+    )
+    return conn
+
+
+def test_shared_viewer_gets_filter_options_when_dashboard_id_is_sent(db, seeded, monkeypatch):
+    """The dropdown-options and date-bounds queries go through this endpoint. With
+    dashboard_id the shared branch of _readable_connection resolves the HOST org's
+    connection, exactly as the dashboard's own widgets do."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql="SELECT DISTINCT region AS option_value FROM t",
+        mapping={"type": "table", "columnConfig": [{"column": "option_value"}]},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    resp = _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert resp.config == {"rows": []}
+
+
+def test_shared_viewer_404s_without_dashboard_id(db, seeded, monkeypatch):
+    """Without it the endpoint resolves no dashboard, so the owner-only branch
+    runs and a permitted cross-org viewer is refused — the widgets render while
+    their filter controls silently fall back to empty."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql="SELECT DISTINCT region AS option_value FROM t",
+        mapping={"type": "table", "columnConfig": [{"column": "option_value"}]},
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert exc.value.status_code == 404

@@ -33,6 +33,11 @@ interface DashboardState {
   // Bulk widget loading (per-Org flag): stale-response bookkeeping.
   widgetSeq: Record<string, number>        // widget id → seq, bumped per single-widget refresh
   refreshingWidgets: Record<string, boolean>  // widget id → bulk refresh in flight
+  // widget id → last bulk refresh error. The bulk endpoint reports failures
+  // per widget, but the per-widget watcher is disabled while bulk loading is
+  // on, so useWidgetData never sees them: without this the widget keeps
+  // painting its previous value under a stale "last refreshed" stamp.
+  widgetErrors: Record<string, string>
   bulkSeq: number                          // newer bulk beats older bulk
   bulkKeyInFlight: string | null           // dedup concurrent identical bulk requests
   // Non-persisted cache of each widget's last raw SQL result, captured on canvas
@@ -63,6 +68,7 @@ export const useDashboardStore = defineStore('dashboard', {
     connectionTypes: {},
     widgetSeq: {},
     refreshingWidgets: {},
+    widgetErrors: {},
     bulkSeq: 0,
     bulkKeyInFlight: null,
     widgetSourceData: {},
@@ -352,6 +358,7 @@ export const useDashboardStore = defineStore('dashboard', {
       this.bulkKeyInFlight = null
       this.bulkSeq++
       this.refreshingWidgets = {}
+      this.widgetErrors = {}
       this.refreshing = false
       this.currentDashboardId = null
       this.editMode = false
@@ -515,8 +522,10 @@ export const useDashboardStore = defineStore('dashboard', {
           if (!r) continue
           if (r.error) {
             console.error(`Widget ${widget.id} refresh failed:`, r.error)
+            this.widgetErrors[widget.id] = r.error
             continue
           }
+          delete this.widgetErrors[widget.id]
           if (r.config) Object.assign(widget.widget.config, mergeRefreshedConfig(widget, r.config))
           if (r.refreshed_at) widget.dataSource.lastRefreshedAt = r.refreshed_at
           widget.dataSource.servedFrom = r.served_from
@@ -576,6 +585,7 @@ export const useDashboardStore = defineStore('dashboard', {
       this.widgetSourceData = {}
       this.widgetSeq = {}
       this.refreshingWidgets = {}
+      this.widgetErrors = {}
       this.bulkKeyInFlight = null
       this.lastFetchedAt = 0
       this.fullyLoadedId = null

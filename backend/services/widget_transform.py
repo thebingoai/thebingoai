@@ -1,4 +1,5 @@
 """Widget Transform — Pure functions to convert QueryResult into widget config dicts."""
+import json
 from decimal import Decimal
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -174,7 +175,15 @@ def _aggregate_values(values: List[Any], aggregation: str) -> Optional[float]:
     elif aggregation == "count":
         return float(len(values))
     elif aggregation == "countDistinct":
-        return float(len(set(v for v in values if v is not None)))
+        # JSON / JSONB / STRUCT / array cells arrive as dict or list, which are
+        # unhashable — set() would raise TypeError and surface as a 500 on the
+        # serve path (or burn an LLM SQL-fix round on the bake path) for SQL
+        # that is perfectly valid. Key those by canonical text so duplicates
+        # still collapse.
+        return float(len({
+            json.dumps(v, sort_keys=True, default=str) if isinstance(v, (dict, list)) else v
+            for v in values if v is not None
+        }))
     elif aggregation == "min":
         numeric = [v for v in values if isinstance(v, (int, float))]
         return min(numeric) if numeric else None
@@ -541,6 +550,19 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
         # they keep "first" and their meaning is unchanged. Deliberately narrower
         # than the blanket sum-default reverted in 5dbd4e7.
         aggregation = "sum" if len(result.rows) > 1 else "first"
+
+    if getattr(result, "truncated", False) is True and aggregation != "first":
+        # The engine capped the rows (settings.max_query_rows, enforced in every
+        # connector and the DuckDB runner). Aggregating the prefix produces a
+        # number that looks right and isn't — the failure mode this branch
+        # exists to remove — so refuse, and say how to fix it. The serve path
+        # turns this into a 400 with the widget's error banner + Fix button; the
+        # bake path's SQL-fix round rewrites the query to aggregate in SQL.
+        raise ValueError(
+            f"KPI result was truncated at {result.row_count} rows, so a client-side "
+            f"'{aggregation}' would be wrong. Aggregate in SQL "
+            "(SELECT SUM(...) / COUNT(*) ...) or narrow the query."
+        )
 
     # Delegate the ladder to _aggregate_values — the same helper the trend path
     # and transform_chart use. It is the only implementation that covers

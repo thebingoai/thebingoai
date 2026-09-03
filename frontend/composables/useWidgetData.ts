@@ -8,7 +8,7 @@ import { trackAbort, releaseAbort, isAbortError } from '~/utils/inflight'
 
 export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) {
   const localLoading = ref(false)
-  const error = ref<string | null>(null)
+  const localError = ref<string | null>(null)
   const store = useDashboardStore()
   let refreshSeq = 0
 
@@ -20,6 +20,12 @@ export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) 
   const servedFrom = computed(() => widget.value?.dataSource?.servedFrom ?? null)
   // Also true while a bulk dashboard refresh covering this widget is in flight.
   const loading = computed(() => localLoading.value || !!store.refreshingWidgets[widget.value?.id])
+  // A bulk refresh failure lands in the store: the watcher below is disabled
+  // while bulk loading is on, so refresh() (the only writer of localError)
+  // never runs for it. Without this the widget silently keeps its old value.
+  const error = computed(() =>
+    localError.value ?? (store.widgetErrors?.[widget.value?.id] ?? null),
+  )
 
   async function refresh() {
     const ds = widget.value?.dataSource
@@ -30,7 +36,8 @@ export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) 
     // this newer single-widget result.
     store.widgetSeq[widget.value.id] = (store.widgetSeq[widget.value.id] ?? 0) + 1
     localLoading.value = true
-    error.value = null
+    localError.value = null
+    if (store.widgetErrors) delete store.widgetErrors[widget.value.id]
 
     const ctrl = trackAbort()
     try {
@@ -60,7 +67,7 @@ export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) 
       }
     } catch (err: any) {
       if (seq !== refreshSeq || isAbortError(err)) return  // stale or navigated-away: silent
-      error.value = err?.data?.detail ?? err?.message ?? 'Refresh failed'
+      localError.value = err?.data?.detail ?? err?.message ?? 'Refresh failed'
     } finally {
       releaseAbort(ctrl)
       if (seq === refreshSeq) localLoading.value = false

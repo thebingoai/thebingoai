@@ -371,3 +371,34 @@ class TestTransformWidgetData:
         mapping = {"type": "unknown_widget"}
         with pytest.raises(ValueError, match="Unsupported mapping type"):
             transform_widget_data(result, mapping)
+
+
+class TestTruncatedAndStructuredValues:
+    """Guards on the client-side KPI aggregate: it must refuse a capped result
+    and must not crash on JSON/array cells."""
+
+    def test_truncated_result_refuses_to_aggregate(self):
+        """settings.max_query_rows clamps every connector and the DuckDB runner
+        before transform_kpi sees the rows, so summing here would total only the
+        prefix and return it as a correct headline."""
+        result = QueryResult(columns=["total"], rows=[(100,), (200,)], row_count=2,
+                             execution_time_ms=1.0, truncated=True)
+        with pytest.raises(ValueError, match="truncated"):
+            transform_kpi(result, {"valueColumn": "total", "aggregation": "sum"})
+
+    def test_truncated_result_still_allows_first(self):
+        """"first" reads row 0, which the cap doesn't change."""
+        result = QueryResult(columns=["total"], rows=[(100,), (200,)], row_count=2,
+                             execution_time_ms=1.0, truncated=True)
+        out = transform_kpi(result, {"valueColumn": "total", "aggregation": "first"})
+        assert out["value"] == 100
+
+    def test_count_distinct_handles_json_and_array_cells(self):
+        """JSON / JSONB / STRUCT / array columns arrive as dict or list — both
+        unhashable, so set() raised TypeError and surfaced as a 500."""
+        result = _qr(["payload"], [
+            ({"a": 1},), ({"a": 1},), ([1, 2],), ([1, 2],), (None,), ("x",),
+        ])
+        out = transform_kpi(result, {"valueColumn": "payload",
+                                     "aggregation": "countDistinct"})
+        assert out["value"] == 3

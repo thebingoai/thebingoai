@@ -21,20 +21,40 @@ def _dimension_applies_to_sources(
     data_context: dict,
     widget_sources: list[str],
 ) -> bool:
-    """Check if a filter dimension applies to the given widget sources."""
+    """Check if a filter dimension applies to the given widget sources.
+
+    Names are matched case-insensitively: `widget_sources` is normally derived
+    from the SQL (lower-cased by `extract_table_refs`) while the context keys
+    carry whatever case the profiler saw.
+    """
+    tables_meta = data_context.get("tables") or data_context.get("sources") or {}
+    known = {str(k).lower(): v for k, v in tables_meta.items()}
+    srcs = {str(s).lower() for s in widget_sources}
+
     dimensions = data_context.get("dimensions", {})
-    # Find the dimension by column name
+    # Find the dimension by column name. A declared dimension is authoritative:
+    # it names exactly which tables carry the column, so a widget that reads
+    # none of them genuinely cannot bind the filter.
     for dim_name, dim_data in dimensions.items():
         if dim_data.get("column") == column:
             dim_sources = dim_data.get("sources", [])
             # Check if any of the widget's sources overlap with the dimension's sources
-            applies = bool(set(dim_sources) & set(widget_sources))
+            applies = bool({str(s).lower() for s in dim_sources} & srcs)
             if not applies:
                 logger.warning(
                     "Filter on %r dropped: dimension sources %s do not overlap widget "
                     "sources %s", column, dim_sources, widget_sources,
                 )
             return applies
+
+    if known and (srcs - set(known)):
+        # Undeclared column, and the widget reads a table the context never
+        # described (hand-edited SQL, a join the profiler didn't see). Nothing
+        # here can rule the filter out, so inject it and let the engine reject
+        # an unknown column loudly rather than serve unfiltered rows as though
+        # they answered the request.
+        return True
+
     # Not a declared dimension. The context still lists columns per source —
     # connection contexts as `tables[t].columns` (dict), dashboard contexts as
     # `sources[t].columns` (list), the same pair _pick_target_scope reads. A
@@ -42,9 +62,8 @@ def _dimension_applies_to_sources(
     # kept: dropping it would answer a filtered request with unfiltered rows.
     # A column none of them exposes cannot bind and is dropped — injecting it
     # anyway is the "400 Unrecognized name" on every widget fixed in 3433c24.
-    tables_meta = data_context.get("tables") or data_context.get("sources") or {}
-    for src in widget_sources:
-        if column in ((tables_meta.get(src) or {}).get("columns") or ()):
+    for src in srcs:
+        if column in ((known.get(src) or {}).get("columns") or ()):
             return True
     logger.warning(
         "Filter on %r dropped: not a dimension (known: %s) and none of widget "
@@ -146,6 +165,14 @@ def inject_filters(
     if not filters:
         return sql, {}
 
+    if data_context:
+        # The stored `sources` list is what the model wrote when the dashboard
+        # was created; every SQL editor rewrites `dataSource.sql` without
+        # touching it, so it goes stale the first time a widget is repointed.
+        # The SQL is the truth about which tables this widget reads. Fall back
+        # to the caller's list only when the SQL doesn't parse.
+        from backend.utils.sql_refs import extract_table_refs
+        widget_sources = extract_table_refs(sql) or widget_sources
     if data_context and widget_sources:
         filters = [
             f for f in filters
@@ -268,28 +295,38 @@ def _inject_via_sqlglot(
     if not isinstance(target_select, exp.Select):
         raise ValueError(f"target scope is not a SELECT: {type(target_select).__name__}")
 
-    # A filter column that is an equi-join key (present on BOTH sides of a
-    # `JOIN ... ON a.x = b.x`) exists in 2+ tables, so an unqualified reference to
-    # it raises "ambiguous reference". Qualify those to the actual join-side alias
-    # (either side is equivalent for an equi-join). Non-join columns resolve
-    # unambiguously and are left untouched.
-    join_key_alias: dict[str, str] = {}
-    for eq in target_select.find_all(exp.EQ):
-        lhs, rhs = eq.this, eq.expression
-        if (isinstance(lhs, exp.Column) and isinstance(rhs, exp.Column)
-                and lhs.table and rhs.table
-                and lhs.name.lower() == rhs.name.lower()):
-            join_key_alias[lhs.name.lower()] = lhs.table
-    if join_key_alias:
-        for cond in conditions:
-            for colnode in cond.find_all(exp.Column):
-                if not colnode.table:
-                    alias = join_key_alias.get(colnode.name.lower())
-                    if alias:
-                        colnode.set("table", exp.to_identifier(alias))
+    targets = _set_operation_targets(
+        target_select, candidate_scopes, filter_columns, data_context
+    )
 
-    for cond in conditions:
-        target_select.where(cond, append=True, copy=False)
+    for sel in targets:
+        # An AST node can only have one parent, so each branch beyond the first
+        # gets its own copy of the conditions (the params they reference are
+        # shared, which is what binds the same value on every branch).
+        conds = conditions if sel is targets[0] else [c.copy() for c in conditions]
+
+        # A filter column that is an equi-join key (present on BOTH sides of a
+        # `JOIN ... ON a.x = b.x`) exists in 2+ tables, so an unqualified reference to
+        # it raises "ambiguous reference". Qualify those to the actual join-side alias
+        # (either side is equivalent for an equi-join). Non-join columns resolve
+        # unambiguously and are left untouched.
+        join_key_alias: dict[str, str] = {}
+        for eq in sel.find_all(exp.EQ):
+            lhs, rhs = eq.this, eq.expression
+            if (isinstance(lhs, exp.Column) and isinstance(rhs, exp.Column)
+                    and lhs.table and rhs.table
+                    and lhs.name.lower() == rhs.name.lower()):
+                join_key_alias[lhs.name.lower()] = lhs.table
+        if join_key_alias:
+            for cond in conds:
+                for colnode in cond.find_all(exp.Column):
+                    if not colnode.table:
+                        alias = join_key_alias.get(colnode.name.lower())
+                        if alias:
+                            colnode.set("table", exp.to_identifier(alias))
+
+        for cond in conds:
+            sel.where(cond, append=True, copy=False)
 
     rendered = ast.sql(dialect=dialect)
     if dialect == "duckdb":
@@ -299,6 +336,61 @@ def _inject_via_sqlglot(
     # BigQuery renders exp.Placeholder as `@name`; MySQL/Postgres render `:name`.
     # Both swap to the psycopg2 / pymysql `%(name)s` form the source-DB connectors bind.
     return _PLACEHOLDER_REWRITE.sub(r"%(\1)s", rendered)
+
+
+def _set_operation_targets(
+    target_select,
+    candidate_scopes: list,
+    filter_columns: set[str],
+    data_context: dict | None,
+) -> list:
+    """Every SELECT the WHERE must be attached to, given the picked scope.
+
+    A UNION / UNION ALL / INTERSECT / EXCEPT is a set of independent SELECTs and
+    `_pick_target_scope` returns exactly one of them. Filtering only that branch
+    leaves the others contributing unfiltered rows, and the combined query still
+    succeeds — the silent wrong answer this branch exists to remove. So widen to
+    every leaf branch, or raise (→ subquery wrap over the whole set result) when
+    any branch can't take the condition. Filtering some branches and not others
+    is never an option.
+    """
+    from sqlglot import exp
+
+    top = target_select
+    while True:
+        parent = top.parent
+        # A parenthesised branch sits inside a Subquery node.
+        if isinstance(parent, exp.Subquery) and isinstance(parent.parent, exp.SetOperation):
+            parent = parent.parent
+        if not isinstance(parent, exp.SetOperation):
+            break
+        top = parent
+    if top is target_select:
+        return [target_select]
+
+    def _leaves(node):
+        if isinstance(node, exp.Subquery):
+            node = node.this
+        if isinstance(node, exp.SetOperation):
+            yield from _leaves(node.this)
+            yield from _leaves(node.expression)
+        else:
+            yield node
+
+    by_expr = {
+        id(scope.expression): (scope, real_tables)
+        for scope, real_tables in candidate_scopes
+    }
+    targets = []
+    for leaf in _leaves(top):
+        entry = by_expr.get(id(leaf))
+        if entry is None or _pick_target_scope([entry], filter_columns, data_context) is None:
+            raise ValueError(
+                "set-operation branch cannot bind the filter columns — "
+                "routing to subquery wrap"
+            )
+        targets.append(leaf)
+    return targets
 
 
 def _pick_target_scope(
@@ -658,6 +750,38 @@ def _plane_missing_after_first_ingest(connection, tables: list[str], db: Session
     return False
 
 
+def _plane_context(data_context: dict | None, tmap: dict[str, str]) -> dict | None:
+    """Re-key a data context through the source → materialized table map.
+
+    The DataPlane path rewrites the widget SQL's table names (`orders` →
+    `acme__orders`) before filters are injected, but the context still describes
+    the source names. Left untranslated, `_pick_target_scope` finds no column
+    metadata for any table in the rewritten AST, concludes no scope covers the
+    filter columns and every filtered read on a pipeline-backed connection
+    silently degrades to the subquery wrap.
+    """
+    if not data_context or not tmap:
+        return data_context
+    lower = {str(k).lower(): v for k, v in tmap.items()}
+
+    def _ren(name):
+        return lower.get(str(name).lower(), name)
+
+    out = dict(data_context)
+    for key in ("sources", "tables"):
+        section = data_context.get(key)
+        if isinstance(section, dict):
+            out[key] = {_ren(k): v for k, v in section.items()}
+    dims = data_context.get("dimensions")
+    if isinstance(dims, dict):
+        out["dimensions"] = {
+            k: ({**d, "sources": [_ren(s) for s in (d.get("sources") or [])]}
+                if isinstance(d, dict) and d.get("sources") is not None else d)
+            for k, d in dims.items()
+        }
+    return out
+
+
 def _serve_widget_via_dataplane(
     request: "WidgetRefreshRequest",
     dashboard: "Dashboard | None",
@@ -713,9 +837,11 @@ def _serve_widget_via_dataplane(
     # them to the Pipeline's materialized plane table (e.g. `acme__orders`) so
     # the Parquet glob resolves. No-op when the connection has no pipelines.
     from backend.utils.sql_refs import qualifier_allowlist
-    base_sql, _ = rewrite_table_refs(
-        request.sql, plane_table_map(connection, db), qualifier_allowlist(connection)
-    )
+    tmap = plane_table_map(connection, db)
+    base_sql, _ = rewrite_table_refs(request.sql, tmap, qualifier_allowlist(connection))
+    # The SQL now names plane tables; the context must too, or filter injection
+    # can't resolve a single column. See _plane_context.
+    data_context = _plane_context(data_context, tmap)
     # DuckDB reads the same ANSI quoting the agent writes, so this only quotes
     # reserved-word identifiers (a column literally named `left`, `order`, `end`).
     base_sql = normalize_sql_for(base_sql, "duckdb")
@@ -1032,7 +1158,7 @@ def _refresh_widget_sync(
             config=config,
             execution_time_ms=result.execution_time_ms,
             row_count=result.row_count,
-            truncated=False,
+            truncated=bool(getattr(result, "truncated", False)),
             refreshed_at=datetime.now(timezone.utc).isoformat(),
             source_columns=result.columns,
             source_rows=[
@@ -1260,6 +1386,7 @@ def _refresh_dashboard_widgets_sync(
                         "config": cached_resp.config,
                         "refreshed_at": cached_resp.refreshed_at,
                         "served_from": cached_resp.served_from,
+                        "truncated": bool(getattr(cached_resp, "truncated", False)),
                     }
                     continue
 
@@ -1281,7 +1408,11 @@ def _refresh_dashboard_widgets_sync(
                         )
                     if served is not None:
                         _widget_cache_store(widget_cache_key, bulk_cache_ttl, served)
-                        results[widget_id] = {"config": served.config, "refreshed_at": refreshed_at, "served_from": served.served_from}
+                        results[widget_id] = {
+                            "config": served.config, "refreshed_at": refreshed_at,
+                            "served_from": served.served_from,
+                            "truncated": bool(getattr(served, "truncated", False)),
+                        }
                         continue
                     plane_miss_keys.add(miss_key)
                 except Exception as e:
@@ -1317,6 +1448,7 @@ def _refresh_dashboard_widgets_sync(
                             "config": transform_widget_data(cached, mapping),
                             "refreshed_at": refreshed_at,
                             "served_from": "cache",
+                            "truncated": bool(getattr(cached, "truncated", False)),
                         }
                         continue
                 except Exception as e:
@@ -1436,6 +1568,7 @@ def _refresh_dashboard_widgets_sync(
                     "config": transform_widget_data(result, mapping),
                     "refreshed_at": refreshed_at,
                     "served_from": served_from,
+                    "truncated": bool(getattr(result, "truncated", False)),
                 }
             except Exception as e:
                 logger.error(f"Bulk refresh failed for widget {widget_id}: {e}")

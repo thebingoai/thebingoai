@@ -571,3 +571,28 @@ def test_dialect_hints_dataset_lockdown_returns_bigquery():
         assert out != DUCKDB_DIALECT_HINTS
     finally:
         _settings.disable_local_data_plane = saved
+
+
+def test_kpi_guard_rejects_a_window_aggregate():
+    """`SUM(x) OVER ()` matches the aggregate regex but is a window function: it
+    returns one row per input row, each holding the same total. Passing the guard
+    lets the KPI omit mapping.aggregation, and the multi-row default then sums
+    those identical rows — the headline is the total times the row count."""
+    from backend.agents.dashboard_tools import _verify_widgets
+
+    w = _kpi_widget("SELECT SUM(c.revenue_usd) OVER () AS total_revenue_usd FROM csv_162 c")
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_not_aggregated" in codes, codes
+
+
+def test_kpi_guard_still_accepts_real_aggregation():
+    from backend.agents.dashboard_tools import _is_aggregated_sql
+
+    assert _is_aggregated_sql("SELECT SUM(revenue_usd) AS t FROM csv_162")
+    assert _is_aggregated_sql("SELECT d, COUNT(*) AS n FROM csv_162 GROUP BY d")
+    # Window function alone is not aggregation.
+    assert not _is_aggregated_sql("SELECT SUM(v) OVER () AS t FROM csv_162")
+    assert not _is_aggregated_sql("SELECT d, v FROM csv_162")
+    # SQL the parser rejects falls back to the textual check rather than
+    # reporting "not aggregated" for something that plainly is.
+    assert _is_aggregated_sql("SELECT COUNT(* FROM broken")

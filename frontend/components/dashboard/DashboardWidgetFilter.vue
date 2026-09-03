@@ -248,6 +248,10 @@ async function loadDynamicOptions() {
         connection_id: connectionId,
         sql,
         mapping: { type: 'table', columnConfig: [{ column: 'option_value', label: 'Option' }] },
+        // Without it the backend resolves no dashboard and requires the caller
+        // to OWN the connection, so a shared-dashboard viewer gets 404 here
+        // while the widgets themselves load fine.
+        dashboard_id: store.currentDashboardId ?? undefined,
       }) as { config: { rows: Record<string, any>[] } }
       const options = response.config.rows
         .map((r: Record<string, any>) => r.option_value ?? Object.values(r)[0])
@@ -279,6 +283,7 @@ async function initDateRangeDefaults() {
           connection_id: connectionId,
           sql,
           mapping: { type: 'table', columnConfig: [{ column: 'min_date', label: 'min_date' }, { column: 'max_date', label: 'max_date' }] },
+          dashboard_id: store.currentDashboardId ?? undefined,  // see loadDynamicOptions
         }) as { config: { rows: Record<string, any>[] } }
         const row = response.config.rows?.[0]
         const maxDate = row?.max_date
