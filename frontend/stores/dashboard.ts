@@ -542,7 +542,13 @@ export const useDashboardStore = defineStore('dashboard', {
           const detail = e?.data?.detail
           const msg = (typeof detail === 'string' ? detail : detail?.message)
             ?? e?.message ?? 'Refresh failed'
-          for (const id of sqlWidgetIds) this.widgetErrors[id] = msg
+          for (const id of sqlWidgetIds) {
+            // Same guard the success path uses: a single-widget refresh that
+            // landed while this bulk was in flight holds a fresh value, and
+            // stamping it with this request's error would contradict it.
+            if ((this.widgetSeq[id] ?? 0) !== (seqSnapshot[id] ?? 0)) continue
+            this.widgetErrors[id] = msg
+          }
         }
       } finally {
         releaseAbort(ctrl)

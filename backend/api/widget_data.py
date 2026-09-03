@@ -154,6 +154,27 @@ def _lookup_column_type(data_context: dict | None, column: str) -> str | None:
     return None
 
 
+def _canonical_column(data_context: dict | None, column: str) -> str:
+    """The data context's own spelling of *column*, or *column* unchanged when
+    no source lists it.
+
+    The applicability gate and the scope picker both match column names
+    case-insensitively, but the name is emitted as a *quoted* identifier, and
+    `"Region"` is not `"region"` on Postgres or DuckDB. A filter control saved
+    with the label's casing therefore cleared every case-insensitive check and
+    then failed in the engine. `_lookup_column_type` is case-sensitive for the
+    same reason, so canonicalising here also restores the DATE() wrap for
+    date-like columns whose stored casing differs.
+    """
+    tables = (data_context or {}).get("tables") or (data_context or {}).get("sources") or {}
+    low = column.lower()
+    for tbl in tables.values():
+        for c in ((tbl or {}).get("columns") or ()):
+            if str(c).lower() == low:
+                return str(c)
+    return column
+
+
 def inject_filters(
     sql: str,
     filters: List[FilterParam],
@@ -200,6 +221,15 @@ def inject_filters(
         ]
         if not filters:
             return sql, {}
+
+    if data_context:
+        # One rewrite, before anything reads f.column: it feeds the quoted
+        # identifier in _build_ast_condition, that function's date-type lookup,
+        # _pick_target_scope's coverage test, and the subquery-wrap fallback.
+        filters = [
+            f.model_copy(update={"column": _canonical_column(data_context, f.column)})
+            for f in filters
+        ]
 
     sql = sql.rstrip().rstrip(';').rstrip()
 
@@ -723,6 +753,73 @@ def _readable_connection(db, connection_id, current_user, dashboard):
     return q.filter(shared_sample_clause()).first()
 
 
+def _norm_sql(sql: str) -> str:
+    """Compare form for stored-vs-requested SQL: trailing whitespace and a
+    trailing semicolon only. Deliberately not a normalizing parse — an exact
+    match is the point, and any looser comparison widens what a read-only
+    viewer can run."""
+    return (sql or "").strip().rstrip(";").strip()
+
+
+def _stored_queries(dashboard) -> set:
+    """Every (connection_id, sql) pair this dashboard's own JSON can legitimately
+    ask the refresh endpoint to run: each widget's `dataSource`, plus each filter
+    control's `optionsSource` / `dateRangeSource` — the dropdown-options and
+    date-bounds queries DashboardWidgetFilter.vue issues on load.
+    """
+    out: set = set()
+    for w in (dashboard.widgets or []):
+        if not isinstance(w, dict):
+            continue
+        sources = [w.get("dataSource")]
+        controls = ((w.get("widget") or {}).get("config") or {}).get("controls") or []
+        for c in controls:
+            if isinstance(c, dict):
+                sources += [c.get("optionsSource"), c.get("dateRangeSource")]
+        for s in sources:
+            if not isinstance(s, dict) or not s.get("sql"):
+                continue
+            try:
+                out.add((int(s.get("connectionId")), _norm_sql(s["sql"])))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _require_stored_query(request, dashboard, current_user) -> None:
+    """A caller who can only *read* this dashboard may run only the queries
+    stored on it.
+
+    Cross-org sharing makes `_readable_connection` accept any connection owned
+    by any user in the host org, and `request.sql` is executed verbatim against
+    it — on the DuckDB path under `system_context`, which bypasses per-table
+    grants. Without this check a viewer of one shared dashboard could read every
+    table the host org has connected, at HTTP 200.
+
+    Exempt: the owner, and any caller whose *active* org is the dashboard's.
+    That caller can already edit the dashboard (`update_dashboard` filters on
+    `Dashboard.org_id == current_user.org_id`) and needs free SQL for the
+    editor's preview, so restricting them would break authoring without closing
+    anything they could not reach by saving a widget first.
+    """
+    if dashboard is None or not getattr(dashboard, "org_id", None):
+        return
+    if dashboard.user_id == current_user.id:
+        return
+    active_org = getattr(current_user, "org_id", None)
+    if active_org and str(dashboard.org_id) == str(active_org):
+        return
+    if (request.connection_id, _norm_sql(request.sql)) not in _stored_queries(dashboard):
+        logger.warning(
+            "Rejected non-stored SQL on shared dashboard %s from user %s (connection %s)",
+            dashboard.id, current_user.id, request.connection_id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Shared dashboards serve only the queries stored on them",
+        )
+
+
 def _shared_serve_ctx(is_shared: bool, serving_org):
     """Context manager wrapping DataPlane reads for SHARED-dashboard serving.
 
@@ -1025,6 +1122,11 @@ def _refresh_widget_sync(
             .first()
         )
 
+    # Before every serving path below (Redis, DuckDB-over-plane, `_dash_*`
+    # cache, source DB): a read-only viewer of a dashboard in another org runs
+    # only what that dashboard stores.
+    _require_stored_query(request, dashboard, current_user)
+
     serving_org, dash_is_shared = (
         _serving_org_and_shared(dashboard, current_user) if dashboard else (None, False)
     )
@@ -1080,7 +1182,12 @@ def _refresh_widget_sync(
                     config=config,
                     execution_time_ms=result.execution_time_ms,
                     row_count=result.row_count,
-                    truncated=False,
+                    # Carried, not assumed False: a table-shaped mapping never
+                    # raises on a capped result, so a hard-coded False was
+                    # written through to Redis as "complete" and replayed later
+                    # under a KPI mapping (the cache key is the SQL, not the
+                    # mapping) as a partial aggregate.
+                    truncated=result.truncated,
                     refreshed_at=datetime.now(timezone.utc).isoformat(),
                     source_columns=result.columns,
                     source_rows=[

@@ -318,6 +318,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import type { WidgetConfig, KpiWidgetConfig, WidgetDataSource, KpiDataSourceMapping } from '~/types/dashboard'
+import { countDistinct } from '~/utils/widgetTransform'
 import FieldFormatControls from './FieldFormatControls.vue'
 
 const props = defineProps<{
@@ -550,15 +551,10 @@ function computeAggregatedValue(
 ): any {
   const colIdx = columns.indexOf(valueColumn)
   if (colIdx === -1 || !rows.length) return null
-  // Count Distinct works on any value type (not just numbers)
-  if (aggregation === 'countDistinct') {
-    const seen = new Set<unknown>()
-    for (const r of rows) {
-      const v = r[colIdx]
-      if (v !== null && v !== undefined) seen.add(v)
-    }
-    return seen.size
-  }
+  // Count Distinct works on any value type (not just numbers). Shared with the
+  // refresh transform so the editor's optimistic recompute and the server agree
+  // on structured cells, which a plain Set counts by reference.
+  if (aggregation === 'countDistinct') return countDistinct(rows.map(r => r[colIdx]))
   if (aggregation === 'count') {
     return rows.reduce((acc, r) => acc + (r[colIdx] !== null && r[colIdx] !== undefined ? 1 : 0), 0)
   }

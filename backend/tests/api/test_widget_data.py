@@ -829,6 +829,33 @@ def test_refresh_widget_resolves_the_cache_plane_with_the_request_session(monkey
     assert resp.served_from == "cache"
 
 
+def test_refresh_widget_keeps_a_capped_cache_read_marked_truncated(monkeypatch):
+    """The legacy cache branch hard-coded truncated=False. A table mapping never
+    raises on a capped result, so the response was written through to the Redis
+    result cache as complete — and that cache is keyed by SQL, not by mapping,
+    so the same rows came back under a KPI mapping as a partial aggregate."""
+    monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
+    monkeypatch.setattr(wd, "_widget_cache_enabled", lambda org_id: False)
+    monkeypatch.setattr(wd, "transform_widget_data", lambda result, mapping: {"rows": []})
+    monkeypatch.setattr(wd, "_resolve_serving_plane", lambda org_id, user_id, db: object())
+    monkeypatch.setattr(
+        wd, "_read_widget_from_cache",
+        lambda dash_id, wid, org_id=None, user_id=None, plane=None: FakeQueryResult(
+            columns=["v"], rows=[(1,)], row_count=5000, truncated=True,
+        ),
+    )
+
+    db = _db_with_first(FakeDashboard(), FakeConnection())
+    req = wd.WidgetRefreshRequest(
+        connection_id=42, sql="SELECT v FROM orders", mapping={"type": "table"},
+        dashboard_id=1, widget_id="kpi_1",
+    )
+    resp = _run(wd.refresh_widget(req, _user(org_id="org-1"), db))
+
+    assert resp.served_from == "cache"
+    assert resp.truncated is True
+
+
 def test_bulk_refresh_applies_filters_and_skips_cache(monkeypatch):
     """With filters, the bulk endpoint must (a) NOT read the unfiltered cache and
     (b) inject the filter into the source SQL — parity with single-widget."""

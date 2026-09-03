@@ -599,6 +599,20 @@ def test_kpi_guard_rejects_a_filtered_window_aggregate():
     assert "kpi_not_aggregated" in codes, codes
 
 
+def test_kpi_guard_rejects_an_ignore_nulls_window():
+    """`IGNORE NULLS` parses as Window(IgnoreNulls(FirstValue)), so the
+    aggregate's immediate parent is IgnoreNulls and the guard read a per-row
+    window as a real one-row aggregate — the KPI then sums the repeated value."""
+    from backend.agents.dashboard_tools import _verify_widgets
+
+    w = _kpi_widget(
+        "SELECT FIRST_VALUE(c.revenue_usd) IGNORE NULLS OVER (ORDER BY c.d) "
+        "AS total_revenue_usd FROM csv_162 c"
+    )
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_not_aggregated" in codes, codes
+
+
 def test_kpi_guard_still_accepts_real_aggregation():
     from backend.agents.dashboard_tools import _is_aggregated_sql
 
@@ -618,6 +632,23 @@ def test_kpi_guard_still_accepts_real_aggregation():
     assert not _is_aggregated_sql(
         "SELECT SUM(v) FILTER (WHERE v > 0) OVER () AS t FROM csv_162"
     )
+    # Every other wrapper sqlglot puts between an analytic function and its
+    # OVER is the same shape: one row per input row, not an aggregate.
+    assert not _is_aggregated_sql(
+        "SELECT FIRST_VALUE(v) IGNORE NULLS OVER (ORDER BY d) AS t FROM csv_162"
+    )
+    assert not _is_aggregated_sql(
+        "SELECT LAST_VALUE(v) RESPECT NULLS OVER (ORDER BY d) AS t FROM csv_162"
+    )
+    assert not _is_aggregated_sql(
+        "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY v) OVER () AS t FROM csv_162"
+    )
+    # The same ordered-set aggregate without OVER really is one row.
+    assert _is_aggregated_sql(
+        "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY v) AS t FROM csv_162"
+    )
+    # The aggregate here sits in the window's ORDER BY, not under the window.
+    assert _is_aggregated_sql("SELECT RANK() OVER (ORDER BY SUM(v)) AS t FROM csv_162")
     assert not _is_aggregated_sql("SELECT d, v FROM csv_162")
     # SQL the parser rejects falls back to the textual check rather than
     # reporting "not aggregated" for something that plainly is.

@@ -179,9 +179,11 @@ def _aggregate_values(values: List[Any], aggregation: str) -> Optional[float]:
         # unhashable — set() would raise TypeError and surface as a 500 on the
         # serve path (or burn an LLM SQL-fix round on the bake path) for SQL
         # that is perfectly valid. Key those by canonical text so duplicates
-        # still collapse.
+        # still collapse — tagged by kind, so a dict never shares a key with a
+        # string column holding the same JSON text.
         return float(len({
-            json.dumps(v, sort_keys=True, default=str) if isinstance(v, (dict, list)) else v
+            (True, json.dumps(v, sort_keys=True, default=str))
+            if isinstance(v, (dict, list)) else (False, v)
             for v in values if v is not None
         }))
     elif aggregation == "min":

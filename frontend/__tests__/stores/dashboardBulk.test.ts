@@ -246,6 +246,23 @@ describe('refreshAllWidgets (per-widget failures)', () => {
     expect(store.refreshing).toBe(false)
   })
 
+  it('does not overwrite a newer single-widget refresh with a bulk failure', async () => {
+    // The success path skips widgets whose seq advanced mid-flight; the failure
+    // path wrote every id, so a widget that had just refreshed successfully got
+    // its fresh value stamped with this request's error.
+    const store = setup([makeSqlWidget('w-1'), makeSqlWidget('w-2')])
+    let rejectBulk!: (e: any) => void
+    refreshAllMock.mockReturnValueOnce(new Promise((_r, rej) => { rejectBulk = rej }))
+
+    const bulk = store.refreshAllWidgets()
+    store.widgetSeq['w-1'] = (store.widgetSeq['w-1'] ?? 0) + 1
+    rejectBulk({ data: { detail: 'connection refused' } })
+    await bulk
+
+    expect(store.widgetErrors['w-1']).toBeUndefined()
+    expect(store.widgetErrors['w-2']).toBe('connection refused')
+  })
+
   it('says nothing when the bulk request was aborted', async () => {
     // Navigation and $resetAll abort in flight requests; that is not a failure
     // the user should see a banner for.

@@ -122,6 +122,19 @@ describe('transformWidgetData — kpi', () => {
     expect(out.value).toBe(600)
   })
 
+  it('counts distinct structured cells by content, like the backend', () => {
+    // Rows arrive as JSON, so two equal objects are two references and
+    // `new Set(...)` counted them twice while the server deduped by canonical
+    // text. Key order must not matter either, and a string holding the same
+    // JSON text is still a value of its own.
+    const result = makeResult(
+      ['payload'],
+      [[{ a: 1 }], [{ a: 1 }], [{ b: 2, a: 1 }], [{ a: 1, b: 2 }], [[1, 2]], [[1, 2]], [null], ['{"a":1}']],
+    )
+    const out = transformWidgetData(result, { type: 'kpi', valueColumn: 'payload', aggregation: 'countDistinct' })
+    expect(out.value).toBe(4)
+  })
+
   it('honours an explicit first on a multi-row result', () => {
     const result = makeResult(['total'], [[100], [200], [300]])
     const mapping = { type: 'kpi', valueColumn: 'total', aggregation: 'first' }

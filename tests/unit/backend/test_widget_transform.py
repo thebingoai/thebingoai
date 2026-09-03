@@ -402,3 +402,12 @@ class TestTruncatedAndStructuredValues:
         out = transform_kpi(result, {"valueColumn": "payload",
                                      "aggregation": "countDistinct"})
         assert out["value"] == 3
+
+    def test_count_distinct_keeps_a_dict_apart_from_its_own_json_text(self):
+        """Structured cells are keyed by canonical text so duplicates collapse;
+        keying them by text alone made a dict indistinguishable from a string
+        column holding the same JSON."""
+        result = _qr(["payload"], [({"a": 1},), ('{"a": 1}',)])
+        out = transform_kpi(result, {"valueColumn": "payload",
+                                     "aggregation": "countDistinct"})
+        assert out["value"] == 2

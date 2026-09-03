@@ -101,10 +101,36 @@ function periodRanges(periodLabel: string, ref: Date): [Date, Date, Date, Date] 
   return [today, today, today, today]
 }
 
+/**
+ * Distinct count matching `_aggregate_values`' countDistinct in
+ * backend/services/widget_transform.py: JSON / STRUCT / array cells arrive as
+ * objects, and `new Set(...)` compares those by reference, so two rows holding
+ * the same payload counted as two. Structured values collapse by canonical
+ * text (keys sorted, like the backend's `json.dumps(sort_keys=True)`) and are
+ * kept in a separate set from scalars, so a string that happens to hold the
+ * same JSON text is still its own distinct value.
+ */
+export function countDistinct(values: unknown[]): number {
+  const scalars = new Set<unknown>()
+  const structured = new Set<string>()
+  for (const v of values) {
+    if (v === null || v === undefined) continue
+    if (typeof v === 'object') {
+      structured.add(JSON.stringify(v, (_k, x) =>
+        x && typeof x === 'object' && !Array.isArray(x)
+          ? Object.fromEntries(Object.keys(x).sort().map(k => [k, x[k]]))
+          : x))
+    } else {
+      scalars.add(v)
+    }
+  }
+  return scalars.size + structured.size
+}
+
 function aggregateValues(values: any[], aggregation: string): number | null {
   if (!values.length) return null
   if (aggregation === 'count') return values.length
-  if (aggregation === 'countDistinct') return new Set(values).size
+  if (aggregation === 'countDistinct') return countDistinct(values)
   if (aggregation === 'first') return values[0]
   if (aggregation === 'last') return values[values.length - 1]
   const nums = values

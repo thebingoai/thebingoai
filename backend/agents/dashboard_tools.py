@@ -366,16 +366,20 @@ def _is_aggregated_sql(sql: str) -> bool:
     if ast.find(exp.Group):
         return True
     def _windowed(fn) -> bool:
-        # `SUM(x) FILTER (WHERE …) OVER ()` parses as Window(Filter(Sum)) — the
-        # FILTER clause sits between the aggregate and its OVER, so checking
-        # only the immediate parent reads it as a real aggregate. Not an
-        # ancestor search: `SUM(SUM(x)) OVER ()` and
-        # `RANK() OVER (ORDER BY SUM(x))` hold a genuine one-row aggregate
-        # underneath a Window, and rejecting those would be a false alarm.
-        parent = fn.parent
-        if isinstance(parent, exp.Filter):
-            parent = parent.parent
-        return isinstance(parent, exp.Window)
+        # Climb to the nearest Window or enclosing aggregate. Several analytic
+        # forms put a wrapper node between the function and its OVER —
+        # `SUM(x) FILTER (…) OVER ()` is Window(Filter(Sum)),
+        # `FIRST_VALUE(x) IGNORE NULLS OVER ()` is Window(IgnoreNulls(FirstValue)),
+        # `PERCENTILE_CONT(…) WITHIN GROUP (…) OVER ()` is Window(WithinGroup(…))
+        # — so checking the immediate parent reads them all as real one-row
+        # aggregates. Stopping the climb at an AggFunc keeps
+        # `SUM(SUM(x)) OVER ()` aggregated, and requiring the climb to arrive in
+        # the Window's own function slot keeps `RANK() OVER (ORDER BY SUM(x))`
+        # aggregated too — that SUM sits in the window's ORDER BY, not under it.
+        node, parent = fn, fn.parent
+        while parent is not None and not isinstance(parent, (exp.Window, exp.AggFunc)):
+            node, parent = parent, parent.parent
+        return isinstance(parent, exp.Window) and parent.this is node
 
     return any(not _windowed(fn) for fn in ast.find_all(exp.AggFunc))
 

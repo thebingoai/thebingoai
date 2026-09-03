@@ -819,6 +819,52 @@ class TestFilterNeverSilentlyDropped:
         # No context at all → keep the old "innermost real-table scope" behaviour.
         assert _pick_target_scope(scopes, {"anything"}, None) == "inner"
 
+    def test_inject_filters_emits_the_context_spelling_of_the_column(self):
+        """The gate and the scope picker match case-insensitively, but the
+        identifier reaches the SQL quoted — `"Region"` is a different column
+        from `"region"` on Postgres, so the name emitted has to be the one the
+        profiler recorded, not the one the filter control was saved with."""
+        ctx = {"sources": {"orders": {"columns": ["region", "amount"]}}}
+        filters = [FilterParam(column="Region", op="eq", value="APAC")]
+
+        # Postgres, because that is where the two spellings are two columns —
+        # the default bigquery dialect renders the same identifier in backticks.
+        sql, params = inject_filters(
+            "SELECT region, SUM(amount) AS amt FROM orders GROUP BY region",
+            filters, data_context=ctx, widget_sources=["orders"],
+            dialect="postgres",
+        )
+        assert '"region"' in sql
+        assert '"Region"' not in sql
+        assert params == {"_f0": "APAC"}
+
+    def test_wrap_fallback_also_emits_the_context_spelling(self):
+        """Unparseable SQL takes the subquery wrap, which builds the identifier
+        by hand — the same rewrite has to have reached it."""
+        ctx = {"sources": {"orders": {"columns": ["region"]}}}
+        filters = [FilterParam(column="Region", op="eq", value="APAC")]
+
+        sql, _ = inject_filters(
+            "SELECT ((( FROM orders", filters,
+            data_context=ctx, widget_sources=["orders"],
+        )
+        assert '"region"' in sql
+        assert '"Region"' not in sql
+
+    def test_canonicalised_column_still_finds_its_date_type(self):
+        """_lookup_column_type is case-sensitive, so before canonicalisation a
+        mismatched filter column silently lost the DATE() wrap that makes a
+        `YYYY-MM-DD` value comparable to a TIMESTAMP column."""
+        ctx = {"tables": {"orders": {"columns": {"Order_Date": {"type": "TIMESTAMP"}}}}}
+        filters = [FilterParam(column="order_date", op="gte", value="2026-01-01")]
+
+        sql, params = inject_filters(
+            "SELECT * FROM orders", filters,
+            data_context=ctx, widget_sources=["orders"], dialect="postgres",
+        )
+        assert 'DATE("Order_Date")' in sql
+        assert params == {"_f0": "2026-01-01"}
+
     @pytest.mark.asyncio
     async def test_failed_filtered_query_raises_instead_of_serving_unfiltered(self):
         """Every retry keeps the filter on, so an unappliable filter 500s rather
