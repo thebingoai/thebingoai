@@ -530,9 +530,20 @@ export const useDashboardStore = defineStore('dashboard', {
           if (r.refreshed_at) widget.dataSource.lastRefreshedAt = r.refreshed_at
           widget.dataSource.servedFrom = r.served_from
         }
-      } catch (e) {
+      } catch (e: any) {
         // Aborted on navigation/reset — expected, not an error to surface.
-        if (!isAbortError(e)) console.error('Refresh all failed:', e)
+        if (isAbortError(e)) return
+        console.error('Refresh all failed:', e)
+        // The whole request failed (network, 5xx, 404 on a shared dashboard).
+        // Every widget keeps the value it already had, with its old "last
+        // refreshed" stamp, so every widget needs the banner — otherwise a
+        // stale number reads as a current one.
+        if (bulkSeq === this.bulkSeq) {
+          const detail = e?.data?.detail
+          const msg = (typeof detail === 'string' ? detail : detail?.message)
+            ?? e?.message ?? 'Refresh failed'
+          for (const id of sqlWidgetIds) this.widgetErrors[id] = msg
+        }
       } finally {
         releaseAbort(ctrl)
         if (bulkSeq === this.bulkSeq) {

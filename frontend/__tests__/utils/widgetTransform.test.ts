@@ -111,6 +111,17 @@ describe('transformWidgetData — kpi', () => {
     expect(out.value).toBe(600)
   })
 
+  it('treats an unsupported stored aggregation as absent, like the backend', () => {
+    // transform_kpi checks membership in KPI_AGGREGATIONS; the frontend used
+    // `??`, which only catches null, so a stored "average" reached
+    // aggregateValues, matched no branch and fell out of its trailing
+    // `return nums[0]` — one row on screen, the sum after the next refresh.
+    const result = makeResult(['total'], [[100], [200], [300]])
+    const mapping = { type: 'kpi', valueColumn: 'total', aggregation: 'average' }
+    const out = transformWidgetData(result, mapping)
+    expect(out.value).toBe(600)
+  })
+
   it('honours an explicit first on a multi-row result', () => {
     const result = makeResult(['total'], [[100], [200], [300]])
     const mapping = { type: 'kpi', valueColumn: 'total', aggregation: 'first' }

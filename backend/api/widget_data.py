@@ -57,19 +57,39 @@ def _dimension_applies_to_sources(
 
     # Not a declared dimension. The context still lists columns per source —
     # connection contexts as `tables[t].columns` (dict), dashboard contexts as
-    # `sources[t].columns` (list), the same pair _pick_target_scope reads. A
-    # column one of this widget's sources exposes binds here, so the filter is
+    # `sources[t].columns` (list), the same pair _pick_target_scope reads.
+    col = column.lower()
+
+    def _cols(tbl) -> set[str]:
+        return {str(c).lower() for c in ((tbl or {}).get("columns") or ())}
+
+    # A column one of this widget's sources exposes binds here, so the filter is
     # kept: dropping it would answer a filtered request with unfiltered rows.
-    # A column none of them exposes cannot bind and is dropped — injecting it
-    # anyway is the "400 Unrecognized name" on every widget fixed in 3433c24.
     for src in srcs:
-        if column in ((known.get(src) or {}).get("columns") or ()):
+        if col in _cols(known.get(src)):
             return True
+
+    if any(col in _cols(tbl) for tbl in known.values()):
+        # Some other source on this dashboard has the column, this widget's
+        # don't. A genuine per-widget skip: injecting anyway is the
+        # "400 Unrecognized name" on every widget fixed in 3433c24.
+        logger.warning(
+            "Filter on %r dropped: not a dimension (known: %s) and none of widget "
+            "sources %s expose it", column, sorted(dimensions), widget_sources,
+        )
+        return False
+
+    # No source the context describes has this column at all, so this is not a
+    # filter that fails to apply to one widget — it is a filter nothing on the
+    # dashboard can honour. Dropping it answers a filtered request with
+    # unfiltered rows at HTTP 200. Inject it and let the engine reject it by
+    # name, the same way the no-context path already does.
     logger.warning(
-        "Filter on %r dropped: not a dimension (known: %s) and none of widget "
-        "sources %s expose it", column, sorted(dimensions), widget_sources,
+        "Filter on %r is unknown to the whole data context (known sources: %s) — "
+        "injecting so the engine rejects it instead of serving unfiltered rows",
+        column, sorted(known),
     )
-    return False
+    return True
 
 
 _OP_MAP = {
@@ -413,18 +433,26 @@ def _pick_target_scope(
     # Innermost first: scope.traverse() yields parents before children, so reverse.
     ordered = list(reversed(candidate_scopes))
 
-    tables_meta = (data_context or {}).get("tables") or (data_context or {}).get("sources") or {}
+    raw_meta = (data_context or {}).get("tables") or (data_context or {}).get("sources") or {}
+    # Case-insensitively, like _dimension_applies_to_sources: the AST carries
+    # whatever case the SQL author typed (`FROM Orders`) while the context keys
+    # carry what the profiler saw (`orders`). A mismatch here reads as "no scope
+    # covers the filter", which routes a perfectly injectable filter into the
+    # subquery wrap.
+    tables_meta = {str(k).lower(): v for k, v in raw_meta.items()}
+    wanted = {str(c).lower() for c in filter_columns}
 
     def covers(real_tables) -> bool:
         if not tables_meta:
             return True  # no context → assume innermost real-table scope is correct
         available_cols: set[str] = set()
         for tbl in real_tables:
-            tbl_name = tbl.name
-            cols = ((tables_meta.get(tbl_name) or {}).get("columns") or {})
+            cols = ((tables_meta.get(str(tbl.name).lower()) or {}).get("columns") or {})
             # dict (connection context) → keys; list (dashboard context) → values.
-            available_cols.update(cols.keys() if isinstance(cols, dict) else cols)
-        return filter_columns.issubset(available_cols)
+            available_cols.update(
+                str(c).lower() for c in (cols.keys() if isinstance(cols, dict) else cols)
+            )
+        return wanted.issubset(available_cols)
 
     for scope, real_tables in ordered:
         if covers(real_tables):
@@ -498,6 +526,23 @@ def _resolve_serving_plane(org_id: str | None, user_id: str, db: Session):
         return None
 
 
+def _flag_capped_cache(result):
+    """Mark a `_dash_*` cache read as truncated when it sits on the row cap.
+
+    The bake stored whatever the engine returned, and every engine caps at
+    settings.max_query_rows without recording that it did — so a cache holding
+    exactly the cap is the prefix of a larger result. Same inference as
+    `read_widget_data_plane`, applied to the DuckDB-over-GCS warm read, which
+    goes straight to the reader instead of through that helper.
+    """
+    from backend.config import settings
+
+    if result is not None and not getattr(result, "truncated", False):
+        if getattr(result, "row_count", 0) >= settings.max_query_rows:
+            result.truncated = True
+    return result
+
+
 def _read_widget_from_cache(
     dashboard_id: int,
     widget_id: str,
@@ -531,6 +576,8 @@ def _read_widget_from_cache(
         rows=dp_data["rows"],
         row_count=dp_data["row_count"],
         execution_time_ms=(time.time() - start) * 1000,
+        # Carried through so a KPI over a capped cache is refused, not summed.
+        truncated=bool(dp_data.get("truncated", False)),
     )
 
 
@@ -900,7 +947,7 @@ def _serve_widget_via_dataplane(
             cache_table = f'_dash_{request.dashboard_id}__{_sanitize_widget_id(request.widget_id)}'
             try:
                 result = reader.query(scope, f'SELECT * FROM "{cache_table}"')
-                return _build_widget_response(result, request.mapping)
+                return _build_widget_response(_flag_capped_cache(result), request.mapping)
             except Exception as e:
                 # Cold/missing warm cache is the common, expected case → fall
                 # through to the live read below. Logged at debug (not warning)

@@ -229,4 +229,34 @@ describe('refreshAllWidgets (per-widget failures)', () => {
     expect(store.widgetErrors['w-1']).toBeUndefined()
     expect((store.currentWidgets[0].widget.config as any).value).toBe(42)
   })
+
+  it('marks every widget when the whole bulk request fails', async () => {
+    // A per-widget error had a banner; a failed request had only a console
+    // line, so every widget kept its old value and its old timestamp with
+    // nothing on screen to say the refresh never happened.
+    const store = setup([makeSqlWidget('w-1'), makeSqlWidget('w-2')])
+    refreshAllMock.mockRejectedValueOnce({ data: { detail: 'connection refused' } })
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBe('connection refused')
+    expect(store.widgetErrors['w-2']).toBe('connection refused')
+    expect((store.currentWidgets[0].widget.config as any).value).toBe(1)
+    expect(store.refreshingWidgets['w-1']).toBeUndefined()
+    expect(store.refreshing).toBe(false)
+  })
+
+  it('says nothing when the bulk request was aborted', async () => {
+    // Navigation and $resetAll abort in flight requests; that is not a failure
+    // the user should see a banner for.
+    const store = setup([makeSqlWidget('w-1')])
+    const abort = new Error('aborted')
+    abort.name = 'AbortError'
+    refreshAllMock.mockRejectedValueOnce(abort)
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBeUndefined()
+    expect(store.refreshing).toBe(false)
+  })
 })

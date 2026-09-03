@@ -365,9 +365,19 @@ def _is_aggregated_sql(sql: str) -> bool:
         return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
     if ast.find(exp.Group):
         return True
-    return any(
-        not isinstance(fn.parent, exp.Window) for fn in ast.find_all(exp.AggFunc)
-    )
+    def _windowed(fn) -> bool:
+        # `SUM(x) FILTER (WHERE …) OVER ()` parses as Window(Filter(Sum)) — the
+        # FILTER clause sits between the aggregate and its OVER, so checking
+        # only the immediate parent reads it as a real aggregate. Not an
+        # ancestor search: `SUM(SUM(x)) OVER ()` and
+        # `RANK() OVER (ORDER BY SUM(x))` hold a genuine one-row aggregate
+        # underneath a Window, and rejecting those would be a false alarm.
+        parent = fn.parent
+        if isinstance(parent, exp.Filter):
+            parent = parent.parent
+        return isinstance(parent, exp.Window)
+
+    return any(not _windowed(fn) for fn in ast.find_all(exp.AggFunc))
 
 
 def cfg_title_for(wcfg: dict, fallback: str) -> str:

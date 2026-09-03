@@ -585,13 +585,39 @@ def test_kpi_guard_rejects_a_window_aggregate():
     assert "kpi_not_aggregated" in codes, codes
 
 
+def test_kpi_guard_rejects_a_filtered_window_aggregate():
+    """`SUM(x) FILTER (WHERE …) OVER ()` is the same window function with a
+    FILTER clause in between, so the aggregate's immediate parent is Filter and
+    the guard read it as a real one-row aggregate."""
+    from backend.agents.dashboard_tools import _verify_widgets
+
+    w = _kpi_widget(
+        "SELECT SUM(c.revenue_usd) FILTER (WHERE c.revenue_usd > 0) OVER () "
+        "AS total_revenue_usd FROM csv_162 c"
+    )
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_not_aggregated" in codes, codes
+
+
 def test_kpi_guard_still_accepts_real_aggregation():
     from backend.agents.dashboard_tools import _is_aggregated_sql
 
     assert _is_aggregated_sql("SELECT SUM(revenue_usd) AS t FROM csv_162")
     assert _is_aggregated_sql("SELECT d, COUNT(*) AS n FROM csv_162 GROUP BY d")
+    # FILTER without OVER is a conditional aggregate — still one row.
+    assert _is_aggregated_sql(
+        "SELECT SUM(v) FILTER (WHERE v > 0) AS t FROM csv_162"
+    )
+    # A real aggregate nested under a window still collapses to one row, so
+    # these must not be mistaken for pure window output.
+    assert _is_aggregated_sql("SELECT SUM(SUM(v)) OVER () AS t FROM csv_162")
     # Window function alone is not aggregation.
     assert not _is_aggregated_sql("SELECT SUM(v) OVER () AS t FROM csv_162")
+    # FILTER sits between the aggregate and its OVER, so the immediate parent
+    # is Filter, not Window — still one row per input row.
+    assert not _is_aggregated_sql(
+        "SELECT SUM(v) FILTER (WHERE v > 0) OVER () AS t FROM csv_162"
+    )
     assert not _is_aggregated_sql("SELECT d, v FROM csv_162")
     # SQL the parser rejects falls back to the textual check rather than
     # reporting "not aggregated" for something that plainly is.

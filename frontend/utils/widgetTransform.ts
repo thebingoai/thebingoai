@@ -10,6 +10,11 @@ function toJsonSafe(value: any): any {
 
 const DATE_BASED_PERIODS = new Set(['vs yesterday', 'vs last week', 'vs last month', 'vs last quarter', 'vs last year'])
 
+// Mirrors KPI_AGGREGATIONS in backend/services/widget_transform.py. Anything
+// else stored on a mapping (a hand-edited "average", a method that was removed)
+// has to resolve the same way on both sides.
+const KPI_AGGREGATIONS = new Set(['sum', 'avg', 'count', 'countDistinct', 'min', 'max', 'first', 'last'])
+
 function parseDate(value: any): Date | null {
   if (value instanceof Date) return value
   if (typeof value === 'string') {
@@ -344,9 +349,15 @@ function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): 
   if (!result.rows.length) throw new Error('Query returned no rows — cannot build KPI widget')
 
   const firstRow = result.rows[0]
-  // Mirror transform_kpi: an absent aggregation on a multi-row result means
-  // sum, not row 0. Single-row results are identical either way.
-  const aggregation = (mapping.aggregation as string) ?? (result.rows.length > 1 ? 'sum' : 'first')
+  // Mirror transform_kpi: an absent *or unrecognised* aggregation on a
+  // multi-row result means sum, not row 0. `??` alone only caught null, so a
+  // stored "average" reached aggregateValues, missed every branch and fell out
+  // of its trailing `return nums[0]` — the frontend showed one row while the
+  // server summed. Single-row results are identical either way.
+  const storedAgg = mapping.aggregation as string | undefined
+  const aggregation = storedAgg && KPI_AGGREGATIONS.has(storedAgg)
+    ? storedAgg
+    : (result.rows.length > 1 ? 'sum' : 'first')
   const allColValues = result.rows.map(row => toJsonSafe(row[valueIdx])).filter(v => v != null)
   const value = aggregation === 'first'
     ? toJsonSafe(firstRow[valueIdx])

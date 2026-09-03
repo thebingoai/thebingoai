@@ -737,27 +737,38 @@ class TestFilterNeverSilentlyDropped:
         """A declared dimension is gated by its `sources`. An undeclared column
         is gated by the column lists the context carries per source: kept when
         one of the widget's sources exposes it (dropping it would serve
-        unfiltered rows as filtered), dropped when none does (injecting it
-        would 400 on every widget — 3433c24)."""
+        unfiltered rows as filtered), dropped when *another* source has it and
+        this widget's don't (injecting it would 400 on every widget — 3433c24).
+        A column no source in the context has at all is nobody's per-widget
+        skip: it is injected so the engine names it, because dropping it is how
+        a filter nothing can honour renders as a successful filtered answer."""
         from backend.api.widget_data import _dimension_applies_to_sources
 
         ctx = {
             "dimensions": {"session_date": {"column": "session_date",
                                             "sources": ["csv_261"]}},
-            "sources": {"csv_261": {"columns": ["session_date", "session_minutes"]}},
+            "sources": {
+                "csv_261": {"columns": ["session_date", "session_minutes"]},
+                "csv_9": {"columns": ["plan_tier"]},
+            },
         }
         assert _dimension_applies_to_sources("session_date", ctx, ["csv_261"]) is True
         # Known dimension, but it lives on a table this widget doesn't read.
         assert _dimension_applies_to_sources("session_date", ctx, ["other_tbl"]) is False
         # Undeclared, but this widget's source has the column → binds.
         assert _dimension_applies_to_sources("session_minutes", ctx, ["csv_261"]) is True
-        # Undeclared and no source of this widget exposes it → cannot bind.
-        assert _dimension_applies_to_sources("zzz_nope", ctx, ["csv_261"]) is False
+        # Undeclared, and the column lives on a *different* dashboard source →
+        # a real per-widget skip, the case 3433c24 fixed.
+        assert _dimension_applies_to_sources("plan_tier", ctx, ["csv_261"]) is False
+        # Undeclared and unknown to every source → inject, don't drop.
+        assert _dimension_applies_to_sources("zzz_nope", ctx, ["csv_261"]) is True
+        # Case is not meaning: the profiler's casing must not decide this.
+        assert _dimension_applies_to_sources("Session_Minutes", ctx, ["CSV_261"]) is True
 
         # Through inject_filters with widget_sources populated, as the frontend
-        # sends it: the undeclared-but-present filter reaches the SQL, the
-        # unbindable one is dropped. (Quoting is dialect-specific; the bound
-        # params are the drop-vs-inject signal.)
+        # sends it: the undeclared-but-present filter reaches the SQL, and so
+        # does the one no source knows — the engine gets to reject it by name.
+        # (Quoting is dialect-specific; the bound params are the signal.)
         sql, params = inject_filters(
             "SELECT session_date, session_minutes FROM csv_261",
             [FilterParam(column="session_minutes", op="gte", value=30)],
@@ -767,6 +778,13 @@ class TestFilterNeverSilentlyDropped:
         sql, params = inject_filters(
             "SELECT session_date, session_minutes FROM csv_261",
             [FilterParam(column="zzz_nope", op="gte", value=30)],
+            data_context=ctx, widget_sources=["csv_261"],
+        )
+        assert "WHERE" in sql.upper() and params == {"_f0": 30}
+        # Only a column another source owns is dropped without running.
+        sql, params = inject_filters(
+            "SELECT session_date, session_minutes FROM csv_261",
+            [FilterParam(column="plan_tier", op="eq", value="pro")],
             data_context=ctx, widget_sources=["csv_261"],
         )
         assert "WHERE" not in sql.upper() and params == {}
@@ -789,6 +807,14 @@ class TestFilterNeverSilentlyDropped:
 
         connection_ctx = {"tables": {"csv_261": {"columns": {"session_date": {"type": "DATE"}}}}}
         assert _pick_target_scope(scopes, {"session_date"}, connection_ctx) == "inner"
+
+        # Case comes from whoever typed the SQL and whoever profiled the table;
+        # it must not decide whether a scope can bind the filter. Mismatched,
+        # this returns None and the caller wraps the whole query instead of
+        # pushing the WHERE down.
+        mixed = [("outer", [_T("Orders")]), ("inner", [_T("Orders")])]
+        mixed_ctx = {"sources": {"orders": {"columns": ["region", "amount"]}}}
+        assert _pick_target_scope(mixed, {"Region"}, mixed_ctx) == "inner"
 
         # No context at all → keep the old "innermost real-table scope" behaviour.
         assert _pick_target_scope(scopes, {"anything"}, None) == "inner"
