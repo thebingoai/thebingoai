@@ -16,6 +16,7 @@ class Message(Base):
     heartbeat_job_id = Column(String, ForeignKey("heartbeat_jobs.id", ondelete="SET NULL"), nullable=True)
     briefing_id = Column(BigInteger, ForeignKey("briefings.id", ondelete="SET NULL"), nullable=True)
     attachments = Column(JSON, nullable=True, default=None)
+    chart_specs = Column(JSON, nullable=True, default=None)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")

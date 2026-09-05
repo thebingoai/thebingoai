@@ -12,18 +12,23 @@ vi.mock('~/composables/useApi', () => ({
     dashboards: { refreshWidget: mockRefreshWidget },
   }),
 }))
-// reactive() because the composable exposes `error` as a computed: a plain
-// object wouldn't re-evaluate it, and the real store is a reactive Pinia state.
-const storeMock = reactive({
+// Only widgetErrors is reactive: the composable exposes `error` as a computed
+// over it, and a plain object would never re-evaluate. The rest stays plain on
+// purpose — every composable built by an earlier test leaves its activeFilters
+// watcher behind, and a reactive activeFilters would fire them all on the next
+// assignment, each refreshing with the store's dashboard id and burying the
+// call the "dashboard scoping" tests then read as the last one.
+const store = {
   refreshingWidgets: {} as Record<string, boolean>,
   widgetSeq: {} as Record<string, number>,
-  widgetErrors: {} as Record<string, string>,
+  widgetErrors: reactive({} as Record<string, string>),
   activeFilters: [] as any[],
   bulkWidgetLoading: false,
   currentDashboardId: null as number | null,
-})
+  setWidgetSourceData: vi.fn(),
+}
 vi.mock('~/stores/dashboard', () => ({
-  useDashboardStore: () => storeMock,
+  useDashboardStore: () => store,
 }))
 vi.mock('~/utils/widgetMerge', () => ({
   mergeRefreshedConfig: (a: any) => a,
@@ -90,7 +95,7 @@ describe('useWidgetData null-safety', () => {
 
 describe('useWidgetData bulk error surfacing', () => {
   beforeEach(() => {
-    storeMock.widgetErrors = {}
+    for (const k of Object.keys(store.widgetErrors)) delete store.widgetErrors[k]
     mockRefreshWidget.mockClear()
   })
 
@@ -100,16 +105,66 @@ describe('useWidgetData bulk error surfacing', () => {
     const widget = ref<any>({ id: 'w1', dataSource: { connectionId: 1, sql: 'select 1', mapping: {} }, widget: { config: {} } })
     const { error } = useWidgetData(widget, false)
     expect(error.value).toBeNull()
-    storeMock.widgetErrors['w1'] = 'relation "orders" does not exist'
+    store.widgetErrors['w1'] = 'relation "orders" does not exist'
     expect(error.value).toBe('relation "orders" does not exist')
   })
 
   it('clears the stored error when a manual refresh succeeds', async () => {
     const widget = ref<any>({ id: 'w1', dataSource: { connectionId: 1, sql: 'select 1', mapping: {} }, widget: { config: {} } })
     const { error, refresh } = useWidgetData(widget, false)
-    storeMock.widgetErrors['w1'] = 'boom'
+    store.widgetErrors['w1'] = 'boom'
     await refresh()
-    expect(storeMock.widgetErrors['w1']).toBeUndefined()
+    expect(store.widgetErrors['w1']).toBeUndefined()
     expect(error.value).toBeNull()
+  })
+})
+
+// An embed (chat chart, briefing) renders a widget belonging to a dashboard the
+// store is NOT on — on /chat the store is reset entirely. Deriving dashboard_id
+// from the store sent `undefined` (losing the DataPlane/cache/serving path) or,
+// worse, another dashboard's active filters.
+describe('useWidgetData dashboard scoping', () => {
+  const liveWidget = () => ref<any>({
+    id: 'w1',
+    dataSource: { connectionId: 1, sql: 'select 1', mapping: {} },
+    widget: { config: {} },
+  })
+
+  const payload = () => mockRefreshWidget.mock.calls.at(-1)![0]
+
+  beforeEach(() => {
+    mockRefreshWidget.mockClear()
+    store.activeFilters = []
+    store.currentDashboardId = null
+  })
+
+  it('sends the embed dashboard id even when the store has none', async () => {
+    const { refresh } = useWidgetData(liveWidget(), false, { dashboardId: 42 })
+    await refresh()
+    expect(payload().dashboard_id).toBe(42)
+  })
+
+  it('falls back to the store id on the dashboard page', async () => {
+    store.currentDashboardId = 7
+    const { refresh } = useWidgetData(liveWidget(), false)
+    await refresh()
+    expect(payload().dashboard_id).toBe(7)
+  })
+
+  it('never sends another dashboard\'s filters to an embed', async () => {
+    store.currentDashboardId = 7
+    store.activeFilters = [{ column: 'created_at', operator: 'gte', value: '2026-01-01' }]
+    const { refresh } = useWidgetData(liveWidget(), false, { dashboardId: 42 })
+    await refresh()
+    expect(payload().dashboard_id).toBe(42)
+    expect(payload().filters).toBeUndefined()
+  })
+
+  it('still sends filters when the embed IS the open dashboard', async () => {
+    store.currentDashboardId = 42
+    store.activeFilters = [{ column: 'created_at', operator: 'gte', value: '2026-01-01' }]
+    const { refresh } = useWidgetData(liveWidget(), false, { dashboardId: 42 })
+    await refresh()
+    expect(payload().filters).toHaveLength(1)
   })
 })

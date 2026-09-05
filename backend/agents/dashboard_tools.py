@@ -797,13 +797,17 @@ def _resolve_one_connection(connection_id, user_id, db_session_factory):
     return resolved.get(_coerce_connection_id(connection_id), (None, None, ""))
 
 
-async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_context: dict | None = None, user_id: str | None = None, resolved: dict | None = None) -> str | None:
+async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_context: dict | None = None, user_id: str | None = None, resolved: dict | None = None, allow_row_sampling: bool = True) -> str | None:
     """
     Execute the dataSource SQL for a widget and merge results into widget.widget.config.
 
     Modifies widget in-place. On first failure, attempts an LLM-powered SQL fix and retries once,
     including sample data and baseJoin context for better fix quality.
     Returns error string if both attempts fail, None on success.
+
+    `allow_row_sampling=False` drops the sampled rows from that fix prompt (schema
+    + error + baseJoin only) — for callers whose contract is that no row data
+    reaches an LLM at all.
 
     `resolved` is the {connection_id: (connection, connector)} map from
     _resolve_widget_connections. Callers fanning out over multiple widgets must
@@ -891,14 +895,15 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
             logger.warning(f"Widget '{widget_id}': SQL execution failed, attempting LLM fix: {first_error_msg}")
 
         # Gather sample data from referenced tables for better fix context.
-        # Gather sample data from referenced tables for better fix context.
         # Privacy: under metadata_only_llm, skip sampling entirely — the fix
-        # prompt keeps the error + schema + baseJoin, no real rows.
+        # prompt keeps the error + schema + baseJoin, no real rows. Callers that
+        # promise no row data ever reaches an LLM (chat charts) pass
+        # allow_row_sampling=False for the same effect regardless of the flag.
         sample_data = ""
         from backend.services.llm_privacy import metadata_only_for_connection
         # to_thread: reads the org feature-flag cache (sync Redis + on-miss
         # Postgres) — same event-loop hazard as the dialect computation.
-        if not await asyncio.to_thread(metadata_only_for_connection, connection):
+        if allow_row_sampling and not await asyncio.to_thread(metadata_only_for_connection, connection):
             try:
                 from backend.services.schema_utils import extract_table_names
                 tables = extract_table_names(sql)

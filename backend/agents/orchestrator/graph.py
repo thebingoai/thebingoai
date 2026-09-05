@@ -770,6 +770,9 @@ def build_orchestrator_tools(
     from backend.agents.orchestrator.schedule_briefing_tool import build_schedule_briefing_tool
     tools.extend(build_schedule_briefing_tool(context, db_session_factory))
 
+    from backend.agents.orchestrator.chat_chart_tools import build_chat_chart_tools
+    tools.extend(build_chat_chart_tools(context, db_session_factory))
+
     return tools
 
 
@@ -1224,6 +1227,27 @@ def _dashboard_tool_succeeded(messages: list) -> bool:
     return False
 
 
+def _tool_results_from_messages(messages: list) -> list:
+    """[(tool_name, result), ...] for every tool call in `messages`, in call order.
+
+    Non-streaming counterpart of stream_orchestrator's collected_steps scan; same
+    tool_call_id -> name mapping trick as _dashboard_tool_succeeded. Feeds
+    resolve_chart_specs_from_tool_results, which does the chart_ref resolution
+    that keeps row data out of the LLM's view.
+    """
+    tool_name_by_id: dict = {}
+    tool_results: list = []
+    for msg in messages:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tool_name_by_id[tc.get("id", "")] = tc.get("name")
+        elif isinstance(msg, ToolMessage):
+            name = tool_name_by_id.get(getattr(msg, "tool_call_id", ""))
+            if name:
+                tool_results.append((name, msg.content))
+    return tool_results
+
+
 async def run_orchestrator(
     user_question: str,
     context: AgentContext,
@@ -1298,6 +1322,7 @@ async def run_orchestrator(
         retry_succeeded: Optional[bool] = None
         judge_metadata: Optional[Dict[str, Any]] = None
         highlighted_text: Optional[str] = None
+        retry_steps: List[Dict[str, Any]] = []
         # Skip the judge retry when a dashboard tool already succeeded this turn.
         # The judge sees only the final prose; if a created dashboard reads like a
         # description it flags "unresolved" and the retry re-invokes the whole
@@ -1307,7 +1332,7 @@ async def run_orchestrator(
             verdict = await judge_response(user_question, final_answer)
             if not verdict.resolved:
                 logger.warning("Layer-4 judge says unresolved: %s", verdict.reason)
-                final_answer, retry_succeeded, judge_metadata, _retry_steps = await _run_judge_retry(
+                final_answer, retry_succeeded, judge_metadata, retry_steps = await _run_judge_retry(
                     user_question, final_answer, verdict, orchestrator, messages,
                     callbacks=callbacks,
                 )
@@ -1318,12 +1343,24 @@ async def run_orchestrator(
         if settings.judge_highlight_enabled and final_answer:
             final_answer = _apply_highlights(final_answer, highlighted_text)
 
+        # The retry can create or replace the chart, so the trail it produced is
+        # part of the final answer — resolve over both halves, mirroring the
+        # streaming path's append of retry_steps to collected_steps.
+        from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
+        tool_results = _tool_results_from_messages(result.get("messages", []))
+        tool_results += [
+            (step["tool_name"], step.get("content", {}).get("result"))
+            for step in retry_steps if step.get("step_type") == "tool_result"
+        ]
+        chart_specs = resolve_chart_specs_from_tool_results(tool_results, context.user_id)
+
         return {
             "success": True,
             "message": final_answer or "Query completed successfully",
             "thread_id": context.thread_id,
             "retry_succeeded": retry_succeeded,
             "judge_metadata": judge_metadata,
+            "chart_specs": chart_specs,
         }
 
     except Exception as e:
@@ -1668,6 +1705,12 @@ async def stream_orchestrator(
             len(collected_steps),
             _ttft_logged,
         )
+        from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
+        chart_tool_results = [
+            (s["tool_name"], s.get("content", {}).get("result"))
+            for s in collected_steps if s.get("step_type") == "tool_result"
+        ]
+        chart_specs = resolve_chart_specs_from_tool_results(chart_tool_results, context.user_id)
         yield {
             "type": "done",
             "content": "Orchestrator completed",
@@ -1676,6 +1719,7 @@ async def stream_orchestrator(
             "retry_succeeded": retry_succeeded,
             "judge_metadata": judge_metadata,
             "total_ms": _stream_total_ms,
+            "chart_specs": chart_specs,
         }
 
     except LoopDetectedError as e:

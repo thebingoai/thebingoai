@@ -36,6 +36,21 @@ class ChatAttachment(BaseModel):
     storage_key: Optional[str] = None
 
 
+class ChartRef(BaseModel):
+    """One chart attached to a chat message.
+
+    kind="adhoc": frozen snapshot generated for this turn, no dashboard row —
+        `widget` carries the full widget JSON (config + data baked in).
+    kind="dashboard_widget": pointer to a real, live widget on an existing
+        dashboard — rendered by re-fetching, refresh works normally.
+    """
+    kind: Literal["adhoc", "dashboard_widget"]
+    widget: Optional[Dict[str, Any]] = None       # adhoc only
+    connection_id: Optional[int] = None            # adhoc only
+    dashboard_id: Optional[int] = None              # dashboard_widget only
+    widget_id: Optional[str] = None                 # dashboard_widget only
+
+
 class ChatMessage(BaseModel):
     id: int
     role: str  # "user" or "assistant"
@@ -44,6 +59,7 @@ class ChatMessage(BaseModel):
     source: str = "chat"
     attachments: Optional[List[ChatAttachment]] = None
     briefing_id: Optional[int] = None
+    chart_specs: Optional[List[ChartRef]] = None
 
     class Config:
         from_attributes = True
@@ -55,6 +71,7 @@ class ChatResponse(BaseModel):
     sql_queries: List[str] = []  # SQL queries executed
     results: List[Dict[str, Any]] = []  # Query results
     success: bool
+    chart_specs: Optional[List[ChartRef]] = None
 
 
 class ConversationResponse(BaseModel):
