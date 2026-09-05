@@ -350,10 +350,12 @@ def _inject_via_sqlglot(
     )
 
     for sel in targets:
-        # An AST node can only have one parent, so each branch beyond the first
-        # gets its own copy of the conditions (the params they reference are
-        # shared, which is what binds the same value on every branch).
-        conds = conditions if sel is targets[0] else [c.copy() for c in conditions]
+        # Every branch gets its own copy of the conditions. An AST node has one
+        # parent, and the join-key qualification below is branch-specific: it
+        # used to mutate the originals on the first branch, so every later
+        # branch copied `a."id"` into a scope where alias `a` does not exist.
+        # The placeholders share names, which binds one value on every branch.
+        conds = [c.copy() for c in conditions]
 
         # A filter column that is an equi-join key (present on BOTH sides of a
         # `JOIN ... ON a.x = b.x`) exists in 2+ tables, so an unqualified reference to
@@ -393,6 +395,7 @@ def _set_operation_targets(
     candidate_scopes: list,
     filter_columns: set[str],
     data_context: dict | None,
+    stop=None,
 ) -> list:
     """Every SELECT the WHERE must be attached to, given the picked scope.
 
@@ -403,19 +406,24 @@ def _set_operation_targets(
     every leaf branch, or raise (→ subquery wrap over the whole set result) when
     any branch can't take the condition. Filtering some branches and not others
     is never an option.
+
+    The climb to the outermost set operation crosses derived-table boundaries:
+    `... UNION ALL SELECT id FROM (SELECT id FROM sales) nested` puts the picked
+    scope two levels under the UNION, and a climb that stopped at the Subquery
+    filtered that one branch alone. Each branch is then resolved on its own —
+    innermost covering scope inside it, recursing in case that scope sits under
+    a set operation of its own. *stop* bounds the climb to the branch being
+    resolved.
     """
     from sqlglot import exp
 
-    top = target_select
-    while True:
-        parent = top.parent
-        # A parenthesised branch sits inside a Subquery node.
-        if isinstance(parent, exp.Subquery) and isinstance(parent.parent, exp.SetOperation):
-            parent = parent.parent
-        if not isinstance(parent, exp.SetOperation):
-            break
-        top = parent
-    if top is target_select:
+    top = None
+    node = target_select
+    while node is not stop and node.parent is not None:
+        node = node.parent
+        if isinstance(node, exp.SetOperation):
+            top = node
+    if top is None:
         return [target_select]
 
     def _leaves(node):
@@ -427,19 +435,23 @@ def _set_operation_targets(
         else:
             yield node
 
-    by_expr = {
-        id(scope.expression): (scope, real_tables)
-        for scope, real_tables in candidate_scopes
-    }
+    def _within(node, ancestor) -> bool:
+        while node is not None and node is not ancestor:
+            node = node.parent
+        return node is ancestor
+
     targets = []
     for leaf in _leaves(top):
-        entry = by_expr.get(id(leaf))
-        if entry is None or _pick_target_scope([entry], filter_columns, data_context) is None:
+        inner = [entry for entry in candidate_scopes if _within(entry[0].expression, leaf)]
+        picked = _pick_target_scope(inner, filter_columns, data_context)
+        if picked is None:
             raise ValueError(
                 "set-operation branch cannot bind the filter columns — "
                 "routing to subquery wrap"
             )
-        targets.append(leaf)
+        targets += _set_operation_targets(
+            picked.expression, candidate_scopes, filter_columns, data_context, stop=leaf,
+        )
     return targets
 
 
@@ -796,18 +808,26 @@ def _require_stored_query(request, dashboard, current_user) -> None:
     grants. Without this check a viewer of one shared dashboard could read every
     table the host org has connected, at HTTP 200.
 
-    Exempt: the owner, and any caller whose *active* org is the dashboard's.
-    That caller can already edit the dashboard (`update_dashboard` filters on
-    `Dashboard.org_id == current_user.org_id`) and needs free SQL for the
-    editor's preview, so restricting them would break authoring without closing
-    anything they could not reach by saving a widget first.
+    Exempt: the owner, and any caller who can edit the dashboard — judged by
+    the same two facts `update_dashboard` uses: it filters on
+    `Dashboard.org_id == current_user.org_id` and sits behind `forbid_viewer`.
+    An editor needs free SQL for the widget editor's preview, and restricting
+    them would break authoring without closing anything they could not reach by
+    saving a widget first. The role check matters: an `X-Workspace-Id` header
+    for the host workspace sets `current_user.org_id` to the host org while
+    `active_role` stays "viewer", so the org match alone let a cross-org
+    read-only viewer through.
     """
     if dashboard is None or not getattr(dashboard, "org_id", None):
         return
     if dashboard.user_id == current_user.id:
         return
     active_org = getattr(current_user, "org_id", None)
-    if active_org and str(dashboard.org_id) == str(active_org):
+    if (
+        active_org
+        and str(dashboard.org_id) == str(active_org)
+        and getattr(current_user, "active_role", None) != "viewer"
+    ):
         return
     if (request.connection_id, _norm_sql(request.sql)) not in _stored_queries(dashboard):
         logger.warning(

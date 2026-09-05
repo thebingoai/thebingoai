@@ -1006,6 +1006,54 @@ class TestFilterNeverSilentlyDropped:
         executed = connector.execute_query.call_args.args[0]
         assert executed.upper().count("WHERE") == 2, executed
 
+    @pytest.mark.parametrize("sql,branches", [
+        ("SELECT id, amount FROM sales UNION ALL "
+         "SELECT id, amount FROM (SELECT id, amount FROM sales) nested", 2),
+        ("SELECT id, amount FROM (SELECT id, amount FROM sales) n1 UNION ALL "
+         "SELECT id, amount FROM (SELECT id, amount FROM sales) n2", 2),
+        ("SELECT id, amount FROM (SELECT id, amount FROM sales UNION ALL "
+         "SELECT id, amount FROM sales) x UNION ALL SELECT id, amount FROM sales", 3),
+    ])
+    def test_a_nested_union_branch_is_filtered_too(self, sql, branches):
+        """The climb to the enclosing set operation used to stop at the derived
+        table's boundary, so a branch written as `SELECT ... FROM (SELECT ...)`
+        was filtered alone while the other branch kept every row: `id = 1`
+        returned (1, 10), (2, 20), (1, 10)."""
+        duckdb = pytest.importorskip("duckdb")
+        ctx = {"sources": {"sales": {"columns": ["id", "amount"]}}}
+        out, params = inject_filters(
+            sql, [FilterParam(column="id", op="eq", value=1)],
+            data_context=ctx, widget_sources=None, dialect="duckdb",
+        )
+        assert out.upper().count("WHERE") == branches, out
+        con = duckdb.connect()
+        con.execute("CREATE TABLE sales(id INT, amount INT); "
+                    "INSERT INTO sales VALUES (1, 10), (2, 20)")
+        rows = con.execute(out, params).fetchall()
+        assert rows and all(r == (1, 10) for r in rows), rows
+
+    def test_union_branches_qualify_join_keys_with_their_own_alias(self):
+        """The first branch's join-key qualification used to mutate the shared
+        condition nodes, so the second branch copied `a."id"` into a scope whose
+        alias is `c` and the whole query failed to bind."""
+        duckdb = pytest.importorskip("duckdb")
+        ctx = {"sources": {"sales": {"columns": ["id", "amount"]},
+                           "names": {"columns": ["id", "n"]}}}
+        out, params = inject_filters(
+            "SELECT a.id, a.amount FROM sales a JOIN names b ON a.id = b.id "
+            "UNION ALL "
+            "SELECT c.id, c.amount FROM sales c JOIN names d ON c.id = d.id",
+            [FilterParam(column="id", op="eq", value=1)],
+            data_context=ctx, widget_sources=None, dialect="duckdb",
+        )
+        assert 'a."id" = $_f0' in out and 'c."id" = $_f0' in out, out
+        con = duckdb.connect()
+        con.execute("CREATE TABLE sales(id INT, amount INT); "
+                    "INSERT INTO sales VALUES (1, 10), (2, 20)")
+        con.execute("CREATE TABLE names(id INT, n TEXT); "
+                    "INSERT INTO names VALUES (1, 'a'), (2, 'b')")
+        assert con.execute(out, params).fetchall() == [(1, 10), (1, 10)]
+
 
 def _run_refresh(request, connection, connector):
     """Drive refresh_widget synchronously with a mocked connector.

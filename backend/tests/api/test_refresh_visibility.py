@@ -299,3 +299,35 @@ def test_member_inside_the_host_workspace_keeps_free_sql(db, seeded, monkeypatch
     )
     resp = _run(wd.refresh_widget(req, seeded["member"], db))
     assert resp.config == {"rows": []}
+
+
+def test_host_selected_cross_org_viewer_is_still_read_only(db, seeded, monkeypatch):
+    """An `X-Workspace-Id` for the host workspace makes authentication set the
+    viewer's active org to the host org while their role there stays "viewer".
+    The org match alone let them through the stored-SQL guard, on to any
+    host-org connection and a system_context plane read. The exemption is for
+    callers who can edit the dashboard, and `forbid_viewer` says they cannot."""
+    from sqlalchemy.orm.attributes import set_committed_value
+    connector = _shared_setup(db, seeded, monkeypatch)
+    viewer = seeded["outsider"]
+    viewer.home_org_id = "org-2"
+    set_committed_value(viewer, "org_id", "org-1")  # as dependencies.py does
+    viewer.active_role = "viewer"
+
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql="SELECT * FROM private_salaries",
+        mapping={"type": "table", "columnConfig": [{"column": "amount"}]},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, viewer, db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+    stored = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    resp = _run(wd.refresh_widget(stored, viewer, db))
+    assert resp.config == {"rows": []}
