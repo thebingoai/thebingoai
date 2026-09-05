@@ -798,9 +798,69 @@ def _stored_queries(dashboard) -> set:
     return out
 
 
+def _stored_filter_columns(dashboard) -> set:
+    """Lower-cased `column` of every filter control the dashboard stores — the
+    only filters its own UI can send (dashboard.ts builds each ActiveFilter from
+    `control.column`)."""
+    out: set = set()
+    for w in (dashboard.widgets or []):
+        if not isinstance(w, dict):
+            continue
+        controls = ((w.get("widget") or {}).get("config") or {}).get("controls") or []
+        for c in controls:
+            if isinstance(c, dict) and c.get("column"):
+                out.add(str(c["column"]).lower())
+    return out
+
+
+def _can_edit_dashboard(dashboard, current_user) -> bool:
+    """The owner, or a caller whose *active* org is the dashboard's in a role
+    that can edit — the same two facts `update_dashboard` checks (it filters on
+    `Dashboard.org_id == current_user.org_id` and sits behind `forbid_viewer`).
+    The role matters: an `X-Workspace-Id` header for the host workspace sets
+    `current_user.org_id` to the host org while `active_role` stays "viewer",
+    so the org match alone let a cross-org read-only viewer through."""
+    if dashboard.user_id == current_user.id:
+        return True
+    active_org = getattr(current_user, "org_id", None)
+    return bool(
+        active_org
+        and str(dashboard.org_id) == str(active_org)
+        and getattr(current_user, "active_role", None) != "viewer"
+    )
+
+
+def _require_stored_filters(filters, dashboard, current_user) -> None:
+    """A read-only caller may filter only on columns the dashboard's own filter
+    controls declare.
+
+    The stored-SQL check alone was not enough: filters are injected into the
+    stored SQL *after* it passes, so `SELECT SUM(amount) FROM orders` plus a
+    client filter `customer_id = 7` computed a per-customer total the widget
+    never exposed — an arbitrary WHERE on any column of the widget's tables.
+    Both refresh endpoints take client filters; the bulk one runs stored SQL
+    but still has to come through here.
+    """
+    if not filters or dashboard is None or not getattr(dashboard, "org_id", None):
+        return
+    if _can_edit_dashboard(dashboard, current_user):
+        return
+    allowed = _stored_filter_columns(dashboard)
+    rejected = [f.column for f in filters if f.column.lower() not in allowed]
+    if rejected:
+        logger.warning(
+            "Rejected undeclared filter columns %s on shared dashboard %s from user %s",
+            rejected, dashboard.id, current_user.id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Shared dashboards accept only the filters their own controls declare",
+        )
+
+
 def _require_stored_query(request, dashboard, current_user) -> None:
     """A caller who can only *read* this dashboard may run only the queries
-    stored on it.
+    stored on it, filtered only by the controls stored on it.
 
     Cross-org sharing makes `_readable_connection` accept any connection owned
     by any user in the host org, and `request.sql` is executed verbatim against
@@ -808,26 +868,14 @@ def _require_stored_query(request, dashboard, current_user) -> None:
     grants. Without this check a viewer of one shared dashboard could read every
     table the host org has connected, at HTTP 200.
 
-    Exempt: the owner, and any caller who can edit the dashboard — judged by
-    the same two facts `update_dashboard` uses: it filters on
-    `Dashboard.org_id == current_user.org_id` and sits behind `forbid_viewer`.
-    An editor needs free SQL for the widget editor's preview, and restricting
-    them would break authoring without closing anything they could not reach by
-    saving a widget first. The role check matters: an `X-Workspace-Id` header
-    for the host workspace sets `current_user.org_id` to the host org while
-    `active_role` stays "viewer", so the org match alone let a cross-org
-    read-only viewer through.
+    Exempt: anyone who can edit the dashboard (`_can_edit_dashboard`). An editor
+    needs free SQL for the widget editor's preview, and restricting them would
+    break authoring without closing anything they could not reach by saving a
+    widget first.
     """
     if dashboard is None or not getattr(dashboard, "org_id", None):
         return
-    if dashboard.user_id == current_user.id:
-        return
-    active_org = getattr(current_user, "org_id", None)
-    if (
-        active_org
-        and str(dashboard.org_id) == str(active_org)
-        and getattr(current_user, "active_role", None) != "viewer"
-    ):
+    if _can_edit_dashboard(dashboard, current_user):
         return
     if (request.connection_id, _norm_sql(request.sql)) not in _stored_queries(dashboard):
         logger.warning(
@@ -838,6 +886,7 @@ def _require_stored_query(request, dashboard, current_user) -> None:
             status_code=403,
             detail="Shared dashboards serve only the queries stored on them",
         )
+    _require_stored_filters(request.filters, dashboard, current_user)
 
 
 def _shared_serve_ctx(is_shared: bool, serving_org):
@@ -1431,6 +1480,10 @@ def _refresh_dashboard_widgets_sync(
 
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    # The widgets' SQL is stored, but `payload.filters` is client-supplied: a
+    # read-only viewer filters only on the dashboard's own controls.
+    _require_stored_filters(payload.filters if payload else None, dashboard, current_user)
 
     serving_org, dash_is_shared = _serving_org_and_shared(dashboard, current_user)
 

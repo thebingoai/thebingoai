@@ -331,3 +331,54 @@ def test_host_selected_cross_org_viewer_is_still_read_only(db, seeded, monkeypat
     )
     resp = _run(wd.refresh_widget(stored, viewer, db))
     assert resp.config == {"rows": []}
+
+
+# ── shared dashboards accept only the filters their own controls declare ─────
+
+def test_shared_viewer_cannot_filter_a_stored_query_on_an_undeclared_column(db, seeded, monkeypatch):
+    """The stored SQL passes the allowlist, but filters are injected into it
+    afterwards: `SELECT COUNT(*) FROM t` plus `customer_id = 7` is a per-customer
+    count the widget never exposed — an arbitrary WHERE on any column."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+        filters=[wd.FilterParam(column="customer_id", op="eq", value=7)],
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+
+def test_shared_viewer_filters_on_a_declared_control_column(db, seeded, monkeypatch):
+    """The dashboard's own filter control names `region`; matching is
+    case-insensitive like the rest of the injector."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+        filters=[wd.FilterParam(column="Region", op="eq", value="EMEA")],
+    )
+    resp = _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert resp.config == {"rows": []}
+    assert "WHERE" in connector.execute_query.call_args.args[0].upper()
+
+
+def test_bulk_refresh_applies_the_same_filter_allowlist(db, seeded, monkeypatch):
+    """The bulk endpoint runs stored SQL but takes client-supplied filters."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    dash_id = seeded["dashboard"].id
+    undeclared = wd.BulkRefreshRequest(
+        filters=[wd.FilterParam(column="customer_id", op="eq", value=7)])
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_dashboard_widgets(dash_id, undeclared, seeded["outsider"], db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+    declared = wd.BulkRefreshRequest(
+        filters=[wd.FilterParam(column="region", op="eq", value="EMEA")])
+    resp = _run(wd.refresh_dashboard_widgets(dash_id, declared, seeded["outsider"], db))
+    assert "error" not in resp.widgets["w-kpi"], resp.widgets
