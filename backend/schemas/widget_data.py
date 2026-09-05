@@ -49,7 +49,9 @@ class BulkRefreshRequest(BaseModel):
 
 
 class BulkRefreshResponse(BaseModel):
-    # widgetId -> {config, refreshed_at, served_from} on success, or {error}
+    # widgetId -> {config, refreshed_at, served_from, truncated} on success,
+    # or {error} — the store records the latter per widget so the widget can
+    # show it instead of silently keeping its previous value.
     widgets: Dict[str, Any]
 
 

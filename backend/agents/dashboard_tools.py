@@ -344,10 +344,44 @@ _GROUP_BY_RE = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
 
 
 def _is_aggregated_sql(sql: str) -> bool:
-    """True if SQL already aggregates (GROUP BY or an aggregate fn)."""
+    """True if SQL already aggregates (GROUP BY or a non-window aggregate fn).
+
+    Parsed, not pattern-matched, for one reason: `SUM(x) OVER ()` is a window
+    function. It matches the aggregate regex but returns one row per input row,
+    each holding the same total, so a KPI over it clears the guard without an
+    explicit aggregation and then gets summed again — a row-count-fold
+    over-report. The regexes stay as the fallback for SQL the parser rejects.
+    """
     if not isinstance(sql, str) or not sql.strip():
         return False
-    return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        ast = sqlglot.parse_one(sql)
+    except Exception:
+        return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
+    if ast is None:
+        return bool(_GROUP_BY_RE.search(sql) or _AGGREGATE_FN_RE.search(sql))
+    if ast.find(exp.Group):
+        return True
+    def _windowed(fn) -> bool:
+        # Climb to the nearest Window or enclosing aggregate. Several analytic
+        # forms put a wrapper node between the function and its OVER —
+        # `SUM(x) FILTER (…) OVER ()` is Window(Filter(Sum)),
+        # `FIRST_VALUE(x) IGNORE NULLS OVER ()` is Window(IgnoreNulls(FirstValue)),
+        # `PERCENTILE_CONT(…) WITHIN GROUP (…) OVER ()` is Window(WithinGroup(…))
+        # — so checking the immediate parent reads them all as real one-row
+        # aggregates. Stopping the climb at an AggFunc keeps
+        # `SUM(SUM(x)) OVER ()` aggregated, and requiring the climb to arrive in
+        # the Window's own function slot keeps `RANK() OVER (ORDER BY SUM(x))`
+        # aggregated too — that SUM sits in the window's ORDER BY, not under it.
+        node, parent = fn, fn.parent
+        while parent is not None and not isinstance(parent, (exp.Window, exp.AggFunc)):
+            node, parent = parent, parent.parent
+        return isinstance(parent, exp.Window) and parent.this is node
+
+    return any(not _windowed(fn) for fn in ast.find_all(exp.AggFunc))
 
 
 def cfg_title_for(wcfg: dict, fallback: str) -> str:
@@ -356,10 +390,13 @@ def cfg_title_for(wcfg: dict, fallback: str) -> str:
     if not isinstance(wcfg, dict):
         return fallback
     cfg = wcfg.get("config") or {}
+    # `"".splitlines()` is `[]`, so indexing it raised IndexError for any widget
+    # with no title, no label and no content — turning a violation into a crash.
+    lines = (cfg.get("content") or "").splitlines()
     return (
         cfg.get("title")
         or cfg.get("label")
-        or cfg.get("content", "").splitlines()[0][:40]
+        or (lines[0][:40] if lines else "")
         or fallback
     )
 
@@ -385,6 +422,7 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
     and can patch specific widgets in a single retry.
     """
     from backend.agents.orchestrator.dashboard_widget_verifier import verify_dashboard_widgets
+    from backend.services.widget_transform import KPI_AGGREGATIONS
 
     violations: list[dict] = []
 
@@ -460,6 +498,9 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
                     "message": ds_error,
                     "fix_hint": "Fix the dataSource shape per the create_dashboard schema.",
                 })
+                # The guards below read dataSource keys: on a non-dict they crash,
+                # on a missing sql they pile on noise. Shape errors first.
+                continue
 
             # Aggregation guard for category charts. A bar/pie/line/area/doughnut
             # without GROUP BY, an aggregate fn, or `aggregation` on every
@@ -484,6 +525,47 @@ def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
                         "(e.g. \"sum\") so the transform groups-by labelColumn. "
                         "Raw-row category charts (e.g. "
                         "`SELECT role, left FROM t WHERE left=1`) are rejected."
+                    ),
+                })
+
+            # An aggregation the transform doesn't know is treated as absent
+            # (see transform_kpi), so the intent behind e.g. "average" is lost
+            # silently. Reject it whatever the SQL shape.
+            if wcfg["type"] == "kpi":
+                _kpi_agg = (widget["dataSource"].get("mapping") or {}).get("aggregation")
+                if _kpi_agg is not None and _kpi_agg not in KPI_AGGREGATIONS:
+                    violations.append({
+                        "widget_id": wid,
+                        "code": "kpi_invalid_aggregation",
+                        "message": (
+                            f"KPI '{cfg_title_for(wcfg, wid)}' has "
+                            f"mapping.aggregation={_kpi_agg!r}, which is not a "
+                            "supported method."
+                        ),
+                        "fix_hint": f"Use one of {'|'.join(sorted(KPI_AGGREGATIONS))}.",
+                    })
+
+            # Aggregation guard for KPIs. A KPI collapses the result to one
+            # number: with neither SQL aggregation nor mapping.aggregation the
+            # transform falls back to an arbitrary single row, so a 15k-row
+            # scan renders as row 0's value. Reject pre-execution like the
+            # chart rule above.
+            if wcfg["type"] == "kpi" and not _is_aggregated_sql(
+                widget["dataSource"].get("sql") or ""
+            ) and not (widget["dataSource"].get("mapping") or {}).get("aggregation"):
+                violations.append({
+                    "widget_id": wid,
+                    "code": "kpi_not_aggregated",
+                    "message": (
+                        f"KPI '{cfg_title_for(wcfg, wid)}' has no GROUP BY, no "
+                        "aggregate function, and no mapping.aggregation — the "
+                        "headline would be computed over raw rows the query "
+                        "engine may have capped, so it can silently under-report."
+                    ),
+                    "fix_hint": (
+                        "Either aggregate in SQL (SELECT SUM(...)/COUNT(*)) or "
+                        "set mapping.aggregation "
+                        "(sum|avg|count|countDistinct|min|max|last)."
                     ),
                 })
 
@@ -794,7 +876,12 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
 
         try:
             result = await asyncio.to_thread(_run_widget_query, connection, normalized_sql, db_session_factory, connector)
-            result = _cap_widget_rows(result, widget_id)
+            # KPI collapses to a single number, so a second local cut here
+            # would only hide the engine's own `truncated` flag from
+            # transform_kpi, which refuses to aggregate a truncated result.
+            # Charts and tables still cap — their config embeds one entry per row.
+            if (mapping or {}).get("type") != "kpi":
+                result = _cap_widget_rows(result, widget_id)
             config = transform_widget_data(result, mapping)
             widget["widget"]["config"].update(config)
             # Persist so the serve path (api/widget_data) gets the fixed SQL too,
@@ -856,7 +943,12 @@ async def _execute_widget_sql(widget: dict, db_session_factory: Callable, data_c
         fixed_sql = normalize_sql_for(fixed_sql, dialect)
         try:
             result = await asyncio.to_thread(_run_widget_query, connection, fixed_sql, db_session_factory, connector)
-            result = _cap_widget_rows(result, widget_id)
+            # KPI collapses to a single number, so a second local cut here
+            # would only hide the engine's own `truncated` flag from
+            # transform_kpi, which refuses to aggregate a truncated result.
+            # Charts and tables still cap — their config embeds one entry per row.
+            if (mapping or {}).get("type") != "kpi":
+                result = _cap_widget_rows(result, widget_id)
             config = transform_widget_data(result, mapping)
             widget["widget"]["config"].update(config)
             # Persist the fixed SQL back to the widget's dataSource

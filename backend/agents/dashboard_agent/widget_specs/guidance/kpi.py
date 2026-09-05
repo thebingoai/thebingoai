@@ -3,7 +3,7 @@
 KPI_GUIDANCE = """### autoTrend vs Legacy Trend
 
 **autoTrend: true (recommended):** SQL returns multiple time-ordered rows. The system automatically:
-- Computes the headline value using the `aggregation` method — always set it explicitly to match the KPI's purpose (sum, avg, countDistinct, last, ...). If omitted, the backend falls back to the first row's value.
+- Computes the headline value using the `aggregation` method — always set it explicitly to match the KPI's purpose (sum, avg, countDistinct, last, ...). If omitted, a multi-row result is summed, and raw-row SQL without it is rejected before save.
 - Derives trend direction and % change
 
 **Trend calculation is controlled by `periodLabel`:**
@@ -24,7 +24,7 @@ SELECT COUNT(*) AS total_count
 FROM orders o
 LEFT JOIN payments p ON o.id = p.order_id
 ```
-Mapping: `{"type": "kpi", "valueColumn": "total_count"}`
+Mapping: `{"type": "kpi", "valueColumn": "total_count", "aggregation": "sum"}`
 
 **KPI with autoTrend — simple last-2-rows comparison:**
 ```sql
@@ -57,7 +57,8 @@ SELECT
   pct_change
 FROM summary_view
 ```
-Mapping: `{"type": "kpi", "valueColumn": "current_value", "trendValueColumn": "pct_change"}`
+Mapping: `{"type": "kpi", "valueColumn": "current_value", "aggregation": "first", "trendValueColumn": "pct_change"}`
+- The SQL returns a single pre-computed row, so `aggregation: "first"` states that intent explicitly. Every KPI needs either an aggregating SQL (GROUP BY / SUM / COUNT) or an explicit `aggregation` — omitting both is rejected before the dashboard is saved.
 
 ### Best Practices
 

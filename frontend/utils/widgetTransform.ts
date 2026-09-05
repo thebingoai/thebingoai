@@ -10,6 +10,11 @@ function toJsonSafe(value: any): any {
 
 const DATE_BASED_PERIODS = new Set(['vs yesterday', 'vs last week', 'vs last month', 'vs last quarter', 'vs last year'])
 
+// Mirrors KPI_AGGREGATIONS in backend/services/widget_transform.py. Anything
+// else stored on a mapping (a hand-edited "average", a method that was removed)
+// has to resolve the same way on both sides.
+const KPI_AGGREGATIONS = new Set(['sum', 'avg', 'count', 'countDistinct', 'min', 'max', 'first', 'last'])
+
 function parseDate(value: any): Date | null {
   if (value instanceof Date) return value
   if (typeof value === 'string') {
@@ -96,10 +101,36 @@ function periodRanges(periodLabel: string, ref: Date): [Date, Date, Date, Date] 
   return [today, today, today, today]
 }
 
+/**
+ * Distinct count matching `_aggregate_values`' countDistinct in
+ * backend/services/widget_transform.py: JSON / STRUCT / array cells arrive as
+ * objects, and `new Set(...)` compares those by reference, so two rows holding
+ * the same payload counted as two. Structured values collapse by canonical
+ * text (keys sorted, like the backend's `json.dumps(sort_keys=True)`) and are
+ * kept in a separate set from scalars, so a string that happens to hold the
+ * same JSON text is still its own distinct value.
+ */
+export function countDistinct(values: unknown[]): number {
+  const scalars = new Set<unknown>()
+  const structured = new Set<string>()
+  for (const v of values) {
+    if (v === null || v === undefined) continue
+    if (typeof v === 'object') {
+      structured.add(JSON.stringify(v, (_k, x) =>
+        x && typeof x === 'object' && !Array.isArray(x)
+          ? Object.fromEntries(Object.keys(x).sort().map(k => [k, x[k]]))
+          : x))
+    } else {
+      scalars.add(v)
+    }
+  }
+  return scalars.size + structured.size
+}
+
 function aggregateValues(values: any[], aggregation: string): number | null {
   if (!values.length) return null
   if (aggregation === 'count') return values.length
-  if (aggregation === 'countDistinct') return new Set(values).size
+  if (aggregation === 'countDistinct') return countDistinct(values)
   if (aggregation === 'first') return values[0]
   if (aggregation === 'last') return values[values.length - 1]
   const nums = values
@@ -344,7 +375,15 @@ function transformKpi(result: SqliteQueryResult, mapping: Record<string, any>): 
   if (!result.rows.length) throw new Error('Query returned no rows — cannot build KPI widget')
 
   const firstRow = result.rows[0]
-  const aggregation = (mapping.aggregation as string) ?? 'first'
+  // Mirror transform_kpi: an absent *or unrecognised* aggregation on a
+  // multi-row result means sum, not row 0. `??` alone only caught null, so a
+  // stored "average" reached aggregateValues, missed every branch and fell out
+  // of its trailing `return nums[0]` — the frontend showed one row while the
+  // server summed. Single-row results are identical either way.
+  const storedAgg = mapping.aggregation as string | undefined
+  const aggregation = storedAgg && KPI_AGGREGATIONS.has(storedAgg)
+    ? storedAgg
+    : (result.rows.length > 1 ? 'sum' : 'first')
   const allColValues = result.rows.map(row => toJsonSafe(row[valueIdx])).filter(v => v != null)
   const value = aggregation === 'first'
     ? toJsonSafe(firstRow[valueIdx])

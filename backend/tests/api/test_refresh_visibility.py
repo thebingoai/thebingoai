@@ -13,6 +13,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 from fastapi import HTTPException
 from sqlalchemy import create_engine, JSON, LargeBinary
 from sqlalchemy.orm import sessionmaker
@@ -142,3 +145,240 @@ def test_list_and_detail_both_carry_bulk_flag(db, seeded, monkeypatch):
         seeded["dashboard"].id, db=db, current_user=seeded["member"]
     )
     assert detail.bulk_widget_loading is True
+
+
+# ── refresh_widget (single endpoint) on a shared dashboard ───────────────────
+
+OPTIONS_SQL = "SELECT DISTINCT region AS option_value FROM t"
+WIDGET_SQL = "SELECT COUNT(*) AS v FROM t"
+
+
+def _shared_setup(db, seeded, monkeypatch):
+    """Make org-2's viewer a reader of org-1, and give org-1 a connection.
+
+    The dashboard carries the two query shapes a viewer's browser legitimately
+    replays: a widget's own `dataSource`, and a filter control's `optionsSource`.
+    """
+    from backend.models.database_connection import DatabaseConnection
+    import backend.api.dashboards as dashboards_api
+
+    conn = DatabaseConnection(
+        id=77, user_id="u-owner", org_id="org-1", name="host db",
+        db_type="postgres", host="h", port=5432, database="d", username="u",
+    )
+    conn._encrypted_password = "x"
+    # A second connection in the same org, owned by org-1's own member: the
+    # non-shared branch of _readable_connection requires the caller to own it.
+    own = DatabaseConnection(
+        id=78, user_id="u-member", org_id="org-1", name="member db",
+        db_type="postgres", host="h", port=5432, database="d", username="u",
+    )
+    own._encrypted_password = "x"
+    db.add_all([conn, own])
+    seeded["dashboard"].widgets = [
+        {
+            "id": "w-filter",
+            "widget": {"type": "filter", "config": {"controls": [{
+                "type": "dropdown", "key": "region", "column": "region",
+                "optionsSource": {"connectionId": 77, "sql": OPTIONS_SQL},
+            }]}},
+        },
+        {
+            "id": "w-kpi",
+            "widget": {"type": "kpi", "config": {}},
+            "dataSource": {"connectionId": 77, "sql": WIDGET_SQL,
+                           "mapping": {"type": "kpi", "valueColumn": "v"}},
+        },
+    ]
+    db.commit()
+    monkeypatch.setattr(
+        dashboards_api, "_readable_org_ids", lambda _db, user: {"org-1", "org-2"},
+    )
+    monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
+    monkeypatch.setattr(
+        wd, "_read_widget_from_cache",
+        lambda dash_id, wid, org_id, user_id, plane=None: None,
+    )
+    monkeypatch.setattr(wd, "transform_widget_data", lambda r, m: {"rows": []})
+
+    connector = MagicMock()
+    connector.serves_from_plane = False
+    connector.execute_query.return_value = SimpleNamespace(
+        columns=["v"], rows=[(1,)], row_count=1, execution_time_ms=1.0, truncated=False,
+    )
+    monkeypatch.setattr(
+        "backend.connectors.factory.get_connector_for_connection",
+        lambda c, db=None: connector,
+    )
+    return connector
+
+
+def test_shared_viewer_gets_filter_options_when_dashboard_id_is_sent(db, seeded, monkeypatch):
+    """The dropdown-options and date-bounds queries go through this endpoint. With
+    dashboard_id the shared branch of _readable_connection resolves the HOST org's
+    connection, exactly as the dashboard's own widgets do."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=OPTIONS_SQL,
+        mapping={"type": "table", "columnConfig": [{"column": "option_value"}]},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    resp = _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert resp.config == {"rows": []}
+
+
+def test_shared_viewer_404s_without_dashboard_id(db, seeded, monkeypatch):
+    """Without it the endpoint resolves no dashboard, so the owner-only branch
+    runs and a permitted cross-org viewer is refused — the widgets render while
+    their filter controls silently fall back to empty."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=OPTIONS_SQL,
+        mapping={"type": "table", "columnConfig": [{"column": "option_value"}]},
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert exc.value.status_code == 404
+
+
+# ── shared dashboards run only the SQL they store ────────────────────────────
+
+def test_shared_viewer_cannot_run_sql_the_dashboard_does_not_store(db, seeded, monkeypatch):
+    """The shared branch of _readable_connection authorizes any connection in
+    the host org, and the request's SQL is executed verbatim against it — on the
+    DuckDB path under a system_context that bypasses per-table grants. A viewer
+    of one shared dashboard could read every table the host org has connected."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql="SELECT * FROM salaries",
+        mapping={"type": "table", "columnConfig": [{"column": "amount"}]},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+
+def test_shared_viewer_runs_a_stored_widget_query(db, seeded, monkeypatch):
+    """A widget's own SQL still serves, and a trailing semicolon is not a
+    different query."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL + ";",
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    resp = _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert resp.config == {"rows": []}
+
+
+def test_stored_sql_on_another_connection_is_still_refused(db, seeded, monkeypatch):
+    """The pair is (connection, SQL): replaying a stored query against a
+    different host-org connection reads a different database."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=99, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert exc.value.status_code == 403
+
+
+def test_member_inside_the_host_workspace_keeps_free_sql(db, seeded, monkeypatch):
+    """Scoped to read-only viewers: a caller whose *active* org is the
+    dashboard's can already edit it, and the widget editor previews arbitrary
+    SQL before the widget is saved."""
+    _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=78, sql="SELECT * FROM anything_at_all",
+        mapping={"type": "table", "columnConfig": [{"column": "v"}]},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    resp = _run(wd.refresh_widget(req, seeded["member"], db))
+    assert resp.config == {"rows": []}
+
+
+def test_host_selected_cross_org_viewer_is_still_read_only(db, seeded, monkeypatch):
+    """An `X-Workspace-Id` for the host workspace makes authentication set the
+    viewer's active org to the host org while their role there stays "viewer".
+    The org match alone let them through the stored-SQL guard, on to any
+    host-org connection and a system_context plane read. The exemption is for
+    callers who can edit the dashboard, and `forbid_viewer` says they cannot."""
+    from sqlalchemy.orm.attributes import set_committed_value
+    connector = _shared_setup(db, seeded, monkeypatch)
+    viewer = seeded["outsider"]
+    viewer.home_org_id = "org-2"
+    set_committed_value(viewer, "org_id", "org-1")  # as dependencies.py does
+    viewer.active_role = "viewer"
+
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql="SELECT * FROM private_salaries",
+        mapping={"type": "table", "columnConfig": [{"column": "amount"}]},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, viewer, db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+    stored = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+    )
+    resp = _run(wd.refresh_widget(stored, viewer, db))
+    assert resp.config == {"rows": []}
+
+
+# ── shared dashboards accept only the filters their own controls declare ─────
+
+def test_shared_viewer_cannot_filter_a_stored_query_on_an_undeclared_column(db, seeded, monkeypatch):
+    """The stored SQL passes the allowlist, but filters are injected into it
+    afterwards: `SELECT COUNT(*) FROM t` plus `customer_id = 7` is a per-customer
+    count the widget never exposed — an arbitrary WHERE on any column."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+        filters=[wd.FilterParam(column="customer_id", op="eq", value=7)],
+    )
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+
+def test_shared_viewer_filters_on_a_declared_control_column(db, seeded, monkeypatch):
+    """The dashboard's own filter control names `region`; matching is
+    case-insensitive like the rest of the injector."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    req = wd.WidgetRefreshRequest(
+        connection_id=77, sql=WIDGET_SQL,
+        mapping={"type": "kpi", "valueColumn": "v"},
+        dashboard_id=seeded["dashboard"].id,
+        filters=[wd.FilterParam(column="Region", op="eq", value="EMEA")],
+    )
+    resp = _run(wd.refresh_widget(req, seeded["outsider"], db))
+    assert resp.config == {"rows": []}
+    assert "WHERE" in connector.execute_query.call_args.args[0].upper()
+
+
+def test_bulk_refresh_applies_the_same_filter_allowlist(db, seeded, monkeypatch):
+    """The bulk endpoint runs stored SQL but takes client-supplied filters."""
+    connector = _shared_setup(db, seeded, monkeypatch)
+    dash_id = seeded["dashboard"].id
+    undeclared = wd.BulkRefreshRequest(
+        filters=[wd.FilterParam(column="customer_id", op="eq", value=7)])
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_dashboard_widgets(dash_id, undeclared, seeded["outsider"], db))
+    assert exc.value.status_code == 403
+    connector.execute_query.assert_not_called()
+
+    declared = wd.BulkRefreshRequest(
+        filters=[wd.FilterParam(column="region", op="eq", value="EMEA")])
+    resp = _run(wd.refresh_dashboard_widgets(dash_id, declared, seeded["outsider"], db))
+    assert "error" not in resp.widgets["w-kpi"], resp.widgets

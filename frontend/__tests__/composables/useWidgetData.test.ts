@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 
 // useWidgetData is called by BriefingWidgetEmbed with ref(null) before the
 // widget loads async onMounted. These tests lock in null-safety so the
@@ -12,9 +12,16 @@ vi.mock('~/composables/useApi', () => ({
     dashboards: { refreshWidget: mockRefreshWidget },
   }),
 }))
+// Only widgetErrors is reactive: the composable exposes `error` as a computed
+// over it, and a plain object would never re-evaluate. The rest stays plain on
+// purpose — every composable built by an earlier test leaves its activeFilters
+// watcher behind, and a reactive activeFilters would fire them all on the next
+// assignment, each refreshing with the store's dashboard id and burying the
+// call the "dashboard scoping" tests then read as the last one.
 const store = {
-  refreshingWidgets: {},
-  widgetSeq: {},
+  refreshingWidgets: {} as Record<string, boolean>,
+  widgetSeq: {} as Record<string, number>,
+  widgetErrors: reactive({} as Record<string, string>),
   activeFilters: [] as any[],
   bulkWidgetLoading: false,
   currentDashboardId: null as number | null,
@@ -83,6 +90,32 @@ describe('useWidgetData null-safety', () => {
       expect.objectContaining({ widget_id: 'w1' }),
       expect.anything(),
     )
+  })
+})
+
+describe('useWidgetData bulk error surfacing', () => {
+  beforeEach(() => {
+    for (const k of Object.keys(store.widgetErrors)) delete store.widgetErrors[k]
+    mockRefreshWidget.mockClear()
+  })
+
+  it('surfaces a bulk refresh error recorded in the store', () => {
+    // Under bulk loading the watcher never calls refresh(), so the composable's
+    // own error ref stays null and the widget's banner never appears.
+    const widget = ref<any>({ id: 'w1', dataSource: { connectionId: 1, sql: 'select 1', mapping: {} }, widget: { config: {} } })
+    const { error } = useWidgetData(widget, false)
+    expect(error.value).toBeNull()
+    store.widgetErrors['w1'] = 'relation "orders" does not exist'
+    expect(error.value).toBe('relation "orders" does not exist')
+  })
+
+  it('clears the stored error when a manual refresh succeeds', async () => {
+    const widget = ref<any>({ id: 'w1', dataSource: { connectionId: 1, sql: 'select 1', mapping: {} }, widget: { config: {} } })
+    const { error, refresh } = useWidgetData(widget, false)
+    store.widgetErrors['w1'] = 'boom'
+    await refresh()
+    expect(store.widgetErrors['w1']).toBeUndefined()
+    expect(error.value).toBeNull()
   })
 })
 

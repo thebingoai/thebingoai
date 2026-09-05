@@ -91,13 +91,17 @@ class TestInjectFiltersWithContext:
         assert '"region" = %(_f0)s' in result_sql
         assert params["_f0"] == "US"
 
-    def test_no_widget_sources_falls_back_to_legacy(self):
-        """Without widget_sources, all filters are injected."""
+    def test_no_widget_sources_derives_them_from_the_sql(self):
+        """The caller's list is a fallback, not the source of truth: with a
+        context present the tables the SQL names decide. `region` is declared on
+        `orders`, so a payments widget doesn't get it — the same answer as if
+        the stored list had said `["payments"]`."""
         sql = "SELECT * FROM payments"
         filters = [FilterParam(column="region", op="eq", value="US")]
         result_sql, params = inject_filters(sql, filters, data_context=self._ctx(), widget_sources=None)
 
-        assert '"region" = %(_f0)s' in result_sql
+        assert result_sql == sql
+        assert params == {}
 
     def test_mixed_applicable_and_inapplicable_filters(self):
         """Widget from both sources gets region, but unknown_col is also applied (fallback)."""

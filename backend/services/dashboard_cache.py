@@ -364,8 +364,20 @@ def read_widget_data_plane(
     if result is None:
         return None
 
+    from backend.config import settings
+
     return {
         "columns": result.columns,
         "rows": result.rows,
         "row_count": result.row_count,
+        # The bake wrote whatever the engine returned, and the engine caps at
+        # max_query_rows — so a cache holding exactly the cap is the prefix of a
+        # bigger result, and a client-side KPI sum over it is wrong. The row
+        # count is the only trace left: `truncated` was never stored, and the
+        # cloud plane's drop_table is a no-op, so tables baked before this fix
+        # cannot be evicted either.
+        # ponytail: a genuine cap-sized result reads as truncated; persist a
+        # meta row alongside the Parquet if that false positive ever bites.
+        "truncated": bool(getattr(result, "truncated", False))
+        or result.row_count >= settings.max_query_rows,
     }
