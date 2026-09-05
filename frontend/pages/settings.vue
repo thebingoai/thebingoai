@@ -26,9 +26,9 @@
         : 'w-56 border-r border-gray-200 dark:border-neutral-700 flex flex-col justify-between flex-shrink-0 overflow-hidden'"
     >
       <nav :class="isMobile ? 'flex gap-1' : 'flex-1 min-h-0 overflow-y-auto space-y-1 settings-nav-scroll'" style="scrollbar-width: none;">
-        <template v-for="(section, index) in sections" :key="section.id">
+        <template v-for="(section, index) in navSections" :key="section.id">
           <div
-            v-if="!isMobile && section.group && (index === 0 || sections[index - 1].group !== section.group)"
+            v-if="!isMobile && section.group && (index === 0 || navSections[index - 1].group !== section.group)"
             :class="[
               'flex items-center gap-2 px-3 pt-4 pb-2 eyebrow font-semibold text-gray-700 dark:text-gray-200',
               index === 0 ? 'mt-0' : 'mt-3 border-t border-gray-200 dark:border-neutral-700',
@@ -135,6 +135,8 @@ interface Section {
   name: string
   group?: string
   order: number
+  /** Routable via ?tab= but not listed in the nav. */
+  hidden?: boolean
 }
 
 const GROUP_ORDER: Record<string, number> = {
@@ -149,9 +151,13 @@ const sections = computed<Section[]>(() => {
     { id: 'agent', name: 'Agent', group: 'Workspace', order: 5 },
     { id: 'connections', name: 'Connections', group: 'Workspace', order: 10 },
     { id: 'channels', name: 'Channels', group: 'Workspace', order: 20 },
-    // Hidden from the nav — the Skills and Memory features are intact, uncomment to restore.
-    // { id: 'skills', name: 'Skills', group: 'Workspace', order: 30 },
-    // { id: 'memory', name: 'Memory', group: 'Workspace', order: 40 },
+    // Hidden from the nav, still routable: the home screen's empty-Skills CTA
+    // links to ?tab=skills, and the Memory page holds the only controls for
+    // turning automatic memory off and deleting what it wrote. Dropping the
+    // entries instead made those URLs show whichever section was last open.
+    // Delete `hidden` to list them again.
+    { id: 'skills', name: 'Skills', group: 'Workspace', order: 30, hidden: true },
+    { id: 'memory', name: 'Memory', group: 'Workspace', order: 40, hidden: true },
     { id: 'jobs', name: 'Jobs', group: 'Workspace', order: 50 },
     { id: 'profile', name: 'Profile', group: 'Account', order: 10 },
     {
@@ -180,6 +186,8 @@ const sections = computed<Section[]>(() => {
     return ga !== gb ? ga - gb : a.order - b.order
   })
 })
+
+const navSections = computed(() => sections.value.filter(s => !s.hidden))
 
 // Sync initial section from URL query param
 const route = useRoute()
