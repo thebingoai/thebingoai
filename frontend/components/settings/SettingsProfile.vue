@@ -143,13 +143,15 @@
             <p class="text-sm font-medium text-gray-900 dark:text-white">Auto conversation memory</p>
             <p class="text-sm text-gray-500 dark:text-neutral-400 mt-0.5">
               Bingo summarizes your daily chats so future ones build on past context.
-              <NuxtLink to="/settings?tab=memory" class="underline underline-offset-2 hover:text-gray-900 dark:hover:text-white">Manage memories →</NuxtLink>
+              <!-- Viewers see only the Account sections, so ?tab=memory would
+                   fall back to the current pane for them. -->
+              <NuxtLink v-if="!workspace.isViewer" to="/settings?tab=memory" class="underline underline-offset-2 hover:text-gray-900 dark:hover:text-white">Manage memories →</NuxtLink>
             </p>
           </div>
           <button
             type="button"
             :title="memoryEnabled ? 'Disable auto-memory' : 'Enable auto-memory'"
-            :disabled="savingMemory"
+            :disabled="memoryBusy"
             @click="toggleMemoryEnabled"
             class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
             :class="memoryEnabled ? 'bg-violet-600' : 'bg-gray-200 dark:bg-neutral-600'"
@@ -192,6 +194,7 @@
 import { toast } from 'vue-sonner'
 
 const authStore = useAuthStore()
+const workspace = useWorkspaceStore()
 const router = useRouter()
 const colorMode = useColorMode()
 const appTheme = useAppTheme()
@@ -208,26 +211,31 @@ const deleting = ref(false)
 
 const api = useApi() as any
 const memoryEnabled = ref(true)   // matches the backend's default for a missing preference
-const savingMemory = ref(false)
+// Busy while the stored value is loading or a save is in flight. Starting
+// busy keeps the switch inert until the GET settles, so a late response
+// cannot land after a save and show the opposite of what was persisted.
+const memoryBusy = ref(true)
 
 onMounted(async () => {
   try {
     memoryEnabled.value = (await api.memory.getSettings()).memory_enabled
   } catch {
     // Keep the default; the switch still writes.
+  } finally {
+    memoryBusy.value = false
   }
 })
 
 async function toggleMemoryEnabled() {
   try {
-    savingMemory.value = true
+    memoryBusy.value = true
     const updated = await api.memory.updateSettings(!memoryEnabled.value)
     memoryEnabled.value = updated.memory_enabled
     toast.success(updated.memory_enabled ? 'Auto-memory enabled' : 'Auto-memory disabled')
   } catch (err: any) {
     toast.error(err?.data?.detail || err?.message || 'Failed to update settings')
   } finally {
-    savingMemory.value = false
+    memoryBusy.value = false
   }
 }
 

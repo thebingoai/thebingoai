@@ -20,6 +20,9 @@ vi.stubGlobal('useAuthStore', () => ({
 vi.stubGlobal('useRouter', () => ({ push: vi.fn() }))
 vi.stubGlobal('onMounted', (cb: any) => cb())
 
+const workspaceStub = reactive({ isViewer: false })
+vi.stubGlobal('useWorkspaceStore', () => workspaceStub)
+
 const getSettingsMock = vi.fn()
 const updateSettingsMock = vi.fn()
 vi.stubGlobal('useApi', () => ({ memory: { getSettings: getSettingsMock, updateSettings: updateSettingsMock } }))
@@ -45,6 +48,7 @@ beforeEach(() => {
   fontPref = ref('md')
   themePref = ref('kraft')
   vi.clearAllMocks()
+  workspaceStub.isViewer = false
   getSettingsMock.mockResolvedValue({ memory_enabled: true })
 })
 
@@ -125,5 +129,27 @@ describe('SettingsProfile — auto-memory opt-out', () => {
     await flush()
     expect(updateSettingsMock).toHaveBeenCalledWith(false)
     expect(memToggle(w).attributes('title')).toBe('Enable auto-memory')
+  })
+
+  it('stays disabled until the stored value has loaded, so a late GET cannot undo a save', async () => {
+    let settle!: (v: any) => void
+    getSettingsMock.mockReturnValue(new Promise(r => { settle = r }))
+    const w = mountView()
+    await flush()
+    expect(memToggle(w).attributes('disabled')).toBeDefined()
+    await memToggle(w).trigger('click')
+    expect(updateSettingsMock).not.toHaveBeenCalled()
+    settle({ memory_enabled: false })
+    await flush()
+    expect(memToggle(w).attributes('disabled')).toBeUndefined()
+    expect(memToggle(w).attributes('title')).toBe('Enable auto-memory')
+  })
+
+  it('hides the Manage link for viewers, whose settings nav has no Memory section', async () => {
+    workspaceStub.isViewer = true
+    const w = mountView()
+    await flush()
+    expect(memToggle(w)).toBeTruthy()
+    expect(w.find('a[href="/settings?tab=memory"]').exists()).toBe(false)
   })
 })
