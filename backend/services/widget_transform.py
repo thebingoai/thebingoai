@@ -1,4 +1,5 @@
 """Widget Transform — Pure functions to convert QueryResult into widget config dicts."""
+import json
 from decimal import Decimal
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -154,10 +155,31 @@ def _period_ranges(period_label: str, reference: date) -> Tuple[date, date, date
     return today, today, today, today
 
 
+# The agent writes SQL-style aggregations ("SUM") about as often as the schema's
+# lowercase keys, and every comparison below is exact — an unmatched value falls
+# through to "first", so a chart silently shows ONE row's value where the user
+# asked for a total. Fold case at every read instead.
+_AGG_ALIASES = {"countdistinct": "countDistinct", "count_distinct": "countDistinct"}
+
+
+def _norm_agg(value: Any) -> str:
+    """Canonical aggregation key ("" when unset)."""
+    key = str(value or "").strip().lower()
+    return _AGG_ALIASES.get(key, key)
+
+
+#: Every method _aggregate_values distinguishes. Anything else takes its trailing
+#: "first" branch, so the KPI paths that accept stored / LLM input check here.
+KPI_AGGREGATIONS = frozenset(
+    {"sum", "avg", "count", "countDistinct", "min", "max", "first", "last"}
+)
+
+
 def _aggregate_values(values: List[Any], aggregation: str) -> Optional[float]:
     """Aggregate a list of values using the given method."""
     if not values:
         return None
+    aggregation = _norm_agg(aggregation)
     if aggregation == "sum":
         numeric = [v for v in values if isinstance(v, (int, float))]
         return sum(numeric) if numeric else None
@@ -167,7 +189,17 @@ def _aggregate_values(values: List[Any], aggregation: str) -> Optional[float]:
     elif aggregation == "count":
         return float(len(values))
     elif aggregation == "countDistinct":
-        return float(len(set(v for v in values if v is not None)))
+        # JSON / JSONB / STRUCT / array cells arrive as dict or list, which are
+        # unhashable — set() would raise TypeError and surface as a 500 on the
+        # serve path (or burn an LLM SQL-fix round on the bake path) for SQL
+        # that is perfectly valid. Key those by canonical text so duplicates
+        # still collapse — tagged by kind, so a dict never shares a key with a
+        # string column holding the same JSON text.
+        return float(len({
+            (True, json.dumps(v, sort_keys=True, default=str))
+            if isinstance(v, (dict, list)) else (False, v)
+            for v in values if v is not None
+        }))
     elif aggregation == "min":
         numeric = [v for v in values if isinstance(v, (int, float))]
         return min(numeric) if numeric else None
@@ -274,7 +306,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     if x_metric_col and y_metric_col:
         x_idx = _find_column(x_metric_col, result.columns, "xMetricColumn")
         y_idx = _find_column(y_metric_col, result.columns, "yMetricColumn")
-        y_agg = mapping.get("yAggregation") or "none"
+        y_agg = _norm_agg(mapping.get("yAggregation")) or "none"
         size_col = mapping.get("sizeMetricColumn")
         size_idx = _find_column(size_col, result.columns, "sizeMetricColumn") if size_col else None
 
@@ -351,7 +383,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         ]}}
 
     has_aggregation = any(
-        ds.get("aggregation") and ds["aggregation"] != "none"
+        _norm_agg(ds.get("aggregation")) not in ("", "none")
         for ds in dataset_cols
     )
     missing_data = opts.get("missingData")
@@ -373,7 +405,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         breakdown_idx = _find_column(breakdown_col, result.columns, "breakdownColumn")
         measure = dataset_cols[0]
         m_idx = _find_column(measure["column"], result.columns, "datasetColumns[].column")
-        agg = measure.get("aggregation") or "sum"
+        agg = _norm_agg(measure.get("aggregation")) or "sum"
         if agg == "none":
             agg = "sum"
 
@@ -429,7 +461,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         for ds in dataset_cols:
             col = ds["column"]
             col_idx = _find_column(col, result.columns, "datasetColumns[].column")
-            agg = ds.get("aggregation") or "sum"
+            agg = _norm_agg(ds.get("aggregation")) or "sum"
             if agg == "none" and has_granularity:
                 agg = "sum"
             data = []
@@ -525,31 +557,46 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
         return {"value": None}
 
     # Aggregate value across all rows.
-    # Default "first" (first-row value) for backward compatibility: existing/agent
-    # mappings without an explicit aggregation must not silently change meaning.
-    # New/edited KPIs persist an explicit aggregation (e.g. "sum") from the editor.
-    aggregation = mapping.get("aggregation", "first")
-    all_numeric = [
-        v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
-        if isinstance(v, (int, float))
-    ]
+    # Case-folded first (a stored "SUM" is the agent's habit — see _norm_agg),
+    # then gated: a method _aggregate_values does not know must still reach
+    # the multi-row default below, not that helper's trailing "first" branch.
+    aggregation = _norm_agg(mapping.get("aggregation"))
+    if aggregation not in KPI_AGGREGATIONS:
+        # Absent, stored null, or a method _aggregate_values doesn't know (its
+        # trailing branch is "first"). A multi-row result almost never
+        # means "show row 0" — that reading is what makes a 15k-row KPI render a
+        # single cell. Single-row results are identical under either reading, so
+        # they keep "first" and their meaning is unchanged. Deliberately narrower
+        # than the blanket sum-default reverted in 5dbd4e7.
+        aggregation = "sum" if len(result.rows) > 1 else "first"
 
-    if not all_numeric:
+    if getattr(result, "truncated", False) is True and aggregation != "first":
+        # The engine capped the rows (settings.max_query_rows, enforced in every
+        # connector and the DuckDB runner). Aggregating the prefix produces a
+        # number that looks right and isn't — the failure mode this branch
+        # exists to remove — so refuse, and say how to fix it. The serve path
+        # turns this into a 400 with the widget's error banner + Fix button; the
+        # bake path's SQL-fix round rewrites the query to aggregate in SQL.
+        raise ValueError(
+            f"KPI result was truncated at {result.row_count} rows, so a client-side "
+            f"'{aggregation}' would be wrong. Aggregate in SQL "
+            "(SELECT SUM(...) / COUNT(*) ...) or narrow the query."
+        )
+
+    # Delegate the ladder to _aggregate_values — the same helper the trend path
+    # and transform_chart use. It is the only implementation that covers
+    # countDistinct, which the editor and the agent params_doc both offer.
+    # Non-null (not numeric-only) values mirror widgetTransform.ts, so the
+    # editor's optimistic recompute and the server agree on text columns too.
+    values = [
+        v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
+        if v is not None
+    ]
+    value = _aggregate_values(values, aggregation)
+    if value is None:
+        # No non-null values, or none numeric for this aggregation — keep the
+        # pre-existing "show row 0" behaviour for text-valued KPIs.
         value = _to_json_safe(result.rows[0][value_idx])
-    elif aggregation == "sum":
-        value = sum(all_numeric)
-    elif aggregation == "avg":
-        value = round(sum(all_numeric) / len(all_numeric), 2)
-    elif aggregation == "count":
-        value = len(all_numeric)
-    elif aggregation == "min":
-        value = min(all_numeric)
-    elif aggregation == "max":
-        value = max(all_numeric)
-    elif aggregation == "last":
-        value = all_numeric[-1]
-    else:  # "first" or unrecognized
-        value = all_numeric[0]
 
     config: Dict[str, Any] = {"value": value}
 

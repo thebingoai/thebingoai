@@ -723,3 +723,394 @@ class TestSuggestFix:
         assert hasattr(response, "explanation")
         assert isinstance(response.suggested_sql, str)
         assert isinstance(response.explanation, str)
+
+
+class TestFilterNeverSilentlyDropped:
+    """A filter that cannot be applied must surface, never render as unfiltered rows.
+
+    Regression cover for the dashboard-filter bug: a filter naming a column the
+    widget SQL can't reach used to be retried with the filter stripped, so the
+    endpoint answered 200 with the full unfiltered result and no error.
+    """
+
+    def test_dimension_gate_binds_undeclared_columns_by_source_columns(self):
+        """A declared dimension is gated by its `sources`. An undeclared column
+        is gated by the column lists the context carries per source: kept when
+        one of the widget's sources exposes it (dropping it would serve
+        unfiltered rows as filtered), dropped when *another* source has it and
+        this widget's don't (injecting it would 400 on every widget — 3433c24).
+        A column no source in the context has at all is nobody's per-widget
+        skip: it is injected so the engine names it, because dropping it is how
+        a filter nothing can honour renders as a successful filtered answer."""
+        from backend.api.widget_data import _dimension_applies_to_sources
+
+        ctx = {
+            "dimensions": {"session_date": {"column": "session_date",
+                                            "sources": ["csv_261"]}},
+            "sources": {
+                "csv_261": {"columns": ["session_date", "session_minutes"]},
+                "csv_9": {"columns": ["plan_tier"]},
+            },
+        }
+        assert _dimension_applies_to_sources("session_date", ctx, ["csv_261"]) is True
+        # Known dimension, but it lives on a table this widget doesn't read.
+        assert _dimension_applies_to_sources("session_date", ctx, ["other_tbl"]) is False
+        # Undeclared, but this widget's source has the column → binds.
+        assert _dimension_applies_to_sources("session_minutes", ctx, ["csv_261"]) is True
+        # Undeclared, and the column lives on a *different* dashboard source →
+        # a real per-widget skip, the case 3433c24 fixed.
+        assert _dimension_applies_to_sources("plan_tier", ctx, ["csv_261"]) is False
+        # Undeclared and unknown to every source → inject, don't drop.
+        assert _dimension_applies_to_sources("zzz_nope", ctx, ["csv_261"]) is True
+        # Case is not meaning: the profiler's casing must not decide this.
+        assert _dimension_applies_to_sources("Session_Minutes", ctx, ["CSV_261"]) is True
+
+        # Through inject_filters with widget_sources populated, as the frontend
+        # sends it: the undeclared-but-present filter reaches the SQL, and so
+        # does the one no source knows — the engine gets to reject it by name.
+        # (Quoting is dialect-specific; the bound params are the signal.)
+        sql, params = inject_filters(
+            "SELECT session_date, session_minutes FROM csv_261",
+            [FilterParam(column="session_minutes", op="gte", value=30)],
+            data_context=ctx, widget_sources=["csv_261"],
+        )
+        assert "WHERE" in sql.upper() and params == {"_f0": 30}
+        sql, params = inject_filters(
+            "SELECT session_date, session_minutes FROM csv_261",
+            [FilterParam(column="zzz_nope", op="gte", value=30)],
+            data_context=ctx, widget_sources=["csv_261"],
+        )
+        assert "WHERE" in sql.upper() and params == {"_f0": 30}
+        # Only a column another source owns is dropped without running.
+        sql, params = inject_filters(
+            "SELECT session_date, session_minutes FROM csv_261",
+            [FilterParam(column="plan_tier", op="eq", value="pro")],
+            data_context=ctx, widget_sources=["csv_261"],
+        )
+        assert "WHERE" not in sql.upper() and params == {}
+
+    def test_pick_target_scope_reads_dashboard_context_sources(self):
+        """Dashboard contexts expose `sources[t].columns` as a list; connection
+        contexts expose `tables[t].columns` as a dict. Both must resolve."""
+        from backend.api.widget_data import _pick_target_scope
+
+        class _T:
+            def __init__(self, name):
+                self.name = name
+
+        scopes = [("outer", [_T("csv_261")]), ("inner", [_T("csv_261")])]
+
+        dashboard_ctx = {"sources": {"csv_261": {"columns": ["session_minutes",
+                                                            "session_date"]}}}
+        assert _pick_target_scope(scopes, {"session_date"}, dashboard_ctx) == "inner"
+        assert _pick_target_scope(scopes, {"zzz_nope"}, dashboard_ctx) is None
+
+        connection_ctx = {"tables": {"csv_261": {"columns": {"session_date": {"type": "DATE"}}}}}
+        assert _pick_target_scope(scopes, {"session_date"}, connection_ctx) == "inner"
+
+        # Case comes from whoever typed the SQL and whoever profiled the table;
+        # it must not decide whether a scope can bind the filter. Mismatched,
+        # this returns None and the caller wraps the whole query instead of
+        # pushing the WHERE down.
+        mixed = [("outer", [_T("Orders")]), ("inner", [_T("Orders")])]
+        mixed_ctx = {"sources": {"orders": {"columns": ["region", "amount"]}}}
+        assert _pick_target_scope(mixed, {"Region"}, mixed_ctx) == "inner"
+
+        # No context at all → keep the old "innermost real-table scope" behaviour.
+        assert _pick_target_scope(scopes, {"anything"}, None) == "inner"
+
+    def test_inject_filters_emits_the_context_spelling_of_the_column(self):
+        """The gate and the scope picker match case-insensitively, but the
+        identifier reaches the SQL quoted — `"Region"` is a different column
+        from `"region"` on Postgres, so the name emitted has to be the one the
+        profiler recorded, not the one the filter control was saved with."""
+        ctx = {"sources": {"orders": {"columns": ["region", "amount"]}}}
+        filters = [FilterParam(column="Region", op="eq", value="APAC")]
+
+        # Postgres, because that is where the two spellings are two columns —
+        # the default bigquery dialect renders the same identifier in backticks.
+        sql, params = inject_filters(
+            "SELECT region, SUM(amount) AS amt FROM orders GROUP BY region",
+            filters, data_context=ctx, widget_sources=["orders"],
+            dialect="postgres",
+        )
+        assert '"region"' in sql
+        assert '"Region"' not in sql
+        assert params == {"_f0": "APAC"}
+
+    def test_wrap_fallback_also_emits_the_context_spelling(self):
+        """Unparseable SQL takes the subquery wrap, which builds the identifier
+        by hand — the same rewrite has to have reached it."""
+        ctx = {"sources": {"orders": {"columns": ["region"]}}}
+        filters = [FilterParam(column="Region", op="eq", value="APAC")]
+
+        sql, _ = inject_filters(
+            "SELECT ((( FROM orders", filters,
+            data_context=ctx, widget_sources=["orders"],
+        )
+        assert '"region"' in sql
+        assert '"Region"' not in sql
+
+    def test_canonicalised_column_still_finds_its_date_type(self):
+        """_lookup_column_type is case-sensitive, so before canonicalisation a
+        mismatched filter column silently lost the DATE() wrap that makes a
+        `YYYY-MM-DD` value comparable to a TIMESTAMP column."""
+        ctx = {"tables": {"orders": {"columns": {"Order_Date": {"type": "TIMESTAMP"}}}}}
+        filters = [FilterParam(column="order_date", op="gte", value="2026-01-01")]
+
+        sql, params = inject_filters(
+            "SELECT * FROM orders", filters,
+            data_context=ctx, widget_sources=["orders"], dialect="postgres",
+        )
+        assert 'DATE("Order_Date")' in sql
+        assert params == {"_f0": "2026-01-01"}
+
+    @pytest.mark.asyncio
+    async def test_failed_filtered_query_raises_instead_of_serving_unfiltered(self):
+        """Every retry keeps the filter on, so an unappliable filter 500s rather
+        than silently returning the unfiltered rows."""
+        connection = MagicMock(id=1, db_type="postgres", user_id="user-1",
+                               org_id=None, owner_scope_kind="user",
+                               owner_scope_id="user-1")
+        connector = MagicMock()
+        connector.serves_from_plane = False
+        connector.execute_query.side_effect = Exception('column "zzz_nope" does not exist')
+
+        request = WidgetRefreshRequest(
+            connection_id=1, sql="SELECT count(*) AS n FROM orders",
+            mapping={"type": "kpi", "valueColumn": "n"},
+            filters=[FilterParam(column="zzz_nope", op="gte", value="2099-01-01")],
+        )
+
+        with patch("backend.connectors.factory.get_connector_for_connection",
+                   return_value=connector):
+            with pytest.raises(HTTPException) as exc:
+                await refresh_widget(request, _mock_user(), _mock_db(connection))
+
+        assert exc.value.status_code == 500
+        # Every attempt carried bound filter params; an unfiltered retry would
+        # have called through with params=None.
+        assert connector.execute_query.call_count > 0
+        assert all(
+            call.kwargs.get("params") is not None
+            for call in connector.execute_query.call_args_list
+        ), "a retry dropped the filter instead of failing"
+
+    def test_sources_come_from_the_sql_not_the_stored_list(self):
+        """`sources` is written once, when the agent creates the widget; every SQL
+        editor rewrites `dataSource.sql` without touching it. Reading the stale
+        list drops a valid filter for the table the SQL actually names, and the
+        query then succeeds unfiltered."""
+        ctx = {
+            "dimensions": {"event_date": {"column": "event_date",
+                                          "sources": ["shipments"]}},
+            "sources": {
+                "orders": {"columns": ["order_date", "amount"]},
+                "shipments": {"columns": ["event_date", "amount"]},
+            },
+        }
+        # Widget was repointed orders → shipments; `sources` still says orders.
+        sql, params = inject_filters(
+            "SELECT event_date, amount FROM shipments",
+            [FilterParam(column="event_date", op="gte", value="2026-01-01")],
+            data_context=ctx, widget_sources=["orders"],
+        )
+        assert "WHERE" in sql.upper() and params == {"_f0": "2026-01-01"}
+
+        # The reverse still holds: a filter for a table this SQL doesn't read
+        # is dropped, whatever the stored list claims.
+        sql, params = inject_filters(
+            "SELECT order_date, amount FROM orders",
+            [FilterParam(column="event_date", op="gte", value="2026-01-01")],
+            data_context=ctx, widget_sources=["shipments"],
+        )
+        assert "WHERE" not in sql.upper() and params == {}
+
+    def test_undeclared_column_on_an_unprofiled_table_is_injected(self):
+        """Hand-edited SQL can name a table the context never described. Nothing
+        can rule the filter out there, so inject and let the engine complain —
+        the alternative is answering a filtered request with every row."""
+        ctx = {"dimensions": {}, "sources": {"orders": {"columns": ["region"]}}}
+        sql, params = inject_filters(
+            "SELECT region FROM orders_2026_archive",
+            [FilterParam(column="region", op="eq", value="EMEA")],
+            data_context=ctx, widget_sources=["orders"],
+        )
+        assert "WHERE" in sql.upper() and params == {"_f0": "EMEA"}
+
+    @pytest.mark.parametrize("sql,branches,dialect", [
+        # Bare UNION / EXCEPT / INTERSECT are Postgres-side spellings; the
+        # BigQuery parser requires the ALL / DISTINCT qualifier.
+        ("SELECT event_date, amount FROM current_sales "
+         "UNION ALL SELECT event_date, amount FROM archived_sales", 2, "bigquery"),
+        ("SELECT event_date, amount FROM current_sales "
+         "UNION DISTINCT SELECT event_date, amount FROM archived_sales", 2, "bigquery"),
+        ("SELECT event_date, amount FROM current_sales "
+         "UNION SELECT event_date, amount FROM archived_sales", 2, "postgres"),
+        ("SELECT event_date, amount FROM current_sales "
+         "EXCEPT SELECT event_date, amount FROM archived_sales", 2, "postgres"),
+        ("(SELECT event_date, amount FROM current_sales) "
+         "INTERSECT (SELECT event_date, amount FROM archived_sales)", 2, "postgres"),
+        ("SELECT event_date, amount FROM current_sales "
+         "UNION ALL SELECT event_date, amount FROM archived_sales "
+         "UNION ALL SELECT event_date, amount FROM cold_sales", 3, "postgres"),
+    ])
+    def test_every_set_operation_branch_is_filtered(self, sql, branches, dialect):
+        """_pick_target_scope returns ONE scope, so a UNION used to get its WHERE
+        on a single branch while the others kept contributing unfiltered rows —
+        and the combined query still returned 200."""
+        ctx = {"sources": {t: {"columns": ["event_date", "amount"]}
+                           for t in ("current_sales", "archived_sales", "cold_sales")}}
+        out, params = inject_filters(
+            sql, [FilterParam(column="event_date", op="gte", value="2026-01-01")],
+            data_context=ctx, widget_sources=None, dialect=dialect,
+        )
+        assert out.upper().count("WHERE") == branches, out
+        assert not out.startswith("SELECT * FROM ("), "fell back to the subquery wrap"
+        # One placeholder name reused across branches → one bound value.
+        assert params == {"_f0": "2026-01-01"}
+
+    def test_a_set_branch_that_cannot_bind_wraps_the_whole_result(self):
+        """Partially filtering a set operation is never right: when one branch
+        can't take the condition, wrap the combined result instead."""
+        ctx = {"sources": {"current_sales": {"columns": ["event_date", "amount"]},
+                           "legacy_sales": {"columns": ["amount"]}}}
+        out, params = inject_filters(
+            "SELECT event_date, amount FROM current_sales "
+            "UNION ALL SELECT NULL AS event_date, amount FROM legacy_sales",
+            [FilterParam(column="event_date", op="gte", value="2026-01-01")],
+            data_context=ctx, widget_sources=None, dialect="postgres",
+        )
+        assert out.startswith("SELECT * FROM ("), out
+        assert out.upper().count("WHERE") == 1
+        assert params == {"_f0": "2026-01-01"}
+
+    def test_union_reaches_the_connector_filtered_on_both_branches(self):
+        """End-to-end through the endpoint, not just the injector."""
+        connection = MagicMock(id=1, db_type="postgres", user_id="user-1",
+                               org_id=None, owner_scope_kind="user",
+                               owner_scope_id="user-1")
+        connector = MagicMock()
+        connector.serves_from_plane = False
+        connector.execute_query.return_value = QueryResult(
+            columns=["region"], rows=[("EMEA",)], row_count=1, execution_time_ms=1.0,
+        )
+        request = WidgetRefreshRequest(
+            connection_id=1,
+            sql="SELECT region FROM current_sales UNION ALL SELECT region FROM archived_sales",
+            mapping={"type": "table", "columnConfig": [{"column": "region"}]},
+            filters=[FilterParam(column="region", op="eq", value="EMEA")],
+        )
+        resp = _run_refresh(request, connection, connector)
+        assert resp is not None
+        executed = connector.execute_query.call_args.args[0]
+        assert executed.upper().count("WHERE") == 2, executed
+
+    @pytest.mark.parametrize("sql,branches", [
+        ("SELECT id, amount FROM sales UNION ALL "
+         "SELECT id, amount FROM (SELECT id, amount FROM sales) nested", 2),
+        ("SELECT id, amount FROM (SELECT id, amount FROM sales) n1 UNION ALL "
+         "SELECT id, amount FROM (SELECT id, amount FROM sales) n2", 2),
+        ("SELECT id, amount FROM (SELECT id, amount FROM sales UNION ALL "
+         "SELECT id, amount FROM sales) x UNION ALL SELECT id, amount FROM sales", 3),
+    ])
+    def test_a_nested_union_branch_is_filtered_too(self, sql, branches):
+        """The climb to the enclosing set operation used to stop at the derived
+        table's boundary, so a branch written as `SELECT ... FROM (SELECT ...)`
+        was filtered alone while the other branch kept every row: `id = 1`
+        returned (1, 10), (2, 20), (1, 10)."""
+        duckdb = pytest.importorskip("duckdb")
+        ctx = {"sources": {"sales": {"columns": ["id", "amount"]}}}
+        out, params = inject_filters(
+            sql, [FilterParam(column="id", op="eq", value=1)],
+            data_context=ctx, widget_sources=None, dialect="duckdb",
+        )
+        assert out.upper().count("WHERE") == branches, out
+        con = duckdb.connect()
+        con.execute("CREATE TABLE sales(id INT, amount INT); "
+                    "INSERT INTO sales VALUES (1, 10), (2, 20)")
+        rows = con.execute(out, params).fetchall()
+        assert rows and all(r == (1, 10) for r in rows), rows
+
+    def test_union_branches_qualify_join_keys_with_their_own_alias(self):
+        """The first branch's join-key qualification used to mutate the shared
+        condition nodes, so the second branch copied `a."id"` into a scope whose
+        alias is `c` and the whole query failed to bind."""
+        duckdb = pytest.importorskip("duckdb")
+        ctx = {"sources": {"sales": {"columns": ["id", "amount"]},
+                           "names": {"columns": ["id", "n"]}}}
+        out, params = inject_filters(
+            "SELECT a.id, a.amount FROM sales a JOIN names b ON a.id = b.id "
+            "UNION ALL "
+            "SELECT c.id, c.amount FROM sales c JOIN names d ON c.id = d.id",
+            [FilterParam(column="id", op="eq", value=1)],
+            data_context=ctx, widget_sources=None, dialect="duckdb",
+        )
+        assert 'a."id" = $_f0' in out and 'c."id" = $_f0' in out, out
+        con = duckdb.connect()
+        con.execute("CREATE TABLE sales(id INT, amount INT); "
+                    "INSERT INTO sales VALUES (1, 10), (2, 20)")
+        con.execute("CREATE TABLE names(id INT, n TEXT); "
+                    "INSERT INTO names VALUES (1, 'a'), (2, 'b')")
+        assert con.execute(out, params).fetchall() == [(1, 10), (1, 10)]
+
+
+def _run_refresh(request, connection, connector):
+    """Drive refresh_widget synchronously with a mocked connector.
+
+    `_mock_db` stops after one `.filter()`, but `_readable_connection` chains two
+    (id, then owner), so the connection it resolves would be an auto-generated
+    mock whose `db_type` isn't a real dialect. Self-returning filters keep the
+    connection this test configured.
+    """
+    import asyncio
+    db = MagicMock()
+    q = db.query.return_value
+    q.filter.return_value = q
+    q.join.return_value = q
+    q.first.return_value = connection
+    with patch("backend.connectors.factory.get_connector_for_connection",
+               return_value=connector):
+        return asyncio.run(refresh_widget(request, _mock_user(), db))
+
+
+class TestTruncatedResults:
+    """A capped result must never be aggregated client-side and returned as a
+    success — `settings.max_query_rows` clamps every connector and the DuckDB
+    runner, so a KPI over raw rows sums only the prefix."""
+
+    def test_truncated_flag_reaches_the_response(self):
+        connection = MagicMock(id=1, db_type="postgres", user_id="user-1",
+                               org_id=None, owner_scope_kind="user",
+                               owner_scope_id="user-1")
+        connector = MagicMock()
+        connector.serves_from_plane = False
+        connector.execute_query.return_value = QueryResult(
+            columns=["a"], rows=[(1,)], row_count=1, execution_time_ms=1.0,
+            truncated=True,
+        )
+        request = WidgetRefreshRequest(
+            connection_id=1, sql="SELECT a FROM t",
+            mapping={"type": "table", "columnConfig": [{"column": "a"}]},
+        )
+        resp = _run_refresh(request, connection, connector)
+        assert resp.truncated is True, "truncation was hardcoded away"
+
+    def test_truncated_kpi_is_rejected_not_summed(self):
+        connection = MagicMock(id=1, db_type="postgres", user_id="user-1",
+                               org_id=None, owner_scope_kind="user",
+                               owner_scope_id="user-1")
+        connector = MagicMock()
+        connector.serves_from_plane = False
+        connector.execute_query.return_value = QueryResult(
+            columns=["v"], rows=[(1,), (2,)], row_count=2, execution_time_ms=1.0,
+            truncated=True,
+        )
+        request = WidgetRefreshRequest(
+            connection_id=1, sql="SELECT v FROM t",
+            mapping={"type": "kpi", "valueColumn": "v", "aggregation": "sum"},
+        )
+        with pytest.raises(HTTPException) as exc:
+            _run_refresh(request, connection, connector)
+        assert exc.value.status_code == 400
+        assert "truncated" in str(exc.value.detail).lower()

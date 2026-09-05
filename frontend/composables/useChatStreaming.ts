@@ -422,6 +422,10 @@ export const useChatStreaming = () => {
           chatStore.updateMessageById(assistantMsgId, { agent_steps: [...agentSteps] })
         }
 
+        if (data.chart_specs) {
+          chatStore.updateMessageById(assistantMsgId, { chart_specs: data.chart_specs })
+        }
+
         const threadId: string = data.thread_id
         if (threadId && (!chatStore.currentThreadId || chatStore.pendingNewConversationId)) {
           chatStore.setCurrentThread(threadId)

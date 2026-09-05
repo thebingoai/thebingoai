@@ -336,7 +336,9 @@ _ORCHESTRATOR_TOOLS = """## Tool Usage Guide
 - Questions about the user's dashboards, data connections, or application state → use list_dashboards / list_connections
 - Questions requiring SQL queries against the user's databases → use data_agent tools
 - Questions about uploaded documents → use rag_agent tools
-- Requests to create dashboards or visualizations → use create_dashboard
+- Requests for a persisted dashboard (saved, multiple widgets, to revisit later) → use create_dashboard
+- A single ad-hoc chart/visualization to answer one question inline in this reply (not saved as a dashboard — "show me", "plot", "chart") → use generate_chat_chart, NOT create_dashboard
+- The question refers to an @mentioned dashboard → use select_dashboard_widget instead of generate_chat_chart
 - Always prefer using a tool over saying you don't have access
 
 ## File-to-Dashboard Workflow (IMPORTANT)

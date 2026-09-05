@@ -145,3 +145,39 @@ class TestTheNeverAskBanIsScoped:
     def test_the_old_blanket_wording_is_gone(self):
         tools = DEFAULTS["orchestrator"]["tools"]
         assert "You MUST handle the full workflow automatically." not in tools
+
+
+class TestChartRoutingReachesEveryPromptPath:
+    """The chart tools are bound in all three paths (graph.build_orchestrator_tools),
+    so a guide that omits them mis-routes ad-hoc chart requests into create_dashboard
+    — which is what happened before this branch, in the seeded profile text."""
+
+    def test_the_seeded_tool_guide_routes_charts(self):
+        tools = DEFAULTS["orchestrator"]["tools"]
+        assert "generate_chat_chart" in tools
+        assert "select_dashboard_widget" in tools
+        assert "Requests to create dashboards or visualizations" not in tools
+
+    def test_the_legacy_hardcoded_guide_routes_charts(self):
+        from backend.agents.orchestrator.prompts import build_orchestrator_prompt
+
+        prompt = build_orchestrator_prompt(None)
+        assert "generate_chat_chart" in prompt
+        assert "select_dashboard_widget" in prompt
+
+    def test_the_lean_guide_routes_charts(self):
+        from backend.agents.orchestrator.prompts import _LEAN_ROUTING_RULE
+
+        assert "generate_chat_chart" in _LEAN_ROUTING_RULE
+        assert "select_dashboard_widget" in _LEAN_ROUTING_RULE
+
+    def test_the_mention_routing_bias_agrees_with_the_tool_guide(self):
+        """The bias block is appended after the guide, so a contradiction there
+        wins: it must not send an @dashboard chart request to a non-chart verb."""
+        from backend.agents.orchestrator.prompts import render_mentions_block
+        from backend.schemas.chat import ResolvedMention
+
+        block = render_mentions_block([
+            ResolvedMention(type="dashboard", id=1, name="d", display_name="D"),
+        ])
+        assert "select_dashboard_widget" in block

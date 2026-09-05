@@ -330,7 +330,10 @@ def test_lean_dashboard_verifies_and_lays_out():
 
     lean = [{"type": "filter", "controls": [{"type": "dropdown", "label": "R", "key": "r", "column": "r"}]}]
     for i in range(4):
-        lean.append({"type": "kpi", "label": f"M{i}", "valueColumn": "v", "connectionId": 1, "sql": "SELECT 1 AS v"})
+        # aggregation is explicit: the kpi_not_aggregated gate requires either
+        # aggregating SQL or an explicit aggregation on every KPI.
+        lean.append({"type": "kpi", "label": f"M{i}", "valueColumn": "v", "aggregation": "sum",
+                     "connectionId": 1, "sql": "SELECT 1 AS v"})
     lean += [
         {"type": "chart", "chartType": "bar", "labelColumn": "r",
          "datasetColumns": [{"column": "v", "label": "V", "aggregation": "sum"}],
@@ -440,6 +443,100 @@ def test_aggregation_guard_fires_for_each_category_type():
 
 
 # --------------------------------------------------------------------------- #
+# Aggregation guard (_verify_widgets -> kpi_not_aggregated)
+# --------------------------------------------------------------------------- #
+
+def _kpi_widget(sql, aggregation=None, label="Total Revenue"):
+    """Build a KPI widget in the SHAPE the agent emits after build_widgets
+    hydration. `aggregation=None` reproduces the omission `_pick` allows."""
+    mapping = {"type": "kpi", "valueColumn": "total_revenue_usd"}
+    if aggregation is not None:
+        mapping["aggregation"] = aggregation
+    return {
+        "id": "kpi_1",
+        "position": {"x": 0, "y": 0, "w": 3, "h": 2},
+        "widget": {"type": "kpi", "config": {"label": label}},
+        "dataSource": {"connectionId": 1, "sql": sql, "mapping": mapping},
+    }
+
+
+def test_kpi_guard_rejects_raw_rows_without_aggregation():
+    """Reproduces the reported bug: a 15k-row raw SELECT with no
+    mapping.aggregation renders row 0 as the headline."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget(
+        "SELECT c.sale_date, c.revenue_usd AS total_revenue_usd FROM csv_162 c ORDER BY c.sale_date"
+    )
+    v = _verify_widgets([w], None)
+    assert any(x.get("code") == "kpi_not_aggregated" for x in v), v
+
+
+def test_kpi_guard_passes_with_explicit_aggregation():
+    """Escape hatch: raw rows are fine when the transform is told how to
+    collapse them."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget(
+        "SELECT c.sale_date, c.revenue_usd AS total_revenue_usd FROM csv_162 c",
+        aggregation="sum",
+    )
+    assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
+
+
+def test_kpi_guard_passes_aggregated_sql():
+    """SQL that already collapses to one row needs no mapping.aggregation."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT SUM(c.revenue_usd) AS total_revenue_usd FROM csv_162 c")
+    assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
+
+
+def test_kpi_guard_survives_a_label_less_widget():
+    """A KPI whose config has neither label nor title must yield a violation,
+    not an IndexError from cfg_title_for's empty-content fallback."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT d, v AS total_revenue_usd FROM t")
+    w["widget"]["config"] = {}
+    v = _verify_widgets([w], None)
+    assert any(x.get("code") == "kpi_not_aggregated" for x in v), v
+
+
+def test_chart_guard_survives_a_title_less_widget():
+    """Same latent crash on the pre-existing chart rule: a bar chart with only
+    a `type` in its config used to raise instead of reporting."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _chart_widget("bar", "SELECT region, sales FROM t", [{"column": "sales", "label": "S"}])
+    w["widget"]["config"] = {"type": "bar"}
+    v = _verify_widgets([w], None)
+    assert any(x.get("code") == "chart_not_aggregated" for x in v), v
+
+
+def test_kpi_guard_ignores_non_kpi_widgets():
+    """The rule keys off widget.type — a chart must not collect it."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _chart_widget("bar", "SELECT region, sales FROM t", [{"column": "sales", "label": "S"}])
+    assert not any(x.get("code") == "kpi_not_aggregated" for x in _verify_widgets([w], None))
+
+
+def test_kpi_guard_rejects_an_unknown_aggregation():
+    """Any truthy aggregation used to pass the guard, but the transform treats
+    a method it doesn't know as absent — the stated intent is lost silently."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT d, v AS total_revenue_usd FROM t", aggregation="average")
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_invalid_aggregation" in codes, codes
+    assert "kpi_not_aggregated" not in codes, codes
+
+
+def test_guards_skip_a_malformed_data_source():
+    """A non-dict dataSource is reported once as invalid_dataSource; the
+    aggregation guards must not then call .get() on it and crash."""
+    from backend.agents.dashboard_tools import _verify_widgets
+    w = _kpi_widget("SELECT 1 AS total_revenue_usd")
+    w["dataSource"] = "SELECT 1 AS total_revenue_usd"
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert codes == ["invalid_dataSource"], codes
+
+
+# --------------------------------------------------------------------------- #
 # Dialect hints for db_type='dataset' (CSV/Excel via bingo-csv-connector)
 # --------------------------------------------------------------------------- #
 
@@ -474,3 +571,85 @@ def test_dialect_hints_dataset_lockdown_returns_bigquery():
         assert out != DUCKDB_DIALECT_HINTS
     finally:
         _settings.disable_local_data_plane = saved
+
+
+def test_kpi_guard_rejects_a_window_aggregate():
+    """`SUM(x) OVER ()` matches the aggregate regex but is a window function: it
+    returns one row per input row, each holding the same total. Passing the guard
+    lets the KPI omit mapping.aggregation, and the multi-row default then sums
+    those identical rows — the headline is the total times the row count."""
+    from backend.agents.dashboard_tools import _verify_widgets
+
+    w = _kpi_widget("SELECT SUM(c.revenue_usd) OVER () AS total_revenue_usd FROM csv_162 c")
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_not_aggregated" in codes, codes
+
+
+def test_kpi_guard_rejects_a_filtered_window_aggregate():
+    """`SUM(x) FILTER (WHERE …) OVER ()` is the same window function with a
+    FILTER clause in between, so the aggregate's immediate parent is Filter and
+    the guard read it as a real one-row aggregate."""
+    from backend.agents.dashboard_tools import _verify_widgets
+
+    w = _kpi_widget(
+        "SELECT SUM(c.revenue_usd) FILTER (WHERE c.revenue_usd > 0) OVER () "
+        "AS total_revenue_usd FROM csv_162 c"
+    )
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_not_aggregated" in codes, codes
+
+
+def test_kpi_guard_rejects_an_ignore_nulls_window():
+    """`IGNORE NULLS` parses as Window(IgnoreNulls(FirstValue)), so the
+    aggregate's immediate parent is IgnoreNulls and the guard read a per-row
+    window as a real one-row aggregate — the KPI then sums the repeated value."""
+    from backend.agents.dashboard_tools import _verify_widgets
+
+    w = _kpi_widget(
+        "SELECT FIRST_VALUE(c.revenue_usd) IGNORE NULLS OVER (ORDER BY c.d) "
+        "AS total_revenue_usd FROM csv_162 c"
+    )
+    codes = [x.get("code") for x in _verify_widgets([w], None)]
+    assert "kpi_not_aggregated" in codes, codes
+
+
+def test_kpi_guard_still_accepts_real_aggregation():
+    from backend.agents.dashboard_tools import _is_aggregated_sql
+
+    assert _is_aggregated_sql("SELECT SUM(revenue_usd) AS t FROM csv_162")
+    assert _is_aggregated_sql("SELECT d, COUNT(*) AS n FROM csv_162 GROUP BY d")
+    # FILTER without OVER is a conditional aggregate — still one row.
+    assert _is_aggregated_sql(
+        "SELECT SUM(v) FILTER (WHERE v > 0) AS t FROM csv_162"
+    )
+    # A real aggregate nested under a window still collapses to one row, so
+    # these must not be mistaken for pure window output.
+    assert _is_aggregated_sql("SELECT SUM(SUM(v)) OVER () AS t FROM csv_162")
+    # Window function alone is not aggregation.
+    assert not _is_aggregated_sql("SELECT SUM(v) OVER () AS t FROM csv_162")
+    # FILTER sits between the aggregate and its OVER, so the immediate parent
+    # is Filter, not Window — still one row per input row.
+    assert not _is_aggregated_sql(
+        "SELECT SUM(v) FILTER (WHERE v > 0) OVER () AS t FROM csv_162"
+    )
+    # Every other wrapper sqlglot puts between an analytic function and its
+    # OVER is the same shape: one row per input row, not an aggregate.
+    assert not _is_aggregated_sql(
+        "SELECT FIRST_VALUE(v) IGNORE NULLS OVER (ORDER BY d) AS t FROM csv_162"
+    )
+    assert not _is_aggregated_sql(
+        "SELECT LAST_VALUE(v) RESPECT NULLS OVER (ORDER BY d) AS t FROM csv_162"
+    )
+    assert not _is_aggregated_sql(
+        "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY v) OVER () AS t FROM csv_162"
+    )
+    # The same ordered-set aggregate without OVER really is one row.
+    assert _is_aggregated_sql(
+        "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY v) AS t FROM csv_162"
+    )
+    # The aggregate here sits in the window's ORDER BY, not under the window.
+    assert _is_aggregated_sql("SELECT RANK() OVER (ORDER BY SUM(v)) AS t FROM csv_162")
+    assert not _is_aggregated_sql("SELECT d, v FROM csv_162")
+    # SQL the parser rejects falls back to the textual check rather than
+    # reporting "not aggregated" for something that plainly is.
+    assert _is_aggregated_sql("SELECT COUNT(* FROM broken")

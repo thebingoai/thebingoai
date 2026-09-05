@@ -94,7 +94,9 @@ def _make_widget(widget_id, sql="SELECT 1", connection_id=1):
         "dataSource": {
             "connectionId": connection_id,
             "sql": sql,
-            "mapping": {"type": "kpi", "valueColumn": "value"},
+            # aggregation is explicit: the kpi_not_aggregated gate requires
+            # either aggregating SQL or an explicit aggregation on every KPI.
+            "mapping": {"type": "kpi", "valueColumn": "value", "aggregation": "sum"},
         },
     }
 

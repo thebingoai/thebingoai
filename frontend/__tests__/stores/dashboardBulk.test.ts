@@ -193,3 +193,87 @@ describe('openDashboard bulk gating', () => {
     expect(refreshAllMock).not.toHaveBeenCalled()
   })
 })
+
+describe('refreshAllWidgets (per-widget failures)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    refreshAllMock.mockReset()
+    getDashboardMock.mockReset()
+  })
+
+  it('records a per-widget error instead of only logging it', async () => {
+    // The bulk endpoint reports failures per widget. The per-widget watcher is
+    // off while bulk loading is on, so a console.error was the only trace: the
+    // widget kept painting its previous value under its previous timestamp.
+    const store = setup([makeSqlWidget('w-1')])
+    refreshAllMock.mockResolvedValueOnce({
+      widgets: { 'w-1': { error: 'relation "orders" does not exist' } },
+    })
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBe('relation "orders" does not exist')
+    expect((store.currentWidgets[0].widget.config as any).value).toBe(1) // untouched
+    expect(store.currentWidgets[0].dataSource!.lastRefreshedAt).toBeUndefined()
+  })
+
+  it('clears a recorded error once the widget refreshes successfully', async () => {
+    const store = setup([makeSqlWidget('w-1')])
+    store.widgetErrors['w-1'] = 'boom'
+    refreshAllMock.mockResolvedValueOnce({
+      widgets: { 'w-1': { config: { value: 42 }, refreshed_at: 'now', served_from: 'source' } },
+    })
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBeUndefined()
+    expect((store.currentWidgets[0].widget.config as any).value).toBe(42)
+  })
+
+  it('marks every widget when the whole bulk request fails', async () => {
+    // A per-widget error had a banner; a failed request had only a console
+    // line, so every widget kept its old value and its old timestamp with
+    // nothing on screen to say the refresh never happened.
+    const store = setup([makeSqlWidget('w-1'), makeSqlWidget('w-2')])
+    refreshAllMock.mockRejectedValueOnce({ data: { detail: 'connection refused' } })
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBe('connection refused')
+    expect(store.widgetErrors['w-2']).toBe('connection refused')
+    expect((store.currentWidgets[0].widget.config as any).value).toBe(1)
+    expect(store.refreshingWidgets['w-1']).toBeUndefined()
+    expect(store.refreshing).toBe(false)
+  })
+
+  it('does not overwrite a newer single-widget refresh with a bulk failure', async () => {
+    // The success path skips widgets whose seq advanced mid-flight; the failure
+    // path wrote every id, so a widget that had just refreshed successfully got
+    // its fresh value stamped with this request's error.
+    const store = setup([makeSqlWidget('w-1'), makeSqlWidget('w-2')])
+    let rejectBulk!: (e: any) => void
+    refreshAllMock.mockReturnValueOnce(new Promise((_r, rej) => { rejectBulk = rej }))
+
+    const bulk = store.refreshAllWidgets()
+    store.widgetSeq['w-1'] = (store.widgetSeq['w-1'] ?? 0) + 1
+    rejectBulk({ data: { detail: 'connection refused' } })
+    await bulk
+
+    expect(store.widgetErrors['w-1']).toBeUndefined()
+    expect(store.widgetErrors['w-2']).toBe('connection refused')
+  })
+
+  it('says nothing when the bulk request was aborted', async () => {
+    // Navigation and $resetAll abort in flight requests; that is not a failure
+    // the user should see a banner for.
+    const store = setup([makeSqlWidget('w-1')])
+    const abort = new Error('aborted')
+    abort.name = 'AbortError'
+    refreshAllMock.mockRejectedValueOnce(abort)
+
+    await store.refreshAllWidgets()
+
+    expect(store.widgetErrors['w-1']).toBeUndefined()
+    expect(store.refreshing).toBe(false)
+  })
+})

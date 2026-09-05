@@ -21,17 +21,75 @@ def _dimension_applies_to_sources(
     data_context: dict,
     widget_sources: list[str],
 ) -> bool:
-    """Check if a filter dimension applies to the given widget sources."""
+    """Check if a filter dimension applies to the given widget sources.
+
+    Names are matched case-insensitively: `widget_sources` is normally derived
+    from the SQL (lower-cased by `extract_table_refs`) while the context keys
+    carry whatever case the profiler saw.
+    """
+    tables_meta = data_context.get("tables") or data_context.get("sources") or {}
+    known = {str(k).lower(): v for k, v in tables_meta.items()}
+    srcs = {str(s).lower() for s in widget_sources}
+
     dimensions = data_context.get("dimensions", {})
-    # Find the dimension by column name
+    # Find the dimension by column name. A declared dimension is authoritative:
+    # it names exactly which tables carry the column, so a widget that reads
+    # none of them genuinely cannot bind the filter.
     for dim_name, dim_data in dimensions.items():
         if dim_data.get("column") == column:
             dim_sources = dim_data.get("sources", [])
             # Check if any of the widget's sources overlap with the dimension's sources
-            return bool(set(dim_sources) & set(widget_sources))
-    # Context provided but column not found → filter doesn't apply to this widget.
-    # Only fall back to True when no data_context at all (backward compat).
-    return data_context is None
+            applies = bool({str(s).lower() for s in dim_sources} & srcs)
+            if not applies:
+                logger.warning(
+                    "Filter on %r dropped: dimension sources %s do not overlap widget "
+                    "sources %s", column, dim_sources, widget_sources,
+                )
+            return applies
+
+    if known and (srcs - set(known)):
+        # Undeclared column, and the widget reads a table the context never
+        # described (hand-edited SQL, a join the profiler didn't see). Nothing
+        # here can rule the filter out, so inject it and let the engine reject
+        # an unknown column loudly rather than serve unfiltered rows as though
+        # they answered the request.
+        return True
+
+    # Not a declared dimension. The context still lists columns per source —
+    # connection contexts as `tables[t].columns` (dict), dashboard contexts as
+    # `sources[t].columns` (list), the same pair _pick_target_scope reads.
+    col = column.lower()
+
+    def _cols(tbl) -> set[str]:
+        return {str(c).lower() for c in ((tbl or {}).get("columns") or ())}
+
+    # A column one of this widget's sources exposes binds here, so the filter is
+    # kept: dropping it would answer a filtered request with unfiltered rows.
+    for src in srcs:
+        if col in _cols(known.get(src)):
+            return True
+
+    if any(col in _cols(tbl) for tbl in known.values()):
+        # Some other source on this dashboard has the column, this widget's
+        # don't. A genuine per-widget skip: injecting anyway is the
+        # "400 Unrecognized name" on every widget fixed in 3433c24.
+        logger.warning(
+            "Filter on %r dropped: not a dimension (known: %s) and none of widget "
+            "sources %s expose it", column, sorted(dimensions), widget_sources,
+        )
+        return False
+
+    # No source the context describes has this column at all, so this is not a
+    # filter that fails to apply to one widget — it is a filter nothing on the
+    # dashboard can honour. Dropping it answers a filtered request with
+    # unfiltered rows at HTTP 200. Inject it and let the engine reject it by
+    # name, the same way the no-context path already does.
+    logger.warning(
+        "Filter on %r is unknown to the whole data context (known sources: %s) — "
+        "injecting so the engine rejects it instead of serving unfiltered rows",
+        column, sorted(known),
+    )
+    return True
 
 
 _OP_MAP = {
@@ -96,6 +154,27 @@ def _lookup_column_type(data_context: dict | None, column: str) -> str | None:
     return None
 
 
+def _canonical_column(data_context: dict | None, column: str) -> str:
+    """The data context's own spelling of *column*, or *column* unchanged when
+    no source lists it.
+
+    The applicability gate and the scope picker both match column names
+    case-insensitively, but the name is emitted as a *quoted* identifier, and
+    `"Region"` is not `"region"` on Postgres or DuckDB. A filter control saved
+    with the label's casing therefore cleared every case-insensitive check and
+    then failed in the engine. `_lookup_column_type` is case-sensitive for the
+    same reason, so canonicalising here also restores the DATE() wrap for
+    date-like columns whose stored casing differs.
+    """
+    tables = (data_context or {}).get("tables") or (data_context or {}).get("sources") or {}
+    low = column.lower()
+    for tbl in tables.values():
+        for c in ((tbl or {}).get("columns") or ()):
+            if str(c).lower() == low:
+                return str(c)
+    return column
+
+
 def inject_filters(
     sql: str,
     filters: List[FilterParam],
@@ -127,6 +206,14 @@ def inject_filters(
     if not filters:
         return sql, {}
 
+    if data_context:
+        # The stored `sources` list is what the model wrote when the dashboard
+        # was created; every SQL editor rewrites `dataSource.sql` without
+        # touching it, so it goes stale the first time a widget is repointed.
+        # The SQL is the truth about which tables this widget reads. Fall back
+        # to the caller's list only when the SQL doesn't parse.
+        from backend.utils.sql_refs import extract_table_refs
+        widget_sources = extract_table_refs(sql) or widget_sources
     if data_context and widget_sources:
         filters = [
             f for f in filters
@@ -134,6 +221,15 @@ def inject_filters(
         ]
         if not filters:
             return sql, {}
+
+    if data_context:
+        # One rewrite, before anything reads f.column: it feeds the quoted
+        # identifier in _build_ast_condition, that function's date-type lookup,
+        # _pick_target_scope's coverage test, and the subquery-wrap fallback.
+        filters = [
+            f.model_copy(update={"column": _canonical_column(data_context, f.column)})
+            for f in filters
+        ]
 
     sql = sql.rstrip().rstrip(';').rstrip()
 
@@ -249,28 +345,40 @@ def _inject_via_sqlglot(
     if not isinstance(target_select, exp.Select):
         raise ValueError(f"target scope is not a SELECT: {type(target_select).__name__}")
 
-    # A filter column that is an equi-join key (present on BOTH sides of a
-    # `JOIN ... ON a.x = b.x`) exists in 2+ tables, so an unqualified reference to
-    # it raises "ambiguous reference". Qualify those to the actual join-side alias
-    # (either side is equivalent for an equi-join). Non-join columns resolve
-    # unambiguously and are left untouched.
-    join_key_alias: dict[str, str] = {}
-    for eq in target_select.find_all(exp.EQ):
-        lhs, rhs = eq.this, eq.expression
-        if (isinstance(lhs, exp.Column) and isinstance(rhs, exp.Column)
-                and lhs.table and rhs.table
-                and lhs.name.lower() == rhs.name.lower()):
-            join_key_alias[lhs.name.lower()] = lhs.table
-    if join_key_alias:
-        for cond in conditions:
-            for colnode in cond.find_all(exp.Column):
-                if not colnode.table:
-                    alias = join_key_alias.get(colnode.name.lower())
-                    if alias:
-                        colnode.set("table", exp.to_identifier(alias))
+    targets = _set_operation_targets(
+        target_select, candidate_scopes, filter_columns, data_context
+    )
 
-    for cond in conditions:
-        target_select.where(cond, append=True, copy=False)
+    for sel in targets:
+        # Every branch gets its own copy of the conditions. An AST node has one
+        # parent, and the join-key qualification below is branch-specific: it
+        # used to mutate the originals on the first branch, so every later
+        # branch copied `a."id"` into a scope where alias `a` does not exist.
+        # The placeholders share names, which binds one value on every branch.
+        conds = [c.copy() for c in conditions]
+
+        # A filter column that is an equi-join key (present on BOTH sides of a
+        # `JOIN ... ON a.x = b.x`) exists in 2+ tables, so an unqualified reference to
+        # it raises "ambiguous reference". Qualify those to the actual join-side alias
+        # (either side is equivalent for an equi-join). Non-join columns resolve
+        # unambiguously and are left untouched.
+        join_key_alias: dict[str, str] = {}
+        for eq in sel.find_all(exp.EQ):
+            lhs, rhs = eq.this, eq.expression
+            if (isinstance(lhs, exp.Column) and isinstance(rhs, exp.Column)
+                    and lhs.table and rhs.table
+                    and lhs.name.lower() == rhs.name.lower()):
+                join_key_alias[lhs.name.lower()] = lhs.table
+        if join_key_alias:
+            for cond in conds:
+                for colnode in cond.find_all(exp.Column):
+                    if not colnode.table:
+                        alias = join_key_alias.get(colnode.name.lower())
+                        if alias:
+                            colnode.set("table", exp.to_identifier(alias))
+
+        for cond in conds:
+            sel.where(cond, append=True, copy=False)
 
     rendered = ast.sql(dialect=dialect)
     if dialect == "duckdb":
@@ -282,6 +390,71 @@ def _inject_via_sqlglot(
     return _PLACEHOLDER_REWRITE.sub(r"%(\1)s", rendered)
 
 
+def _set_operation_targets(
+    target_select,
+    candidate_scopes: list,
+    filter_columns: set[str],
+    data_context: dict | None,
+    stop=None,
+) -> list:
+    """Every SELECT the WHERE must be attached to, given the picked scope.
+
+    A UNION / UNION ALL / INTERSECT / EXCEPT is a set of independent SELECTs and
+    `_pick_target_scope` returns exactly one of them. Filtering only that branch
+    leaves the others contributing unfiltered rows, and the combined query still
+    succeeds — the silent wrong answer this branch exists to remove. So widen to
+    every leaf branch, or raise (→ subquery wrap over the whole set result) when
+    any branch can't take the condition. Filtering some branches and not others
+    is never an option.
+
+    The climb to the outermost set operation crosses derived-table boundaries:
+    `... UNION ALL SELECT id FROM (SELECT id FROM sales) nested` puts the picked
+    scope two levels under the UNION, and a climb that stopped at the Subquery
+    filtered that one branch alone. Each branch is then resolved on its own —
+    innermost covering scope inside it, recursing in case that scope sits under
+    a set operation of its own. *stop* bounds the climb to the branch being
+    resolved.
+    """
+    from sqlglot import exp
+
+    top = None
+    node = target_select
+    while node is not stop and node.parent is not None:
+        node = node.parent
+        if isinstance(node, exp.SetOperation):
+            top = node
+    if top is None:
+        return [target_select]
+
+    def _leaves(node):
+        if isinstance(node, exp.Subquery):
+            node = node.this
+        if isinstance(node, exp.SetOperation):
+            yield from _leaves(node.this)
+            yield from _leaves(node.expression)
+        else:
+            yield node
+
+    def _within(node, ancestor) -> bool:
+        while node is not None and node is not ancestor:
+            node = node.parent
+        return node is ancestor
+
+    targets = []
+    for leaf in _leaves(top):
+        inner = [entry for entry in candidate_scopes if _within(entry[0].expression, leaf)]
+        picked = _pick_target_scope(inner, filter_columns, data_context)
+        if picked is None:
+            raise ValueError(
+                "set-operation branch cannot bind the filter columns — "
+                "routing to subquery wrap"
+            )
+        targets += _set_operation_targets(
+            picked.expression, candidate_scopes, filter_columns, data_context, stop=leaf,
+        )
+    return targets
+
+
 def _pick_target_scope(
     candidate_scopes: list,
     filter_columns: set[str],
@@ -289,10 +462,12 @@ def _pick_target_scope(
 ):
     """Pick the innermost scope whose real tables collectively cover every filter column.
 
-    Coverage is judged via *data_context.tables[table].columns* when available
-    (the same dict the dashboard agent consumes). If no context is provided,
-    falls back to "innermost scope that has any real table" — good enough for
-    the bounds-CTE case and won't worsen behaviour for simple queries.
+    Coverage is judged from the context's per-table column lists. Two shapes ship:
+    connection contexts use `tables[name].columns` (a dict keyed by column), and
+    dashboard contexts built by the agent use `sources[name].columns` (a plain
+    list of names) — `_lookup_column_type` handles the same pair. If neither is
+    present, falls back to "innermost scope that has any real table" — good enough
+    for the bounds-CTE case and won't worsen behaviour for simple queries.
     """
     if not candidate_scopes:
         return None
@@ -300,17 +475,26 @@ def _pick_target_scope(
     # Innermost first: scope.traverse() yields parents before children, so reverse.
     ordered = list(reversed(candidate_scopes))
 
-    tables_meta = (data_context or {}).get("tables") or {}
+    raw_meta = (data_context or {}).get("tables") or (data_context or {}).get("sources") or {}
+    # Case-insensitively, like _dimension_applies_to_sources: the AST carries
+    # whatever case the SQL author typed (`FROM Orders`) while the context keys
+    # carry what the profiler saw (`orders`). A mismatch here reads as "no scope
+    # covers the filter", which routes a perfectly injectable filter into the
+    # subquery wrap.
+    tables_meta = {str(k).lower(): v for k, v in raw_meta.items()}
+    wanted = {str(c).lower() for c in filter_columns}
 
     def covers(real_tables) -> bool:
         if not tables_meta:
             return True  # no context → assume innermost real-table scope is correct
         available_cols: set[str] = set()
         for tbl in real_tables:
-            tbl_name = tbl.name
-            cols = ((tables_meta.get(tbl_name) or {}).get("columns") or {})
-            available_cols.update(cols.keys())
-        return filter_columns.issubset(available_cols)
+            cols = ((tables_meta.get(str(tbl.name).lower()) or {}).get("columns") or {})
+            # dict (connection context) → keys; list (dashboard context) → values.
+            available_cols.update(
+                str(c).lower() for c in (cols.keys() if isinstance(cols, dict) else cols)
+            )
+        return wanted.issubset(available_cols)
 
     for scope, real_tables in ordered:
         if covers(real_tables):
@@ -384,6 +568,23 @@ def _resolve_serving_plane(org_id: str | None, user_id: str, db: Session):
         return None
 
 
+def _flag_capped_cache(result):
+    """Mark a `_dash_*` cache read as truncated when it sits on the row cap.
+
+    The bake stored whatever the engine returned, and every engine caps at
+    settings.max_query_rows without recording that it did — so a cache holding
+    exactly the cap is the prefix of a larger result. Same inference as
+    `read_widget_data_plane`, applied to the DuckDB-over-GCS warm read, which
+    goes straight to the reader instead of through that helper.
+    """
+    from backend.config import settings
+
+    if result is not None and not getattr(result, "truncated", False):
+        if getattr(result, "row_count", 0) >= settings.max_query_rows:
+            result.truncated = True
+    return result
+
+
 def _read_widget_from_cache(
     dashboard_id: int,
     widget_id: str,
@@ -417,6 +618,8 @@ def _read_widget_from_cache(
         rows=dp_data["rows"],
         row_count=dp_data["row_count"],
         execution_time_ms=(time.time() - start) * 1000,
+        # Carried through so a KPI over a capped cache is refused, not summed.
+        truncated=bool(dp_data.get("truncated", False)),
     )
 
 
@@ -562,6 +765,130 @@ def _readable_connection(db, connection_id, current_user, dashboard):
     return q.filter(shared_sample_clause()).first()
 
 
+def _norm_sql(sql: str) -> str:
+    """Compare form for stored-vs-requested SQL: trailing whitespace and a
+    trailing semicolon only. Deliberately not a normalizing parse — an exact
+    match is the point, and any looser comparison widens what a read-only
+    viewer can run."""
+    return (sql or "").strip().rstrip(";").strip()
+
+
+def _stored_queries(dashboard) -> set:
+    """Every (connection_id, sql) pair this dashboard's own JSON can legitimately
+    ask the refresh endpoint to run: each widget's `dataSource`, plus each filter
+    control's `optionsSource` / `dateRangeSource` — the dropdown-options and
+    date-bounds queries DashboardWidgetFilter.vue issues on load.
+    """
+    out: set = set()
+    for w in (dashboard.widgets or []):
+        if not isinstance(w, dict):
+            continue
+        sources = [w.get("dataSource")]
+        controls = ((w.get("widget") or {}).get("config") or {}).get("controls") or []
+        for c in controls:
+            if isinstance(c, dict):
+                sources += [c.get("optionsSource"), c.get("dateRangeSource")]
+        for s in sources:
+            if not isinstance(s, dict) or not s.get("sql"):
+                continue
+            try:
+                out.add((int(s.get("connectionId")), _norm_sql(s["sql"])))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _stored_filter_columns(dashboard) -> set:
+    """Lower-cased `column` of every filter control the dashboard stores — the
+    only filters its own UI can send (dashboard.ts builds each ActiveFilter from
+    `control.column`)."""
+    out: set = set()
+    for w in (dashboard.widgets or []):
+        if not isinstance(w, dict):
+            continue
+        controls = ((w.get("widget") or {}).get("config") or {}).get("controls") or []
+        for c in controls:
+            if isinstance(c, dict) and c.get("column"):
+                out.add(str(c["column"]).lower())
+    return out
+
+
+def _can_edit_dashboard(dashboard, current_user) -> bool:
+    """The owner, or a caller whose *active* org is the dashboard's in a role
+    that can edit — the same two facts `update_dashboard` checks (it filters on
+    `Dashboard.org_id == current_user.org_id` and sits behind `forbid_viewer`).
+    The role matters: an `X-Workspace-Id` header for the host workspace sets
+    `current_user.org_id` to the host org while `active_role` stays "viewer",
+    so the org match alone let a cross-org read-only viewer through."""
+    if dashboard.user_id == current_user.id:
+        return True
+    active_org = getattr(current_user, "org_id", None)
+    return bool(
+        active_org
+        and str(dashboard.org_id) == str(active_org)
+        and getattr(current_user, "active_role", None) != "viewer"
+    )
+
+
+def _require_stored_filters(filters, dashboard, current_user) -> None:
+    """A read-only caller may filter only on columns the dashboard's own filter
+    controls declare.
+
+    The stored-SQL check alone was not enough: filters are injected into the
+    stored SQL *after* it passes, so `SELECT SUM(amount) FROM orders` plus a
+    client filter `customer_id = 7` computed a per-customer total the widget
+    never exposed — an arbitrary WHERE on any column of the widget's tables.
+    Both refresh endpoints take client filters; the bulk one runs stored SQL
+    but still has to come through here.
+    """
+    if not filters or dashboard is None or not getattr(dashboard, "org_id", None):
+        return
+    if _can_edit_dashboard(dashboard, current_user):
+        return
+    allowed = _stored_filter_columns(dashboard)
+    rejected = [f.column for f in filters if f.column.lower() not in allowed]
+    if rejected:
+        logger.warning(
+            "Rejected undeclared filter columns %s on shared dashboard %s from user %s",
+            rejected, dashboard.id, current_user.id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Shared dashboards accept only the filters their own controls declare",
+        )
+
+
+def _require_stored_query(request, dashboard, current_user) -> None:
+    """A caller who can only *read* this dashboard may run only the queries
+    stored on it, filtered only by the controls stored on it.
+
+    Cross-org sharing makes `_readable_connection` accept any connection owned
+    by any user in the host org, and `request.sql` is executed verbatim against
+    it — on the DuckDB path under `system_context`, which bypasses per-table
+    grants. Without this check a viewer of one shared dashboard could read every
+    table the host org has connected, at HTTP 200.
+
+    Exempt: anyone who can edit the dashboard (`_can_edit_dashboard`). An editor
+    needs free SQL for the widget editor's preview, and restricting them would
+    break authoring without closing anything they could not reach by saving a
+    widget first.
+    """
+    if dashboard is None or not getattr(dashboard, "org_id", None):
+        return
+    if _can_edit_dashboard(dashboard, current_user):
+        return
+    if (request.connection_id, _norm_sql(request.sql)) not in _stored_queries(dashboard):
+        logger.warning(
+            "Rejected non-stored SQL on shared dashboard %s from user %s (connection %s)",
+            dashboard.id, current_user.id, request.connection_id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Shared dashboards serve only the queries stored on them",
+        )
+    _require_stored_filters(request.filters, dashboard, current_user)
+
+
 def _shared_serve_ctx(is_shared: bool, serving_org):
     """Context manager wrapping DataPlane reads for SHARED-dashboard serving.
 
@@ -636,6 +963,38 @@ def _plane_missing_after_first_ingest(connection, tables: list[str], db: Session
     return False
 
 
+def _plane_context(data_context: dict | None, tmap: dict[str, str]) -> dict | None:
+    """Re-key a data context through the source → materialized table map.
+
+    The DataPlane path rewrites the widget SQL's table names (`orders` →
+    `acme__orders`) before filters are injected, but the context still describes
+    the source names. Left untranslated, `_pick_target_scope` finds no column
+    metadata for any table in the rewritten AST, concludes no scope covers the
+    filter columns and every filtered read on a pipeline-backed connection
+    silently degrades to the subquery wrap.
+    """
+    if not data_context or not tmap:
+        return data_context
+    lower = {str(k).lower(): v for k, v in tmap.items()}
+
+    def _ren(name):
+        return lower.get(str(name).lower(), name)
+
+    out = dict(data_context)
+    for key in ("sources", "tables"):
+        section = data_context.get(key)
+        if isinstance(section, dict):
+            out[key] = {_ren(k): v for k, v in section.items()}
+    dims = data_context.get("dimensions")
+    if isinstance(dims, dict):
+        out["dimensions"] = {
+            k: ({**d, "sources": [_ren(s) for s in (d.get("sources") or [])]}
+                if isinstance(d, dict) and d.get("sources") is not None else d)
+            for k, d in dims.items()
+        }
+    return out
+
+
 def _serve_widget_via_dataplane(
     request: "WidgetRefreshRequest",
     dashboard: "Dashboard | None",
@@ -691,9 +1050,11 @@ def _serve_widget_via_dataplane(
     # them to the Pipeline's materialized plane table (e.g. `acme__orders`) so
     # the Parquet glob resolves. No-op when the connection has no pipelines.
     from backend.utils.sql_refs import qualifier_allowlist
-    base_sql, _ = rewrite_table_refs(
-        request.sql, plane_table_map(connection, db), qualifier_allowlist(connection)
-    )
+    tmap = plane_table_map(connection, db)
+    base_sql, _ = rewrite_table_refs(request.sql, tmap, qualifier_allowlist(connection))
+    # The SQL now names plane tables; the context must too, or filter injection
+    # can't resolve a single column. See _plane_context.
+    data_context = _plane_context(data_context, tmap)
     # DuckDB reads the same ANSI quoting the agent writes, so this only quotes
     # reserved-word identifiers (a column literally named `left`, `order`, `end`).
     base_sql = normalize_sql_for(base_sql, "duckdb")
@@ -752,7 +1113,7 @@ def _serve_widget_via_dataplane(
             cache_table = f'_dash_{request.dashboard_id}__{_sanitize_widget_id(request.widget_id)}'
             try:
                 result = reader.query(scope, f'SELECT * FROM "{cache_table}"')
-                return _build_widget_response(result, request.mapping)
+                return _build_widget_response(_flag_capped_cache(result), request.mapping)
             except Exception as e:
                 # Cold/missing warm cache is the common, expected case → fall
                 # through to the live read below. Logged at debug (not warning)
@@ -830,6 +1191,11 @@ def _refresh_widget_sync(
             .first()
         )
 
+    # Before every serving path below (Redis, DuckDB-over-plane, `_dash_*`
+    # cache, source DB): a read-only viewer of a dashboard in another org runs
+    # only what that dashboard stores.
+    _require_stored_query(request, dashboard, current_user)
+
     serving_org, dash_is_shared = (
         _serving_org_and_shared(dashboard, current_user) if dashboard else (None, False)
     )
@@ -885,7 +1251,12 @@ def _refresh_widget_sync(
                     config=config,
                     execution_time_ms=result.execution_time_ms,
                     row_count=result.row_count,
-                    truncated=False,
+                    # Carried, not assumed False: a table-shaped mapping never
+                    # raises on a capped result, so a hard-coded False was
+                    # written through to Redis as "complete" and replayed later
+                    # under a KPI mapping (the cache key is the SQL, not the
+                    # mapping) as a partial aggregate.
+                    truncated=result.truncated,
                     refreshed_at=datetime.now(timezone.utc).isoformat(),
                     source_columns=result.columns,
                     source_rows=[
@@ -951,11 +1322,12 @@ def _refresh_widget_sync(
                 result = connector.execute_query(sql, params=params)
         else:
             # Stored widget SQL is normally in the connection's native dialect
-            # (agent-generated). Try it as-is with the filter first; fall back to
-            # unfiltered (when the filter can't be applied — e.g. ambiguous column
-            # in a joined query) and to a BigQuery→source transpile (legacy SQL).
-            # Order ensures a native widget with a bad filter renders unfiltered
-            # and never reaches transpile (which would corrupt native DATE_TRUNC).
+            # (agent-generated). Try it as-is first, then a BigQuery→source
+            # transpile (legacy SQL). Native-first ensures a native widget never
+            # reaches transpile (which would corrupt native DATE_TRUNC). A filter
+            # that can't be applied — ambiguous column in a joined query, unknown
+            # column — is an error, not a cue to render unfiltered rows as if
+            # they answered the request.
             from backend.utils.sql_refs import transpile_to_engine
             db_type = (getattr(connection, "db_type", "") or "postgres").lower()
             target = {"postgres": "postgres", "postgresql": "postgres",
@@ -980,8 +1352,11 @@ def _refresh_widget_sync(
                 s, p = (_prepare(base) if with_filter else (base, None))
                 return connector.execute_query(s, params=p)
 
-            plans = [(None, True), (None, False), ("bigquery", True),
-                     ("bigquery", False), ("postgres", True), ("postgres", False)]
+            # Retries vary the *dialect* only. Never retry with the filter
+            # dropped: that answers a different question than the caller asked
+            # and returns it as a success, so a filter that fails to inject
+            # silently serves unfiltered rows.
+            plans = [(None, True), ("bigquery", True), ("postgres", True)]
             if not request.filters:
                 plans = [(None, False), ("bigquery", False), ("postgres", False)]
             first_err = None
@@ -992,6 +1367,10 @@ def _refresh_widget_sync(
                     result = _attempt(tr, wf)
                     break
                 except Exception as e:
+                    logger.warning(
+                        "Widget query attempt failed (transpile=%s, filtered=%s): %s",
+                        tr, wf, e,
+                    )
                     first_err = first_err or e
             else:
                 raise first_err
@@ -1002,7 +1381,7 @@ def _refresh_widget_sync(
             config=config,
             execution_time_ms=result.execution_time_ms,
             row_count=result.row_count,
-            truncated=False,
+            truncated=bool(getattr(result, "truncated", False)),
             refreshed_at=datetime.now(timezone.utc).isoformat(),
             source_columns=result.columns,
             source_rows=[
@@ -1101,6 +1480,10 @@ def _refresh_dashboard_widgets_sync(
 
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    # The widgets' SQL is stored, but `payload.filters` is client-supplied: a
+    # read-only viewer filters only on the dashboard's own controls.
+    _require_stored_filters(payload.filters if payload else None, dashboard, current_user)
 
     serving_org, dash_is_shared = _serving_org_and_shared(dashboard, current_user)
 
@@ -1230,6 +1613,7 @@ def _refresh_dashboard_widgets_sync(
                         "config": cached_resp.config,
                         "refreshed_at": cached_resp.refreshed_at,
                         "served_from": cached_resp.served_from,
+                        "truncated": bool(getattr(cached_resp, "truncated", False)),
                     }
                     continue
 
@@ -1251,7 +1635,11 @@ def _refresh_dashboard_widgets_sync(
                         )
                     if served is not None:
                         _widget_cache_store(widget_cache_key, bulk_cache_ttl, served)
-                        results[widget_id] = {"config": served.config, "refreshed_at": refreshed_at, "served_from": served.served_from}
+                        results[widget_id] = {
+                            "config": served.config, "refreshed_at": refreshed_at,
+                            "served_from": served.served_from,
+                            "truncated": bool(getattr(served, "truncated", False)),
+                        }
                         continue
                     plane_miss_keys.add(miss_key)
                 except Exception as e:
@@ -1287,6 +1675,7 @@ def _refresh_dashboard_widgets_sync(
                             "config": transform_widget_data(cached, mapping),
                             "refreshed_at": refreshed_at,
                             "served_from": "cache",
+                            "truncated": bool(getattr(cached, "truncated", False)),
                         }
                         continue
                 except Exception as e:
@@ -1368,8 +1757,9 @@ def _refresh_dashboard_widgets_sync(
                         s, p = (_prepare_bulk(base) if with_filter else (base, None))
                         return connector.execute_query(s, params=p)
 
-                    plans = [(None, True), (None, False), ("bigquery", True),
-                             ("bigquery", False), ("postgres", True), ("postgres", False)]
+                    # Dialect-only retries — see refresh_widget: dropping the
+                    # filter on retry would serve unfiltered rows as a success.
+                    plans = [(None, True), ("bigquery", True), ("postgres", True)]
                     if not filters:
                         plans = [(None, False), ("bigquery", False), ("postgres", False)]
                     first_err = None
@@ -1380,6 +1770,10 @@ def _refresh_dashboard_widgets_sync(
                             result = _attempt_bulk(_tr, _wf)
                             break
                         except Exception as e:
+                            logger.warning(
+                                "Bulk widget query attempt failed (transpile=%s, "
+                                "filtered=%s): %s", _tr, _wf, e,
+                            )
                             first_err = first_err or e
                     else:
                         raise first_err
@@ -1401,6 +1795,7 @@ def _refresh_dashboard_widgets_sync(
                     "config": transform_widget_data(result, mapping),
                     "refreshed_at": refreshed_at,
                     "served_from": served_from,
+                    "truncated": bool(getattr(result, "truncated", False)),
                 }
             except Exception as e:
                 logger.error(f"Bulk refresh failed for widget {widget_id}: {e}")

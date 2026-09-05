@@ -1,6 +1,6 @@
 <template>
   <div v-if="widget && widget.widget?.config" class="rounded-lg border border-neutral-100 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-4">
-    <DashboardWidget :widget="widget" :auto-refresh="!snapshot" :edit-mode="false" />
+    <DashboardWidget :widget="widget" :auto-refresh="!snapshot" :edit-mode="false" :dashboard-id="dashboardId" />
   </div>
 </template>
 
@@ -28,7 +28,9 @@ const widget = ref<any>(null)
 // (data-less) config. Pull the widget's data on mount so charts/KPIs populate.
 // Skip useWidgetData's auto-refresh watcher when a snapshot is present — the
 // snapshot populates the config below, so a live re-query would be redundant.
-const { refresh } = useWidgetData(widget as any, !props.snapshot)
+// dashboardId: the widget belongs to THAT dashboard, not whichever one the
+// dashboard store was last on (on /chat and /briefings it is reset entirely).
+const { refresh } = useWidgetData(widget as any, !props.snapshot, { dashboardId: props.dashboardId })
 
 onMounted(async () => {
   try {

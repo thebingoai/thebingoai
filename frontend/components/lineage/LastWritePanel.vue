@@ -34,9 +34,11 @@ watch(() => props.table, load)
       <div class="text-sm uppercase tracking-wide text-gray-500 dark:text-neutral-400">
         Last write
       </div>
+      <!-- Hidden along with the Settings > Lineage tab; /lineage still works. Uncomment to restore.
       <NuxtLink :to="`/lineage?table=${encodeURIComponent(table)}`" class="text-sm text-blue-600 hover:underline">
         Lineage →
       </NuxtLink>
+      -->
     </div>
 
     <div v-if="loading" class="text-gray-500 dark:text-neutral-400 text-sm">Loading…</div>
