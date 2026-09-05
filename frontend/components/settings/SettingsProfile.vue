@@ -132,6 +132,35 @@
           </div>
         </div>
       </UiCard>
+
+      <!-- Auto-memory: the Memory section is hidden from the nav, and the daily
+           memory task treats a missing preference as enabled, so the opt-out
+           needs a visible home. Everything else about memories lives on the
+           (still routable) Memory page. -->
+      <UiCard class="p-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-sm font-medium text-gray-900 dark:text-white">Auto conversation memory</p>
+            <p class="text-sm text-gray-500 dark:text-neutral-400 mt-0.5">
+              Bingo summarizes your daily chats so future ones build on past context.
+              <NuxtLink to="/settings?tab=memory" class="underline underline-offset-2 hover:text-gray-900 dark:hover:text-white">Manage memories →</NuxtLink>
+            </p>
+          </div>
+          <button
+            type="button"
+            :title="memoryEnabled ? 'Disable auto-memory' : 'Enable auto-memory'"
+            :disabled="savingMemory"
+            @click="toggleMemoryEnabled"
+            class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
+            :class="memoryEnabled ? 'bg-violet-600' : 'bg-gray-200 dark:bg-neutral-600'"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+              :class="memoryEnabled ? 'translate-x-6' : 'translate-x-1'"
+            />
+          </button>
+        </div>
+      </UiCard>
     </div>
 
     <!-- Danger zone -->
@@ -176,6 +205,31 @@ const FONT_SIZE_OPTIONS = [
 
 const showDeleteDialog = ref(false)
 const deleting = ref(false)
+
+const api = useApi() as any
+const memoryEnabled = ref(true)   // matches the backend's default for a missing preference
+const savingMemory = ref(false)
+
+onMounted(async () => {
+  try {
+    memoryEnabled.value = (await api.memory.getSettings()).memory_enabled
+  } catch {
+    // Keep the default; the switch still writes.
+  }
+})
+
+async function toggleMemoryEnabled() {
+  try {
+    savingMemory.value = true
+    const updated = await api.memory.updateSettings(!memoryEnabled.value)
+    memoryEnabled.value = updated.memory_enabled
+    toast.success(updated.memory_enabled ? 'Auto-memory enabled' : 'Auto-memory disabled')
+  } catch (err: any) {
+    toast.error(err?.data?.detail || err?.message || 'Failed to update settings')
+  } finally {
+    savingMemory.value = false
+  }
+}
 
 const isDark = computed({
   get: () => colorMode.value === 'dark',

@@ -18,13 +18,21 @@ vi.stubGlobal('useAuthStore', () => ({
   logout: vi.fn(),
 }))
 vi.stubGlobal('useRouter', () => ({ push: vi.fn() }))
+vi.stubGlobal('onMounted', (cb: any) => cb())
+
+const getSettingsMock = vi.fn()
+const updateSettingsMock = vi.fn()
+vi.stubGlobal('useApi', () => ({ memory: { getSettings: getSettingsMock, updateSettings: updateSettingsMock } }))
 
 import SettingsProfile from '~/components/settings/SettingsProfile.vue'
 
 const globalStubs = {
   UiCard: { template: `<div><slot/></div>` },
   UiButton: { template: `<button><slot/></button>` },
+  NuxtLink: { props: ['to'], template: `<a :href="to"><slot/></a>` },
 }
+
+const flush = async () => { await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0)) }
 
 function mountView() {
   return mount(SettingsProfile, { global: { stubs: globalStubs } })
@@ -37,6 +45,7 @@ beforeEach(() => {
   fontPref = ref('md')
   themePref = ref('kraft')
   vi.clearAllMocks()
+  getSettingsMock.mockResolvedValue({ memory_enabled: true })
 })
 
 describe('SettingsProfile — text size control', () => {
@@ -90,5 +99,31 @@ describe('SettingsProfile — theme switcher', () => {
     expect(themePref.value).toBe('cool')
     expect(swatch(w, 'cool').classes()).toContain('scale-110')
     expect(swatch(w, 'kraft').classes()).not.toContain('scale-110')
+  })
+})
+
+describe('SettingsProfile — auto-memory opt-out', () => {
+  // The Memory section is hidden from the settings nav, so this switch is the
+  // visible way to turn the default-on daily memory task off.
+  const memToggle = (w: any) =>
+    w.findAll('button').find((b: any) => /auto-memory/.test(b.attributes('title') || ''))
+
+  it('shows the stored setting and links to the routable Memory page', async () => {
+    getSettingsMock.mockResolvedValue({ memory_enabled: false })
+    const w = mountView()
+    await flush()
+    expect(memToggle(w).attributes('title')).toBe('Enable auto-memory')
+    expect(w.find('a[href="/settings?tab=memory"]').exists()).toBe(true)
+  })
+
+  it('flipping the switch persists the opposite value', async () => {
+    updateSettingsMock.mockResolvedValue({ memory_enabled: false })
+    const w = mountView()
+    await flush()
+    expect(memToggle(w).attributes('title')).toBe('Disable auto-memory')
+    await memToggle(w).trigger('click')
+    await flush()
+    expect(updateSettingsMock).toHaveBeenCalledWith(false)
+    expect(memToggle(w).attributes('title')).toBe('Enable auto-memory')
   })
 })
