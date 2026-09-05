@@ -321,3 +321,54 @@ class TestTransformWidgetData:
         mapping = {"type": "unknown_widget"}
         with pytest.raises(ValueError, match="Unsupported mapping type"):
             transform_widget_data(result, mapping)
+
+
+# ---------------------------------------------------------------------------
+# TestAggregationIsCaseInsensitive
+# ---------------------------------------------------------------------------
+
+class TestAggregationIsCaseInsensitive:
+    """The agent writes SQL-style aggregations. Every comparison in the module
+    is exact, and an unmatched value falls through to "first" — so `"SUM"` used
+    to render ONE row's value where the user asked for a total, silently."""
+
+    _ROWS = _qr(["q", "cat", "rev"], [["Q1", "A", 10], ["Q1", "B", 5]])
+
+    def _chart(self, aggregation):
+        return transform_widget_data(self._ROWS, {
+            "type": "chart", "chartType": "bar", "labelColumn": "q",
+            "datasetColumns": [{"column": "rev", "label": "R", "aggregation": aggregation}],
+        })["data"]["datasets"][0]["data"]
+
+    def test_uppercase_sum_totals_like_lowercase_sum(self):
+        assert self._chart("SUM") == self._chart("sum") == [15]
+
+    def test_mixed_case_is_folded(self):
+        assert self._chart("Sum") == [15]
+        assert self._chart(" avg ") == [7.5]
+
+    def test_count_distinct_survives_case_folding(self):
+        """countDistinct is the one camelCase key — folding must not lose it."""
+        assert self._chart("COUNTDISTINCT") == self._chart("countDistinct") == [2.0]
+
+    def test_none_still_means_no_aggregation(self):
+        assert self._chart("NONE") == self._chart("none")
+
+    def test_unknown_aggregation_still_falls_back_to_first(self):
+        assert self._chart("median") == [10]
+
+    def test_kpi_aggregation_is_case_insensitive(self):
+        assert transform_widget_data(
+            self._ROWS, {"type": "kpi", "valueColumn": "rev", "aggregation": "SUM"},
+        ) == {"value": 15}
+
+    def test_breakdown_aggregation_is_case_insensitive(self):
+        out = transform_widget_data(_qr(["q", "cat", "rev"], [
+            ["Q1", "A", 10], ["Q1", "A", 1], ["Q1", "B", 5],
+        ]), {
+            "type": "chart", "chartType": "bar", "labelColumn": "q",
+            "breakdownColumn": "cat",
+            "datasetColumns": [{"column": "rev", "label": "R", "aggregation": "SUM"}],
+        })["data"]
+        assert {d["label"]: d["data"] for d in out["datasets"]} == {"A": [11], "B": [5]}
+

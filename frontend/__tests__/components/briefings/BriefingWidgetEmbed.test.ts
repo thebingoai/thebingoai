@@ -14,7 +14,8 @@ const mockFetch = vi.fn()
 vi.stubGlobal('useApi', () => ({ fetchWithRefresh: mockFetch }))
 
 const mockRefresh = vi.fn()
-vi.stubGlobal('useWidgetData', () => ({ refresh: mockRefresh }))
+const mockUseWidgetData = vi.fn(() => ({ refresh: mockRefresh }))
+vi.stubGlobal('useWidgetData', mockUseWidgetData)
 
 import BriefingWidgetEmbed from '~/components/briefings/BriefingWidgetEmbed.vue'
 
@@ -23,7 +24,7 @@ import BriefingWidgetEmbed from '~/components/briefings/BriefingWidgetEmbed.vue'
 // that in this Nuxt-auto-import setup.
 const DashboardWidgetStub = {
   name: 'DashboardWidget',
-  props: ['widget', 'autoRefresh', 'editMode'],
+  props: ['widget', 'autoRefresh', 'editMode', 'dashboardId'],
   template: '<div />',
 }
 
@@ -56,6 +57,7 @@ describe('BriefingWidgetEmbed', () => {
   beforeEach(() => {
     mockFetch.mockReset()
     mockRefresh.mockReset()
+    mockUseWidgetData.mockClear()
   })
 
   it('merges the snapshot and skips the live refresh when a snapshot is present', async () => {
@@ -151,5 +153,22 @@ describe('BriefingWidgetEmbed', () => {
     expect((wrapper.vm as any).widget).toBeNull()
     expect(wrapper.emitted('loaded')).toHaveLength(1)
     expect(wrapper.find('div').exists()).toBe(false)
+  })
+
+  it('scopes the refresh to its OWN dashboard, not whichever the store is on', async () => {
+    // On /chat and /briefings the dashboard store is reset, so a refresh that
+    // derives dashboard_id from it drops the id entirely — the backend then
+    // loses that dashboard's DataPlane / cache / serving-org path.
+    mockFetch.mockResolvedValue(shell())
+    const wrapper = mount(BriefingWidgetEmbed, {
+      props: { widgetId: 'w1', dashboardId: 10 },
+      global: { stubs: { DashboardWidget: DashboardWidgetStub } },
+    })
+    await settle(wrapper)
+
+    expect(mockUseWidgetData).toHaveBeenCalledWith(
+      expect.anything(), true, { dashboardId: 10 },
+    )
+    expect(wrapper.findComponent(DashboardWidgetStub).props('dashboardId')).toBe(10)
   })
 })

@@ -6,7 +6,11 @@ import { useDashboardStore } from '~/stores/dashboard'
 import { mergeRefreshedConfig } from '~/utils/widgetMerge'
 import { trackAbort, releaseAbort, isAbortError } from '~/utils/inflight'
 
-export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) {
+export function useWidgetData(
+  widget: Ref<DashboardWidget>,
+  autoRefresh = true,
+  opts: { dashboardId?: number | null } = {},
+) {
   const localLoading = ref(false)
   const error = ref<string | null>(null)
   const store = useDashboardStore()
@@ -35,7 +39,19 @@ export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) 
     const ctrl = trackAbort()
     try {
       const api = useApi()
-      const filters = store.activeFilters.length > 0 ? store.activeFilters : undefined
+      // An embed (chat chart, briefing) renders a widget of a dashboard that is
+      // NOT the one the dashboard store is on — outside /dashboard the store is
+      // reset, so deriving the id from it sends `undefined` and the backend
+      // loses the DataPlane / cache / serving-org path for that dashboard.
+      const dashboardId = opts.dashboardId ?? store.currentDashboardId ?? undefined
+      // The store's filters belong to store.currentDashboardId, so they are only
+      // valid when that IS this widget's dashboard; otherwise send none rather
+      // than another dashboard's WHERE clauses. Known gap: an embed then renders
+      // unfiltered. Rendering the referenced dashboard's own saved filters would
+      // mean fetching that dashboard here — its filter values live in its own
+      // localStorage key and need its filter-widget config to resolve.
+      const ownFilters = dashboardId === (store.currentDashboardId ?? undefined)
+      const filters = ownFilters && store.activeFilters.length > 0 ? store.activeFilters : undefined
       const chartType = widget.value.widget?.config?.type
       const mapping = chartType
         ? { ...ds.mapping, chartType }
@@ -45,7 +61,7 @@ export function useWidgetData(widget: Ref<DashboardWidget>, autoRefresh = true) 
         sql: ds.sql,
         mapping: mapping as any,
         filters,
-        dashboard_id: store.currentDashboardId ?? undefined,
+        dashboard_id: dashboardId,
         widget_id: widget.value.id,  // required for the result cache key (else backend no-ops the cache)
         widget_sources: widget.value.sources ?? undefined,
       }, ctrl.signal) as { config: Record<string, any>; refreshed_at: string; served_from?: 'data_plane' | 'cache' | 'source'; source_columns?: string[]; source_rows?: any[][] }

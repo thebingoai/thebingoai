@@ -154,10 +154,24 @@ def _period_ranges(period_label: str, reference: date) -> Tuple[date, date, date
     return today, today, today, today
 
 
+# The agent writes SQL-style aggregations ("SUM") about as often as the schema's
+# lowercase keys, and every comparison below is exact — an unmatched value falls
+# through to "first", so a chart silently shows ONE row's value where the user
+# asked for a total. Fold case at every read instead.
+_AGG_ALIASES = {"countdistinct": "countDistinct", "count_distinct": "countDistinct"}
+
+
+def _norm_agg(value: Any) -> str:
+    """Canonical aggregation key ("" when unset)."""
+    key = str(value or "").strip().lower()
+    return _AGG_ALIASES.get(key, key)
+
+
 def _aggregate_values(values: List[Any], aggregation: str) -> Optional[float]:
     """Aggregate a list of values using the given method."""
     if not values:
         return None
+    aggregation = _norm_agg(aggregation)
     if aggregation == "sum":
         numeric = [v for v in values if isinstance(v, (int, float))]
         return sum(numeric) if numeric else None
@@ -274,7 +288,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
     if x_metric_col and y_metric_col:
         x_idx = _find_column(x_metric_col, result.columns, "xMetricColumn")
         y_idx = _find_column(y_metric_col, result.columns, "yMetricColumn")
-        y_agg = mapping.get("yAggregation") or "none"
+        y_agg = _norm_agg(mapping.get("yAggregation")) or "none"
         size_col = mapping.get("sizeMetricColumn")
         size_idx = _find_column(size_col, result.columns, "sizeMetricColumn") if size_col else None
 
@@ -351,7 +365,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         ]}}
 
     has_aggregation = any(
-        ds.get("aggregation") and ds["aggregation"] != "none"
+        _norm_agg(ds.get("aggregation")) not in ("", "none")
         for ds in dataset_cols
     )
     missing_data = opts.get("missingData")
@@ -373,7 +387,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         breakdown_idx = _find_column(breakdown_col, result.columns, "breakdownColumn")
         measure = dataset_cols[0]
         m_idx = _find_column(measure["column"], result.columns, "datasetColumns[].column")
-        agg = measure.get("aggregation") or "sum"
+        agg = _norm_agg(measure.get("aggregation")) or "sum"
         if agg == "none":
             agg = "sum"
 
@@ -429,7 +443,7 @@ def transform_chart(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, A
         for ds in dataset_cols:
             col = ds["column"]
             col_idx = _find_column(col, result.columns, "datasetColumns[].column")
-            agg = ds.get("aggregation") or "sum"
+            agg = _norm_agg(ds.get("aggregation")) or "sum"
             if agg == "none" and has_granularity:
                 agg = "sum"
             data = []
@@ -528,7 +542,7 @@ def transform_kpi(result: QueryResult, mapping: Dict[str, Any]) -> Dict[str, Any
     # Default "first" (first-row value) for backward compatibility: existing/agent
     # mappings without an explicit aggregation must not silently change meaning.
     # New/edited KPIs persist an explicit aggregation (e.g. "sum") from the editor.
-    aggregation = mapping.get("aggregation", "first")
+    aggregation = _norm_agg(mapping.get("aggregation")) or "first"
     all_numeric = [
         v for v in (_to_json_safe(row[value_idx]) for row in result.rows)
         if isinstance(v, (int, float))

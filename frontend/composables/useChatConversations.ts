@@ -164,6 +164,7 @@ export const useChatConversations = () => {
         content: msg.content,
         source: msg.source || 'chat',
         briefing_id: msg.briefing_id ?? null,
+        chart_specs: msg.chart_specs ?? null,
         created_at: msg.timestamp,
         attachments: msg.attachments?.map((a: any) => ({
           file_id: a.file_id,

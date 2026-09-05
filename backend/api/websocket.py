@@ -222,7 +222,7 @@ async def _complete_turn(
     before the post-process LLM calls run.
     """
     # 1. Persist the answer + steps. Must succeed before charging.
-    await _persist_turn(db, conversation, final_message, collected_steps)
+    await _persist_turn(db, conversation, final_message, collected_steps, user.id)
 
     # 2. Capture an unresolved Layer-4 retry failure (independent of billing;
     #    the actual void happens inside _finalize_credit_turn).
@@ -590,6 +590,7 @@ async def _persist_turn(
     conversation,
     final_message: str,
     collected_steps: list,
+    user_id: str,
 ):
     """Persist the assistant message + steps. Must succeed BEFORE the turn is
     charged — a failure here propagates so credit is never finalized (the caller
@@ -600,7 +601,7 @@ async def _persist_turn(
     fail liveness probes (2026-07-23 incident)."""
     if final_message or collected_steps:
         await asyncio.to_thread(
-            _persist_turn_sync, db, conversation, final_message, collected_steps
+            _persist_turn_sync, db, conversation, final_message, collected_steps, user_id
         )
 
 
@@ -609,8 +610,18 @@ def _persist_turn_sync(
     conversation,
     final_message: str,
     collected_steps: list,
+    user_id: str,
 ):
-    assistant_msg = ConversationService.add_message(db, conversation.id, "assistant", final_message or "")
+    from backend.agents.orchestrator.chat_chart_tools import resolve_chart_specs_from_tool_results
+    chart_tool_results = [
+        (s["tool_name"], s.get("content", {}).get("result"))
+        for s in collected_steps if s.get("step_type") == "tool_result"
+    ]
+    chart_specs = resolve_chart_specs_from_tool_results(chart_tool_results, user_id)
+
+    assistant_msg = ConversationService.add_message(
+        db, conversation.id, "assistant", final_message or "", chart_specs=chart_specs,
+    )
 
     if collected_steps:
         from backend.models.agent_step import AgentStep

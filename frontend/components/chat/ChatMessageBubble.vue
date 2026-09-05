@@ -138,6 +138,18 @@
         <BriefingCard :briefing-id="message.briefing_id" />
       </div>
 
+      <!-- Charts in chat: ad-hoc snapshot or live reference to a dashboard widget -->
+      <div v-if="message.chart_specs?.length" class="mt-3 space-y-3">
+        <template v-for="(chart, i) in message.chart_specs" :key="i">
+          <ChatChartEmbed v-if="chart.kind === 'adhoc'" :chart-ref="chart" />
+          <BriefingWidgetEmbed
+            v-else-if="chart.kind === 'dashboard_widget'"
+            :dashboard-id="chart.dashboard_id"
+            :widget-id="chart.widget_id"
+          />
+        </template>
+      </div>
+
       <!-- Live steps log (collapses when final answer arrives) -->
       <div v-if="message.steps_log?.length" class="mt-1 font-mono text-sm text-gray-400 dark:text-neutral-400 bg-gray-50/80 dark:bg-neutral-800/60 border border-gray-100 dark:border-neutral-700 rounded-md px-3 py-2 leading-relaxed">
         <button

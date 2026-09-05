@@ -21,7 +21,7 @@
           <Code class="h-3 w-3" />
         </button>
         <button
-          v-if="hasDataSource"
+          v-if="canRefresh"
           class="flex h-5 w-5 items-center justify-center rounded text-[var(--ink-3)] hover:bg-[var(--ember-wash)] hover:text-[var(--ember)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="loading"
           title="Refresh data"
@@ -56,7 +56,7 @@
     <div v-if="!editMode && widget.title" class="widget-header">
       <span class="widget-label">{{ widget.title }}</span>
       <button
-        v-if="hasDataSource"
+        v-if="canRefresh"
         class="icon-btn"
         title="Refresh data"
         :disabled="loading"
@@ -67,7 +67,7 @@
     </div>
     <!-- Floating refresh for data widgets without a custom title (view mode) -->
     <button
-      v-else-if="!editMode && hasDataSource"
+      v-else-if="!editMode && canRefresh"
       class="refresh-float"
       title="Refresh data"
       :disabled="loading"
@@ -150,6 +150,7 @@
     >
       <span class="flex-1 text-sm text-rose-600 truncate">{{ error }}</span>
       <button
+        v-if="canRefresh"
         class="flex-shrink-0 text-sm font-medium text-rose-600 hover:text-rose-800"
         @click="refresh()"
       >
@@ -178,9 +179,14 @@ import { hasRenderableData } from '~/utils/widgetRender'
 const props = withDefaults(defineProps<{
   widget: DashboardWidget
   editMode: boolean
-  // Briefing embeds render a generation-time snapshot and pass false to skip
-  // the live re-query. Dashboards leave it true (default) so widgets refresh.
+  // Briefing and chat-chart embeds render a generation-time snapshot and pass
+  // false: no live re-query, and no manual refresh either — re-running the query
+  // would rewrite the historical answer the snapshot froze. Dashboards leave it
+  // true (default) so widgets refresh.
   autoRefresh?: boolean
+  // Which dashboard this widget belongs to, for embeds rendering a widget of a
+  // dashboard the store is not on. Omitted on the dashboard page.
+  dashboardId?: number | null
 }>(), { autoRefresh: true })
 
 const emit = defineEmits<{
@@ -191,7 +197,10 @@ const emit = defineEmits<{
 }>()
 
 const widgetRef = toRef(props, 'widget')
-const { loading, error, lastRefreshedAt, hasDataSource, refresh } = useWidgetData(widgetRef, props.autoRefresh)
+const { loading, error, lastRefreshedAt, hasDataSource, refresh } = useWidgetData(
+  widgetRef, props.autoRefresh, { dashboardId: props.dashboardId },
+)
+const canRefresh = computed(() => hasDataSource.value && props.autoRefresh)
 
 const WIDGET_TYPE_LABELS: Record<string, string> = {
   kpi: 'KPI',
