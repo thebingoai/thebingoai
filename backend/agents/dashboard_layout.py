@@ -8,7 +8,7 @@ width — so horizontal gaps are impossible by construction.
 
 Row rules:
 - filter / text / table: always a full-width row (w=12).
-- kpi: consecutive KPI cards are chunked up to 5 per row, equal widths.
+- kpi: consecutive KPI cards are split into balanced rows of up to 5, equal widths.
 - chart / pivot_table: greedily packed side-by-side while their preferred
   widths fit in 12 columns; each closed row is stretched proportionally to
   exactly 12 and all members get the row's max height.
@@ -124,8 +124,17 @@ def _build_rows(ordered: list[dict]) -> list[list[dict]]:
 
     def close_kpis():
         nonlocal kpi_run
-        for i in range(0, len(kpi_run), _MAX_KPIS_PER_ROW):
-            rows.append(kpi_run[i:i + _MAX_KPIS_PER_ROW])
+        # Balanced rows, not five-then-remainder: six KPIs read as 3+3, not as
+        # a full row followed by one lone card capped at half the grid.
+        n = len(kpi_run)
+        if n:
+            n_rows = -(-n // _MAX_KPIS_PER_ROW)
+            base, extra = divmod(n, n_rows)
+            start = 0
+            for r in range(n_rows):
+                size = base + (1 if r < extra else 0)
+                rows.append(kpi_run[start:start + size])
+                start += size
         kpi_run = []
 
     for w in ordered:
