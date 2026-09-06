@@ -137,6 +137,31 @@ class TestRowWidthNormalization:
         assert sum(ws) == 12
         assert all(_pos(widgets, f"k{i}")["y"] == 0 for i in range(1, 6))
 
+    def _kpi_rows(self, n):
+        widgets = [_w(f"k{i}", "kpi", 0, 0, 3, 2) for i in range(1, n + 1)]
+        normalize_dashboard_layout(widgets)
+        rows: dict[int, list[int]] = {}
+        for i in range(1, n + 1):
+            p = _pos(widgets, f"k{i}")
+            rows.setdefault(p["y"], []).append(p["w"])
+        return [rows[y] for y in sorted(rows)]
+
+    def test_six_kpis_split_3_3(self):
+        # Not 5 + 1: the lone sixth card would sit capped at w=6 beside half a row of nothing.
+        rows = self._kpi_rows(6)
+        assert [len(r) for r in rows] == [3, 3]
+        assert all(sum(r) == 12 for r in rows)
+
+    def test_seven_kpis_split_4_3(self):
+        rows = self._kpi_rows(7)
+        assert [len(r) for r in rows] == [4, 3]
+        assert all(sum(r) == 12 for r in rows)
+
+    def test_eleven_kpis_split_4_4_3(self):
+        rows = self._kpi_rows(11)
+        assert [len(r) for r in rows] == [4, 4, 3]
+        assert all(sum(r) == 12 for r in rows)
+
 
 class TestPairUp:
     def test_two_stacked_lone_charts_merge_side_by_side(self):

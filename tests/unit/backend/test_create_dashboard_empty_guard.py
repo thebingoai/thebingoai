@@ -31,6 +31,7 @@ async def test_create_dashboard_rejects_empty_widgets_list():
 
     result = json.loads(result_json)
     assert result["success"] is False
-    assert "zero widgets" in result["message"]
+    assert result["code"] == "widgets_missing"
+    assert "build_dashboard_context returned an error" in result["message"]
     # No session opened — the guard fires before any DB access.
     db_session_factory.assert_not_called()
