@@ -13,10 +13,21 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-# Re-exported: the cap is owned by `dashboard_prompt_blocks` (the import-free
-# module the agent's own prompt is built from) so the limit the agent is told and
-# the limit enforced here can never drift apart.
+# Re-exported: the target is owned by `dashboard_prompt_blocks` (the import-free
+# module the agent's own prompt is built from) so the number the agent is told and
+# the number logged at save time can never drift apart. It is a target, not a
+# gate: a dashboard with more data widgets is saved and laid out. Rejecting it
+# cost the 2026-09-06 ladder 3 of 60 dashboards to a model that re-submitted 16
+# widgets verbatim after being told "remove exactly 1".
 from backend.agents.dashboard_prompt_blocks import MAX_TOTAL_WIDGETS  # noqa: F401
+
+# Headers and prose render no data and run no query; they never count.
+_NON_DATA_TYPES = frozenset({"section", "text"})
+
+
+def data_widgets(widgets: list[dict]) -> list[dict]:
+    """The widgets that show data (kpi, chart, table, pivot_table, filter) — not section/text."""
+    return [w for w in widgets if (w.get("widget") or {}).get("type") not in _NON_DATA_TYPES]
 
 _WINDOW_ALIASES: list[set[str]] = [
     {"7d", "last 7 days", "past 7 days", "trailing 7 days"},
@@ -53,11 +64,6 @@ def verify_dashboard_widgets(widgets: list[dict]) -> list[str]:
     violations: list[str] = []
 
     kpis = [w for w in widgets if (w.get("widget") or {}).get("type") == "kpi"]
-    if len(widgets) > MAX_TOTAL_WIDGETS:
-        violations.append(
-            f"Total widget count = {len(widgets)} — must be ≤ {MAX_TOTAL_WIDGETS}. "
-            f"Remove exactly {len(widgets) - MAX_TOTAL_WIDGETS}."
-        )
 
     seen_titles: dict[str, list[str]] = {}
     seen_display: dict[str, str] = {}

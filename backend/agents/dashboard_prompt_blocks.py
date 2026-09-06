@@ -269,10 +269,11 @@ consecutive charts share the row equally (6+6).
 
 ### Widget Count Guidelines
 
-- **{MAX_WIDGETS} widgets is a HARD cap** — a dashboard with more is rejected and you
-  have to rebuild it. Target 11-{MAX_WIDGETS} total (min 9). "Very detailed" means
+- Target 11-{MAX_WIDGETS} data widgets (kpi, chart, table, pivot_table, filter). Section
+  and text widgets are headers and prose — they are not counted. A dashboard with more
+  data widgets is still saved and laid out automatically, but "very detailed" means
   richer widgets, NOT more of them.
-- 3-5 KPIs + 1 filter bar + 3-5 section widgets + 3-6 charts + 1-2 tables (a pivot_table counts as a table)
+- 3-5 KPIs + 1 filter bar + 3-6 charts + 1-2 tables (a pivot_table counts as a table), plus 3-5 section headers
 - Section widgets are the section headers (one per analysis section, one before the detail tables) — tables use `config.title` for their own title. Text widgets are for optional narrative prose only.
 
 ### Section Header Example (lean)

@@ -47,10 +47,24 @@ def test_no_live_defaults_import_at_upgrade():
     assert "_NEW_TOOLS" in src
 
 
-def test_snapshot_matches_current_defaults():
-    from backend.agents.profile_defaults import DEFAULTS
+_NEXT = _VERSIONS / "w1dgc4p0002_refresh_dashboard_profile_soft_widget_cap.py"
 
-    assert _literal("_NEW_TOOLS") == DEFAULTS["dashboard_agent"]["tools"]
+
+def test_snapshot_is_frozen():
+    """`tools` is no longer asserted against DEFAULTS: w1dgc4p0002 supersedes this
+    revision (the cap became a target), and its own guard holds the equality.
+    Historical revisions keep their frozen literal — same split
+    test_migration_d0cst0ry0a1b.py made once this revision took over."""
+    assert hashlib.sha256(_literal("_NEW_TOOLS").encode()).hexdigest() == (
+        "1b8d7715dc50f093bbf6ec925054bcbd11e7086155dcf07495a76cd18a221bca"
+    )
+
+
+def test_snapshot_is_recognised_downstream():
+    """The text this revision wrote must be in the next revision's match set, or
+    installs that ran it are skipped forever."""
+    written = _literal("_NEW_TOOLS")
+    assert hashlib.sha256(written.encode()).hexdigest() in _literal("_OLD_TOOLS_HASHES", _NEXT)
 
 
 def test_snapshot_carries_the_enforced_cap():

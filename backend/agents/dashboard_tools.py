@@ -413,6 +413,39 @@ def _datasetcolumns_aggregation_present(ds: dict | None) -> bool:
     return all(isinstance(c, dict) and "aggregation" in c for c in cols)
 
 
+def _widgets_missing(tool_name: str) -> dict:
+    """Reply for a save call that carries no widget list.
+
+    Reaches the model instead of a validator's "widgets: Field required": on the
+    2026-09-06 ladder four builds ended exactly there, the model re-issued the same
+    call, and the orchestrator gave up. The message says what is missing, where it
+    is not, and that re-issuing does not spend a build attempt.
+    """
+    return {
+        "success": False,
+        "code": "widgets_missing",
+        "message": (
+            "widgets is required: pass the full list of lean widget objects you designed "
+            "(filter, kpi, chart, table, pivot_table, section). data_context does NOT carry "
+            f"widgets. Call {tool_name} again now with the same title/description/data_context "
+            "AND widgets — this is a missing argument, not a failed build attempt. If "
+            "build_dashboard_context returned an error, surface that to the user instead of "
+            f"calling {tool_name}."
+        ),
+    }
+
+
+def _log_widget_count(tool_name: str, widgets: list) -> None:
+    """Count how often a design exceeds the prompt's target — accepted, only logged."""
+    from backend.agents.orchestrator.dashboard_widget_verifier import MAX_TOTAL_WIDGETS, data_widgets
+
+    n_data = len(data_widgets(widgets))
+    if n_data > MAX_TOTAL_WIDGETS:
+        logger.info(
+            "%s: %d data widgets (target <= %d) — accepted", tool_name, n_data, MAX_TOTAL_WIDGETS
+        )
+
+
 def _verify_widgets(widgets: list, data_context: dict | None) -> list[dict]:
     """Pre-persistence verification gate for create_dashboard / update_dashboard.
 
@@ -981,7 +1014,7 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
     from backend.models.dashboard import Dashboard
 
     @tool
-    async def create_dashboard(title: str, description: str, widgets: list[dict], data_context: dict | None = None) -> str:
+    async def create_dashboard(title: str, description: str, widgets: list[dict] | None = None, data_context: dict | None = None) -> str:
         """
         Create a new dashboard with widgets and persist it to the database.
 
@@ -1064,7 +1097,10 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
                 The backend packs each row to 12 columns. To emphasize ONE hero
                 chart, optionally set its "width" (e.g. 8) and the next chart's
                 "width" (e.g. 4); otherwise omit width. To preserve a widget across
-                an update, include its "id". Target 9-13 widgets (min 7, max 14).
+                an update, include its "id". Target 9-15 data widgets (kpi, chart,
+                table, pivot_table, filter); section and text headers are not counted.
+                More are accepted and laid out automatically — prefer richer widgets
+                over more of them.
 
                 The backend fills only STRUCTURE (envelope, position, mapping wiring,
                 styling defaults). YOU must still make every design choice — chart
@@ -1080,23 +1116,14 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
         Returns:
             JSON with success, dashboard_id, and message
         """
-        if not isinstance(widgets, list):
-            return json.dumps({"success": False, "message": "widgets must be a JSON array"})
-
-        if len(widgets) == 0:
-            return json.dumps({
-                "success": False,
-                "message": (
-                    "Refusing to create a dashboard with zero widgets. "
-                    "If build_dashboard_context returned an error, surface that to the user "
-                    "instead of calling create_dashboard."
-                ),
-            })
+        if not isinstance(widgets, list) or not widgets:
+            return json.dumps(_widgets_missing("create_dashboard"))
 
         # Hydrate lean agent params into full widget JSON (envelope + derived
         # mapping + seed position) before any validation/SQL/persistence.
         from backend.agents.dashboard_agent.widget_specs.widgets import build_widgets
         widgets = build_widgets(widgets)
+        _log_widget_count("create_dashboard", widgets)
 
         # Pre-persistence verification gate (Bug 5).
         # Consolidates structural validation, KPI dedupe / count caps. Returns
@@ -1262,7 +1289,7 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
             db.close()
 
     @tool
-    async def update_dashboard(dashboard_id: int, widgets: list, title: str = "", description: str = "", data_context: dict | None = None) -> str:
+    async def update_dashboard(dashboard_id: int, widgets: list | None = None, title: str = "", description: str = "", data_context: dict | None = None) -> str:
         """
         Update an existing dashboard's widgets, title, and/or description.
 
@@ -1282,11 +1309,15 @@ def build_inline_dashboard_tools(context: AgentContext, db_session_factory: Call
         Returns:
             JSON with success, dashboard_id, and message
         """
+        if not isinstance(widgets, list) or not widgets:
+            return json.dumps(_widgets_missing("update_dashboard"))
+
         logger.info(f"update_dashboard called: dashboard_id={dashboard_id}, widget_count={len(widgets)}")
 
         # Hydrate lean agent params into full widget JSON (same as create_dashboard).
         from backend.agents.dashboard_agent.widget_specs.widgets import build_widgets
         widgets = build_widgets(widgets)
+        _log_widget_count("update_dashboard", widgets)
 
         # Pre-persistence verification gate (Bug 5). Same gate as create_dashboard
         # so updates can't bypass the KPI / structural rules.
