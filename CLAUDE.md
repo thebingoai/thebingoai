@@ -131,6 +131,40 @@ uvicorn backend.main:app --reload
 celery -A backend.tasks.upload_tasks worker --loglevel=info
 ```
 
+### Running the tests
+
+```bash
+pytest backend/tests -q
+```
+
+CI runs the same command on every PR against a throwaway Postgres — see
+`.github/workflows/backend-tests.yml`. Four things to know:
+
+- **`backend/tests` is the whole gated suite.** `pyproject.toml`'s `testpaths` names
+  only that directory, so a bare `pytest` and the CI command collect the same set.
+  The top-level `tests/` tree is legacy and deliberately ungated — it used to be
+  listed in `testpaths` while CI never ran it, which made the config lie about
+  scope. Promoting it means baselining it first.
+- **Never point `DATABASE_URL` at your dev database when running the suite.** The
+  tests in `backend/tests/test_alembic/` drive real `alembic upgrade`/`downgrade`
+  against it and leave it stamped at the branch's head. That is why a local stack
+  can stop booting after a branch switch. Use a scratch database.
+- The suite is not green. 68 pre-existing failures are listed in
+  `backend/tests/known_failures.txt` as `<node id> :: <ExceptionType>` and marked
+  xfail, so CI gates on *new* failures. The type is checked too — a listed test
+  that starts failing a different way is a new failure wearing an old node id.
+  Fix one and it reports XPASS — delete its line in the same PR. Never add a
+  line to excuse a regression; CI rejects any node id the file gains relative to
+  the base branch.
+- **A test must not leave `sys.modules` entries replaced.** pytest imports every
+  test file during collection, before any test runs, so a stub installed at module
+  import is live while every other file is imported — which silently breaks any of
+  them that import the real module. Stub inside a function-scoped fixture with
+  `patch.dict(sys.modules, ...)` — around the import that needs it for a stub
+  consumed at module import, or in a function-scoped fixture for one consumed at
+  call time. `backend/tests/services/test_template_materializer_sql.py` shows
+  both. A conftest hook fails the run if a stub survives collection.
+
 ## Architecture
 
 ### Multi-Provider LLM System

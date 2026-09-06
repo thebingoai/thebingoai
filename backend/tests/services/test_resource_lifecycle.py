@@ -1,4 +1,5 @@
 """Tests for resource_lifecycle cascade handlers."""
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 import sys
@@ -7,16 +8,16 @@ import importlib.util
 # Import resource_lifecycle directly to avoid importing models
 spec = importlib.util.spec_from_file_location(
     "resource_lifecycle",
-    "/Users/edmundhee/Work/GitHub/gruda/bingo-enterprise/bingo/backend/services/resource_lifecycle.py"
+    Path(__file__).resolve().parents[2] / "services" / "resource_lifecycle.py",
 )
 resource_lifecycle = importlib.util.module_from_spec(spec)
 sys.modules["resource_lifecycle"] = resource_lifecycle
 
-# Mock the imports that resource_lifecycle needs
-sys.modules['backend.models.pipeline'] = MagicMock()
-sys.modules['backend.data_plane.scope'] = MagicMock()
-sys.modules['backend.services.data_plane_service'] = MagicMock()
-
+# No module-level sys.modules stubs. resource_lifecycle imports its dependencies
+# inside its functions, so exec_module needs nothing, and the one test that
+# reaches those imports supplies them itself via patch.dict. Assigning them here
+# left MagicMocks in sys.modules for the rest of the session — every later test
+# that touched backend.services.data_plane_service got the mock.
 spec.loader.exec_module(resource_lifecycle)
 
 delete_pipeline = resource_lifecycle.delete_pipeline
@@ -33,27 +34,35 @@ def _make_pipeline(pipeline_id="p1", target_table="fb_ads", scope_kind="org", sc
     return p
 
 
-def test_delete_pipeline_drops_table():
+def test_delete_pipeline_preserves_dataplane_table():
+    """Bingo's no-delete policy: the metadata row goes, the table stays.
+
+    See delete_pipeline's docstring — the DataPlane table (BQ external table +
+    GCS parquet, or the local parquet directory) is deliberately left in place
+    for the operator to reclaim. The plane is left reachable here on purpose:
+    asserting it was never consulted is what makes preservation observable.
+    """
     db = MagicMock()
     pipeline = _make_pipeline()
     db.query.return_value.filter.return_value.first.return_value = pipeline
 
     mock_plane = MagicMock()
-    mock_plane.table_exists.return_value = True
+    data_plane_service = MagicMock(get_default_plane=MagicMock(return_value=mock_plane))
 
     # Mock the imports that delete_pipeline calls
     with patch.dict(sys.modules, {
         'backend.models.pipeline': MagicMock(),
         'backend.data_plane.scope': MagicMock(OwnerScope=MagicMock()),
-        'backend.services.data_plane_service': MagicMock(get_default_plane=MagicMock(return_value=mock_plane)),
+        'backend.services.data_plane_service': data_plane_service,
         'backend.config': MagicMock(settings=MagicMock(redis_url='redis://localhost')),
     }):
         with patch("redis.from_url") as mock_redis:
             mock_redis.return_value = MagicMock()
             delete_pipeline("p1", db)
 
-    mock_plane.drop_table.assert_called_once()
     db.delete.assert_called_once_with(pipeline)
+    data_plane_service.get_default_plane.assert_not_called()
+    mock_plane.drop_table.assert_not_called()
 
 
 def test_delete_pipeline_not_found_raises():
