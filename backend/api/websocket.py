@@ -1073,6 +1073,7 @@ async def _handle_chat_send(
             query=message,
             connection_ids=connection_ids or None,
             thread_id=conversation.thread_id,
+            request_id=request_id,
         )
 
         # Conversation history (fetched before saving the current user message)

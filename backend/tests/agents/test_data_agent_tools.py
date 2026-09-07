@@ -237,12 +237,12 @@ def test_execute_query_falls_back_to_connector_when_serve_returns_none(monkeypat
 # payload handed to store_query_result / publish_query_result, which is what
 # the frontend names export files from. So assert on the published payload.
 
-def _run_execute_query(monkeypatch, sql):
+def _run_execute_query(monkeypatch, sql, request_id=None):
     """Invoke execute_query over a stubbed connector; return the published payload."""
     from backend.agents.context import AgentContext
     from backend.connectors.base import QueryResult
 
-    ctx = AgentContext(user_id="u-1", available_connections=[42])
+    ctx = AgentContext(user_id="u-1", available_connections=[42], request_id=request_id)
     qr = QueryResult(columns=["c"], rows=[(1,)], row_count=1, execution_time_ms=1.0)
 
     fake_db = MagicMock()
@@ -261,6 +261,9 @@ def _run_execute_query(monkeypatch, sql):
     exec_tool.invoke({"connection_id": 42, "sql": sql})
 
     publish.assert_called_once()
+    # The side-channel is a per-user broadcast; the turn id is what lets the
+    # browser keep only its own frames, so every case checks it went through.
+    assert publish.call_args.kwargs.get("request_id") == request_id
     return publish.call_args.args[2]
 
 
@@ -292,3 +295,12 @@ def test_label_on_join_is_alphabetically_first_not_the_driving_table(monkeypatch
         monkeypatch, "SELECT * FROM orders o JOIN customers c ON c.id = o.customer_id"
     )
     assert payload["label"] == "customers"
+
+
+# --- the browser keeps only its own turn's frames ----------------------------
+
+
+def test_published_result_carries_the_turn_request_id(monkeypatch):
+    """Review of PR #184: another tab's query, or a briefing, replaced the table
+    under a finished answer because the frame carried nothing to match on."""
+    _run_execute_query(monkeypatch, "SELECT c FROM t", request_id="req-1")

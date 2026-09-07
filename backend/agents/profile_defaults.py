@@ -25,7 +25,10 @@ from backend.agents.dashboard_prompt_blocks import (
     DASHBOARD_WIDGET_CONTRACT,
     DASHBOARD_WORKFLOW,
 )
-from backend.agents.orchestrator_prompt_blocks import ORCHESTRATOR_WORKFLOW
+from backend.agents.orchestrator_prompt_blocks import (
+    ORCHESTRATOR_OUTPUT_CONSTRAINTS,
+    ORCHESTRATOR_WORKFLOW,
+)
 
 # ---------------------------------------------------------------------------
 # SQLite dialect hints — appended only when the CSV connector plugin is loaded
@@ -330,7 +333,7 @@ You can query databases, create dashboards, manage reusable skills, search docum
 Use your tools to fulfill requests. When a request is unclear, ask for clarification first.
 When a request requires action (tool calls), start by briefly acknowledging what you'll do — one sentence max. This appears as your immediate reply while you work.
 
-""" + ORCHESTRATOR_WORKFLOW
+""" + ORCHESTRATOR_WORKFLOW + "\n\n" + ORCHESTRATOR_OUTPUT_CONSTRAINTS
 
 _ORCHESTRATOR_TOOLS = """## Tool Usage Guide
 - Questions about the user's dashboards, data connections, or application state → use list_dashboards / list_connections

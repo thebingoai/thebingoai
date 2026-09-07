@@ -200,6 +200,10 @@ class Settings(BaseSettings):
     widget_cache_ttl_source: int = 120        # live source-DB fallback: short window so repeat opens are fast without pinning stale data
     widget_cache_max_bytes: int = 2_000_000   # skip caching payloads larger than this
 
+    # Org feature flags that default ON when the org row has no explicit value.
+    # Format: "flag=true,flag=false". An explicit per-org value always wins.
+    feature_flag_defaults: str = ""
+
     # DuckDB memory guardrails (default memory_limit is ~80% of RAM per connection)
     duckdb_memory_limit: str = "1GB"
     duckdb_temp_directory: str = "/tmp/duckdb_spill"  # spill dir for large aggregations
