@@ -17,19 +17,15 @@ if not hasattr(sys.modules["fastapi"], "APIRouter"):
 _BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-# Load plugins.base for real dataclasses.
+# Load plugins.base for real dataclasses. Its sys.modules entry is scoped to the
+# exec calls that need it: left installed, every later importer of
+# backend.plugins.base got this by-path duplicate whose dataclasses fail
+# identity checks against the real module.
 _spec_base = importlib.util.spec_from_file_location(
     "backend.plugins.base",
     os.path.join(_BACKEND_DIR, "plugins", "base.py"),
 )
-sys.modules.pop("backend.plugins.base", None)
 _base = importlib.util.module_from_spec(_spec_base)
-sys.modules["backend.plugins.base"] = _base
-_spec_base.loader.exec_module(_base)
-
-ConnectorRegistration = _base.ConnectorRegistration
-PipelineTemplate = _base.PipelineTemplate
-BingoPlugin = _base.BingoPlugin
 
 
 # Load loader.py with stubbed downstream imports.
@@ -43,7 +39,15 @@ def _load_loader_module():
     return module
 
 
-loader = _load_loader_module()
+# loader.py imports backend.plugins.base, so both execs need the entry live —
+# and neither may outlive this block.
+with patch.dict(sys.modules, {"backend.plugins.base": _base}):
+    _spec_base.loader.exec_module(_base)
+    loader = _load_loader_module()
+
+ConnectorRegistration = _base.ConnectorRegistration
+PipelineTemplate = _base.PipelineTemplate
+BingoPlugin = _base.BingoPlugin
 
 
 class _DummyPlugin(BingoPlugin):

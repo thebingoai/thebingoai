@@ -2,20 +2,21 @@
 import importlib.util
 import os
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Stub heavy framework deps before importing plugins.base / template_materializer.
-# conftest.py creates a ModuleType for fastapi but doesn't set APIRouter on it.
+# Guarded: when the real fastapi is importable these are no-ops. They only bite
+# when something earlier in the session installed a bare ModuleType instead.
 import types as _types
 if "fastapi" not in sys.modules:
     sys.modules["fastapi"] = _types.ModuleType("fastapi")
 if not hasattr(sys.modules["fastapi"], "APIRouter"):
     sys.modules["fastapi"].APIRouter = MagicMock
 
-# sqlalchemy.exc isn't in conftest's stub hierarchy — add IntegrityError so the
-# materializer's `from sqlalchemy.exc import IntegrityError` resolves.
+# Same for sqlalchemy.exc — add IntegrityError so the materializer's
+# `from sqlalchemy.exc import IntegrityError` resolves either way.
 if "sqlalchemy.exc" not in sys.modules:
     sys.modules["sqlalchemy.exc"] = _types.ModuleType("sqlalchemy.exc")
 if not hasattr(sys.modules["sqlalchemy.exc"], "IntegrityError"):
@@ -46,6 +47,10 @@ def _fake_owner_scope(connection):
     return s
 
 
+# Deliberately NOT installed into sys.modules: the real OwnerScope imports fine
+# (backend/data_plane/scope.py has no heavy deps) and this fake diverges from it
+# — from_connection falls back to `org` scope via connection.org_id, which
+# _fake_owner_scope ignores. Kept as the shape a faithful stub would need.
 _scope_module = MagicMock()
 _scope_module.OwnerScope = MagicMock()
 _scope_module.OwnerScope.from_connection = MagicMock(side_effect=_fake_owner_scope)
@@ -61,28 +66,38 @@ _runner_module = MagicMock()
 _runner_module.compute_pipeline_fingerprint = MagicMock(side_effect=_fake_fingerprint)
 
 
-sys.modules["backend.models.pipeline"] = _pipeline_module
-sys.modules["backend.models.transforms"] = _transforms_module
-sys.modules["backend.pipelines.runner"] = _runner_module
+# The stubs need to be live only while the two target modules execute — the
+# modules bind what they import into their own namespace and keep it afterwards.
+# Installing them permanently left MagicMocks in sys.modules for the rest of the
+# session: pytest imports every test file during collection, before any test
+# runs, so the pollution reached files with nothing to do with this one.
+_import_stubs = {
+    "backend.models.pipeline": _pipeline_module,
+    "backend.models.transforms": _transforms_module,
+    "backend.pipelines.runner": _runner_module,
+}
 
-# Import the actual `plugins.base` (lightweight) so real dataclasses are used.
-import importlib
-sys.modules.pop("backend.plugins.base", None)
+# `plugins.base` is exec'd for real so the dataclasses are the genuine ones, but
+# its sys.modules entry is scoped too: leaving it installed handed every later
+# importer a by-path duplicate whose dataclasses fail identity checks against
+# the real module.
 spec_base = importlib.util.spec_from_file_location(
     "backend.plugins.base",
     os.path.join(_BACKEND_DIR, "plugins", "base.py"),
 )
 base_module = importlib.util.module_from_spec(spec_base)
-sys.modules["backend.plugins.base"] = base_module
-spec_base.loader.exec_module(base_module)
+template_materializer = importlib.util.module_from_spec(spec)
+
+# Not a real package name — collides with nothing, and exec_module wants it set.
+sys.modules["template_materializer"] = template_materializer
+
+with patch.dict(sys.modules, {**_import_stubs, "backend.plugins.base": base_module}):
+    spec_base.loader.exec_module(base_module)
+    spec.loader.exec_module(template_materializer)
 
 ConnectorRegistration = base_module.ConnectorRegistration
 PipelineTemplate = base_module.PipelineTemplate
 TransformTemplate = base_module.TransformTemplate
-
-template_materializer = importlib.util.module_from_spec(spec)
-sys.modules["template_materializer"] = template_materializer
-spec.loader.exec_module(template_materializer)
 
 materialize_templates_for_connection = template_materializer.materialize_templates_for_connection
 

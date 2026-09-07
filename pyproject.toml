@@ -10,7 +10,9 @@ urls = { Homepage = "https://thebingo.ai", Repository = "https://github.com/theb
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-testpaths = ["tests", "backend/tests"]
+# CI runs exactly this (see .github/workflows/backend-tests.yml). The top-level
+# tests/ tree is legacy and ungated; listing it here only made the config lie.
+testpaths = ["backend/tests"]
 # Repo root only — never backend/, which would shadow langgraph (see addopts).
 pythonpath = ["."]
 python_files = ["test_*.py", "*_test.py"]
