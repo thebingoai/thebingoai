@@ -765,19 +765,51 @@ def _readable_connection(db, connection_id, current_user, dashboard):
     return q.filter(shared_sample_clause()).first()
 
 
+def _authorizable_tables(connection, sql) -> list[str]:
+    """Tables a cache hit must be authorized against: what the *stored* SQL
+    references plus what the forms the serving rungs actually execute reference.
+
+    `extract_table_refs` parses in sqlglot's default dialect, where backtick
+    quoting is a syntax error, so a backtick-quoted table name yields [] — and
+    the caller's `all(...)` over an empty list is vacuously true. No rung runs
+    the stored SQL verbatim: the source rung runs
+    `normalize_sql_for(sql, _resolve_inject_dialect(connection))`, the DuckDB
+    rung `normalize_sql_for(sql, "duckdb")`, and both rewrite backticks to
+    double quotes — so the plane middleware resolves the table and denies while
+    the stored form named nothing at all. Union, not substitution: a form that
+    fails to parse contributes nothing rather than shrinking the set.
+    """
+    from backend.utils.sql_refs import extract_table_refs
+
+    forms = [sql]
+    for dialect in {_resolve_inject_dialect(connection), "duckdb"}:
+        try:
+            forms.append(normalize_sql_for(sql, dialect))
+        except Exception:  # unknown dialect / unparseable — that form adds nothing
+            continue
+    return sorted({t for form in forms for t in extract_table_refs(form)})
+
+
 def _plane_tables_readable(connection, sql, current_user) -> bool:
     """The per-table check the governance plane middleware runs on `plane.query`
     (enterprise bingo-org-governance, middleware._authorize). A Redis hit skips
-    the plane, so the hit runs it here. Parity, not a second policy: same table
-    list, same resource shape, same `contract.check` — which permits under
-    system_context (shared dashboards) and when no plugin is registered
-    (community). Unparseable SQL yields no tables and passes, as on the plane.
-    For a connection that never touches a plane (Postgres/MySQL) this is at most
+    the plane, so the hit runs it here. Parity, not a second policy: same
+    resource shape, same `contract.check` — which permits under system_context
+    (shared dashboards) and when no plugin is registered (community). For a
+    connection that never touches a plane (Postgres/MySQL) this is at most
     stricter than the miss path; org members pass by default.
+
+    Fails closed when no table can be resolved: `all([])` would hand out the hit
+    with no check at all, and "nothing parsed here" is not "nothing to enforce"
+    — the cold path parses a normalized form and can still deny. The cost of
+    being wrong is a cache miss, not a lost read.
     """
     from backend.data_plane.scope import OwnerScope
     from backend.governance.contract import check
-    from backend.utils.sql_refs import extract_table_refs
+
+    tables = _authorizable_tables(connection, sql)
+    if not tables:
+        return False
 
     scope = OwnerScope.from_connection(connection)
     return all(
@@ -788,7 +820,7 @@ def _plane_tables_readable(connection, sql, current_user) -> bool:
             "owner_scope_id": str(scope.id),
             "table_name": table,
         })
-        for table in extract_table_refs(sql)
+        for table in tables
     )
 
 

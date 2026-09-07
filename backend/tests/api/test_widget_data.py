@@ -1386,6 +1386,48 @@ def test_plane_tables_readable_is_false_when_one_table_is_denied(monkeypatch):
     ) is False
 
 
+# Extraction runs in sqlglot's default dialect, where backticks are a syntax
+# error. No rung executes the stored SQL verbatim — they normalize first, and the
+# normalized form parses — so a backtick-quoted table was denied cold and served
+# warm with `all([])` never asking anything.
+
+_BACKTICKED = "SELECT v FROM " + '`' + "private_table" + '`'
+
+
+def test_authorizable_tables_recovers_a_table_the_stored_dialect_hides(monkeypatch):
+    from backend.utils.sql_refs import extract_table_refs
+
+    assert extract_table_refs(_BACKTICKED) == []          # the gap, in one line
+    assert wd._authorizable_tables(
+        FakeConnection(db_type="sqlite"), _BACKTICKED
+    ) == ["private_table"]
+
+
+def test_plane_tables_readable_denies_a_backtick_quoted_table(monkeypatch):
+    from backend.governance import contract
+
+    check_fn, seen = _deny_recorder(denied={"private_table"})
+    monkeypatch.setattr(contract, "_check_fn", check_fn)
+    conn = FakeConnection(db_type="sqlite", owner_scope_kind="org", owner_scope_id="org-1")
+
+    assert wd._plane_tables_readable(conn, _BACKTICKED, _user(org_id="org-1")) is False
+    assert [c["resource"]["table_name"] for c in seen] == ["private_table"]
+
+
+def test_plane_tables_readable_fails_closed_when_no_table_resolves(monkeypatch):
+    """`all([])` would hand out the hit unchecked. Nothing parsed here is not
+    nothing to enforce — the cold path parses a normalized form and can deny."""
+    from backend.governance import contract
+
+    check_fn, seen = _deny_recorder()
+    monkeypatch.setattr(contract, "_check_fn", check_fn)
+    conn = FakeConnection(owner_scope_kind="org", owner_scope_id="org-1")
+
+    assert wd._plane_tables_readable(conn, "NOT SQL AT ALL ((", _user(org_id="org-1")) is False
+    assert wd._plane_tables_readable(conn, "SELECT 1", _user(org_id="org-1")) is False
+    assert seen == []
+
+
 def _source_connector(monkeypatch):
     """Make the source rung succeed so a rejected hit has somewhere to fall to."""
     connector = MagicMock()
