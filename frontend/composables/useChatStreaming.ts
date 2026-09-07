@@ -357,16 +357,20 @@ export const useChatStreaming = () => {
           return obj
         })
 
-        // Keep the result with the most rows when multiple queries run in one turn
+        // ponytail: last result wins. The answering query is the one the agent
+        // runs last; ranking by row count let a 20-row exploratory scan outrank
+        // the 7-row aggregation the reply then pointed at. The frame carries no
+        // ordering key — result_ref is a uuid4 — so arrival order is all there
+        // is. Upgrade if trailing verification queries appear: chat.tool_result
+        // sub_steps already carry each result_ref in call order, so the
+        // answering ref can be picked there and matched against data.result_ref.
         const targetMsg = chatStore.messages.find(m => m.id === assistantMsgId)
-        if (!targetMsg?.results?.length || results.length >= (targetMsg.results?.length || 0)) {
-          chatStore.updateMessageById(assistantMsgId, {
-            results,
-            // Under the privacy floor the LLM never saw these rows, so nothing
-            // else in the reply can show them — the bubble renders the table.
-            values_withheld: payload.values_withheld === true,
-          })
-        }
+        chatStore.updateMessageById(assistantMsgId, {
+          results,
+          // Under the privacy floor the LLM never saw these rows, so nothing
+          // else in the reply can show them — the bubble renders the table.
+          values_withheld: payload.values_withheld === true,
+        })
 
         // Track every dataset for download (one entry per query, dedup by ref)
         if (data.result_ref) {

@@ -162,6 +162,37 @@ describe('useChatStreaming — query.result → query_files', () => {
     expect(qf.map(f => f.label)).toEqual(['first', 'second'])
   })
 
+  it('renders the last query result, not the largest one', () => {
+    // Prod, 2026-09-07: a 20-row exploratory scan ran before the 7-row weekday
+    // aggregation that answered the question. Ranking by row count left the
+    // scan on screen while the reply pointed at the aggregation — and under the
+    // privacy floor the LLM never saw either result, so it could not notice.
+    const fire = startTurn()
+    fire({
+      result_ref: 'explore',
+      data: {
+        columns: ['id'],
+        rows: Array.from({ length: 20 }, (_, i) => [i]),
+        label: 'sales',
+        values_withheld: true,
+      },
+    })
+    fire({
+      result_ref: 'answer',
+      data: {
+        columns: ['day', 'avg'],
+        rows: Array.from({ length: 7 }, (_, i) => [`d${i}`, i]),
+        label: 'sales',
+        values_withheld: true,
+      },
+    })
+
+    expect(lastMsg().results).toHaveLength(7)
+    expect(lastMsg().results![0]).toEqual({ day: 'd0', avg: 0 })
+    // Every query still gets its own download chip.
+    expect(lastMsg().query_files!.map(f => f.result_ref)).toEqual(['explore', 'answer'])
+  })
+
   it('sets results but no query_files when result_ref is absent', () => {
     startTurn()({ data: { columns: ['a'], rows: [[1]] } })
     expect(lastMsg().results).toEqual([{ a: 1 }])
