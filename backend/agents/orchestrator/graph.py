@@ -133,6 +133,31 @@ def _sanitize_technical_errors(text: str) -> str:
     return cleaned.strip()
 
 
+_SQL_FENCE_TAGGED = _re.compile(r"```[ \t]*sql\b[^\n]*\n.*?```[ \t]*", _re.IGNORECASE | _re.DOTALL)
+_SQL_FENCE_BARE = _re.compile(
+    r"```[ \t]*\n\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|CREATE)\b.*?```[ \t]*",
+    _re.IGNORECASE | _re.DOTALL,
+)
+
+
+def _strip_sql_fences(text: str) -> str:
+    """Drop fenced SQL from the user-facing answer.
+
+    The Output Constraints prompt rule and the judge are advisory; this is the
+    guarantee. Under the privacy floor the LLM has no row values, and its
+    fallback was to paste the query and ask the user to run it themselves.
+
+    # ponytail: fences only — inline `SELECT ...` and lead-in prose ("run this
+    # in your console") are semantic, left to the prompt/judge. No "show me the
+    # SQL" exemption: the chassis says describe in plain language, never paste,
+    # even when asked.
+    """
+    if not text or "```" not in text:
+        return text
+    cleaned = _SQL_FENCE_BARE.sub("", _SQL_FENCE_TAGGED.sub("", text))
+    return _COLLAPSE_BLANK_LINES.sub("\n\n", cleaned).strip()
+
+
 _SQL_FIELDS = {"sql", "query", "sql_queries"}
 
 
@@ -599,7 +624,7 @@ async def _run_judge_retry(
         )
         retry_answer = _extract_final_answer(retry_messages_out)
         if retry_answer:
-            retry_answer = _sanitize_technical_errors(_redact_connection_ids(retry_answer))
+            retry_answer = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(retry_answer)))
             # Stay armed if the retry ALSO called no tool — otherwise the gate is
             # one-shot: the second verdict would fall open and the ungrounded
             # answer ships anyway.
@@ -1317,7 +1342,7 @@ async def run_orchestrator(
         )
         final_answer = _extract_final_answer(result.get("messages", []))
         if final_answer:
-            final_answer = _sanitize_technical_errors(_redact_connection_ids(final_answer))
+            final_answer = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(final_answer)))
 
         retry_succeeded: Optional[bool] = None
         judge_metadata: Optional[Dict[str, Any]] = None
@@ -1588,7 +1613,7 @@ async def stream_orchestrator(
             # Tell frontend to reclaim the streaming reasoning step as the final answer
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
             full_text = "".join(reasoning_buffer)
-            final_answer_text = _sanitize_technical_errors(_redact_connection_ids(full_text))
+            final_answer_text = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(full_text)))
             reasoning_buffer.clear()
 
         # Layer 4: judge the streamed answer and retry once if unresolved.
