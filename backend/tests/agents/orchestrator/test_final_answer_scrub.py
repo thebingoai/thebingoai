@@ -7,7 +7,11 @@ own console. The prompt rule that forbids this had never reached the live
 deterministic half of the fix — it holds regardless of what the LLM writes.
 """
 
-from backend.agents.orchestrator.graph import _strip_sql_fences
+from backend.agents.orchestrator.graph import (
+    _SCRUBBED_EMPTY_MESSAGE,
+    _finalize_answer_text,
+    _strip_sql_fences,
+)
 
 
 class TestFencedSqlIsRemoved:
@@ -69,3 +73,51 @@ class TestPassthrough:
 
     def test_empty_is_returned_unchanged(self):
         assert _strip_sql_fences("") == ""
+
+
+class TestTheAnswerIsNeverEmptied:
+    """The scrubbers are subtractive. An answer that was *only* a SQL fence (or
+    only a traceback) sanitizes to "" — and empty is worse than wrong: it skips
+    the judge gate and the `token` frame, then persists as an empty assistant
+    message that replays as AIMessage(content="") on the next turn.
+    """
+
+    def test_a_sql_only_answer_becomes_the_fallback(self):
+        out = _finalize_answer_text("```sql\nSELECT day, AVG(total) FROM sales GROUP BY day;\n```")
+        assert out == _SCRUBBED_EMPTY_MESSAGE
+        assert "SELECT" not in out
+
+    def test_a_traceback_only_answer_becomes_the_fallback(self):
+        text = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/backend/x.py", line 1, in <module>\n'
+            "ValueError: boom"
+        )
+        assert _finalize_answer_text(text) == _SCRUBBED_EMPTY_MESSAGE
+
+    def test_a_bare_exception_line_becomes_the_fallback(self):
+        assert _finalize_answer_text("ValueError: bad thing") == _SCRUBBED_EMPTY_MESSAGE
+
+    def test_ordinary_prose_is_untouched(self):
+        text = "Sunday is the slowest day, at $412 average."
+        assert _finalize_answer_text(text) == text
+
+    def test_prose_plus_a_fence_keeps_the_prose(self):
+        out = _finalize_answer_text(
+            "Sunday is the slowest day.\n\n```sql\nSELECT 1;\n```"
+        )
+        assert out == "Sunday is the slowest day."
+        assert out != _SCRUBBED_EMPTY_MESSAGE
+
+    def test_empty_input_stays_empty(self):
+        """No fallback for a turn that genuinely produced nothing — that is the
+        tool-only case, and `done` already handles it."""
+        assert _finalize_answer_text("") == ""
+
+    def test_every_scrub_still_runs_on_what_survives(self):
+        out = _finalize_answer_text(
+            "I queried connection 5 for you.\n\n```sql\nSELECT 1;\n```"
+        )
+        assert "connection 5" not in out
+        assert "the database" in out
+        assert "SELECT" not in out

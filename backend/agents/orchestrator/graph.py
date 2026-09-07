@@ -158,6 +158,37 @@ def _strip_sql_fences(text: str) -> str:
     return _COLLAPSE_BLANK_LINES.sub("\n\n", cleaned).strip()
 
 
+_SCRUBBED_EMPTY_MESSAGE = (
+    "My draft answer was raw SQL or a technical error, and I don't show either "
+    "in chat. Ask again and I'll describe the result in plain language."
+)
+
+
+def _finalize_answer_text(text: str) -> str:
+    """Run every user-facing scrub, and never hand back an empty answer.
+
+    The scrubbers are subtractive, so an answer that was *only* a SQL fence (or
+    only a traceback) sanitizes to "". Empty then skips the judge gate, skips
+    the `token` frame, and persists as an empty assistant message -- which
+    replays as AIMessage(content="") on the next turn (see
+    api/websocket.py:_fold_ask_persist_content for why that is a hazard).
+
+    # ponytail: one canned line, no re-ask. The fallback is non-empty, so it
+    # still reaches the judge -- a turn where no tool ran gets a real retry for
+    # free. Upgrade to re-prompting the model if the log line below fires often.
+    """
+    if not text:
+        return text
+    cleaned = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(text)))
+    if not cleaned:
+        logger.warning(
+            "Final answer was empty after scrubbing (%d chars in); using fallback",
+            len(text),
+        )
+        return _SCRUBBED_EMPTY_MESSAGE
+    return cleaned
+
+
 _SQL_FIELDS = {"sql", "query", "sql_queries"}
 
 
@@ -624,7 +655,7 @@ async def _run_judge_retry(
         )
         retry_answer = _extract_final_answer(retry_messages_out)
         if retry_answer:
-            retry_answer = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(retry_answer)))
+            retry_answer = _finalize_answer_text(retry_answer)
             # Stay armed if the retry ALSO called no tool — otherwise the gate is
             # one-shot: the second verdict would fall open and the ungrounded
             # answer ships anyway.
@@ -1342,7 +1373,7 @@ async def run_orchestrator(
         )
         final_answer = _extract_final_answer(result.get("messages", []))
         if final_answer:
-            final_answer = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(final_answer)))
+            final_answer = _finalize_answer_text(final_answer)
 
         retry_succeeded: Optional[bool] = None
         judge_metadata: Optional[Dict[str, Any]] = None
@@ -1613,7 +1644,7 @@ async def stream_orchestrator(
             # Tell frontend to reclaim the streaming reasoning step as the final answer
             yield {"type": "reasoning_end", "content": {"is_final_answer": True}}
             full_text = "".join(reasoning_buffer)
-            final_answer_text = _strip_sql_fences(_sanitize_technical_errors(_redact_connection_ids(full_text)))
+            final_answer_text = _finalize_answer_text(full_text)
             reasoning_buffer.clear()
 
         # Layer 4: judge the streamed answer and retry once if unresolved.
