@@ -1,4 +1,5 @@
 """Tests for backend.config.feature_flags (Phase 0 — preflight)."""
+import contextlib
 import json
 import pytest
 from unittest.mock import MagicMock, patch
@@ -9,11 +10,13 @@ from sqlalchemy.dialects.postgresql import BYTEA, JSONB
 
 from backend.database.base import Base
 from backend.models.organization import Organization
+from backend.config import settings
 from backend.config.feature_flags import (
     FLAG_DISABLED,
     KNOWN_FLAGS,
     FlagDisabled,
     enabled,
+    read_flags,
     requires_flag,
     set_flag,
 )
@@ -154,6 +157,56 @@ class TestEnabled:
             patch("backend.database.session.SessionLocal", new=_NoCloseSessionFactory(sqlite_session)),
         ):
             assert enabled("ghost-org", "any_flag", default=False) is False
+
+
+# ---------------------------------------------------------------------------
+# FEATURE_FLAG_DEFAULTS (env-wide defaults)
+# ---------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def _env_defaults(sqlite_session, raw: str):
+    """Cache miss + test DB + the env default string under test."""
+    with (
+        patch("backend.config.feature_flags._get_redis", return_value=_redis_mock()),
+        patch("backend.database.session.SessionLocal", new=_NoCloseSessionFactory(sqlite_session)),
+        patch.object(settings, "feature_flag_defaults", raw),
+    ):
+        yield
+
+
+class TestEnvDefaults:
+    """The env default fills in what the org row leaves unset; the row always wins."""
+
+    def test_env_default_fills_a_missing_flag(self, sqlite_session, org):
+        with _env_defaults(sqlite_session, "bulk_widget_loading=true"):
+            assert enabled(org.id, "bulk_widget_loading") is True
+
+    def test_explicit_org_false_beats_env_true(self, sqlite_session, org):
+        org.feature_flags = {"bulk_widget_loading": False}
+        sqlite_session.commit()
+        with _env_defaults(sqlite_session, "bulk_widget_loading=true"):
+            assert enabled(org.id, "bulk_widget_loading") is False
+
+    def test_parsing_is_lenient_about_spaces_case_and_trailing_comma(self, sqlite_session, org):
+        with _env_defaults(sqlite_session, " bulk_widget_loading = true , widget_result_cache=TRUE, "):
+            assert enabled(org.id, "bulk_widget_loading") is True
+            assert enabled(org.id, "widget_result_cache") is True
+
+    def test_unknown_flag_and_bad_value_are_dropped_not_raised(self, sqlite_session, org):
+        with _env_defaults(sqlite_session, "nope=true,bulk_widget_loading=maybe"):
+            assert enabled(org.id, "nope") is False
+            assert enabled(org.id, "bulk_widget_loading") is False
+
+    def test_read_flags_reports_the_effective_map(self, sqlite_session, org):
+        org.feature_flags = {"bulk_widget_loading": False}
+        sqlite_session.commit()
+        with _env_defaults(sqlite_session, "widget_result_cache=true"):
+            assert read_flags(org.id) == {"widget_result_cache": True, "bulk_widget_loading": False}
+
+    def test_empty_setting_changes_nothing(self, sqlite_session, org):
+        with _env_defaults(sqlite_session, ""):
+            assert enabled(org.id, "bulk_widget_loading") is False
+            assert read_flags(org.id) == {}
 
 
 # ---------------------------------------------------------------------------
