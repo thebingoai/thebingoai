@@ -1247,8 +1247,14 @@ def _cached_response():
     )
 
 
-def _setup_redis_hit(monkeypatch):
-    """Cache on, key builder and lookup stubbed so the lookup always hits."""
+def _setup_redis_hit(monkeypatch, plane_readable=True):
+    """Cache on, key builder and lookup stubbed so the lookup always hits.
+
+    `plane_readable` pins the per-table gate (None = leave the real one, for the
+    tests that drive `contract.check` themselves).
+    """
+    if plane_readable is not None:
+        monkeypatch.setattr(wd, "_plane_tables_readable", lambda *a, **k: plane_readable)
     monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
     monkeypatch.setattr(wd, "_widget_cache_key", lambda *a, **k: ("key", 60))
     monkeypatch.setattr(wd, "_resolve_serving_plane", lambda *a, **k: None)
@@ -1290,7 +1296,9 @@ def test_refresh_widget_never_reads_redis_without_a_readable_connection(monkeypa
     lookup.assert_not_called()
 
 
-def _setup_bulk_redis_hit(monkeypatch, readable):
+def _setup_bulk_redis_hit(monkeypatch, readable, plane_readable=True):
+    if plane_readable is not None:
+        monkeypatch.setattr(wd, "_plane_tables_readable", lambda *a, **k: plane_readable)
     monkeypatch.setattr("backend.api.dashboards._dashboard_visible_to", lambda q, user, db: q)
     monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
     monkeypatch.setattr(wd, "_widget_cache_enabled", lambda org_id: True)
@@ -1323,3 +1331,122 @@ def test_bulk_refresh_never_reads_redis_without_a_readable_connection(monkeypatc
 
     assert resp.widgets == {"w1": {"error": "Connection 42 not found"}}
     lookup.assert_not_called()
+
+
+# ── Redis hit also runs the plane middleware's per-table check ────────────────
+#
+# A readable connection is not the cold-path authorization for a plane-backed
+# connection: `DataPlaneConnector.execute_query` is `plane.query(...)`, which the
+# enterprise governance middleware wraps with a per-table ACL. A hit skips the
+# plane, so it runs the same check here — otherwise an owner whose table is later
+# DENY'd keeps getting cached rows for the rest of the TTL.
+
+def _deny_recorder(denied=()):
+    """Stand-in for the governance plugin's registered check fn."""
+    seen = []
+
+    def _check(*, user, action, resource):
+        seen.append({"user": user, "action": action, "resource": resource})
+        return resource.get("table_name") not in denied
+
+    return _check, seen
+
+
+def test_plane_tables_readable_runs_the_plane_middlewares_check_per_table(monkeypatch):
+    from backend.governance import contract
+
+    check_fn, seen = _deny_recorder()
+    monkeypatch.setattr(contract, "_check_fn", check_fn)
+    conn = FakeConnection(owner_scope_kind="org", owner_scope_id="org-1")
+    user = _user(org_id="org-1")
+
+    ok = wd._plane_tables_readable(conn, "SELECT a FROM t1 JOIN t2 ON t1.k = t2.k", user)
+
+    assert ok is True
+    # Same resource shape the middleware builds (_resource_for_table).
+    assert [c["resource"] for c in seen] == [
+        {"type": "dataplane_table", "id": "org:org-1:t1",
+         "owner_scope_kind": "org", "owner_scope_id": "org-1", "table_name": "t1"},
+        {"type": "dataplane_table", "id": "org:org-1:t2",
+         "owner_scope_kind": "org", "owner_scope_id": "org-1", "table_name": "t2"},
+    ]
+    assert {c["action"] for c in seen} == {"query"}
+    assert all(c["user"] is user for c in seen)
+
+
+def test_plane_tables_readable_is_false_when_one_table_is_denied(monkeypatch):
+    from backend.governance import contract
+
+    check_fn, _ = _deny_recorder(denied={"t2"})
+    monkeypatch.setattr(contract, "_check_fn", check_fn)
+    conn = FakeConnection(owner_scope_kind="org", owner_scope_id="org-1")
+
+    assert wd._plane_tables_readable(
+        conn, "SELECT a FROM t1 JOIN t2 ON t1.k = t2.k", _user(org_id="org-1")
+    ) is False
+
+
+def _source_connector(monkeypatch):
+    """Make the source rung succeed so a rejected hit has somewhere to fall to."""
+    connector = MagicMock()
+    connector.__enter__ = lambda self: self
+    connector.__exit__ = lambda *a: None
+    connector.execute_query.return_value = FakeQueryResult(
+        columns=["cnt"], rows=[(15,)], row_count=1
+    )
+    monkeypatch.setattr(
+        "backend.connectors.factory.get_connector_for_connection",
+        lambda conn, db=None: connector,
+    )
+    monkeypatch.setattr(wd, "transform_widget_data", lambda result, mapping: {"value": 15})
+    monkeypatch.setattr(wd, "_widget_cache_store", lambda *a, **k: None)
+    return connector
+
+
+def test_refresh_widget_never_serves_a_redis_hit_the_plane_would_deny(monkeypatch):
+    lookup = _setup_redis_hit(monkeypatch, plane_readable=False)
+    connector = _source_connector(monkeypatch)
+    db = _db_with_first(FakeDashboard(), FakeConnection())
+
+    resp = _run(wd.refresh_widget(_widget_req(), _user(org_id="org-1"), db))
+
+    lookup.assert_called_once()          # the hit was found …
+    assert resp.served_from != "cache"   # … and refused
+    assert resp.config == {"value": 15}
+    connector.execute_query.assert_called_once()
+
+
+def test_refresh_widget_authorizes_the_hit_under_the_shared_dashboard_context(monkeypatch):
+    """A cross-org viewer keeps their hits: the miss path serves them under
+    system_context, which `contract.check` short-circuits before the plugin."""
+    from backend.governance import contract
+
+    lookup = _setup_redis_hit(monkeypatch, plane_readable=None)
+    check_fn, seen = _deny_recorder(denied={"orders"})
+    monkeypatch.setattr(contract, "_check_fn", check_fn)
+    monkeypatch.setattr(wd, "_serving_org_and_shared", lambda dash, user: ("org-host", True))
+    monkeypatch.setattr(wd, "_readable_connection", lambda *a, **k: FakeConnection())
+    db = _db_with_first(FakeDashboard())
+
+    resp = _run(wd.refresh_widget(_widget_req(), _user(org_id="org-1"), db))
+
+    assert resp.served_from == "cache"
+    assert seen == []                    # system_context, so the plugin never ran
+    lookup.assert_called_once()
+
+
+def test_bulk_refresh_never_serves_a_redis_hit_the_plane_would_deny(monkeypatch):
+    lookup = _setup_bulk_redis_hit(monkeypatch, readable=FakeConnection(), plane_readable=None)
+    gate = MagicMock(return_value=False)
+    monkeypatch.setattr(wd, "_plane_tables_readable", gate)
+    connector = _source_connector(monkeypatch)
+    dashboard = _memo_dashboard([_memo_widget("w1", "SELECT 1"), _memo_widget("w2", "SELECT 2")])
+    db = _db_with_first(dashboard)
+
+    resp = _run(wd.refresh_dashboard_widgets(1, None, _user(org_id="org-1"), db))
+
+    assert lookup.call_count == 2                                    # both hits found
+    assert [c.args[1] for c in gate.call_args_list] == ["SELECT 1", "SELECT 2"]
+    assert [v.get("served_from") for v in resp.widgets.values()] == ["source", "source"]
+    assert connector.execute_query.call_count == 2
+
