@@ -30,6 +30,15 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+@pytest.fixture(autouse=True)
+def _widget_cache_off(monkeypatch):
+    """The per-Org cache flag reads live Redis/DB, and the local .env turns it on
+    fleet-wide — with the stack up, a refresh here would hit real Redis and can
+    replay an entry a previous run wrote. Off unless a test turns it on itself
+    (a later setattr in the test wins)."""
+    monkeypatch.setattr(wd, "_widget_cache_enabled", lambda org_id: False)
+
+
 @dataclass
 class FakeQueryResult:
     columns: list[str]
@@ -1222,3 +1231,95 @@ def test_source_fallback_normalizes_the_native_attempt(monkeypatch):
 # the whole suite runs, which is why its siblings above are in the known-failing
 # baseline. The rewrite itself is covered by
 # backend/tests/services/test_schema_utils_normalize.py.
+
+
+# ── Redis result cache — a hit is served only to a caller with a readable connection ──
+#
+# The key is org-scoped, so a hit holds rows whichever member fetched them.
+# A caller the source rung would refuse (no owned / host-org connection) must
+# not be answered from Redis — that was a warm-cache 200 next to a cold-cache 404.
+
+def _cached_response():
+    return wd.WidgetRefreshResponse(
+        config={"value": 99}, execution_time_ms=0.0, row_count=1, truncated=False,
+        refreshed_at="2026-09-07T00:00:00+00:00", source_columns=["cnt"],
+        source_rows=[[99]], served_from="cache",
+    )
+
+
+def _setup_redis_hit(monkeypatch):
+    """Cache on, key builder and lookup stubbed so the lookup always hits."""
+    monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
+    monkeypatch.setattr(wd, "_widget_cache_key", lambda *a, **k: ("key", 60))
+    monkeypatch.setattr(wd, "_resolve_serving_plane", lambda *a, **k: None)
+    monkeypatch.setattr(wd, "_read_widget_from_cache", lambda *a, **k: None)
+    lookup = MagicMock(return_value=_cached_response())
+    monkeypatch.setattr(wd, "_widget_cache_lookup", lookup)
+    return lookup
+
+
+def _widget_req():
+    return wd.WidgetRefreshRequest(
+        connection_id=42, sql="SELECT COUNT(*) FROM orders", mapping={},
+        dashboard_id=1, widget_id="kpi_1",
+    )
+
+
+def test_refresh_widget_serves_the_redis_hit_to_a_connection_reader(monkeypatch):
+    lookup = _setup_redis_hit(monkeypatch)
+    db = _db_with_first(FakeDashboard(), FakeConnection())
+
+    resp = _run(wd.refresh_widget(_widget_req(), _user(org_id="org-1"), db))
+
+    assert resp.served_from == "cache"
+    assert resp.source_rows == [[99]]
+    lookup.assert_called_once()
+
+
+def test_refresh_widget_never_reads_redis_without_a_readable_connection(monkeypatch):
+    from fastapi import HTTPException
+
+    lookup = _setup_redis_hit(monkeypatch)
+    # Dashboard visible; the ownership lookup and the shared-sample lookup both miss.
+    db = _db_with_first(FakeDashboard())
+
+    with pytest.raises(HTTPException) as exc:
+        _run(wd.refresh_widget(_widget_req(), _user(org_id="org-1"), db))
+
+    assert exc.value.status_code == 404
+    lookup.assert_not_called()
+
+
+def _setup_bulk_redis_hit(monkeypatch, readable):
+    monkeypatch.setattr("backend.api.dashboards._dashboard_visible_to", lambda q, user, db: q)
+    monkeypatch.setattr(wd, "_duckdb_serving_enabled", lambda org_id: False)
+    monkeypatch.setattr(wd, "_widget_cache_enabled", lambda org_id: True)
+    monkeypatch.setattr("backend.services.widget_result_cache.get_generation", lambda dashboard_id: 0)
+    monkeypatch.setattr(wd, "_resolve_serving_plane", lambda *a, **k: None)
+    monkeypatch.setattr(wd, "_read_widget_from_cache", lambda *a, **k: None)
+    monkeypatch.setattr(wd, "_readable_connection", lambda *a, **k: readable)
+    lookup = MagicMock(return_value=_cached_response())
+    monkeypatch.setattr(wd, "_widget_cache_lookup", lookup)
+    return lookup
+
+
+def test_bulk_refresh_serves_redis_hits_to_a_connection_reader(monkeypatch):
+    lookup = _setup_bulk_redis_hit(monkeypatch, readable=FakeConnection())
+    dashboard = _memo_dashboard([_memo_widget("w1", "SELECT 1"), _memo_widget("w2", "SELECT 2")])
+    db = _db_with_first(dashboard)
+
+    resp = _run(wd.refresh_dashboard_widgets(1, None, _user(org_id="org-1"), db))
+
+    assert {k: v["served_from"] for k, v in resp.widgets.items()} == {"w1": "cache", "w2": "cache"}
+    assert lookup.call_count == 2
+
+
+def test_bulk_refresh_never_reads_redis_without_a_readable_connection(monkeypatch):
+    lookup = _setup_bulk_redis_hit(monkeypatch, readable=None)
+    dashboard = _memo_dashboard([_memo_widget("w1", "SELECT 1")])
+    db = _db_with_first(dashboard)
+
+    resp = _run(wd.refresh_dashboard_widgets(1, None, _user(org_id="org-1"), db))
+
+    assert resp.widgets == {"w1": {"error": "Connection 42 not found"}}
+    lookup.assert_not_called()
