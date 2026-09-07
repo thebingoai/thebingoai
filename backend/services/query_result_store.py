@@ -47,18 +47,25 @@ def get_query_result(result_ref: str, user_id: str) -> Optional[Dict[str, Any]]:
         client.close()
 
 
-def publish_query_result(user_id: str, result_ref: str, data: Dict[str, Any]) -> None:
+def publish_query_result(
+    user_id: str, result_ref: str, data: Dict[str, Any], request_id: Optional[str] = None,
+) -> None:
     """Push query result to frontend via WebSocket pub/sub.
 
     Strips SQL fields from the wire payload — the chat UI shows query results,
     not the underlying SQL. Server-side store_query_result keeps the full
     payload (including SQL) for any backend consumer that needs it.
+
+    The channel is per user, not per socket: every tab the user has open gets
+    the frame. `request_id` names the chat turn that ran the query so a tab can
+    keep only its own; the browser drops frames without one (briefings).
     """
     from backend.services.ws_connection_manager import ConnectionManager
 
     wire_data = {k: v for k, v in data.items() if k not in ("sql", "sql_queries")}
     message = {
         "type": "query.result",
+        "request_id": request_id,
         "result_ref": result_ref,
         "data": wire_data,
     }

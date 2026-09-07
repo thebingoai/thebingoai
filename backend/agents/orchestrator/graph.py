@@ -1183,6 +1183,7 @@ def _build_dynamic_tools(
             thread_id=context.thread_id,
             team_id=context.team_id,
             allowed_tool_keys=effective_tool_keys,
+            request_id=context.request_id,
         )
 
         # Build the concrete LangChain tools for this agent

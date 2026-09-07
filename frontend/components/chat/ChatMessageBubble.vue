@@ -107,12 +107,13 @@
       <!-- Assistant message with markdown -->
       <UiMarkdownRenderer :content="message.content" />
 
-      <!-- Result table for rows the privacy floor withheld from the LLM. It cannot
-           describe or tabulate what it never saw, so the data is shown verbatim here.
+      <!-- The query result, rendered here and nowhere else: the orchestrator is
+           told never to paste rows, and under the privacy floor it never saw them.
            ponytail: live turn only — after a reload `results` comes from persisted
-           steps, which carry the stripped preview, and result_ref is not on the
-           message row. Upgrade: persist query_files + GET /api/query-results/{ref}. -->
-      <div v-if="message.values_withheld && message.results?.length" class="mt-3 overflow-x-auto">
+           steps, which carry the LLM preview (≤20 rows, none under the floor), and
+           result_ref is not on the message row. Upgrade: persist query_files +
+           GET /api/query-results/{ref}. -->
+      <div v-if="message.results?.length" class="mt-3 overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200 rounded-lg border border-gray-200 text-sm dark:divide-neutral-700 dark:border-neutral-700">
           <thead class="bg-gray-50 dark:bg-neutral-800">
             <tr>

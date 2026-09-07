@@ -91,6 +91,22 @@ import { useChatStore } from '~/stores/chat'
 import { useChatStreaming } from '~/composables/useChatStreaming'
 import { MAX_QUERY_RESULT_ROWS } from '~/composables/_chatConstants'
 
+// The turn's own id. query.result is a per-user broadcast, so the handler keeps
+// only frames stamped with it; `ws.send` sits behind an await, so the id can't
+// be read off the chat.send frame synchronously — pin it instead.
+const REQUEST_ID = '11111111-1111-4111-8111-111111111111'
+
+// Start a turn (registers handlers synchronously) and return a fire() that
+// stamps each frame with the turn's request_id unless the frame sets its own.
+function startTurn() {
+  vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(REQUEST_ID)
+  const { sendMessage } = useChatStreaming()
+  sendMessage('hi')   // never awaited — its promise only resolves on chat.done/cleanup
+  const handler = wsHandlers.get('query.result')
+  expect(handler).toBeDefined()
+  return (frame: any) => handler!({ request_id: REQUEST_ID, ...frame })
+}
+
 describe('useChatStreaming — query.result → query_files', () => {
   let store: ReturnType<typeof useChatStore>
 
@@ -101,15 +117,6 @@ describe('useChatStreaming — query.result → query_files', () => {
     store = useChatStore()
     store.pendingConnectionIds = []
   })
-
-  // Start a turn (registers handlers synchronously) and return the query.result handler.
-  function startTurn() {
-    const { sendMessage } = useChatStreaming()
-    sendMessage('hi')   // never awaited — its promise only resolves on chat.done/cleanup
-    const handler = wsHandlers.get('query.result')
-    expect(handler).toBeDefined()
-    return handler!
-  }
 
   // The assistant placeholder is the last message sendMessage added.
   const lastMsg = () => store.messages.at(-1)!
@@ -124,24 +131,6 @@ describe('useChatStreaming — query.result → query_files', () => {
       { result_ref: 'r1', label: 'Q1', row_count: 2, col_count: 2 },
     ])
     expect(lastMsg().results).toEqual([{ a: 1, b: 2 }, { a: 3, b: 4 }])
-  })
-
-  it('flags the message when the privacy floor withheld the rows from the LLM', () => {
-    startTurn()({
-      result_ref: 'r1',
-      data: { columns: ['day'], rows: [['Mon']], label: 'Q1', row_count: 1, values_withheld: true },
-    })
-
-    expect(lastMsg().values_withheld).toBe(true)
-  })
-
-  it('leaves the flag false when the LLM saw the rows itself', () => {
-    startTurn()({
-      result_ref: 'r1',
-      data: { columns: ['day'], rows: [['Mon']], label: 'Q1', row_count: 1 },
-    })
-
-    expect(lastMsg().values_withheld).toBe(false)
   })
 
   it('dedups repeated frames with the same result_ref', () => {
@@ -174,7 +163,6 @@ describe('useChatStreaming — query.result → query_files', () => {
         columns: ['id'],
         rows: Array.from({ length: 20 }, (_, i) => [i]),
         label: 'sales',
-        values_withheld: true,
       },
     })
     fire({
@@ -183,7 +171,6 @@ describe('useChatStreaming — query.result → query_files', () => {
         columns: ['day', 'avg'],
         rows: Array.from({ length: 7 }, (_, i) => [`d${i}`, i]),
         label: 'sales',
-        values_withheld: true,
       },
     })
 
@@ -235,9 +222,7 @@ describe('useChatStreaming — persistent query.result handler', () => {
   })
 
   it('survives cleanup() — a late query.result after chat.done still writes to the message', () => {
-    const { sendMessage } = useChatStreaming()
-    sendMessage('hi')
-    const fire = wsHandlers.get('query.result')!
+    const fire = startTurn()
     const qrUnsub = wsUnsubs.get('query.result')!
 
     // chat.done with no prior tokens drains instantly, so cleanup() runs synchronously
@@ -270,6 +255,14 @@ describe('useChatStreaming — persistent query.result handler', () => {
     })()
 
     fire({ ...frame(), request_id: '__other_turn__' })
+    expect(lastMsg().results).toBeUndefined()
+    expect(lastMsg().query_files).toBeUndefined()
+  })
+
+  it('drops a frame with no request_id — a briefing, or a backend that never stamped one', () => {
+    const fire = startTurn()
+
+    fire({ ...frame(), request_id: undefined })
     expect(lastMsg().results).toBeUndefined()
     expect(lastMsg().query_files).toBeUndefined()
   })

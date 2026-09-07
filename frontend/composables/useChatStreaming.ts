@@ -343,9 +343,11 @@ export const useChatStreaming = () => {
 
       // Registered OUTSIDE `unsubs` and stored on activeQueryResultUnsub so
       // cleanup() on chat.done does NOT tear it down — the export event often
-      // lands just after done via the slower Redis lane.
+      // lands just after done via the slower Redis lane. That lane is a per-user
+      // broadcast: every tab gets every frame, briefings included. Only this
+      // turn's own id gets through; a frame without one is never ours.
       activeQueryResultUnsub = ws.on('query.result', (data: any) => {
-        if (data.request_id && data.request_id !== requestId) return
+        if (data.request_id !== requestId) return
         const payload = data.data || {}
         const columns: string[] = payload.columns || []
         const rawRows: any[][] = payload.rows || []
@@ -365,12 +367,7 @@ export const useChatStreaming = () => {
         // sub_steps already carry each result_ref in call order, so the
         // answering ref can be picked there and matched against data.result_ref.
         const targetMsg = chatStore.messages.find(m => m.id === assistantMsgId)
-        chatStore.updateMessageById(assistantMsgId, {
-          results,
-          // Under the privacy floor the LLM never saw these rows, so nothing
-          // else in the reply can show them — the bubble renders the table.
-          values_withheld: payload.values_withheld === true,
-        })
+        chatStore.updateMessageById(assistantMsgId, { results })
 
         // Track every dataset for download (one entry per query, dedup by ref)
         if (data.result_ref) {

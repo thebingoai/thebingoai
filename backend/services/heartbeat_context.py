@@ -35,6 +35,7 @@ async def build_orchestrator_context(
     query: str = "",
     connection_ids: Optional[list] = None,
     thread_id: Optional[str] = None,
+    request_id: Optional[str] = None,
 ) -> OrchestratorInvocationContext:
     """
     Build all context needed to invoke run_orchestrator / stream_orchestrator.
@@ -149,6 +150,7 @@ async def build_orchestrator_context(
         team_id=team_id,
         allowed_tool_keys=allowed_tool_keys,
         target_connection_id=target_connection_id,
+        request_id=request_id,
     )
 
     # Check if auto-memory retrieval is enabled. The Qdrant fetch this gates is
