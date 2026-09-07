@@ -292,3 +292,23 @@ def test_label_on_join_is_alphabetically_first_not_the_driving_table(monkeypatch
         monkeypatch, "SELECT * FROM orders o JOIN customers c ON c.id = o.customer_id"
     )
     assert payload["label"] == "customers"
+
+
+# --- the chat bubble needs to know the LLM was denied the rows ---------------
+
+
+def test_published_payload_carries_values_withheld(monkeypatch):
+    """The floor is on by default, so the side-channel must say so: the bubble
+    renders the table itself precisely when the LLM could not."""
+    payload = _run_execute_query(monkeypatch, "SELECT c FROM t")
+    assert payload["values_withheld"] is True
+
+
+def test_values_withheld_is_false_when_the_floor_is_off(monkeypatch):
+    """With the floor off the LLM has the rows and writes its own markdown
+    table — the bubble must not render a second one."""
+    monkeypatch.setattr(
+        "backend.services.llm_privacy.metadata_only_for_connection", lambda c: False
+    )
+    payload = _run_execute_query(monkeypatch, "SELECT c FROM t")
+    assert payload["values_withheld"] is False

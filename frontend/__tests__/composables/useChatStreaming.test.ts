@@ -126,6 +126,24 @@ describe('useChatStreaming — query.result → query_files', () => {
     expect(lastMsg().results).toEqual([{ a: 1, b: 2 }, { a: 3, b: 4 }])
   })
 
+  it('flags the message when the privacy floor withheld the rows from the LLM', () => {
+    startTurn()({
+      result_ref: 'r1',
+      data: { columns: ['day'], rows: [['Mon']], label: 'Q1', row_count: 1, values_withheld: true },
+    })
+
+    expect(lastMsg().values_withheld).toBe(true)
+  })
+
+  it('leaves the flag false when the LLM saw the rows itself', () => {
+    startTurn()({
+      result_ref: 'r1',
+      data: { columns: ['day'], rows: [['Mon']], label: 'Q1', row_count: 1 },
+    })
+
+    expect(lastMsg().values_withheld).toBe(false)
+  })
+
   it('dedups repeated frames with the same result_ref', () => {
     const fire = startTurn()
     const frame = { result_ref: 'r1', data: { columns: ['a'], rows: [[1]], label: 'Q', row_count: 1 } }

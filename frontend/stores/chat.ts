@@ -30,6 +30,7 @@ export interface Message {
   loop_detected?: boolean
   briefing_id?: number | null
   query_files?: QueryFile[]  // downloadable datasets produced by this turn's queries
+  values_withheld?: boolean  // privacy floor kept the rows from the LLM; the bubble renders them instead
   chart_specs?: ChartRef[] | null
 }
 

@@ -360,7 +360,12 @@ export const useChatStreaming = () => {
         // Keep the result with the most rows when multiple queries run in one turn
         const targetMsg = chatStore.messages.find(m => m.id === assistantMsgId)
         if (!targetMsg?.results?.length || results.length >= (targetMsg.results?.length || 0)) {
-          chatStore.updateMessageById(assistantMsgId, { results })
+          chatStore.updateMessageById(assistantMsgId, {
+            results,
+            // Under the privacy floor the LLM never saw these rows, so nothing
+            // else in the reply can show them — the bubble renders the table.
+            values_withheld: payload.values_withheld === true,
+          })
         }
 
         // Track every dataset for download (one entry per query, dedup by ref)

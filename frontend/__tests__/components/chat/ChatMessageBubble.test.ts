@@ -247,6 +247,45 @@ describe('ChatMessageBubble — reasoning steps toggle', () => {
   })
 })
 
+describe('ChatMessageBubble — withheld result table', () => {
+  // Prod 2026-09-07: under the privacy floor the LLM had no rows, so it pasted
+  // the SQL and told the user to run it. The rows were in the browser the whole
+  // time — nothing rendered them.
+  const withResults = (overrides: Record<string, any> = {}) => ({
+    ...assistantMsg,
+    values_withheld: true,
+    results: [{ day: 'Mon', avg: 412 }, { day: 'Tue', avg: 517 }],
+    ...overrides,
+  })
+
+  function mountBubble(message: any) {
+    return mount(ChatMessageBubble, {
+      props: { message, showActions: false, actionType: null, isLast: false, agentName: 'Bingo' },
+    })
+  }
+
+  it('renders the rows the LLM was not allowed to see', () => {
+    const wrapper = mountBubble(withResults())
+    const table = wrapper.find('table')
+
+    expect(table.exists()).toBe(true)
+    expect(table.findAll('th').map(h => h.text())).toEqual(['day', 'avg'])
+    expect(table.findAll('tbody tr')).toHaveLength(2)
+    expect(table.text()).toContain('412')
+  })
+
+  it('renders no table when the LLM saw the rows itself', () => {
+    // The floor is off, so the reply already carries its own markdown table.
+    const wrapper = mountBubble(withResults({ values_withheld: false }))
+    expect(wrapper.find('table').exists()).toBe(false)
+  })
+
+  it('renders no table when the query returned nothing', () => {
+    const wrapper = mountBubble(withResults({ results: [] }))
+    expect(wrapper.find('table').exists()).toBe(false)
+  })
+})
+
 describe('ChatMessageBubble — query result download', () => {
   const withFiles = (overrides: Record<string, any> = {}) => ({
     ...assistantMsg,

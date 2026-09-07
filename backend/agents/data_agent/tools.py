@@ -291,6 +291,13 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
             tables = extract_table_refs(sql)
             label = tables[0] if tables else "query"
 
+            # Privacy: under metadata_only_llm the LLM gets no row values, so the
+            # chat bubble renders the side-channel result itself — it needs the flag.
+            from backend.services.llm_privacy import (
+                metadata_only_for_connection, strip_preview,
+            )
+            values_withheld = metadata_only_for_connection(connection)
+
             # Build full result payload for frontend delivery
             full_result = {
                 "columns": result.columns,
@@ -301,6 +308,7 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 "label": label,
                 "sql": sql,
                 "connection_id": connection_id,
+                "values_withheld": values_withheld,
             }
 
             # Store and publish full data to frontend via side-channel
@@ -318,12 +326,9 @@ def build_data_agent_tools(context: AgentContext) -> List[Callable]:
                 "result_ref": result_ref,
                 "truncated": result.truncated,
             }
-            # Privacy: under metadata_only_llm, withhold the preview rows from the
-            # LLM (the full result still reaches the user via the side-channel above).
-            from backend.services.llm_privacy import (
-                metadata_only_for_connection, strip_preview,
-            )
-            if metadata_only_for_connection(connection):
+            # Withhold the preview rows from the LLM (the full result still
+            # reaches the user via the side-channel above).
+            if values_withheld:
                 return strip_preview(preview)
             return preview
 
