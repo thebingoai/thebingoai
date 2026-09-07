@@ -107,6 +107,45 @@
       <!-- Assistant message with markdown -->
       <UiMarkdownRenderer :content="message.content" />
 
+      <!-- The query result, rendered here and nowhere else: the orchestrator is
+           told never to paste rows, and under the privacy floor it never saw them.
+           ponytail: live turn only — after a reload `results` comes from persisted
+           steps, which carry the LLM preview (≤20 rows, none under the floor), and
+           result_ref is not on the message row. Upgrade: persist query_files +
+           GET /api/query-results/{ref}. -->
+      <div v-if="message.results?.length" class="mt-3 overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200 rounded-lg border border-gray-200 text-sm dark:divide-neutral-700 dark:border-neutral-700">
+          <thead class="bg-gray-50 dark:bg-neutral-800">
+            <tr>
+              <th
+                v-for="(_, key) in message.results[0]"
+                :key="key"
+                class="px-3 py-1.5 text-left text-xs font-medium text-gray-600 dark:text-neutral-300"
+              >
+                {{ key }}
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-neutral-700">
+            <tr v-for="(row, idx) in message.results" :key="idx">
+              <td
+                v-for="(value, key) in row"
+                :key="key"
+                class="whitespace-nowrap px-3 py-1.5 text-gray-900 dark:text-neutral-100"
+              >
+                {{ value }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p
+          v-if="message.results.length >= MAX_QUERY_RESULT_ROWS"
+          class="mt-1 text-xs text-gray-500 dark:text-neutral-400"
+        >
+          Showing the first {{ MAX_QUERY_RESULT_ROWS }} rows
+        </p>
+      </div>
+
       <!-- Downloadable query results (one row per dataset) -->
       <div v-if="message.query_files?.length" class="mt-3 space-y-1.5">
         <div
@@ -266,7 +305,7 @@ import { ChevronDown } from 'lucide-vue-next'
 import UiDropdown from '~/components/ui/UiDropdown.vue'
 import { useDashboardStore } from '~/stores/dashboard'
 import { parseUtcDate, formatDate } from '~/utils/format'
-import { IMAGE_MIME_TYPES } from '~/composables/_chatConstants'
+import { IMAGE_MIME_TYPES, MAX_QUERY_RESULT_ROWS } from '~/composables/_chatConstants'
 import { fileIconHtml } from '~/composables/useFileIcons'
 
 const props = defineProps<{

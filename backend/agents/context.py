@@ -31,6 +31,11 @@ class AgentContext:
     # Agent mesh: session identity
     session_id: Optional[str] = None
 
+    # The chat turn that owns this run. Stamped on every query.result the turn
+    # publishes so the browser can tell its own results from another tab's or
+    # a briefing's — the side-channel is a per-user broadcast. None outside chat.
+    request_id: Optional[str] = None
+
     # Briefing mode: set when orchestrator is running for a scheduled briefing
     briefing_id: Optional[int] = None  # set when running orchestrator for a briefing
 

@@ -343,9 +343,11 @@ export const useChatStreaming = () => {
 
       // Registered OUTSIDE `unsubs` and stored on activeQueryResultUnsub so
       // cleanup() on chat.done does NOT tear it down — the export event often
-      // lands just after done via the slower Redis lane.
+      // lands just after done via the slower Redis lane. That lane is a per-user
+      // broadcast: every tab gets every frame, briefings included. Only this
+      // turn's own id gets through; a frame without one is never ours.
       activeQueryResultUnsub = ws.on('query.result', (data: any) => {
-        if (data.request_id && data.request_id !== requestId) return
+        if (data.request_id !== requestId) return
         const payload = data.data || {}
         const columns: string[] = payload.columns || []
         const rawRows: any[][] = payload.rows || []
@@ -357,11 +359,15 @@ export const useChatStreaming = () => {
           return obj
         })
 
-        // Keep the result with the most rows when multiple queries run in one turn
+        // ponytail: last result wins. The answering query is the one the agent
+        // runs last; ranking by row count let a 20-row exploratory scan outrank
+        // the 7-row aggregation the reply then pointed at. The frame carries no
+        // ordering key — result_ref is a uuid4 — so arrival order is all there
+        // is. Upgrade if trailing verification queries appear: chat.tool_result
+        // sub_steps already carry each result_ref in call order, so the
+        // answering ref can be picked there and matched against data.result_ref.
         const targetMsg = chatStore.messages.find(m => m.id === assistantMsgId)
-        if (!targetMsg?.results?.length || results.length >= (targetMsg.results?.length || 0)) {
-          chatStore.updateMessageById(assistantMsgId, { results })
-        }
+        chatStore.updateMessageById(assistantMsgId, { results })
 
         // Track every dataset for download (one entry per query, dedup by ref)
         if (data.result_ref) {
