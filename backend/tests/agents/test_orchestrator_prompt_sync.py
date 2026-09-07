@@ -16,9 +16,10 @@ from backend.agents.orchestrator_prompt_blocks import (
     ORCHESTRATOR_APPROACH,
     ORCHESTRATOR_ASK_RULES,
     ORCHESTRATOR_DASHBOARD_SCOPING,
+    ORCHESTRATOR_OUTPUT_CONSTRAINTS,
     ORCHESTRATOR_WORKFLOW,
 )
-from backend.agents.orchestrator.prompts import _ORCHESTRATOR_CHASSIS
+from backend.agents.orchestrator.prompts import _LEAN_CHASSIS, _ORCHESTRATOR_CHASSIS
 from backend.agents.profile_defaults import DEFAULTS, _ORCHESTRATOR_IDENTITY
 
 _STALE_MARKERS = [
@@ -43,7 +44,12 @@ class TestBothPathsComposeFromTheSharedBlock:
         assert DEFAULTS["orchestrator"]["identity"] == _ORCHESTRATOR_IDENTITY
 
     def test_each_sub_block_reaches_both_consumers(self):
-        for block in (ORCHESTRATOR_APPROACH, ORCHESTRATOR_DASHBOARD_SCOPING, ORCHESTRATOR_ASK_RULES):
+        for block in (
+            ORCHESTRATOR_APPROACH,
+            ORCHESTRATOR_DASHBOARD_SCOPING,
+            ORCHESTRATOR_ASK_RULES,
+            ORCHESTRATOR_OUTPUT_CONSTRAINTS,
+        ):
             assert block in _ORCHESTRATOR_CHASSIS
             assert block in _ORCHESTRATOR_IDENTITY
 
@@ -181,3 +187,53 @@ class TestChartRoutingReachesEveryPromptPath:
             ResolvedMention(type="dashboard", id=1, name="d", display_name="D"),
         ])
         assert "select_dashboard_widget" in block
+
+
+class TestOutputConstraintsReachEveryPromptPath:
+    """The 2026-09-07 prod failure: asked for the lowest-average weekday, the
+    agent pasted a ```sql fence and told the user to run it in their own
+    console. "Never include SQL in your reply" existed — in the chassis only,
+    which renders for nobody once a profile row exists. Three paths, one block."""
+
+    def test_all_three_paths_carry_the_block(self):
+        assert ORCHESTRATOR_OUTPUT_CONSTRAINTS in _ORCHESTRATOR_CHASSIS
+        assert ORCHESTRATOR_OUTPUT_CONSTRAINTS in _LEAN_CHASSIS
+        assert ORCHESTRATOR_OUTPUT_CONSTRAINTS in _ORCHESTRATOR_IDENTITY
+
+    def test_no_hand_copy_survives(self):
+        """A second copy is how the rule drifted out of the live prompt."""
+        assert _ORCHESTRATOR_CHASSIS.count("## Output Constraints") == 1
+        assert _LEAN_CHASSIS.count("## Output Constraints") == 1
+        assert _ORCHESTRATOR_IDENTITY.count("## Output Constraints") == 1
+
+    def test_the_seeded_identity_forbids_sql(self):
+        assert "Never include SQL" in _ORCHESTRATOR_IDENTITY
+
+    def test_the_withheld_values_rule_is_stated(self):
+        """Without this the agent improvises, and "run it yourself" is a
+        plausible improvisation when it cannot see the rows."""
+        assert "values_withheld" in ORCHESTRATOR_OUTPUT_CONSTRAINTS
+        assert "rendered directly under your message" in ORCHESTRATOR_OUTPUT_CONSTRAINTS
+        assert "run the query somewhere else" in ORCHESTRATOR_OUTPUT_CONSTRAINTS
+
+    def test_the_rendered_profile_carries_both_rules(self):
+        """The path that actually runs in production."""
+        from backend.agents.profile_renderer import ProfileRenderer, RuntimeContext
+        from backend.models.agent_profile import AgentProfile
+
+        profile = AgentProfile(
+            agent_type="orchestrator",
+            identity=DEFAULTS["orchestrator"]["identity"],
+            is_active=True,
+            version=1,
+        )
+        rendered = ProfileRenderer.render(
+            profile, RuntimeContext(available_connections=[], connection_metadata=[])
+        )
+        assert "Never include SQL" in rendered
+        assert "values_withheld" in rendered
+
+    def test_the_block_is_not_inside_the_workflow_constant(self):
+        """The dashboard kill switch slices ORCHESTRATOR_WORKFLOW; output rules
+        must not be collateral."""
+        assert ORCHESTRATOR_OUTPUT_CONSTRAINTS not in ORCHESTRATOR_WORKFLOW
