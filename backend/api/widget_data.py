@@ -765,6 +765,65 @@ def _readable_connection(db, connection_id, current_user, dashboard):
     return q.filter(shared_sample_clause()).first()
 
 
+def _authorizable_tables(connection, sql) -> list[str]:
+    """Tables a cache hit must be authorized against: what the *stored* SQL
+    references plus what the forms the serving rungs actually execute reference.
+
+    `extract_table_refs` parses in sqlglot's default dialect, where backtick
+    quoting is a syntax error, so a backtick-quoted table name yields [] — and
+    the caller's `all(...)` over an empty list is vacuously true. No rung runs
+    the stored SQL verbatim: the source rung runs
+    `normalize_sql_for(sql, _resolve_inject_dialect(connection))`, the DuckDB
+    rung `normalize_sql_for(sql, "duckdb")`, and both rewrite backticks to
+    double quotes — so the plane middleware resolves the table and denies while
+    the stored form named nothing at all. Union, not substitution: a form that
+    fails to parse contributes nothing rather than shrinking the set.
+    """
+    from backend.utils.sql_refs import extract_table_refs
+
+    forms = [sql]
+    for dialect in {_resolve_inject_dialect(connection), "duckdb"}:
+        try:
+            forms.append(normalize_sql_for(sql, dialect))
+        except Exception:  # unknown dialect / unparseable — that form adds nothing
+            continue
+    return sorted({t for form in forms for t in extract_table_refs(form)})
+
+
+def _plane_tables_readable(connection, sql, current_user) -> bool:
+    """The per-table check the governance plane middleware runs on `plane.query`
+    (enterprise bingo-org-governance, middleware._authorize). A Redis hit skips
+    the plane, so the hit runs it here. Parity, not a second policy: same
+    resource shape, same `contract.check` — which permits under system_context
+    (shared dashboards) and when no plugin is registered (community). For a
+    connection that never touches a plane (Postgres/MySQL) this is at most
+    stricter than the miss path; org members pass by default.
+
+    Fails closed when no table can be resolved: `all([])` would hand out the hit
+    with no check at all, and "nothing parsed here" is not "nothing to enforce"
+    — the cold path parses a normalized form and can still deny. The cost of
+    being wrong is a cache miss, not a lost read.
+    """
+    from backend.data_plane.scope import OwnerScope
+    from backend.governance.contract import check
+
+    tables = _authorizable_tables(connection, sql)
+    if not tables:
+        return False
+
+    scope = OwnerScope.from_connection(connection)
+    return all(
+        check(user=current_user, action="query", resource={
+            "type": "dataplane_table",
+            "id": f"{scope.kind}:{scope.id}:{table}",
+            "owner_scope_kind": scope.kind,
+            "owner_scope_id": str(scope.id),
+            "table_name": table,
+        })
+        for table in tables
+    )
+
+
 def _norm_sql(sql: str) -> str:
     """Compare form for stored-vs-requested SQL: trailing whitespace and a
     trailing semicolon only. Deliberately not a normalizing parse — an exact
@@ -1201,18 +1260,31 @@ def _refresh_widget_sync(
     )
     org_id = serving_org or getattr(current_user, "org_id", None)
 
+    # Resolved before any cache read. Shared (cross-org) dashboards read live from
+    # the HOST org's connection — `_readable_connection` authorizes a connection
+    # owned by a user in the dashboard's org; own dashboards still require the
+    # caller to own the connection. None does not reject here: the `_dash_*` rung
+    # below serves org members who own no connection, under the plane
+    # middleware's per-table grants.
+    connection = _readable_connection(db, request.connection_id, current_user, dashboard)
+
     # Redis result cache (flag-gated, per-Org). Keys embed the dashboard's
     # materialization generation, so unfiltered hits are exact; hits skip the
-    # serving ladder entirely.
+    # serving ladder entirely. Keys are org-scoped, so a hit may hold rows another
+    # member fetched: it is served only to a caller the ladder would serve — one
+    # holding a readable connection AND passing the per-table check the plane
+    # middleware runs on a cold read. Anyone else walks the ladder unchanged.
     cache_key, cache_ttl = (None, None)
-    if dashboard:
+    if dashboard and connection:
         cache_key, cache_ttl = _widget_cache_key(
             request.dashboard_id, request.widget_id, request.connection_id,
             request.sql, request.filters, org_id, current_user.id,
         )
         cached_resp = _widget_cache_lookup(cache_key, request.mapping)
         if cached_resp is not None:
-            return cached_resp
+            with _shared_serve_ctx(dash_is_shared, serving_org):
+                if _plane_tables_readable(connection, request.sql, current_user):
+                    return cached_resp
 
     # DuckDB-over-DataPlane serving (flag-gated, per-Org). Serves filtered and
     # unfiltered reads alike; returns None to fall through on cold source etc.
@@ -1270,12 +1342,7 @@ def _refresh_widget_sync(
         except Exception as e:
             logger.warning(f"DataPlane cache read failed for widget {request.widget_id}, falling back to source DB: {e}")
 
-    # Fallback: source DB query. Shared (cross-org) dashboards read live from the
-    # HOST org's connection — `_readable_connection` authorizes a connection owned
-    # by a user in the dashboard's org; own dashboards still require the caller to
-    # own the connection.
-    connection = _readable_connection(db, request.connection_id, current_user, dashboard)
-
+    # Fallback: source DB query on the connection resolved above.
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
@@ -1599,23 +1666,38 @@ def _refresh_dashboard_widgets_sync(
             if chart_type and "chartType" not in mapping:
                 mapping = {**mapping, "chartType": chart_type}
 
-            # Redis result cache lookup — a hit skips the serving ladder.
+            # Redis result cache lookup — a hit skips the serving ladder, so it is
+            # served only to a caller holding a readable connection and passing
+            # the plane middleware's per-table check (see _refresh_widget_sync).
+            # The memo is the one the source fallback below reuses; a widget
+            # whose caller has no readable connection leaves it None and walks
+            # the ladder unchanged.
             widget_cache_key = None
             if bulk_cache_gen is not None and widget_id:
-                from backend.services import widget_result_cache as wrc
-                widget_cache_key = wrc.build_key(
-                    bulk_cache_scope[0], bulk_cache_scope[1], dashboard_id,
-                    widget_id, connection_id, sql, bulk_filters_dump, bulk_cache_gen,
-                )
-                cached_resp = _widget_cache_lookup(widget_cache_key, mapping)
-                if cached_resp is not None:
-                    results[widget_id] = {
-                        "config": cached_resp.config,
-                        "refreshed_at": cached_resp.refreshed_at,
-                        "served_from": cached_resp.served_from,
-                        "truncated": bool(getattr(cached_resp, "truncated", False)),
-                    }
-                    continue
+                if connection_id not in connection_cache:
+                    connection_cache[connection_id] = _readable_connection(
+                        db, connection_id, current_user, dashboard
+                    )
+                if connection_cache[connection_id] is not None:
+                    from backend.services import widget_result_cache as wrc
+                    widget_cache_key = wrc.build_key(
+                        bulk_cache_scope[0], bulk_cache_scope[1], dashboard_id,
+                        widget_id, connection_id, sql, bulk_filters_dump, bulk_cache_gen,
+                    )
+                    cached_resp = _widget_cache_lookup(widget_cache_key, mapping)
+                    if cached_resp is not None:
+                        with _shared_serve_ctx(dash_is_shared, serving_org):
+                            authorized = _plane_tables_readable(
+                                connection_cache[connection_id], sql, current_user
+                            )
+                        if authorized:
+                            results[widget_id] = {
+                                "config": cached_resp.config,
+                                "refreshed_at": cached_resp.refreshed_at,
+                                "served_from": cached_resp.served_from,
+                                "truncated": bool(getattr(cached_resp, "truncated", False)),
+                            }
+                            continue
 
             # DuckDB-over-DataPlane serving (flag-gated, per migrated dashboard) —
             # same path as single-widget refresh, so bulk loads on cut-over Orgs
