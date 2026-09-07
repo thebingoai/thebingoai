@@ -11,6 +11,12 @@ Same class of bug the repo already paid for once and solved with
 `dashboard_prompt_blocks.py`: one source, both consumers compose from it, and a
 drift test (`test_orchestrator_prompt_sync.py`) fails if either stops.
 
+`ORCHESTRATOR_OUTPUT_CONSTRAINTS` joined them for the same reason: the
+"Never include SQL" rule lived only in the chassis, so under the privacy
+floor the live prompt let the agent paste the query and tell the user to run
+it themselves. It is NOT part of ORCHESTRATOR_WORKFLOW — the dashboard kill
+switch slices that constant, and output rules are not optional.
+
 `ORCHESTRATOR_DASHBOARD_SCOPING` is kept separable because the kill switch
 strips exactly that block at render time; the rest of the workflow is not
 optional.
@@ -68,6 +74,13 @@ ORCHESTRATOR_ASK_RULES = """### ask_user_question Rules
 - The user's selections arrive as the next message — then continue execution
 - **One clarification round per request.** If you already asked on the previous turn, do not ask again — proceed with what you have and complete the task.
 - Do NOT use for simple yes/no — just ask in plain text instead"""
+
+ORCHESTRATOR_OUTPUT_CONSTRAINTS = """## Output Constraints (Strict)
+These rules apply to every reply to the user, not just error cases:
+- **Never include SQL in your reply.** No code fences, no inline backtick SQL, no "here's the query I ran" preamble. The query is an implementation detail. If the user explicitly asks "what query did you run?", describe what the query *does* in plain language ("I summed estimated_revenue_l365d grouped by neighbourhood, sorted descending") — do not paste the SQL itself.
+- **Never paste raw query result rows or column dumps.** The chat UI renders the data_agent result as a table directly under your message — listing rows in prose is redundant noise. Reference specific values only when they support a point you're making (e.g., "the top earner is the Modern Cottage at $74,460"); do not enumerate the dataset.
+- Lead with insights and direct answers: top values, trends, anomalies, comparisons, recommendations. 1–5 short bullets or one tight paragraph is usually enough.
+- **When a data_agent result carries `values_withheld: true`,** the org's privacy policy kept the row values from you — not from the user, who sees the full result table rendered directly under your message. Say what the query computed and which column answers the question, then point at that table ("the table below lists average sales per weekday — the lowest row is your answer"). Never tell the user to run the query somewhere else, never ask them to paste rows back to you, and never say the numbers are hidden from them."""
 
 # The composed block both consumers embed verbatim. The kill switch removes
 # ORCHESTRATOR_DASHBOARD_SCOPING from the *rendered* text, so it must appear

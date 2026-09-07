@@ -22,6 +22,10 @@ silently — see test_feature_flags::test_known_flags):
                                    rows, query previews, min/max) from anything
                                    sent to the LLM provider; user-facing results
                                    are unaffected (delivered via side-channel)
+
+Precedence: explicit org row value > `FEATURE_FLAG_DEFAULTS` env default
+(`settings.feature_flag_defaults`, "flag=true,flag=false") > the `default` arg.
+The env default covers every org, existing and future, with no DB write.
 """
 from __future__ import annotations
 
@@ -134,9 +138,51 @@ def _get_org_flags(org_id: str) -> dict[str, Any]:
         client.close()
 
 
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
+
+
+@functools.lru_cache(maxsize=4)
+def _parse_defaults(raw: str) -> dict[str, bool]:
+    """Parse FEATURE_FLAG_DEFAULTS ("flag=true,flag=false") into {flag: bool}.
+
+    Cached per distinct string so the parse and its warnings run once per
+    process. Unknown flags and unparseable values are dropped with a warning
+    rather than raising: a typo in prod env must not take the backend down.
+    """
+    out: dict[str, bool] = {}
+    for segment in raw.split(","):
+        segment = segment.strip()
+        if not segment:
+            continue
+        name, sep, value = segment.partition("=")
+        name, value = name.strip(), value.strip().lower()
+        if not sep or name not in KNOWN_FLAGS:
+            logger.warning("FEATURE_FLAG_DEFAULTS: ignoring %r (unknown flag)", segment)
+        elif value in _TRUTHY:
+            out[name] = True
+        elif value in _FALSY:
+            out[name] = False
+        else:
+            logger.warning("FEATURE_FLAG_DEFAULTS: ignoring %r (value must be true/false)", segment)
+    return out
+
+
+def _env_defaults() -> dict[str, bool]:
+    from backend.config import settings
+    return _parse_defaults(settings.feature_flag_defaults)
+
+
 def enabled(org_id: str, flag: str, default: bool = False) -> bool:
-    """Return True iff the flag is set truthy for this Org. Falls back to `default` on miss."""
-    val = _get_org_flags(org_id).get(flag, default)
+    """Return True iff the flag is set truthy for this Org.
+
+    A flag the org row leaves unset falls back to the env-wide default
+    (`FEATURE_FLAG_DEFAULTS`), then to `default`. An explicit org value —
+    including False — always wins over the env default.
+    """
+    val = _get_org_flags(org_id).get(flag)
+    if val is None:
+        return _env_defaults().get(flag, default)
     if isinstance(val, bool):
         return val
     if isinstance(val, int):
@@ -145,8 +191,8 @@ def enabled(org_id: str, flag: str, default: bool = False) -> bool:
 
 
 def read_flags(org_id: str) -> dict[str, Any]:
-    """Return the full flag map for this Org (cache-through). Empty dict if org missing."""
-    return dict(_get_org_flags(org_id))
+    """Return the effective flag map for this Org: env defaults overlaid by the org row."""
+    return {**_env_defaults(), **_get_org_flags(org_id)}
 
 
 def set_flag(org_id: str, flag: str, value: Any) -> None:

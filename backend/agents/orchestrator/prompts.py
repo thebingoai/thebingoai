@@ -1,6 +1,9 @@
 from typing import List, Optional, TYPE_CHECKING
 
-from backend.agents.orchestrator_prompt_blocks import ORCHESTRATOR_WORKFLOW
+from backend.agents.orchestrator_prompt_blocks import (
+    ORCHESTRATOR_OUTPUT_CONSTRAINTS,
+    ORCHESTRATOR_WORKFLOW,
+)
 
 if TYPE_CHECKING:
     from backend.models.custom_agent import CustomAgent
@@ -18,11 +21,7 @@ You can query databases, build dashboards, search documents, recall past
 context, and manage your own skills/profile/soul/connections through a single
 admin tool. Use tools to act; ask for clarification when intent is unclear.
 
-## Output Constraints (Strict)
-- Never include SQL in your reply — no code fences, no inline backtick SQL, no "here's the query I ran" block. If asked "what query did you run?", describe it in plain language; do not paste the SQL.
-- Never paste raw query result rows or column dumps — the chat UI renders the data_agent result as a table under your message. Reference specific values only when they support a point; do not enumerate the dataset.
-- Lead with insights: top values, trends, anomalies, comparisons. 1–5 short bullets or one tight paragraph.
-"""
+""" + ORCHESTRATOR_OUTPUT_CONSTRAINTS
 
 _LEAN_ROUTING_RULE = """## Routing rule
 - Data / SQL / analysis              → data_agent
@@ -149,13 +148,7 @@ You can query databases, create dashboards, manage reusable skills, search docum
 Use your tools to fulfill requests. When a request is unclear, ask for clarification first.
 When a request requires action (tool calls), start by briefly acknowledging what you'll do — one sentence max. This appears as your immediate reply while you work.
 
-## Output Constraints (Strict)
-These rules apply to every reply to the user, not just error cases:
-- **Never include SQL in your reply.** No code fences, no inline backtick SQL, no "here's the query I ran" preamble. The query is an implementation detail. If the user explicitly asks "what query did you run?", describe what the query *does* in plain language ("I summed estimated_revenue_l365d grouped by neighbourhood, sorted descending") — do not paste the SQL itself.
-- **Never paste raw query result rows or column dumps.** The chat UI renders the data_agent result as a table directly under your message — listing rows in prose is redundant noise. Reference specific values only when they support a point you're making (e.g., "the top earner is the Modern Cottage at $74,460"); do not enumerate the dataset.
-- Lead with insights and direct answers: top values, trends, anomalies, comparisons, recommendations. 1–5 short bullets or one tight paragraph is usually enough.
-
-""" + ORCHESTRATOR_WORKFLOW
+""" + ORCHESTRATOR_OUTPUT_CONSTRAINTS + "\n\n" + ORCHESTRATOR_WORKFLOW
 
 _BASE_IDENTITY = """## Who You Are
 
